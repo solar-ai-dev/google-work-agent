@@ -121,7 +121,6 @@ from google_work_agent.application.write_actions import (
     FinalizeRunCancellationService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
-    ResolveMismatchRecoveryService,
 )
 from google_work_agent.domain import CalendarWorkHours
 from google_work_agent.launcher.connector_composition import build_connectors
@@ -796,10 +795,6 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        resolve_recovery_service=ResolveMismatchRecoveryService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
         local_run_coordinator=coordinator,
         workflow_runtime=workflow_runtime,
         event_publisher=event_publisher,
@@ -852,8 +847,6 @@ def build_container(
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
-            database_path=database_path,
-            connection_factory=connect_sqlite,
         ),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,

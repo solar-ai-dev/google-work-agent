@@ -15,8 +15,8 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
 from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
-from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
-    ResolveMismatchRecoveryResult,
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryResult,
 )
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
 from google_work_agent.application.write_actions import WriteRunResponse
@@ -211,23 +211,9 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
             request_replayed=False,
         )
 
-    def recovery_service(command: object) -> WriteRunResponse:
-        captured["recovery"] = command
-        return WriteRunResponse(
-            applied=True,
-            result_code="TRANSITION_APPLIED",
-            run_id="run-1",
-            run_status="COMPLETED",
-            run_version=3,
-            plan_id="plan-1",
-            plan_status="COMPLETED",
-            result_kind="PARTIAL",
-        )
-
     container = replace(
         container,
         resume_run_service=resume_service,
-        resolve_recovery_service=recovery_service,
     )
 
     def confirm_handler(command: object) -> ConfirmRunResult:
@@ -242,18 +228,14 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
             request_replayed=False,
         )
 
-    def recovery_handler(command: object, *, request_id: str) -> ResolveMismatchRecoveryResult:
-        del request_id
-        legacy = recovery_service(command)
-        return ResolveMismatchRecoveryResult(
-            applied=legacy.applied,
-            result_code=legacy.result_code,
-            run_id=legacy.run_id,
-            current_status=legacy.run_status,
-            current_version=legacy.run_version,
-            conflict_detail=legacy.conflict_detail,
-            result_kind=legacy.result_kind,
-            plan_id=legacy.plan_id,
+    def recovery_handler(command: object) -> ResolveRecoveryResult:
+        captured["recovery"] = command
+        return ResolveRecoveryResult(
+            applied=True,
+            result_code="TRANSITION_APPLIED",
+            current_status="COMPLETED",
+            current_version=3,
+            next_allowed_commands=(),
         )
 
     with (
@@ -262,7 +244,7 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
             return_value=confirm_handler,
         ),
         patch(
-            "google_work_agent.api.routes.runs.ResolveMismatchRecoveryHandler",
+            "google_work_agent.api.routes.runs.ResolveRecoveryHandler",
             return_value=recovery_handler,
         ),
         TestClient(create_app(container)) as client,

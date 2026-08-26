@@ -115,6 +115,10 @@ class RunRecord:
     version: int
     started_at_ms: int
     finished_at_ms: int | None
+    entry_mode: str = ""
+    langgraph_thread_id: str = ""
+    requested_mode: str = ""
+    actual_runtime: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,7 +211,7 @@ class ResourceRefRecord:
     run_id: str
     connector_id: str
     source: ResourceSource
-    resource_type: StoredResourceType
+    resource_type: str
     resource_id: str
     parent_resource_id: str | None
     canonical_url: str | None

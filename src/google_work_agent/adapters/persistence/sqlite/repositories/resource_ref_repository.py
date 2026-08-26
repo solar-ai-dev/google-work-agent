@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from google_work_agent.ports.models import ResourceRefRecord, ResourceSource, StoredResourceType
+from google_work_agent.ports.models import ResourceRefRecord, ResourceSource
 
 
 class SqliteResourceRefRepository:
@@ -44,7 +44,7 @@ class SqliteResourceRefRepository:
                 record.run_id,
                 record.connector_id,
                 record.source.value,
-                record.resource_type.value,
+                record.resource_type,
                 record.resource_id,
                 record.parent_resource_id,
                 record.canonical_url,
@@ -58,7 +58,7 @@ class SqliteResourceRefRepository:
         row = self._connection.execute(
             self._SELECT
             + " WHERE run_id = ? AND connector_id = ? AND resource_type = ? AND resource_id = ?;",
-            (record.run_id, record.connector_id, record.resource_type.value, record.resource_id),
+            (record.run_id, record.connector_id, record.resource_type, record.resource_id),
         ).fetchone()
         if row is None:
             raise sqlite3.IntegrityError("upserted ResourceRef is not readable")
@@ -90,7 +90,7 @@ class SqliteResourceRefRepository:
             run_id=str(row["run_id"]),
             connector_id=str(row["connector_id"]),
             source=ResourceSource(str(row["source"])),
-            resource_type=StoredResourceType(str(row["resource_type"])),
+            resource_type=str(row["resource_type"]),
             resource_id=str(row["resource_id"]),
             parent_resource_id=(
                 None if row["parent_resource_id"] is None else str(row["parent_resource_id"])

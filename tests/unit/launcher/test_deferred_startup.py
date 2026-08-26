@@ -15,7 +15,6 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.write_actions import ResolveMismatchRecoveryService
 from google_work_agent.launcher.dev import (
     CoreInitializationError,
     _DeferredApiContainer,
@@ -107,10 +106,6 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
         release.set()
         assert _wait_for_ready(client, headers) == "READY"
         assert container._core is not None
-        assert isinstance(
-            container._core.resolve_recovery_service,
-            ResolveMismatchRecoveryService,
-        )
 
 
 def test_start_run_reaches_the_durable_execution_runtime_after_core_initialization(

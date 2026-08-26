@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
 from google_work_agent.application.use_cases.conversation.get_conversation import (
     GetConversationResult,
@@ -14,7 +13,6 @@ from google_work_agent.application.use_cases.message.list_conversation_messages 
     ListConversationMessagesHandler,
     ListConversationMessagesQuery,
 )
-from google_work_agent.ports import QueryConnectionFactory
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 MAX_HISTORY_RUNS = 200
@@ -46,12 +44,8 @@ class GetConversationHistoryHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        database_path: Path,
-        connection_factory: QueryConnectionFactory,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
-        self._database_path = database_path
-        self._connection_factory = connection_factory
         self._list_messages = ListConversationMessagesHandler(
             unit_of_work_factory=unit_of_work_factory
         )
@@ -71,27 +65,18 @@ class GetConversationHistoryHandler:
         message_result = self._list_messages(
             ListConversationMessagesQuery(conversation_id=query.conversation_id)
         )
-        with self._connection_factory(self._database_path) as connection:
-            run_rows = connection.execute(
-                """
-                SELECT id, status, started_at_ms, finished_at_ms
-                FROM runs
-                WHERE conversation_id = ?
-                ORDER BY started_at_ms DESC, id DESC
-                LIMIT ?;
-                """,
-                (query.conversation_id, MAX_HISTORY_RUNS),
-            ).fetchall()
+        with self._unit_of_work_factory() as unit_of_work:
+            run_records = unit_of_work.runs.list_by_conversation_bounded(
+                query.conversation_id, limit=MAX_HISTORY_RUNS
+            )
         runs = tuple(
             ConversationHistoryRunItem(
-                run_id=str(row["id"]),
-                status=str(row["status"]),
-                started_at_ms=int(row["started_at_ms"]),
-                finished_at_ms=(
-                    None if row["finished_at_ms"] is None else int(row["finished_at_ms"])
-                ),
+                run_id=record.id,
+                status=record.status.value,
+                started_at_ms=record.started_at_ms,
+                finished_at_ms=record.finished_at_ms,
             )
-            for row in reversed(run_rows)
+            for record in reversed(run_records)
         )
         return GetConversationHistoryResult(
             conversation=conversation,

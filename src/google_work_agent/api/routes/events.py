@@ -37,9 +37,9 @@ def stream_events(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    replay = GetEventReplayHandler.from_legacy_suppliers(
-        query_supplier=dependencies.query_service,
-        event_publisher_supplier=dependencies.event_publisher,
+    replay = GetEventReplayHandler(
+        unit_of_work_factory=dependencies.unit_of_work_factory,
+        event_publisher=dependencies.event_publisher(),
         now_ms=dependencies.clock.now_ms,
     )(GetEventReplayQuery(run_id=run_id, after_event_id=last_event_id))
     if not replay.run_exists:

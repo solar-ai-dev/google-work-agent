@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.enums import (
     ActionStatus,
     RecoveryResolution,
@@ -15,7 +16,13 @@ from google_work_agent.domain.enums import (
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
     transition_resolve_recovery,
 )
-from google_work_agent.ports.models import CommandReceiptStatus
+from google_work_agent.ports.models import (
+    AuditEventRecord,
+    CommandReceiptStatus,
+    PlanRecord,
+    PlanStatus,
+    TraceEventRecord,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -43,6 +50,8 @@ class ResolveRecoveryResult:
     current_version: int
     next_allowed_commands: tuple[str, ...]
     conflict_detail: str | None = None
+    result_kind: str | None = None
+    plan_id: str | None = None
 
 
 class ResolveRecoveryHandler:
@@ -51,9 +60,11 @@ class ResolveRecoveryHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        next_id: Callable[[], str] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._next_id = next_id
 
     def __call__(self, command: ResolveRecoveryCommand) -> ResolveRecoveryResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -97,6 +108,12 @@ class ResolveRecoveryHandler:
                 return result
 
             target = decision.current_status
+            plan, result_kind = self._apply_resolution_effects(
+                unit_of_work,
+                command=command,
+                context=context,
+                now_ms=now_ms,
+            )
             unit_of_work.command_receipts.add_received(
                 command_id=command.command_id,
                 command_type="ResolveRecovery",
@@ -123,7 +140,50 @@ class ResolveRecoveryHandler:
                 current_version=persisted.current_version,
                 next_allowed_commands=tuple(item.value for item in persisted.next_allowed_commands),
                 conflict_detail=persisted.conflict_detail,
+                result_kind=result_kind,
+                plan_id=None if plan is None else plan.id,
             )
+            if result.applied:
+                unit_of_work.recovery_contexts.clear_context(
+                    command.run_id, int(context["version"])
+                )
+                metadata = dumps(
+                    {
+                        "command_id": command.command_id,
+                        "reason": context["reason"],
+                        "resolution": command.resolution.value,
+                    },
+                    sort_keys=True,
+                )
+                unit_of_work.traces.add(
+                    TraceEventRecord(
+                        run_id=command.run_id,
+                        action_id=None
+                        if context.get("action_id") is None
+                        else str(context["action_id"]),
+                        event_type="RECOVERY_RESOLVED",
+                        status=result.current_status,
+                        duration_ms=None,
+                        payload_json=metadata,
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.audits.add(
+                    AuditEventRecord(
+                        account_id=None,
+                        run_id=command.run_id,
+                        action_id=None
+                        if context.get("action_id") is None
+                        else str(context["action_id"]),
+                        actor_type="SYSTEM",
+                        actor_id="run_lifecycle",
+                        actor_display="Run lifecycle",
+                        event_type="RECOVERY_RESOLVED",
+                        outcome=result.result_code,
+                        metadata_json=metadata,
+                        created_at_ms=now_ms,
+                    )
+                )
             unit_of_work.command_receipts.finish_json(
                 command_id=command.command_id,
                 applied=result.applied,
@@ -134,6 +194,57 @@ class ResolveRecoveryHandler:
             )
             unit_of_work.commit()
             return result
+
+    @staticmethod
+    def recheck_in_unit_of_work(
+        unit_of_work: UnitOfWork,
+        *,
+        run_id: str,
+        expected_version: int,
+    ) -> object:
+        """Canonical RECHECK transition seam for an enclosing resume UoW.
+
+        It deliberately requires the durable RecoveryContext rather than
+        allowing ResumeRun to invent a recovery target.
+        """
+        run = unit_of_work.runs.get_by_id(run_id)
+        context = unit_of_work.recovery_contexts.load_current_context(run_id)
+        if run is None or context is None:
+            raise RuntimeError("RECOVERY_RECHECK requires a durable RecoveryContextV1")
+        decision = transition_resolve_recovery(
+            run.status,
+            resolution=RecoveryResolution.RECHECK,
+            reason=context["reason"],
+            pre_recovery_status=RunStatus(context["pre_recovery_status"]),
+            recheck_input_changed=True,
+            recovered_action_status=ResolveRecoveryHandler._recovered_action_status(
+                unit_of_work,
+                ResolveRecoveryCommand(
+                    run_id=run_id,
+                    expected_version=expected_version,
+                    command_id="system:resume-recheck",
+                    request_hash="",
+                    resolution=RecoveryResolution.RECHECK,
+                ),
+                context,
+            ),
+            validated_resume_status=(
+                RunStatus(context["pre_recovery_status"])
+                if context["reason"] in {"CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"}
+                else None
+            ),
+        )
+        if not decision.applied:
+            return decision
+        persisted = unit_of_work.runs.resolve_recovery(
+            run_id,
+            expected_version=expected_version,
+            recovery_next_status=decision.current_status,
+            validated_recovery_target=True,
+        )
+        if persisted.applied:
+            unit_of_work.recovery_contexts.clear_context(run_id, int(context["version"]))
+        return persisted
 
     @staticmethod
     def _recovered_action_status(
@@ -148,6 +259,73 @@ class ResolveRecoveryHandler:
             return None
         action = unit_of_work.actions.get_by_id(str(action_id))
         return None if action is None else ActionStatus(action.status)
+
+    def _apply_resolution_effects(
+        self,
+        unit_of_work: UnitOfWork,
+        *,
+        command: ResolveRecoveryCommand,
+        context: dict[str, object],
+        now_ms: int,
+    ) -> tuple[PlanRecord | None, str | None]:
+        """Preserve mismatch recovery effects at the canonical writer boundary."""
+        plans = unit_of_work.plans.list_by_run(command.run_id)
+        plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
+        if command.resolution not in {
+            RecoveryResolution.ACCEPT_PARTIAL,
+            RecoveryResolution.CREATE_CORRECTIVE_PLAN,
+        }:
+            return plan, "FAILED" if command.resolution is RecoveryResolution.FAIL else None
+        if plan is None:
+            raise LookupError(f"plan not found for recovery run: {command.run_id}")
+        action_id = context.get("action_id")
+        action = None if action_id is None else unit_of_work.actions.get_by_id(str(action_id))
+        if (
+            action is None
+            or action.plan_id != plan.id
+            or action.status != ActionStatus.MISMATCH.value
+        ):
+            raise RuntimeError("mismatch recovery requires the current MISMATCH action")
+        if has_durable_cancel_intent(unit_of_work.command_receipts, command.run_id):
+            raise RuntimeError("mismatch recovery is forbidden while cancel intent is active")
+        if command.resolution is RecoveryResolution.ACCEPT_PARTIAL:
+            self._cancel_pending_actions(unit_of_work, plan=plan, now_ms=now_ms)
+            unit_of_work.plans.complete(plan.id)
+            return plan, "PARTIAL"
+
+        for candidate in unit_of_work.actions.list_by_plan(plan.id):
+            unit_of_work.approvals.revoke_active_by_action(candidate.id)
+        unit_of_work.plans.supersede(plan.id)
+        if self._next_id is None:
+            raise RuntimeError("CREATE_CORRECTIVE_PLAN requires an id generator")
+        corrective = PlanRecord(
+            id=self._next_id(),
+            run_id=command.run_id,
+            revision_no=max(item.revision_no for item in plans) + 1,
+            status=PlanStatus.DRAFT,
+            summary_text=f"Corrective plan for mismatch action {action.id}",
+            created_at_ms=now_ms,
+        )
+        unit_of_work.plans.insert_draft(corrective)
+        return corrective, "CORRECTIVE_PLAN_REQUIRED"
+
+    @staticmethod
+    def _cancel_pending_actions(unit_of_work: UnitOfWork, *, plan: PlanRecord, now_ms: int) -> None:
+        pending = {
+            ActionStatus.PROPOSED.value,
+            ActionStatus.MODIFIED.value,
+            ActionStatus.APPROVED.value,
+            ActionStatus.EXPIRED.value,
+        }
+        for action in unit_of_work.actions.list_by_plan(plan.id):
+            if action.status not in pending:
+                continue
+            unit_of_work.approvals.revoke_active_by_action(action.id)
+            result = unit_of_work.actions.cancel_pending(
+                action.id, expected_version=action.version, updated_at_ms=now_ms
+            )
+            if not result.applied:
+                raise RuntimeError(f"pending action cancellation failed: {action.id}")
 
     @staticmethod
     def _replay_or_reject_duplicate(

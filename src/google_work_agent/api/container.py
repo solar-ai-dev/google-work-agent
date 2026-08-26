@@ -100,7 +100,6 @@ class ApiContainer:
     store_llm_api_key_service: Any | None = None
     delete_llm_api_key_service: Any | None = None
     test_llm_connection_service: Any | None = None
-    resolve_recovery_service: Any | None = None
     get_gmail_attachment_service: GetGmailAttachmentService | None = None
     stage_attachment_service: StageAttachmentService | None = None
     list_conversations_handler: Any | None = None

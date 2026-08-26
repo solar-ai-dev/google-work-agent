@@ -54,7 +54,16 @@ class _StubRedrive:
 
 def test_stops_immediately_when_first_pass_is_not_full() -> None:
     redrive = _StubRedrive(
-        [RedriveWorkflowHandoffsResult(inspected=1, accepted=1, blocked_binding=0)]
+        [
+            RedriveWorkflowHandoffsResult(
+                inspected=1,
+                accepted=1,
+                blocked_binding=0,
+                progressed_count=1,
+                actionable_count=1,
+                has_more=False,
+            )
+        ]
     )
 
     passes = drain_workflow_handoffs_to_quiescence(redrive, batch_limit=10)  # type: ignore[arg-type]
@@ -66,9 +75,9 @@ def test_stops_immediately_when_first_pass_is_not_full() -> None:
 def test_continues_across_full_batches_while_progress_is_made() -> None:
     redrive = _StubRedrive(
         [
-            RedriveWorkflowHandoffsResult(inspected=2, accepted=2, blocked_binding=0),
-            RedriveWorkflowHandoffsResult(inspected=2, accepted=1, blocked_binding=0),
-            RedriveWorkflowHandoffsResult(inspected=1, accepted=1, blocked_binding=0),
+            RedriveWorkflowHandoffsResult(2, 2, 0, 2, 3, True),
+            RedriveWorkflowHandoffsResult(2, 1, 0, 1, 2, True),
+            RedriveWorkflowHandoffsResult(1, 1, 0, 1, 1, False),
         ]
     )
 
@@ -84,7 +93,7 @@ def test_raises_rather_than_looping_forever_on_permanently_stuck_full_batches() 
     max_passes circuit breaker instead of hanging."""
     redrive = _StubRedrive(
         [
-            RedriveWorkflowHandoffsResult(inspected=2, accepted=0, blocked_binding=2)
+            RedriveWorkflowHandoffsResult(2, 0, 2, 0, 3, True)
             for _ in range(3)
         ]
     )

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
-
-from google_work_agent.application.use_cases.run.start_run import StartRunHandler
-from google_work_agent.domain import RunStatus
-from google_work_agent.ports.models import RunRecord
 from tests.unit.application.test_start_run_receipt_recovery import (
-    _UnitOfWork,
     _command,
     _handler,
     _received,
+    _UnitOfWork,
 )
+
+from google_work_agent.domain import RunStatus
+from google_work_agent.ports.models import RunRecord
+from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
 def test_same_command_id_different_hash_is_conflict_without_domain_mutation() -> None:
@@ -64,7 +62,7 @@ def test_insert_integrity_race_reconciles_to_open_run_conflict() -> None:
             started_at_ms=19,
             finished_at_ms=None,
         )
-        raise sqlite3.IntegrityError("open-run unique race")
+        raise RunAlreadyOpenConflictError("open-run unique race")
 
     uow.runs.create = racing_create  # type: ignore[method-assign]
     result = _handler(uow)(_command())

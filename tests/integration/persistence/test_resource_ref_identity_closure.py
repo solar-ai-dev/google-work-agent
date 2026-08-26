@@ -18,7 +18,7 @@ def test_clean_database_migrates_through_latest_with_full_integrity(tmp_path: Pa
     try:
         results = apply_migrations(connection, now_ms=lambda: 1)
 
-        assert results[-1].version == 12
+        assert results[-1].version == 13
         assert all(result.applied for result in results)
         assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []

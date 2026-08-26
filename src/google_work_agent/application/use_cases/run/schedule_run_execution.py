@@ -120,6 +120,20 @@ class ScheduleRunExecutionHandler:
             if handoff is None:
                 return _rejected("NOT_COMMITTED")
             run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
+            existing = handoff.execution_admission
+            if (
+                run is not None
+                and existing is not None
+                and existing.expected_run_version != run.version
+            ):
+                unit_of_work.workflow_handoffs.release_execution_admission(
+                    handoff.handoff_id,
+                    handoff.version,
+                    existing.admission_id,
+                    "AUTHORITY_EPOCH_CHANGED",
+                )
+                unit_of_work.commit()
+                return _rejected("BINDING_MISMATCH")
             if run is None or is_terminal_run_status(run.status):
                 if handoff.execution_admission is None and handoff.status not in {
                     "CONSUMED",
@@ -130,20 +144,7 @@ class ScheduleRunExecutionHandler:
                     )
                     unit_of_work.commit()
                 return _rejected("NOT_COMMITTED")
-            if (
-                command.submission_kind == "CONSUMED_CONTINUATION_RECOVERY"
-                and is_preempting_run_status(run.status)
-            ):
-                return _rejected("BINDING_MISMATCH")
-            existing = handoff.execution_admission
-            if existing is not None and existing.expected_run_version != run.version:
-                unit_of_work.workflow_handoffs.release_execution_admission(
-                    handoff.handoff_id,
-                    handoff.version,
-                    existing.admission_id,
-                    "AUTHORITY_EPOCH_CHANGED",
-                )
-                unit_of_work.commit()
+            if is_preempting_run_status(run.status):
                 return _rejected("BINDING_MISMATCH")
             binding = self._resolve_binding(handoff, command.submission_kind)
             if existing is not None:

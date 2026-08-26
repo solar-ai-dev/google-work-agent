@@ -98,8 +98,15 @@ class _Runs:
         return self._move("require_recovery", RunStatus.RECOVERY_REQUIRED)
 
     def resolve_recovery(
-        self, run_id, *, expected_version, recovery_next_status, finished_at_ms=None
+        self,
+        run_id,
+        *,
+        expected_version,
+        recovery_next_status,
+        finished_at_ms=None,
+        validated_recovery_target=False,
     ):
+        del validated_recovery_target
         return self._move("resolve_recovery", recovery_next_status)
 
 
@@ -115,6 +122,12 @@ class _RecoveryContexts:
         self.stored.append(context)
         self.current = context
         return context
+
+    def clear_context(self, run_id, expected_version):
+        assert self.current is not None
+        assert self.current["run_id"] == run_id
+        assert self.current["version"] == expected_version
+        self.current = None
 
 
 class _Uow:
@@ -226,6 +239,12 @@ def test_reauth_recovery_checkpoint_restores_domain_truth_without_runtime_recove
 
 def test_recovery_recheck_moves_to_verifying_without_new_attempt_or_approval() -> None:
     h = _Harness(_Uow(RunStatus.RECOVERY_REQUIRED), None, [])
+    h.uow.recovery_contexts.current = {
+        "run_id": "run-1",
+        "reason": "VERIFICATION_MISMATCH",
+        "pre_recovery_status": "VERIFYING",
+        "version": 0,
+    }
     result = h.handler()(_command("RECOVERY_RECHECK"), request_id="req")
     assert result.applied and result.run_status == "VERIFYING"
     assert h.uow.runs.calls == ["resolve_recovery"] and len(h.enqueues) == 1

@@ -26,8 +26,6 @@ def test_history_is_a_bounded_timeline_projection(tmp_path: Path) -> None:
         )
     handler = GetConversationHistoryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        database_path=database_path,
-        connection_factory=connect_sqlite,
     )
 
     result = handler(GetConversationHistoryQuery("c-1"))

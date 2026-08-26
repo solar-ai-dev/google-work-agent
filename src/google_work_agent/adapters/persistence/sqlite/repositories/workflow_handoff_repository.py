@@ -122,13 +122,57 @@ class SqliteWorkflowHandoffRepository:
         _require_limit(limit)
         rows = self._connection.execute(
             """
-            SELECT * FROM workflow_handoffs
-            WHERE status IN ('PENDING', 'DISPATCHED', 'CONSUMED')
-            ORDER BY created_at_ms ASC, handoff_id ASC LIMIT ?;
+            WITH ranked AS (
+                SELECT
+                    workflow_handoffs.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY run_id
+                        ORDER BY
+                            CASE
+                                WHEN status = 'CONSUMED'
+                                     AND applied_checkpoint_id IS NOT NULL THEN 0
+                                WHEN status = 'BLOCKED_BINDING' THEN 1
+                                ELSE 2
+                            END,
+                            CASE
+                                WHEN status = 'CONSUMED'
+                                     AND applied_checkpoint_id IS NOT NULL THEN -run_sequence
+                                ELSE run_sequence
+                            END ASC
+                    ) AS run_rank
+                FROM workflow_handoffs
+                WHERE
+                    (status = 'CONSUMED' AND applied_checkpoint_id IS NOT NULL)
+                    OR status IN ('BLOCKED_BINDING', 'PENDING', 'DISPATCHED')
+            )
+            SELECT * FROM ranked
+            WHERE run_rank = 1
+            ORDER BY
+                CASE
+                    WHEN status = 'CONSUMED' AND applied_checkpoint_id IS NOT NULL THEN 0
+                    WHEN status = 'BLOCKED_BINDING' THEN 1
+                    ELSE 2
+                END,
+                created_at_ms ASC,
+                handoff_id ASC
+            LIMIT ?;
             """,
             (limit,),
         ).fetchall()
         return [_to_handoff(row) for row in rows]
+
+    def count_redriveable(self) -> int:
+        row = self._connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM workflow_handoffs
+            WHERE
+                (status = 'CONSUMED' AND applied_checkpoint_id IS NOT NULL)
+                OR status IN ('BLOCKED_BINDING', 'PENDING', 'DISPATCHED');
+            """
+        ).fetchone()
+        assert row is not None
+        return int(row["count"])
 
     def list_blocked_binding(self, limit: int) -> list[WorkflowHandoffV1]:
         _require_limit(limit)

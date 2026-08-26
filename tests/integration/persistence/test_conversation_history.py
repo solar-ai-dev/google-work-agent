@@ -24,8 +24,6 @@ class _UnusedRuntimeStatusProvider:
 def _history_handler(database_path: Path) -> GetConversationHistoryHandler:
     return GetConversationHistoryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        database_path=database_path,
-        connection_factory=connect_sqlite,
     )
 
 

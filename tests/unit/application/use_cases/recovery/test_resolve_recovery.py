@@ -23,6 +23,8 @@ def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path)
     assert result.applied
     assert result.current_status == "VERIFYING"
     assert _count(database_path, "command_receipts") == 1
+    assert _count(database_path, "recovery_contexts") == 0
+    assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
 
 
 def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> None:
@@ -84,6 +86,12 @@ def _count(database_path: Path, table: str) -> int:
     with connect_sqlite(database_path) as connection:
         row = connection.execute(f"SELECT COUNT(*) AS n FROM {table};").fetchone()
     return int(row["n"])
+
+
+def _audit_events(database_path: Path) -> list[str]:
+    with connect_sqlite(database_path) as connection:
+        rows = connection.execute("SELECT event_type FROM audit_events ORDER BY id;").fetchall()
+    return [str(row["event_type"]) for row in rows]
 
 
 def _database(tmp_path: Path, *, run_status: str) -> Path:

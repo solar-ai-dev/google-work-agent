@@ -147,6 +147,63 @@ def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted
     assert persisted.execution_admission is None
 
 
+def test_stale_admission_is_retired_before_preempting_authority_return(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage())
+        unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id, handoff.version, _admission_for(handoff)
+        )
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status='RECOVERY_REQUIRED', version=1 WHERE id='r-1';")
+        connection.commit()
+    execution = _ExecutionPort()
+    handler = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory, workflow_execution=execution, id_factory=lambda: "admission-2"
+    )
+
+    result = handler(ScheduleRunExecutionCommand("h-1"))
+
+    assert not result.accepted
+    assert result.reason_code == "BINDING_MISMATCH"
+    assert execution.submissions == []
+    with factory() as unit_of_work:
+        persisted = unit_of_work.workflow_handoffs.get("h-1")
+    assert persisted is not None
+    assert persisted.status == "SUPERSEDED"
+    assert persisted.execution_admission is None
+
+
+def test_normal_schedule_rejects_each_fresh_preempting_status_without_submit(
+    tmp_path: Path,
+) -> None:
+    for status in ("REAUTH_REQUIRED", "RECOVERY_REQUIRED", "CANCEL_REQUESTED"):
+        status_path = tmp_path / status
+        status_path.mkdir()
+        database_path = _database(status_path)
+        factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+        with factory() as unit_of_work:
+            unit_of_work.workflow_handoffs.stage_pending(_stage())
+            unit_of_work.commit()
+        with connect_sqlite(database_path) as connection:
+            connection.execute("UPDATE runs SET status=? WHERE id='r-1';", (status,))
+            connection.commit()
+        execution = _ExecutionPort()
+        handler = ScheduleRunExecutionHandler(
+            unit_of_work_factory=factory,
+            workflow_execution=execution,
+            id_factory=lambda: "admission-1",
+        )
+
+        result = handler(ScheduleRunExecutionCommand("h-1"))
+
+        assert not result.accepted
+        assert result.reason_code == "BINDING_MISMATCH"
+        assert execution.submissions == []
+
+
 def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
     target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     checkpoint = GraphCheckpointEnvelopeV1(

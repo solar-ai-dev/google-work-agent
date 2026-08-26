@@ -26,10 +26,9 @@ from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartR
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.coordinator import QueueBusyError
-from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
-    MismatchRecoveryResolution,
-    ResolveMismatchRecoveryCommand,
-    ResolveMismatchRecoveryHandler,
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommand,
+    ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
@@ -68,6 +67,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
+from google_work_agent.domain.enums import RecoveryResolution
 from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
@@ -169,10 +169,8 @@ def get_run_snapshot(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    query_service = dependencies.query_service()
     snapshot = GetRunSnapshotHandler(
-        database_path=query_service.database_path,
-        connection_factory=query_service.connection_factory,
+        unit_of_work_factory=dependencies.unit_of_work_factory,
     )(GetRunSnapshotQuery(run_id=run_id))
     if snapshot is None:
         raise ApiRequestError(
@@ -212,10 +210,8 @@ def get_run_context(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    query_service = dependencies.query_service()
     context = GetExecutionContextHandler(
-        database_path=query_service.database_path,
-        connection_factory=query_service.connection_factory,
+        unit_of_work_factory=dependencies.unit_of_work_factory,
     )(GetExecutionContextQuery(run_id=run_id))
     return RunContextResponse(
         context=None if context is None else asdict(context),
@@ -365,26 +361,24 @@ def resolve_recovery(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler = ResolveMismatchRecoveryHandler(
+    handler = ResolveRecoveryHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         next_id=dependencies.id_generator.next_id,
-        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
     )
     try:
         result = handler(
-            ResolveMismatchRecoveryCommand(
+            ResolveRecoveryCommand(
                 command_id=payload.command_id,
                 request_hash=calculate_server_request_hash(
                     operation="ResolveRecoveryRequestV1",
                     payload={"run_id": run_id, **payload.model_dump()},
                 ),
                 run_id=run_id,
-                action_id=payload.action_id,
                 expected_version=payload.expected_version,
-                resolution=MismatchRecoveryResolution(payload.resolution_kind),
+                resolution=RecoveryResolution(payload.resolution_kind),
+                irrecoverable_confirmed=payload.resolution_kind == "FAIL",
             ),
-            request_id=request.state.request_id,
         )
     except QueueBusyError as error:
         raise ApiRequestError(
@@ -403,7 +397,7 @@ def resolve_recovery(
     return RunCommandResponse(
         applied=result.applied,
         result_code=result.result_code,
-        run_id=result.run_id,
+        run_id=run_id,
         run_status=result.current_status,
         run_version=result.current_version,
         conflict_detail=result.conflict_detail,

@@ -291,17 +291,13 @@ def resolve_existing_run_receipt(
         run = require_run(unit_of_work, run_id)
         plans = unit_of_work.plans.list_by_run(run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
-        applied_statuses = (
-            {RunStatus.COMPLETED.value, RunStatus.PLANNING.value}
-            if receipt.command_type == "ResolveMismatchRecovery"
-            else {
-                RunStatus.CANCEL_REQUESTED.value,
-                RunStatus.CANCELLED.value,
-                RunStatus.REAUTH_REQUIRED.value,
-                RunStatus.RECOVERY_REQUIRED.value,
-                RunStatus.VERIFYING.value,
-            }
-        )
+        applied_statuses = {
+            RunStatus.CANCEL_REQUESTED.value,
+            RunStatus.CANCELLED.value,
+            RunStatus.REAUTH_REQUIRED.value,
+            RunStatus.RECOVERY_REQUIRED.value,
+            RunStatus.VERIFYING.value,
+        }
         return WriteRunResponse(
             applied=run.status.value in applied_statuses,
             result_code=(

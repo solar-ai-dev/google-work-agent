@@ -23,9 +23,12 @@ from google_work_agent.ports.models import (
     CommandReceiptStatus,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ConfirmationResumeControlV1,
+    MainControlResumeTargetV2,
+    MainResumeStageIdV1,
     RegisteredResumeTargetRefV2,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
@@ -43,6 +46,17 @@ class ResumeTargetValidator(Protocol):
     """
 
     def validate(self, ref: RegisteredResumeTargetRefV2) -> None: ...
+
+
+class ResumeTargetIssuer(ResumeTargetValidator, Protocol):
+    """Issue registered targets without duplicating registry-owned target tables."""
+
+    def issue_main_stage(
+        self,
+        graph_profile: GraphProfileIdV1,
+        stage_id: MainResumeStageIdV1,
+        graph_version: str,
+    ) -> MainControlResumeTargetV2: ...
 
 
 @dataclass(frozen=True, slots=True)

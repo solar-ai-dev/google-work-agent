@@ -376,7 +376,7 @@ def _run_created_audit(
         actor_type="USER",
         actor_id="account-1",
         actor_display=None,
-        event_type="RUN_CREATED",
+        event_type="RUN_STARTED",
         outcome=ResultCode.TRANSITION_APPLIED.value,
         metadata_json=dumps(
             {
@@ -684,7 +684,7 @@ def test_received_receipt_without_aggregate_with_prior_run_created_audit_fails_c
     uow.command_receipts.record = _received(command)
     uow.audits.add(_run_created_audit(command))
 
-    with pytest.raises(RuntimeError, match="prior RUN_CREATED Audit evidence without aggregate"):
+    with pytest.raises(RuntimeError, match="prior RUN_STARTED Audit evidence without aggregate"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
@@ -739,7 +739,7 @@ def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_f
     uow.command_receipts.record = _received(command)
     uow.audits.add(_run_created_audit(command, command_id="other-command"))
 
-    with pytest.raises(RuntimeError, match="conflicting RUN_CREATED Audit evidence"):
+    with pytest.raises(RuntimeError, match="conflicting RUN_STARTED Audit evidence"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
@@ -781,7 +781,7 @@ def test_received_receipt_with_duplicate_run_created_audit_fails_closed() -> Non
     uow.audits.add(_run_created_audit(command))
     uow.traces.add(_run_created_trace(command))
 
-    with pytest.raises(RuntimeError, match="duplicate RUN_CREATED Audit evidence"):
+    with pytest.raises(RuntimeError, match="duplicate RUN_STARTED Audit evidence"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0

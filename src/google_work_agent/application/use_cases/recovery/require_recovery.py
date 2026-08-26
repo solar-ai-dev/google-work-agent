@@ -53,68 +53,79 @@ class RequireRecoveryHandler:
 
     def __call__(self, command: RequireRecoveryCommand) -> RequireRecoveryResult:
         with self._f() as u:
-            n = self._n()
-            e = u.command_receipts.get_by_command_id(command.command_id)
-            if e:
-                if e.request_hash != command.request_hash:
-                    x = u.runs.get_by_id(command.run_id)
-                    return RequireRecoveryResult(
-                        False,
-                        ResultCode.DUPLICATE_COMMAND.value,
-                        x.status.value if x else "UNKNOWN",
-                        x.version if x else 0,
-                        (),
-                        "command_id already exists with a different request_hash",
-                    )
-                if e.status is CommandReceiptStatus.RECEIVED or e.response_json is None:
-                    raise RuntimeError(
-                        "RECEIVED receipt requires transaction recovery before replay"
-                    )
-                p = loads(e.response_json)
-                p["next_allowed_commands"] = tuple(p.get("next_allowed_commands", ()))
-                return RequireRecoveryResult(**p)
-
-            run = u.runs.get_by_id(command.run_id)
-            pre_recovery_status = run.status.value if run else "UNKNOWN"
-
-            u.command_receipts.add_received(
-                command_id=command.command_id,
-                command_type="RequireRecovery",
-                request_hash=command.request_hash,
-                aggregate_type="Run",
-                aggregate_id=command.run_id,
-                created_at_ms=n,
-            )
-            d = u.runs.require_recovery(command.run_id, expected_version=command.expected_version)
-            r = RequireRecoveryResult(
-                d.applied,
-                d.result_code.value,
-                d.current_status.value,
-                d.current_version,
-                tuple(x.value for x in d.next_allowed_commands),
-                d.conflict_detail,
-            )
-            if r.applied:
-                current = u.recovery_contexts.load_current_context(command.run_id)
-                next_version = 0 if current is None else current["version"] + 1
-                context = build_recovery_context(
-                    command,
-                    pre_recovery_status=pre_recovery_status,
-                    version=next_version,
-                    now_ms=n,
-                )
-                u.recovery_contexts.store_context(context)
-                u.audits.add(build_recovery_required_audit_event(command, r.result_code, n))
-            u.command_receipts.finish_json(
-                command_id=command.command_id,
-                applied=r.applied,
-                result_code=d.result_code,
-                result_version=r.current_version,
-                response_json=dumps(asdict(r), sort_keys=True),
-                completed_at_ms=n,
-            )
+            r = self.apply_in_unit_of_work(u, command, now_ms=self._n())
             u.commit()
             return r
+
+    @staticmethod
+    def apply_in_unit_of_work(
+        unit_of_work: UnitOfWork, command: RequireRecoveryCommand, *, now_ms: int
+    ) -> RequireRecoveryResult:
+        """Canonical RequireRecovery semantic writer for an enclosing short UoW.
+
+        Resume/reauth orchestration may compose this method but never calls the
+        Run repository or RecoveryContext repository directly.
+        """
+        existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+        if existing:
+            if existing.request_hash != command.request_hash:
+                run = unit_of_work.runs.get_by_id(command.run_id)
+                return RequireRecoveryResult(
+                    False,
+                    ResultCode.DUPLICATE_COMMAND.value,
+                    run.status.value if run else "UNKNOWN",
+                    run.version if run else 0,
+                    (),
+                    "command_id already exists with a different request_hash",
+                )
+            if existing.status is CommandReceiptStatus.RECEIVED or existing.response_json is None:
+                raise RuntimeError("RECEIVED receipt requires transaction recovery before replay")
+            payload = loads(existing.response_json)
+            payload["next_allowed_commands"] = tuple(payload.get("next_allowed_commands", ()))
+            return RequireRecoveryResult(**payload)
+
+        run = unit_of_work.runs.get_by_id(command.run_id)
+        pre_recovery_status = run.status.value if run else "UNKNOWN"
+        unit_of_work.command_receipts.add_received(
+            command_id=command.command_id,
+            command_type="RequireRecovery",
+            request_hash=command.request_hash,
+            aggregate_type="Run",
+            aggregate_id=command.run_id,
+            created_at_ms=now_ms,
+        )
+        decision = unit_of_work.runs.require_recovery(
+            command.run_id, expected_version=command.expected_version
+        )
+        result = RequireRecoveryResult(
+            decision.applied,
+            decision.result_code.value,
+            decision.current_status.value,
+            decision.current_version,
+            tuple(item.value for item in decision.next_allowed_commands),
+            decision.conflict_detail,
+        )
+        if result.applied:
+            current = unit_of_work.recovery_contexts.load_current_context(command.run_id)
+            context = build_recovery_context(
+                command,
+                pre_recovery_status=pre_recovery_status,
+                version=0 if current is None else current["version"] + 1,
+                now_ms=now_ms,
+            )
+            unit_of_work.recovery_contexts.store_context(context)
+            unit_of_work.audits.add(
+                build_recovery_required_audit_event(command, result.result_code, now_ms)
+            )
+        unit_of_work.command_receipts.finish_json(
+            command_id=command.command_id,
+            applied=result.applied,
+            result_code=decision.result_code,
+            result_version=result.current_version,
+            response_json=dumps(asdict(result), sort_keys=True),
+            completed_at_ms=now_ms,
+        )
+        return result
 
 
 def build_recovery_context(
@@ -151,15 +162,11 @@ def build_recovery_context(
     if command.registered_resume_target is not None:
         context["registered_resume_target"] = command.registered_resume_target
     if command.observed_external_state_fingerprint is not None:
-        context["observed_external_state_fingerprint"] = (
-            command.observed_external_state_fingerprint
-        )
+        context["observed_external_state_fingerprint"] = command.observed_external_state_fingerprint
     if command.verification_input_fingerprint is not None:
         context["verification_input_fingerprint"] = command.verification_input_fingerprint
     if command.contract_or_checkpoint_fingerprint is not None:
-        context["contract_or_checkpoint_fingerprint"] = (
-            command.contract_or_checkpoint_fingerprint
-        )
+        context["contract_or_checkpoint_fingerprint"] = command.contract_or_checkpoint_fingerprint
     if command.last_recheck_input_hash is not None:
         context["last_recheck_input_hash"] = command.last_recheck_input_hash
     return cast(RecoveryContextV1, context)

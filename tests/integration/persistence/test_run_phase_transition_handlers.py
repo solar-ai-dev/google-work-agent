@@ -23,6 +23,7 @@ from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBi
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ContextAdjustmentControlV1,
+    MainControlResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
@@ -30,6 +31,21 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 class _RetrievalState(TypedDict):
     retrieval_result: dict[str, object]
+
+
+class _ResumeTargetRegistry:
+    def issue_main_stage(
+        self,
+        graph_profile: str,
+        stage_id: str,
+        graph_version: str,
+    ) -> MainControlResumeTargetV2:
+        return MainControlResumeTargetV2(
+            kind="MAIN_CONTROL",
+            stage_id=stage_id,  # type: ignore[arg-type]
+            graph_profile=graph_profile,  # type: ignore[arg-type]
+            graph_version=graph_version,
+        )
 
 
 def _database(tmp_path: Path, *, status: str, version: int = 0) -> Path:
@@ -68,6 +84,7 @@ def test_phase_handlers_apply_receipt_audit_and_run_cas_atomically(tmp_path: Pat
         unit_of_work_factory=factory,
         now_ms=lambda: 12,
         id_factory=lambda: "unused-handoff",
+        resume_target_registry=_ResumeTargetRegistry(),
     )
 
     assert start(StartAnalysisCommand("run-1", 0, "cmd-start", "a" * 64)).applied
@@ -139,6 +156,7 @@ def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path:
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "unused-handoff",
+        resume_target_registry=_ResumeTargetRegistry(),
     )
     result = handler(
         BeginPlanningCommand(
@@ -220,6 +238,7 @@ def test_published_reentry_with_inflight_action_has_zero_domain_mutation(tmp_pat
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "unused-handoff",
+        resume_target_registry=_ResumeTargetRegistry(),
     )
     result = handler(
         BeginPlanningCommand(
@@ -342,6 +361,7 @@ def test_context_adjustment_uses_retrieval_head_and_stages_resume_atomically(
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "context-handoff-1",
+        resume_target_registry=_ResumeTargetRegistry(),
     )
     result = handler(
         BeginPlanningCommand(

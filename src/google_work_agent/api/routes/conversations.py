@@ -105,7 +105,7 @@ def get_conversation(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    conversation = GetConversationHandler.from_legacy_query_supplier(dependencies.query_service)(
+    conversation = GetConversationHandler(unit_of_work_factory=dependencies.unit_of_work_factory)(
         GetConversationQuery(conversation_id=conversation_id)
     )
     if conversation is None:
@@ -167,7 +167,7 @@ def get_latest_conversation_run(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    run = GetLatestRunHandler.from_legacy_query_supplier(dependencies.query_service)(
+    run = GetLatestRunHandler(unit_of_work_factory=dependencies.unit_of_work_factory)(
         GetLatestRunQuery(conversation_id=conversation_id)
     )
     return LatestConversationRunResponse(

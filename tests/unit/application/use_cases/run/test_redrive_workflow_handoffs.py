@@ -64,11 +64,14 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     handler = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,
         schedule_run_execution=schedule,
+        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
     )
 
     result = handler(RedriveWorkflowHandoffsCommand(limit=10))
 
-    assert result.inspected == 2
+    assert result.inspected == 1
+    assert result.actionable_count == 2
+    assert result.has_more
     assert result.accepted == 1
     assert execution.submitted == ["h-1"]
 
@@ -206,7 +209,9 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
     )
 
     blocked_pass = RedriveWorkflowHandoffsHandler(
-        unit_of_work_factory=factory, schedule_run_execution=schedule
+        unit_of_work_factory=factory,
+        schedule_run_execution=schedule,
+        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
     )(RedriveWorkflowHandoffsCommand(limit=10))
 
     assert blocked_pass.accepted == 0
@@ -269,7 +274,9 @@ def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
         unit_of_work_factory=factory, workflow_execution=execution, id_factory=lambda: "a-1"
     )
     redrive = RedriveWorkflowHandoffsHandler(
-        unit_of_work_factory=factory, schedule_run_execution=schedule
+        unit_of_work_factory=factory,
+        schedule_run_execution=schedule,
+        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
     )
 
     result = redrive(RedriveWorkflowHandoffsCommand(limit=10))

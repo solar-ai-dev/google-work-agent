@@ -153,8 +153,6 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
-            database_path=database_path,
-            connection_factory=connect_sqlite,
         ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",

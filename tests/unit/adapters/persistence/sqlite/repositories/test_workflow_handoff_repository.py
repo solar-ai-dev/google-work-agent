@@ -111,6 +111,38 @@ def test_binding_mismatch_release_of_normal_admission_writes_blocked_binding(
     assert head is not None and head.handoff_id == "h-1"
 
 
+def test_redrive_prefers_latest_active_consumed_lineage_over_historical_consumed(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        first = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        first_admission = _admission(first.version, first.run_sequence)
+        first_claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            first.handoff_id, first.version, first_admission
+        )
+        unit_of_work.workflow_handoffs.mark_consumed_and_clear_payload(
+            first_claimed.handoff_id, first_claimed.version, first_admission.admission_id, "cp-1", 1
+        )
+        second = unit_of_work.workflow_handoffs.stage_pending(_stage("h-2", "cmd-2"))
+        second_admission = _admission(second.version, second.run_sequence, handoff_id="h-2")
+        second_claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            second.handoff_id, second.version, second_admission
+        )
+        unit_of_work.workflow_handoffs.mark_consumed_and_clear_payload(
+            second_claimed.handoff_id,
+            second_claimed.version,
+            second_admission.admission_id,
+            "cp-2",
+            2,
+        )
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(10)
+        unit_of_work.commit()
+
+    assert [item.handoff_id for item in candidates] == ["h-2"]
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "handoff.db"
     with connect_sqlite(path) as connection:
@@ -155,11 +187,13 @@ def _stage(handoff_id: str, command_id: str) -> WorkflowHandoffStageV1:
     )
 
 
-def _admission(expected_version: int, run_sequence: int) -> WorkflowExecutionAdmissionV1:
+def _admission(
+    expected_version: int, run_sequence: int, *, handoff_id: str = "h-1"
+) -> WorkflowExecutionAdmissionV1:
     return WorkflowExecutionAdmissionV1(
         schema_version=1,
         admission_id="admission-1",
-        handoff_id="h-1",
+        handoff_id=handoff_id,
         handoff_run_sequence=run_sequence,
         submission_kind="NORMAL_HANDOFF",
         effective_binding=WorkflowExecutionBindingV1(

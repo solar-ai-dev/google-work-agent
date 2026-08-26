@@ -44,6 +44,9 @@ class RedriveWorkflowHandoffsResult:
     inspected: int
     accepted: int
     blocked_binding: int
+    progressed_count: int
+    actionable_count: int
+    has_more: bool
 
 
 class RedriveWorkflowHandoffsHandler:
@@ -54,7 +57,7 @@ class RedriveWorkflowHandoffsHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         schedule_run_execution: ScheduleRunExecutionHandler,
-        require_recovery: RequireRecoveryHandler | None = None,
+        require_recovery: RequireRecoveryHandler,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._schedule_run_execution = schedule_run_execution
@@ -67,42 +70,29 @@ class RedriveWorkflowHandoffsHandler:
         if command.limit < 1:
             raise ValueError("redrive limit must be positive")
         with self._unit_of_work_factory() as unit_of_work:
-            blocked = unit_of_work.workflow_handoffs.list_blocked_binding(command.limit)
-            remaining = max(0, command.limit - len(blocked))
-            redriveable = (
-                unit_of_work.workflow_handoffs.list_redriveable(remaining) if remaining else []
-            )
-
-        for handoff in blocked:
-            self._reconcile_blocked_binding(handoff.handoff_id)
+            actionable_count = unit_of_work.workflow_handoffs.count_redriveable()
+            candidates = unit_of_work.workflow_handoffs.list_redriveable(command.limit)
+        has_more = actionable_count > len(candidates)
 
         accepted = 0
-        seen_runs: set[str] = set()
-        for handoff in redriveable:
-            if handoff.execution.run_id in seen_runs:
-                continue
-            seen_runs.add(handoff.execution.run_id)
-            run_handoffs = [
-                item for item in redriveable if item.execution.run_id == handoff.execution.run_id
-            ]
-            consumed = next(
-                (
-                    item
-                    for item in run_handoffs
-                    if item.status == "CONSUMED" and item.applied_checkpoint_id is not None
-                ),
-                None,
-            )
-            if consumed is not None:
+        blocked_binding = 0
+        progressed_count = 0
+        for handoff in candidates:
+            if handoff.status == "CONSUMED" and handoff.applied_checkpoint_id is not None:
                 result = self._schedule_run_execution(
                     ScheduleRunExecutionCommand(
-                        handoff_id=consumed.handoff_id,
+                        handoff_id=handoff.handoff_id,
                         submission_kind="CONSUMED_CONTINUATION_RECOVERY",
                     )
                 )
                 accepted += int(result.accepted)
-                if result.accepted or result.reason_code == "ALREADY_RUNNING":
-                    continue
+                progressed_count += int(result.accepted)
+                continue
+            if handoff.status == "BLOCKED_BINDING":
+                blocked_binding += 1
+                if self._reconcile_blocked_binding(handoff.handoff_id, handoff.version):
+                    progressed_count += 1
+                continue
             with self._unit_of_work_factory() as unit_of_work:
                 head = unit_of_work.workflow_handoffs.get_dispatch_head(handoff.execution.run_id)
             if not self._may_dispatch(head):
@@ -115,10 +105,14 @@ class RedriveWorkflowHandoffsHandler:
                 )
             )
             accepted += int(result.accepted)
+            progressed_count += int(result.accepted)
         return RedriveWorkflowHandoffsResult(
-            inspected=len(blocked) + len(redriveable),
+            inspected=len(candidates),
             accepted=accepted,
-            blocked_binding=len(blocked),
+            blocked_binding=blocked_binding,
+            progressed_count=progressed_count,
+            actionable_count=actionable_count,
+            has_more=has_more,
         )
 
     def _may_dispatch(self, head: WorkflowHandoffV1 | None) -> bool:
@@ -134,31 +128,30 @@ class RedriveWorkflowHandoffsHandler:
             run = unit_of_work.runs.get_by_id(head.execution.run_id)
         return run is not None and not is_preempting_run_status(run.status)
 
-    def _reconcile_blocked_binding(self, handoff_id: str) -> None:
+    def _reconcile_blocked_binding(self, handoff_id: str, expected_version: int) -> bool:
         """Canonical 7-step BLOCKED_BINDING reconciliation sequence: reload ->
         Domain-authority preemption check -> deterministic
         RequireRecovery(CHECKPOINT_MISMATCH) -> reload -> supersede only on a
         matching durable RecoveryContext, else fail closed.
         """
-        if self._require_recovery is None:
-            return
         with self._unit_of_work_factory() as unit_of_work:
             handoff = unit_of_work.workflow_handoffs.get(handoff_id)
             if handoff is None or handoff.status != "BLOCKED_BINDING":
-                return
+                return False
             run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
 
         if run is None:
-            return
+            return False
 
         if is_terminal_run_status(run.status):
-            self._supersede_if_still_blocked(handoff_id, _RUN_NOT_EXECUTABLE)
-            return
+            return self._supersede_if_still_blocked(
+                handoff_id, expected_version, _RUN_NOT_EXECUTABLE
+            )
 
         if run.status in {RunStatus.REAUTH_REQUIRED, RunStatus.CANCEL_REQUESTED}:
             # A different Domain authority already governs this run -- never create a
             # competing CHECKPOINT_MISMATCH recovery merely to retire the handoff.
-            return
+            return False
 
         fingerprint = _reconciliation_fingerprint(handoff)
 
@@ -176,28 +169,41 @@ class RedriveWorkflowHandoffsHandler:
             )
             require_recovery_result = self._require_recovery(require_recovery_command)
             if not require_recovery_result.applied:
-                return
+                return False
 
-        self._supersede_if_matching(handoff_id, fingerprint)
+        return self._supersede_if_matching(handoff_id, expected_version, fingerprint)
 
-    def _supersede_if_still_blocked(self, handoff_id: str, reason_code: str) -> None:
+    def _supersede_if_still_blocked(
+        self, handoff_id: str, expected_version: int, reason_code: str
+    ) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
             handoff = unit_of_work.workflow_handoffs.get(handoff_id)
-            if handoff is None or handoff.status != "BLOCKED_BINDING":
-                return
+            if (
+                handoff is None
+                or handoff.status != "BLOCKED_BINDING"
+                or handoff.version != expected_version
+            ):
+                return False
             unit_of_work.workflow_handoffs.mark_superseded(
                 handoff.handoff_id, handoff.version, reason_code
             )
             unit_of_work.commit()
+            return True
 
-    def _supersede_if_matching(self, handoff_id: str, fingerprint: str) -> None:
+    def _supersede_if_matching(
+        self, handoff_id: str, expected_version: int, fingerprint: str
+    ) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
             handoff = unit_of_work.workflow_handoffs.get(handoff_id)
-            if handoff is None or handoff.status != "BLOCKED_BINDING":
-                return
+            if (
+                handoff is None
+                or handoff.status != "BLOCKED_BINDING"
+                or handoff.version != expected_version
+            ):
+                return False
             run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
             if run is None or run.status is not RunStatus.RECOVERY_REQUIRED:
-                return
+                return False
             context = unit_of_work.recovery_contexts.load_current_context(handoff.execution.run_id)
             if (
                 context is None
@@ -206,11 +212,12 @@ class RedriveWorkflowHandoffsHandler:
             ):
                 # Fail closed: a different (or non-matching) current Recovery authority
                 # governs this run -- never overwrite it merely to retire the handoff.
-                return
+                return False
             unit_of_work.workflow_handoffs.mark_superseded(
                 handoff.handoff_id, handoff.version, _CHECKPOINT_MISMATCH_RECOVERED
             )
             unit_of_work.commit()
+            return True
 
 
 def _reconciliation_fingerprint(handoff: WorkflowHandoffV1) -> str:

@@ -181,6 +181,14 @@ def _require_state_value[StateValueT](
 
 def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
     prefixes = {
+        ("GMAIL", "gmail_thread"): "gmail_thread",
+        ("GMAIL", "gmail_message"): "gmail_message",
+        ("GMAIL", "gmail_draft"): "gmail_draft",
+        ("TASKS", "task_list"): "task_list",
+        ("TASKS", "task"): "task",
+        ("CALENDAR", "calendar"): "calendar",
+        ("CALENDAR", "calendar_event"): "calendar_event",
+        ("CALENDAR", "calendar_freebusy"): "calendar_freebusy",
         ("GMAIL", "THREAD"): "gmail_thread",
         ("GMAIL", "MESSAGE"): "gmail_message",
         ("TASKS", "TASK_LIST"): "task_list",
@@ -188,7 +196,7 @@ def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
         ("CALENDAR", "CALENDAR"): "calendar",
         ("CALENDAR", "EVENT"): "calendar_event",
     }
-    prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type.value))
+    prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type))
     if prefix is None:
         raise LookupError(f"unsupported persisted resource reference: {resource_ref.id}")
     return f"{prefix}:{resource_ref.resource_id}"

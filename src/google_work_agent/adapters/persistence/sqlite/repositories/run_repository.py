@@ -15,6 +15,7 @@ from google_work_agent.domain.run.transitions.resume_after_reauth import (
     transition_resume_after_reauth,
 )
 from google_work_agent.ports.models import RunCreateRecord, RunRecord
+from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
 class SQLiteRunRepository:
@@ -24,8 +25,9 @@ class SQLiteRunRepository:
     # --- STR-149 canonical surface (run.start_run / CAP-APP-005) ---
     def get(self, run_id: str) -> RunRecord | None:
         r = self._connection.execute(
-            "SELECT id, conversation_id, status, version, started_at_ms, "
-            "finished_at_ms FROM runs WHERE id=?;",
+            "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
+            "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms "
+            "FROM runs WHERE id=?;",
             (run_id,),
         ).fetchone()
         return (
@@ -38,6 +40,10 @@ class SQLiteRunRepository:
                 version=int(r["version"]),
                 started_at_ms=int(r["started_at_ms"]),
                 finished_at_ms=None if r["finished_at_ms"] is None else int(r["finished_at_ms"]),
+                entry_mode=str(r["entry_mode"]),
+                langgraph_thread_id=str(r["langgraph_thread_id"]),
+                requested_mode=str(r["requested_mode"]),
+                actual_runtime=None if r["actual_runtime"] is None else str(r["actual_runtime"]),
             )
         )
 
@@ -46,8 +52,9 @@ class SQLiteRunRepository:
 
     def find_open_by_conversation(self, conversation_id: str) -> RunRecord | None:
         r = self._connection.execute(
-            "SELECT id, conversation_id, status, version, started_at_ms, "
-            "finished_at_ms FROM runs WHERE conversation_id=? "
+            "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
+            "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms "
+            "FROM runs WHERE conversation_id=? "
             "AND finished_at_ms IS NULL ORDER BY started_at_ms DESC LIMIT 1;",
             (conversation_id,),
         ).fetchone()
@@ -61,29 +68,58 @@ class SQLiteRunRepository:
                 version=int(r["version"]),
                 started_at_ms=int(r["started_at_ms"]),
                 finished_at_ms=None,
+                entry_mode=str(r["entry_mode"]),
+                langgraph_thread_id=str(r["langgraph_thread_id"]),
+                requested_mode=str(r["requested_mode"]),
+                actual_runtime=None if r["actual_runtime"] is None else str(r["actual_runtime"]),
             )
         )
 
-    def create(self, run: RunCreateRecord) -> None:
-        self._connection.execute(
-            "INSERT INTO runs (id, conversation_id, entry_mode, status, "
-            "langgraph_thread_id, requested_mode, actual_runtime, budget_json, "
-            "version, started_at_ms, finished_at_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-            (
-                run.id,
-                run.conversation_id,
-                run.entry_mode,
-                run.status.value,
-                run.langgraph_thread_id,
-                run.requested_mode,
-                run.actual_runtime,
-                run.budget_json,
-                run.version,
-                run.started_at_ms,
-                run.finished_at_ms,
-            ),
+    def get_latest_by_conversation(self, conversation_id: str) -> RunRecord | None:
+        row = self._connection.execute(
+            "SELECT id FROM runs WHERE conversation_id = ? "
+            "ORDER BY started_at_ms DESC, id DESC LIMIT 1;",
+            (conversation_id,),
+        ).fetchone()
+        return None if row is None else self.get(str(row["id"]))
+
+    def list_by_conversation_bounded(
+        self, conversation_id: str, *, limit: int
+    ) -> tuple[RunRecord, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM runs WHERE conversation_id = ? "
+            "ORDER BY started_at_ms DESC, id DESC LIMIT ?;",
+            (conversation_id, limit),
+        ).fetchall()
+        return tuple(
+            run for row in rows if (run := self.get(str(row["id"]))) is not None
         )
+
+    def create(self, run: RunCreateRecord) -> None:
+        try:
+            self._connection.execute(
+                "INSERT INTO runs (id, conversation_id, entry_mode, status, "
+                "langgraph_thread_id, requested_mode, actual_runtime, budget_json, "
+                "version, started_at_ms, finished_at_ms) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                (
+                    run.id,
+                    run.conversation_id,
+                    run.entry_mode,
+                    run.status.value,
+                    run.langgraph_thread_id,
+                    run.requested_mode,
+                    run.actual_runtime,
+                    run.budget_json,
+                    run.version,
+                    run.started_at_ms,
+                    run.finished_at_ms,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            if self.find_open_by_conversation(run.conversation_id) is not None:
+                raise RunAlreadyOpenConflictError("conversation already has an open run") from error
+            raise
 
     def update_if_version_and_status(
         self,

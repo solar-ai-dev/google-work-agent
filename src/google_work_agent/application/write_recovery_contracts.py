@@ -1,7 +1,6 @@
 """Application contracts for uncertain-result and mismatch recovery."""
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 from google_work_agent.ports import ResourceSnapshot
 
@@ -89,23 +88,6 @@ class PrepareWriteRetryCommand:
     request_hash: str
     action_id: str
     expected_action_version: int
-
-
-class RecoveryResolutionKind(StrEnum):
-    ACCEPT_PARTIAL = "ACCEPT_PARTIAL"
-    CREATE_CORRECTIVE_PLAN = "CREATE_CORRECTIVE_PLAN"
-    FAIL = "FAIL"
-
-
-@dataclass(frozen=True, slots=True)
-class ResolveMismatchRecoveryCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    action_id: str
-    expected_run_version: int
-    resolution_kind: RecoveryResolutionKind
-    corrective_plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

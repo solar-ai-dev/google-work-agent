@@ -53,6 +53,15 @@ class SqliteMessageRepository:
             next_cursor = f"{last.created_at_ms}:{last.id}"
         return items, next_cursor
 
+    def get_first_user_for_run(self, run_id: str) -> MessageRecord | None:
+        row = self._connection.execute(
+            "SELECT id, conversation_id, run_id, role, content, created_at_ms "
+            "FROM messages WHERE run_id = ? AND role = 'USER' "
+            "ORDER BY created_at_ms ASC, id ASC LIMIT 1;",
+            (run_id,),
+        ).fetchone()
+        return None if row is None else _record_from_row(row)
+
     def _insert(self, message: MessageRecord) -> None:
         self._connection.execute(
             """

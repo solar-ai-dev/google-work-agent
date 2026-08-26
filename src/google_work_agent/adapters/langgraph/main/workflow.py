@@ -182,6 +182,10 @@ from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.use_cases.plan.record_review_result import (
+    RecordReviewResultCommandV1,
+    RecordReviewResultHandler,
+)
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
     BeginPlanningHandler,
@@ -347,6 +351,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             unit_of_work_factory=canonical_uow_factory,
             now_ms=now_ms,
             id_factory=id_factory,
+            resume_target_registry=self._resume_target_registry,
         )
         self._request_confirmation_handler = RequestConfirmationHandler(
             unit_of_work_factory=canonical_uow_factory,
@@ -1150,15 +1155,28 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         if plan_id is None or review_version is None:
             return False
         with self._unit_of_work_factory() as unit_of_work:
-            applied = unit_of_work.plans.store_review_result(
-                plan_id,
+            plan = unit_of_work.plans.get_by_id(plan_id)
+            if plan is None:
+                return False
+            action_versions = {
+                action.id: action.version for action in unit_of_work.actions.list_by_plan(plan_id)
+            }
+        result = RecordReviewResultHandler(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+        )(
+            RecordReviewResultCommandV1(
+                command_id=self._phase_command_id(plan.run_id, "record_review", review_version),
+                plan_id=plan.id,
+                expected_plan_version=plan.revision_no,
                 expected_review_version=review_version,
-                review_status=review_status.value,
-                review_disposition=review_disposition,
+                review_artifact_id=f"{plan.id}:review:{review_version}",
+                review_version=review_version,
+                disposition=review_disposition,  # type: ignore[arg-type]
+                based_on_action_versions=action_versions,
             )
-            if applied:
-                unit_of_work.commit()
-            return applied
+        )
+        return result.applied
 
     def _begin_modify_replan(self, state: GraphState) -> bool:
         plan_id = state.get("__modify_review_plan_id__")

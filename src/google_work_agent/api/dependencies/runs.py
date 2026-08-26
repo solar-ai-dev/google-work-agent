@@ -14,10 +14,14 @@ from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
+    GetExecutionContextQuery,
+)
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.ports import ClockPort, UUIDPort, UnitOfWork, WorkflowRuntime
+from google_work_agent.ports import ClockPort, UnitOfWork, UUIDPort, WorkflowRuntime
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -50,8 +54,18 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     if resolve_selection_handle is None:
         raise RuntimeError("selection-handle resolver is not configured")
 
+    try:
+        unit_of_work_factory = cast(Callable[[], UnitOfWork], container.unit_of_work_factory)
+    except RuntimeError:
+        def unit_of_work_factory() -> UnitOfWork:
+            return cast(Callable[[], UnitOfWork], container.unit_of_work_factory)()
+
     def resolve_resume_authority(*, run_id: str, resume_kind: str) -> Mapping[str, object] | None:
-        context = container.query_service.get_run_execution_context(run_id)
+        if resume_kind not in {"REAUTH_COMPLETED", "RECOVERY_RECHECK"}:
+            return None
+        context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)(
+            GetExecutionContextQuery(run_id=run_id)
+        )
         if context is None:
             return None
         resolver = getattr(container.workflow_runtime, "resolve_resume_authority", None)
@@ -78,7 +92,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         query_service=lambda: container.query_service,
-        unit_of_work_factory=cast(Callable[[], UnitOfWork], container.unit_of_work_factory),
+        unit_of_work_factory=unit_of_work_factory,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=container.schedule_run_execution,

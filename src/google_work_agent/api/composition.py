@@ -215,7 +215,7 @@ def drain_workflow_handoffs_to_quiescence(
         raise ValueError("batch_limit must be positive")
     for pass_index in range(1, max_passes + 1):
         result = redrive(RedriveWorkflowHandoffsCommand(limit=batch_limit))
-        if result.inspected < batch_limit:
+        if not result.has_more:
             return pass_index
     raise RuntimeError(
         f"workflow handoff startup drain did not reach quiescence within {max_passes} passes"

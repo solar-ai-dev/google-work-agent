@@ -1,17 +1,21 @@
-"""Get one canonical persisted run snapshot."""
+"""Get one canonical persisted run snapshot through Repository/UoW boundaries."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from sqlite3 import Row
 
 from google_work_agent.domain import (
-    ActionCommand, ActionStatus, EffectType, RunStatus,
-    next_allowed_action_commands, next_allowed_run_commands, parse_action_risk_json,
+    ActionCommand,
+    ActionStatus,
+    EffectType,
+    RunStatus,
+    VerificationStatus,
+    next_allowed_action_commands,
+    next_allowed_run_commands,
 )
-from google_work_agent.ports import QueryConnectionFactory
+from google_work_agent.ports.models import ActionRecord, PlanReviewStatus
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,85 +59,123 @@ class GetRunSnapshotResult:
 
 
 class GetRunSnapshotHandler:
-    def __init__(self, *, database_path: Path, connection_factory: QueryConnectionFactory) -> None:
-        self._database_path = database_path
-        self._connection_factory = connection_factory
-
-    @classmethod
-    def from_legacy_query_supplier(cls, query_supplier: Callable[[], object]) -> "GetRunSnapshotHandler":
-        query = query_supplier()
-        return cls(database_path=query._database_path, connection_factory=query._connection_factory)  # type: ignore[attr-defined]
+    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
 
     def __call__(self, query: GetRunSnapshotQuery) -> GetRunSnapshotResult | None:
-        with self._connection_factory(self._database_path) as connection:
-            run_row = connection.execute(
-                "SELECT id, conversation_id, entry_mode, status, requested_mode, actual_runtime, version, started_at_ms, finished_at_ms FROM runs WHERE id = ?;",
-                (query.run_id,),
-            ).fetchone()
-            if run_row is None:
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get_snapshot(query.run_id)
+            if run is None:
                 return None
-            plan_row = connection.execute(
-                "SELECT id, revision_no, status, summary_text, created_at_ms, review_status FROM plans WHERE run_id = ? ORDER BY revision_no DESC, id DESC LIMIT 1;",
-                (query.run_id,),
-            ).fetchone()
-            actions: tuple[ActionSnapshotResult, ...] = ()
-            approvals: tuple[dict[str, object], ...] = ()
-            verification_summary = {"verified_count": 0, "mismatch_count": 0}
-            recovery_count = 0
-            if plan_row is not None:
-                action_rows = connection.execute(
-                    "SELECT id, tool_name, status, version, effect_type, approval_requirement, verification_policy, risk_json FROM actions WHERE plan_id = ? ORDER BY position ASC, id ASC;",
-                    (str(plan_row["id"]),),
-                ).fetchall()
-                actions = tuple(_action_snapshot(row, approval_allowed=str(plan_row["review_status"]) == "PASSED") for row in action_rows)
-                recovery_count = sum(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions)
-                approvals = tuple(
-                    {"approval_id": str(row["id"]), "action_id": str(row["action_id"]), "status": str(row["status"]), "approved_at_ms": int(row["approved_at_ms"]), "expires_at_ms": int(row["expires_at_ms"])}
-                    for row in connection.execute(
-                        "SELECT id, action_id, status, approved_at_ms, expires_at_ms FROM approvals WHERE action_id IN (SELECT id FROM actions WHERE plan_id = ?) ORDER BY approved_at_ms DESC, id DESC;",
-                        (str(plan_row["id"]),),
-                    ).fetchall()
+            plans = unit_of_work.plans.list_by_run(run.id)
+            plan = max(plans, key=lambda item: (item.revision_no, item.id), default=None)
+            action_records = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+            actions = tuple(
+                _action_snapshot(
+                    action,
+                    approval_allowed=(
+                        plan is not None and plan.review_status is PlanReviewStatus.PASSED
+                    ),
                 )
-                verification_rows = connection.execute(
-                    "SELECT status, COUNT(*) AS total FROM verifications WHERE execution_attempt_id IN (SELECT id FROM execution_attempts WHERE approval_id IN (SELECT id FROM approvals WHERE action_id IN (SELECT id FROM actions WHERE plan_id = ?))) GROUP BY status;",
-                    (str(plan_row["id"]),),
-                ).fetchall()
-                verification_summary = {
-                    "verified_count": sum(int(row["total"]) for row in verification_rows if str(row["status"]) == "VERIFIED"),
-                    "mismatch_count": sum(int(row["total"]) for row in verification_rows if str(row["status"]) == "MISMATCH"),
-                }
-        run_status = RunStatus(str(run_row["status"]))
+                for action in action_records
+            )
+            approvals: list[dict[str, object]] = []
+            verified_count = 0
+            mismatch_count = 0
+            for action in action_records:
+                for approval in unit_of_work.approvals.list_by_action(action.id):
+                    approvals.append(
+                        {
+                            "approval_id": approval.id,
+                            "action_id": approval.action_id,
+                            "status": approval.status.value,
+                            "approved_at_ms": approval.approved_at_ms,
+                            "expires_at_ms": approval.expires_at_ms,
+                        }
+                    )
+                    for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id):
+                        for verification in unit_of_work.verifications.list_by_attempt(attempt.id):
+                            verified_count += verification.status is VerificationStatus.VERIFIED
+                            mismatch_count += verification.status is VerificationStatus.MISMATCH
+
+        run_status = run.status
+        terminal_statuses = {
+            ActionStatus.VERIFIED.value,
+            ActionStatus.REJECTED.value,
+            ActionStatus.FAILED.value,
+            ActionStatus.MISMATCH.value,
+            ActionStatus.BLOCKED.value,
+            ActionStatus.DEPENDENCY_BLOCKED.value,
+            ActionStatus.CANCELLED.value,
+        }
         active_plan = None
-        if plan_row is not None:
+        if plan is not None:
             active_plan = {
-                "plan_id": str(plan_row["id"]), "revision_no": int(plan_row["revision_no"]), "status": str(plan_row["status"]),
-                "summary_text": None if plan_row["summary_text"] is None else str(plan_row["summary_text"]),
-                "created_at_ms": int(plan_row["created_at_ms"]),
+                "plan_id": plan.id,
+                "revision_no": plan.revision_no,
+                "status": plan.status.value,
+                "summary_text": plan.summary_text,
+                "created_at_ms": plan.created_at_ms,
             }
         return GetRunSnapshotResult(
-            run_id=str(run_row["id"]), conversation_id=str(run_row["conversation_id"]), status=run_status.value,
-            version=int(run_row["version"]), entry_mode=str(run_row["entry_mode"]), requested_mode=str(run_row["requested_mode"]),
-            actual_runtime=None if run_row["actual_runtime"] is None else str(run_row["actual_runtime"]), started_at_ms=int(run_row["started_at_ms"]),
-            finished_at_ms=None if run_row["finished_at_ms"] is None else int(run_row["finished_at_ms"]), active_plan=active_plan, actions=actions,
-            approvals=approvals,
-            execution_status={"action_count": len(actions), "terminal_action_count": sum(action.status in {ActionStatus.VERIFIED.value, ActionStatus.REJECTED.value, ActionStatus.FAILED.value, ActionStatus.MISMATCH.value, ActionStatus.BLOCKED.value, ActionStatus.DEPENDENCY_BLOCKED.value, ActionStatus.CANCELLED.value} for action in actions)},
-            verification_summary=verification_summary, recovery_summary={"unknown_result_action_count": recovery_count},
+            run_id=run.id,
+            conversation_id=run.conversation_id,
+            status=run_status.value,
+            version=run.version,
+            entry_mode=run.entry_mode,
+            requested_mode=run.requested_mode,
+            actual_runtime=run.actual_runtime,
+            started_at_ms=run.started_at_ms,
+            finished_at_ms=run.finished_at_ms,
+            active_plan=active_plan,
+            actions=actions,
+            approvals=tuple(approvals),
+            execution_status={
+                "action_count": len(actions),
+                "terminal_action_count": sum(
+                    action.status in terminal_statuses for action in actions
+                ),
+            },
+            verification_summary={
+                "verified_count": verified_count,
+                "mismatch_count": mismatch_count,
+            },
+            recovery_summary={
+                "unknown_result_action_count": sum(
+                    action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions
+                )
+            },
             result_kind=_cancel_result_kind(run_status=run_status, actions=actions),
-            next_allowed_commands=tuple(item.value for item in next_allowed_run_commands(run_status)), snapshot_version=1,
+            next_allowed_commands=tuple(
+                item.value for item in next_allowed_run_commands(run_status)
+            ),
+            snapshot_version=1,
         )
 
 
-def _action_snapshot(row: Row, *, approval_allowed: bool) -> ActionSnapshotResult:
-    status = ActionStatus(str(row["status"]))
-    effect_type = EffectType(str(row["effect_type"]))
+def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionSnapshotResult:
+    status = ActionStatus(action.status)
+    effect_type = EffectType(action.effect_type)
     return ActionSnapshotResult(
-        action_id=str(row["id"]), tool_name=str(row["tool_name"]), status=status.value, version=int(row["version"]), effect_type=effect_type.value,
-        approval_required=str(row["approval_requirement"]) == "REQUIRED", verification_policy=str(row["verification_policy"]), risk=parse_action_risk_json(str(row["risk_json"])),
-        next_allowed_commands=tuple(item.value for item in next_allowed_action_commands(status, effect_type=effect_type) if approval_allowed or item is not ActionCommand.APPROVE_ACTION),
+        action_id=action.id,
+        tool_name=action.tool_name,
+        status=status.value,
+        version=action.version,
+        effect_type=effect_type.value,
+        approval_required=action.approval_requirement == "REQUIRED",
+        verification_policy=action.verification_policy,
+        risk=action.risk,
+        next_allowed_commands=tuple(
+            item.value
+            for item in next_allowed_action_commands(status, effect_type=effect_type)
+            if approval_allowed or item is not ActionCommand.APPROVE_ACTION
+        ),
     )
 
 
-def _cancel_result_kind(*, run_status: RunStatus, actions: tuple[ActionSnapshotResult, ...]) -> str | None:
+def _cancel_result_kind(
+    *, run_status: RunStatus, actions: tuple[ActionSnapshotResult, ...]
+) -> str | None:
     if run_status is not RunStatus.CANCELLED:
         return None
     has_success = any(action.status == ActionStatus.VERIFIED.value for action in actions)

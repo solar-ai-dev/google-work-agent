@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.domain import ActionStatus, ApprovalStatus, ResultCode, RunStatus
 from google_work_agent.domain.run.model import RunTransitionRejected
 from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
@@ -21,7 +22,6 @@ from google_work_agent.ports.models import (
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     ContextAdjustmentControlV1,
-    MainControlResumeTargetV2,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
@@ -67,10 +67,12 @@ class BeginPlanningHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
+        resume_target_registry: ResumeTargetIssuer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._id_factory = id_factory
+        self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: BeginPlanningCommand) -> BeginPlanningResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -237,11 +239,10 @@ class BeginPlanningHandler:
                 "context adjustment requires durable workflow binding and retrieval head"
             )
         handoff_id = self._id_factory()
-        target = MainControlResumeTargetV2(
-            kind="MAIN_CONTROL",
-            stage_id="RETRIEVAL_ENTRY",
-            graph_profile=binding.graph_profile,
-            graph_version=binding.graph_version,
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile,
+            "RETRIEVAL_ENTRY",
+            binding.graph_version,
         )
         control_json = dumps(asdict(control), sort_keys=True, separators=(",", ":"))
         unit_of_work.workflow_handoffs.stage_pending(

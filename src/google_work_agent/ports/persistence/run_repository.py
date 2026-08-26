@@ -28,12 +28,20 @@ from google_work_agent.domain import CommandResult, RunCommand, RunStatus
 from google_work_agent.ports.models import RunCreateRecord, RunRecord
 
 
+class RunAlreadyOpenConflictError(RuntimeError):
+    """A concurrent Run create lost the one-open-Run conversation fence."""
+
+
 class RunRepository(Protocol):
     # --- STR-149 canonical surface (run.start_run / CAP-APP-005) ---
     def create(self, run: RunCreateRecord) -> None: ...
     def get(self, run_id: str) -> RunRecord | None: ...
     def get_snapshot(self, run_id: str) -> RunRecord | None: ...
     def find_open_by_conversation(self, conversation_id: str) -> RunRecord | None: ...
+    def get_latest_by_conversation(self, conversation_id: str) -> RunRecord | None: ...
+    def list_by_conversation_bounded(
+        self, conversation_id: str, *, limit: int
+    ) -> tuple[RunRecord, ...]: ...
     def update_if_version_and_status(
         self,
         run_id: str,

@@ -6,9 +6,6 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-)
 from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
@@ -17,9 +14,6 @@ from google_work_agent.application.write_action_arguments import (
 )
 from google_work_agent.application.write_action_arguments import (
     required_argument_string as _required_argument_string,
-)
-from google_work_agent.application.write_cancellation import (
-    has_durable_cancel_intent as _has_durable_cancel_intent,
 )
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
@@ -30,9 +24,6 @@ from google_work_agent.application.write_persistence import (
 )
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
-    cancel_pending_actions as _cancel_pending_actions,
 )
 from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
@@ -81,9 +72,7 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownDeleteActionCommand,
     RecoverUnknownSendActionCommand,
     RecoverUnknownUpdateActionCommand,
-    RecoveryResolutionKind,
     RequireWriteReauthCommand,
-    ResolveMismatchRecoveryCommand,
     ResolveUnknownWriteAsFailedCommand,
 )
 from google_work_agent.application.write_verification import (
@@ -97,20 +86,19 @@ from google_work_agent.domain import (
     ExecutionAttemptStatus,
     PolicyViolationError,
     ResultCode,
-    RunCommand,
     RunStatus,
-    transition_run,
 )
 from google_work_agent.ports import (
     ActionRecord,
     ExecutionAttemptRecord,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
-    PlanRecord,
-    PlanStatus,
     ResourceSnapshot,
     TraceEventRecord,
     UnitOfWork,
+)
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 
 
@@ -810,205 +798,6 @@ class PrepareWriteRetryService:
             )
             unit_of_work.commit()
             return response
-
-
-class ResolveMismatchRecoveryService:
-    """Resolve an immutable verification mismatch without reusing write authority."""
-
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: ResolveMismatchRecoveryCommand) -> WriteRunResponse:
-        with self._unit_of_work_factory() as unit_of_work:
-            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
-            if existing is not None:
-                return _resolve_existing_run_receipt(
-                    unit_of_work=unit_of_work,
-                    receipt=existing,
-                    request_hash=command.request_hash,
-                    run_id=command.run_id,
-                    now_ms=self._now_ms(),
-                )
-
-            now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
-                command_id=command.command_id,
-                command_type="ResolveMismatchRecovery",
-                request_hash=command.request_hash,
-                aggregate_type="Run",
-                aggregate_id=command.run_id,
-                created_at_ms=now_ms,
-            )
-            run = _require_run(unit_of_work, command.run_id)
-            action = _require_action(unit_of_work, command.action_id)
-            plan = _require_plan(unit_of_work, action.plan_id)
-            requires_mismatch_action = command.resolution_kind is not RecoveryResolutionKind.FAIL
-            if plan.run_id != run.id or (
-                requires_mismatch_action and action.status != ActionStatus.MISMATCH.value
-            ):
-                response = WriteRunResponse(
-                    applied=False,
-                    result_code=ResultCode.STATE_CONFLICT.value,
-                    run_id=run.id,
-                    run_status=run.status.value,
-                    run_version=run.version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail=(
-                        "recovery requires a MISMATCH action owned by the run"
-                        if requires_mismatch_action
-                        else "recovery requires an action owned by the run"
-                    ),
-                )
-                return _finish_recovery_response(
-                    unit_of_work=unit_of_work,
-                    command_id=command.command_id,
-                    response=response,
-                    now_ms=now_ms,
-                )
-
-            if _has_durable_cancel_intent(unit_of_work, run.id):
-                response = WriteRunResponse(
-                    applied=False,
-                    result_code=ResultCode.STATE_CONFLICT.value,
-                    run_id=run.id,
-                    run_status=run.status.value,
-                    run_version=run.version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail=(
-                        "ACCEPT_PARTIAL, CREATE_CORRECTIVE_PLAN, and FAIL require "
-                        "cancel_intent_active=false; use CANCEL instead"
-                    ),
-                )
-                return _finish_recovery_response(
-                    unit_of_work=unit_of_work,
-                    command_id=command.command_id,
-                    response=response,
-                    now_ms=now_ms,
-                )
-
-            next_status = {
-                RecoveryResolutionKind.ACCEPT_PARTIAL: RunStatus.COMPLETED,
-                RecoveryResolutionKind.FAIL: RunStatus.FAILED,
-            }.get(command.resolution_kind, RunStatus.PLANNING)
-            preview = transition_run(
-                run.status,
-                command=RunCommand.RESOLVE_RECOVERY,
-                current_version=run.version,
-                expected_version=command.expected_run_version,
-                recovery_next_status=next_status,
-            )
-            if not preview.applied:
-                response = WriteRunResponse(
-                    applied=False,
-                    result_code=preview.result_code.value,
-                    run_id=run.id,
-                    run_status=preview.current_status.value,
-                    run_version=preview.current_version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail=preview.conflict_detail,
-                )
-                return _finish_recovery_response(
-                    unit_of_work=unit_of_work,
-                    command_id=command.command_id,
-                    response=response,
-                    now_ms=now_ms,
-                )
-
-            if command.resolution_kind is RecoveryResolutionKind.ACCEPT_PARTIAL:
-                _cancel_pending_actions(
-                    unit_of_work=unit_of_work,
-                    run_id=run.id,
-                    plan_id=plan.id,
-                    updated_at_ms=now_ms,
-                )
-                unit_of_work.plans.complete(plan.id)
-                result_plan = plan.id
-                result_plan_status = PlanStatus.COMPLETED.value
-                result_kind = "PARTIAL"
-            elif command.resolution_kind is RecoveryResolutionKind.FAIL:
-                result_plan = plan.id
-                result_plan_status = plan.status.value
-                result_kind = "FAILED"
-            else:
-                if not command.corrective_plan_id:
-                    raise ValueError("corrective_plan_id is required for CREATE_CORRECTIVE_PLAN")
-                _revoke_active_approvals_for_plan(
-                    unit_of_work=unit_of_work,
-                    plan_id=plan.id,
-                )
-                unit_of_work.plans.supersede(plan.id)
-                next_revision = (
-                    max(item.revision_no for item in unit_of_work.plans.list_by_run(run.id)) + 1
-                )
-                corrective_plan = PlanRecord(
-                    id=command.corrective_plan_id,
-                    run_id=run.id,
-                    revision_no=next_revision,
-                    status=PlanStatus.DRAFT,
-                    summary_text=f"Corrective plan for mismatch action {action.id}",
-                    created_at_ms=now_ms,
-                )
-                unit_of_work.plans.insert_draft(corrective_plan)
-                result_plan = corrective_plan.id
-                result_plan_status = corrective_plan.status.value
-                result_kind = "CORRECTIVE_PLAN_REQUIRED"
-
-            resolved = unit_of_work.runs.resolve_recovery(
-                run.id,
-                expected_version=command.expected_run_version,
-                recovery_next_status=next_status,
-                finished_at_ms=(
-                    now_ms if next_status in {RunStatus.COMPLETED, RunStatus.FAILED} else None
-                ),
-            )
-            if not resolved.applied:
-                raise RuntimeError("validated recovery transition was not applied")
-
-            unit_of_work.traces.add(
-                TraceEventRecord(
-                    run_id=run.id,
-                    action_id=action.id,
-                    event_type="RECOVERY_RESOLVED",
-                    status=resolved.current_status.value,
-                    duration_ms=None,
-                    payload_json=dumps(
-                        {"resolution_kind": command.resolution_kind.value}, sort_keys=True
-                    ),
-                    created_at_ms=now_ms,
-                )
-            )
-            unit_of_work.audits.add(
-                _audit_event(
-                    run_id=run.id,
-                    action_id=action.id,
-                    event_type="RECOVERY_RESOLVED",
-                    outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"resolution_kind": command.resolution_kind.value},
-                    created_at_ms=now_ms,
-                )
-            )
-            response = WriteRunResponse(
-                applied=True,
-                result_code=ResultCode.TRANSITION_APPLIED.value,
-                run_id=run.id,
-                run_status=resolved.current_status.value,
-                run_version=resolved.current_version,
-                plan_id=result_plan,
-                plan_status=result_plan_status,
-                result_kind=result_kind,
-            )
-            return _finish_recovery_response(
-                unit_of_work=unit_of_work,
-                command_id=command.command_id,
-                response=response,
-                now_ms=now_ms,
-            )
 
 
 class RequireWriteReauthService:

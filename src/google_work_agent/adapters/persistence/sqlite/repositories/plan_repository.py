@@ -102,7 +102,7 @@ class SQLitePlanRepository:
     ) -> bool:
         cursor = self._connection.execute(
             """UPDATE plans SET review_status=?, review_disposition=?
-               WHERE id=? AND review_version=? AND review_status <> 'PASSED';""",
+               WHERE id=? AND review_version=? AND review_status = 'REQUIRED';""",
             (review_status, review_disposition, plan_id, expected_review_version),
         )
         if cursor.rowcount > 1:

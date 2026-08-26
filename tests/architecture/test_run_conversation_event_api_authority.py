@@ -184,7 +184,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "cancel_run": "RequestCancelHandler",
             "resume_run": "ResumeRunHandler",
             "confirm_run": "ConfirmRunHandler",
-            "resolve_recovery": "ResolveMismatchRecoveryHandler",
+            "resolve_recovery": "ResolveRecoveryHandler",
         },
         ROOT / "src/google_work_agent/api/routes/conversations.py": {
             "create_conversation": "dependencies.create_conversation_handler",
@@ -220,6 +220,50 @@ def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
         source = path.read_text(encoding="utf-8")
         for token in forbidden:
             assert token not in source, f"{path}: forbidden route authority {token}"
+
+
+def test_recovery_production_callers_do_not_bind_legacy_mismatch_authority() -> None:
+    for path in (
+        ROOT / "src/google_work_agent/api/routes/runs.py",
+        ROOT / "src/google_work_agent/launcher/dev.py",
+    ):
+        source = path.read_text(encoding="utf-8")
+        assert "ResolveMismatchRecovery" not in source
+
+
+def test_recovery_has_one_canonical_writer_and_no_legacy_concrete_authority() -> None:
+    canonical = {
+        ROOT / "src/google_work_agent/application/use_cases/recovery/require_recovery.py",
+        ROOT / "src/google_work_agent/application/use_cases/recovery/resolve_recovery.py",
+    }
+    for path in ROOT.joinpath("src/google_work_agent/application").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "ResolveMismatchRecovery" not in source, path
+        if path not in canonical:
+            assert ".require_recovery(" not in source, path
+            assert ".resolve_recovery(" not in source, path
+            assert ".store_context(" not in source, path
+            assert ".clear_context(" not in source, path
+    assert not (
+        ROOT
+        / "src/google_work_agent/application/use_cases/recovery/resolve_mismatch_recovery.py"
+    ).exists()
+
+
+def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None:
+    handlers = (
+        ROOT / "src/google_work_agent/application/use_cases/run/get_run_snapshot.py",
+        ROOT / "src/google_work_agent/application/use_cases/run/get_execution_context.py",
+        ROOT / "src/google_work_agent/application/use_cases/run/get_event_replay.py",
+        ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation.py",
+        ROOT / "src/google_work_agent/application/use_cases/conversation/get_latest_run.py",
+        ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation_history.py",
+    )
+    forbidden = ("sqlite3", "database_path", "connection_factory", ".execute(", "from_legacy")
+    for path in handlers:
+        source = path.read_text(encoding="utf-8")
+        for token in forbidden:
+            assert token not in source, f"{path}: legacy query boundary {token}"
 
 
 def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -> None:
@@ -294,8 +338,10 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     calls = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
     assert not any(name.endswith("runs.resume_confirmation") for name in calls)
     assert any(name.endswith("runs.resume_after_reauth") for name in calls)
-    assert any(name.endswith("runs.require_recovery") for name in calls)
-    assert any(name.endswith("runs.resolve_recovery") for name in calls)
+    assert any(name.endswith("RequireRecoveryHandler.apply_in_unit_of_work") for name in calls)
+    assert not any(name.endswith("runs.require_recovery") for name in calls)
+    assert any(name.endswith("ResolveRecoveryHandler.recheck_in_unit_of_work") for name in calls)
+    assert not any(name.endswith("runs.resolve_recovery") for name in calls)
     assert any(name.endswith("commit") for name in calls)
     assert not any("workflow_runtime.resume" in name for name in calls)
     assert not any(

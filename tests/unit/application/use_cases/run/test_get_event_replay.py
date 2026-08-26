@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.get_event_replay import (
     GetEventReplayHandler,
     GetEventReplayQuery,
@@ -61,20 +62,26 @@ class FakePublisher:
         raise AssertionError
 
 
-def _connect(path: Path):
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    return connection
-
-
 def _handler(tmp_path: Path, publisher: FakePublisher) -> GetEventReplayHandler:
     database_path = tmp_path / "events.db"
-    with _connect(database_path) as connection:
-        connection.execute("CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY)")
-        connection.execute("INSERT OR IGNORE INTO runs(id) VALUES ('run-1')")
+    with connect_sqlite(database_path) as connection:
+        apply_migrations(connection)
+        connection.execute(
+            "INSERT OR IGNORE INTO google_accounts (id, email, connected_at_ms) "
+            "VALUES ('account-1', 'account@example.com', 1)"
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO conversations VALUES ('c-1', 'account-1', 'test', 1, 1)"
+        )
+        connection.execute(
+            """INSERT OR IGNORE INTO runs
+            (id, conversation_id, entry_mode, status, langgraph_thread_id, requested_mode,
+             actual_runtime, budget_json, version, started_at_ms, finished_at_ms)
+            VALUES ('run-1', 'c-1', 'AGENT_SEARCH', 'ANALYZING', 'thread-1', 'AUTO',
+                    NULL, '{}', 1, 1, NULL)"""
+        )
     return GetEventReplayHandler(
-        database_path=database_path,
-        connection_factory=_connect,
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         event_publisher=publisher,
         now_ms=lambda: 99,
     )

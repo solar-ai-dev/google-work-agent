@@ -18,7 +18,7 @@ def test_live_loop_only_drives_injected_application_reconciler() -> None:
     def redrive(command: RedriveWorkflowHandoffsCommand) -> RedriveWorkflowHandoffsResult:
         commands.append(command)
         called.set()
-        return RedriveWorkflowHandoffsResult(0, 0, 0)
+        return RedriveWorkflowHandoffsResult(0, 0, 0, 0, 0, False)
 
     loop = WorkflowHandoffReconciliationLoop(
         redrive=redrive,  # type: ignore[arg-type]

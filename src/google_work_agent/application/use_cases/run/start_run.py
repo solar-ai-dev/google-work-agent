@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
@@ -25,9 +24,9 @@ from google_work_agent.ports.models import (
     ResourceRefRecord,
     ResourceSource,
     RunCreateRecord,
-    StoredResourceType,
     TraceEventRecord,
 )
+from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
@@ -38,20 +37,21 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowHandoffStageV1,
 )
 
-_RESOURCE_STORAGE_IDENTITIES = {
-    "gmail_thread": (ResourceSource.GMAIL, StoredResourceType.THREAD),
-    "gmail_message": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-    "gmail_draft": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-    "task_list": (ResourceSource.TASKS, StoredResourceType.TASK_LIST),
-    "task": (ResourceSource.TASKS, StoredResourceType.TASK),
-    "calendar": (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
-    "calendar_event": (ResourceSource.CALENDAR, StoredResourceType.EVENT),
+_REGISTRY_RESOURCE_SOURCES = {
+    "gmail_thread": ResourceSource.GMAIL,
+    "gmail_message": ResourceSource.GMAIL,
+    "gmail_draft": ResourceSource.GMAIL,
+    "task_list": ResourceSource.TASKS,
+    "task": ResourceSource.TASKS,
+    "calendar": ResourceSource.CALENDAR,
+    "calendar_event": ResourceSource.CALENDAR,
+    "calendar_freebusy": ResourceSource.CALENDAR,
 }
 
 
-def _resource_storage_identity(resource_type: str) -> tuple[ResourceSource, StoredResourceType]:
+def _resource_source(resource_type: str) -> ResourceSource:
     try:
-        return _RESOURCE_STORAGE_IDENTITIES[resource_type]
+        return _REGISTRY_RESOURCE_SOURCES[resource_type]
     except KeyError as error:
         raise ValueError(f"unsupported selected resource type: {resource_type}") from error
 
@@ -166,42 +166,42 @@ class StartRunHandler:
             return response
 
         current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
+        if current_open is None:
+            run = RunCreateRecord(
+                id=run_id,
+                conversation_id=command.conversation_id,
+                entry_mode=command.entry_mode,
+                status=RunStatus.CREATED,
+                langgraph_thread_id=workflow_key,
+                requested_mode=command.requested_mode,
+                actual_runtime=None,
+                budget_json="{}",
+                version=0,
+                started_at_ms=now_ms,
+                finished_at_ms=None,
+            )
+            try:
+                unit_of_work.runs.create(run)
+            except RunAlreadyOpenConflictError:
+                current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
+                if current_open is None:
+                    raise
+            if current_open is None:
+                unit_of_work.checkpoints.create_workflow_binding(
+                    WorkflowBindingV1(
+                        schema_version=1,
+                        workflow_key=workflow_key,
+                        run_id=run_id,
+                        langgraph_thread_id=workflow_key,
+                        graph_profile=self._graph_profile,
+                        graph_version=self._graph_version,
+                        requested_mode=command.requested_mode,  # type: ignore[arg-type]
+                        created_at_ms=now_ms,
+                    )
+                )
         try:
             initial_status = transition_start_run(has_open_run=current_open is not None)
         except RunTransitionRejected:
-            response = self._open_run_conflict(
-                run_id=run_id,
-                conversation_id=command.conversation_id,
-                user_message_id=user_message_id,
-                workflow_key=workflow_key,
-                current_open=current_open,
-            )
-            self._finish_receipt(
-                unit_of_work, command.command_id, response, response.run_version, now_ms
-            )
-            unit_of_work.commit()
-            return response
-
-        run = RunCreateRecord(
-            id=run_id,
-            conversation_id=command.conversation_id,
-            entry_mode=command.entry_mode,
-            status=initial_status,
-            langgraph_thread_id=workflow_key,
-            requested_mode=command.requested_mode,
-            actual_runtime=None,
-            budget_json="{}",
-            version=0,
-            started_at_ms=now_ms,
-            finished_at_ms=None,
-        )
-
-        try:
-            unit_of_work.runs.create(run)
-        except sqlite3.IntegrityError:
-            current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
-            if current_open is None:
-                raise
             response = self._open_run_conflict(
                 run_id=run_id,
                 conversation_id=command.conversation_id,
@@ -234,19 +234,6 @@ class StartRunHandler:
             account_id=conversation.account_id,
             now_ms=now_ms,
         )
-        unit_of_work.checkpoints.create_workflow_binding(
-            WorkflowBindingV1(
-                schema_version=1,
-                workflow_key=workflow_key,
-                run_id=run_id,
-                langgraph_thread_id=workflow_key,
-                graph_profile=self._graph_profile,
-                graph_version=self._graph_version,
-                requested_mode=command.requested_mode,  # type: ignore[arg-type]
-                created_at_ms=now_ms,
-            )
-        )
-
         unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
                 schema_version=1,
@@ -300,7 +287,7 @@ class StartRunHandler:
                 actor_type="USER",
                 actor_id=conversation.account_id,
                 actor_display=None,
-                event_type="RUN_CREATED",
+                event_type="RUN_STARTED",
                 outcome=ResultCode.TRANSITION_APPLIED.value,
                 metadata_json=dumps(
                     {
@@ -358,7 +345,7 @@ class StartRunHandler:
             if key in seen:
                 raise ValueError("resolved resource selections must be unique")
             seen.add(key)
-            source, stored_type = _resource_storage_identity(identity.resource_type)
+            source = _resource_source(identity.resource_type)
             resource_ref_id = self._id_factory()
             persisted = unit_of_work.resource_refs.upsert_bound_ref(
                 ResourceRefRecord(
@@ -366,7 +353,7 @@ class StartRunHandler:
                     run_id=run_id,
                     connector_id=identity.connector_id,
                     source=source,
-                    resource_type=stored_type,
+                    resource_type=identity.resource_type,
                     resource_id=identity.resource_id,
                     parent_resource_id=identity.parent_resource_id,
                     canonical_url=None,
@@ -380,7 +367,7 @@ class StartRunHandler:
             selected.append(
                 SelectedResourceRef(
                     source=persisted.source.value,
-                    resource_type=persisted.resource_type.value,
+                    resource_type=persisted.resource_type,
                     resource_id=persisted.resource_id,
                     parent_resource_id=persisted.parent_resource_id,
                 )
@@ -545,15 +532,15 @@ class StartRunHandler:
             or binding.requested_mode != command.requested_mode
         ):
             raise RuntimeError("StartRun receipt recovery found an incomplete WorkflowBinding")
-        audit_created = 0
+        audit_started = 0
         for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
-            if event.event_type != "RUN_CREATED":
+            if event.event_type != "RUN_STARTED":
                 continue
-            audit_created += 1
-            self._validate_run_created_audit(event=event, command=command)
-        if audit_created > 1:
+            audit_started += 1
+            self._validate_run_started_audit(event=event, command=command)
+        if audit_started > 1:
             raise RuntimeError(
-                "StartRun receipt recovery found duplicate RUN_CREATED Audit evidence"
+                "StartRun receipt recovery found duplicate RUN_STARTED Audit evidence"
             )
 
         trace_created = 0
@@ -586,10 +573,10 @@ class StartRunHandler:
                         evidence_kind="Audit",
                     )
                     continue
-                if event.event_type == "RUN_CREATED":
-                    self._validate_run_created_audit(event=event, command=command)
+                if event.event_type == "RUN_STARTED":
+                    self._validate_run_started_audit(event=event, command=command)
                     raise RuntimeError(
-                        "StartRun receipt recovery found prior RUN_CREATED Audit evidence "
+                        "StartRun receipt recovery found prior RUN_STARTED Audit evidence "
                         "without aggregate"
                     )
                 if event.event_type == "COMMAND_APPLIED":
@@ -693,7 +680,7 @@ class StartRunHandler:
         return tuple(collected)
 
     @classmethod
-    def _validate_run_created_audit(
+    def _validate_run_started_audit(
         cls,
         *,
         event: PersistedAuditEventRecord,
@@ -708,7 +695,7 @@ class StartRunHandler:
             or cls._event_field(payload, "entry_mode") != command.entry_mode
         ):
             raise RuntimeError(
-                "StartRun receipt recovery found conflicting RUN_CREATED Audit evidence"
+                "StartRun receipt recovery found conflicting RUN_STARTED Audit evidence"
             )
 
     @classmethod

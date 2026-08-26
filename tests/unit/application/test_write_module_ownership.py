@@ -21,7 +21,8 @@ def test_write_actions_remains_a_compatibility_facade() -> None:
     assert write_actions.RecoverUnknownCreateActionService is (
         write_recovery.RecoverUnknownCreateActionService
     )
-    assert write_actions.RecoveryResolutionKind is (write_recovery_contracts.RecoveryResolutionKind)
+    assert not hasattr(write_actions, "RecoveryResolutionKind")
+    assert not hasattr(write_recovery_contracts, "RecoveryResolutionKind")
     assert write_actions.RequestRunCancellationService is (
         write_cancellation.RequestRunCancellationService
     )

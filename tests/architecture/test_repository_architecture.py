@@ -185,11 +185,23 @@ def test_immediate_application_use_case_grammar() -> None:
             if f"{owner.name}/{path.name}" in EXACT_SYMBOL_PER_SPEC_MAPPING:
                 continue
             name = pascal(path.stem)
+            versioned_contract = f"{owner.name}/{path.name}" == "plan/record_review_result.py"
             found_classes = classes(path)
             found_symbols = owned_symbols(path)
-            if f"{name}Handler" not in found_classes or f"{name}Result" not in found_symbols:
+            if (
+                f"{name}Handler" not in found_classes
+                or (
+                    f"{name}ResultV1" if versioned_contract else f"{name}Result"
+                )
+                not in found_symbols
+            ):
                 errors.append(f"{rel(path)} missing {name}Handler/{name}Result")
-            if len({f"{name}Command", f"{name}Query"} & found_classes) != 1:
+            command_or_query = (
+                {f"{name}CommandV1", f"{name}QueryV1"}
+                if versioned_contract
+                else {f"{name}Command", f"{name}Query"}
+            ) & found_classes
+            if len(command_or_query) != 1:
                 errors.append(f"{rel(path)} must own exactly one Command or Query")
     clean(errors)
 
