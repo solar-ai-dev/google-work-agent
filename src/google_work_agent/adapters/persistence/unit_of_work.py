@@ -37,6 +37,9 @@ from google_work_agent.adapters.persistence.sqlite.repositories.message_reposito
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SQLitePlanRepository,
 )
+from google_work_agent.adapters.persistence.sqlite.repositories.recovery_repository import (
+    SqliteRecoveryRepository,
+)
 from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
     SqliteResourceRefRepository,
 )
@@ -84,6 +87,7 @@ class SQLiteUnitOfWork:
         self.audits = SQLiteAuditRepository(connection)
         self.traces = SQLiteTraceRepository(connection)
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
+        self.recovery_contexts = SqliteRecoveryRepository(connection)
         self.checkpoints = SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
         return self
 

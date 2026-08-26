@@ -17,6 +17,7 @@ from google_work_agent.ports.persistence.execution_attempt_repository import (
 )
 from google_work_agent.ports.persistence.message_repository import MessageRepository
 from google_work_agent.ports.persistence.plan_repository import PlanRepository
+from google_work_agent.ports.persistence.recovery_repository import RecoveryRepository
 from google_work_agent.ports.persistence.resource_ref_repository import ResourceRefRepository
 from google_work_agent.ports.persistence.run_repository import RunRepository
 from google_work_agent.ports.persistence.trace_repository import TraceRepository
@@ -43,6 +44,7 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     audits: AuditRepository
     traces: TraceRepository
     workflow_handoffs: WorkflowHandoffRepository
+    recovery_contexts: RecoveryRepository
     checkpoints: CheckpointPort
 
     def commit(self) -> None: ...
