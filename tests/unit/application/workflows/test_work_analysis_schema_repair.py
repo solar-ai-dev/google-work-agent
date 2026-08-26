@@ -27,17 +27,24 @@ from tests.support.prompt_manifests import (
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
     CredentialStorageMode,
-    DeterministicLLMRuntimeRouter,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.api_provider import (
+    ApiStructuredLLMProvider as StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
-    StructuredInferenceRuntimeRouter,
+    StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.application.llm import LLMRuntimeService, PromptRepairSchemaRepairer
+from google_work_agent.application.llm import (
+    LLMRuntimeService as _LLMRuntimeService,
+)
+from google_work_agent.application.llm import (
+    PromptRepairSchemaRepairer,
+)
 from google_work_agent.application.orchestration.contracts import AnalysisResult
 from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
@@ -62,6 +69,29 @@ from google_work_agent.ports import (
 # from this file is not reliable under pytest's rootdir-based collection.
 # Kept in sync in spirit only -- these are plain fixture builders with no
 # shared state.
+
+
+def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
+    kwargs.pop("router", None)
+    router_kwargs = {
+        key: kwargs[key]
+        for key in (
+            "settings_service",
+            "status_service",
+            "credential_service",
+            "api_provider",
+            "ollama_provider_factory",
+            "runtime_policy",
+            "event_recorder",
+            "schema_repairer",
+        )
+        if key in kwargs
+    }
+    kwargs.pop("api_provider")
+    return _LLMRuntimeService(
+        structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
+        **kwargs,
+    )
 
 
 def _request() -> WorkflowStartRequest:
@@ -264,7 +294,7 @@ def _real_llm_runtime(
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
         schema_repairer=PromptRepairSchemaRepairer(manifest_path=manifest_path),
     )

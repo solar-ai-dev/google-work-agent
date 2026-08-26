@@ -63,9 +63,7 @@ class ApiStructuredLLMProvider:
     transport: APIProviderTransport
     model: str
     runtime: ActualRuntime = ActualRuntime.API_LLM
-    resolve_instruction_text: Callable[[PromptReference], str] = field(
-        default=_no_instruction_text
-    )
+    resolve_instruction_text: Callable[[PromptReference], str] = field(default=_no_instruction_text)
 
     def invoke_structured(
         self,

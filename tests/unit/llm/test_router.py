@@ -1,6 +1,8 @@
 from tests.support.fakes import approved_model
 
-from google_work_agent.adapters.llm.router import DeterministicLLMRuntimeRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     AvailabilityState,
@@ -11,6 +13,11 @@ from google_work_agent.ports import (
     RequestedRuntimeMode,
     RouteDecisionInput,
 )
+
+
+def _router() -> StructuredInferenceRuntimeRouter:
+    """The pure decision table has no instance dependencies."""
+    return object.__new__(StructuredInferenceRuntimeRouter)
 
 
 def _hardware(status: HardwareCapabilityStatus) -> HardwareCapability:
@@ -28,7 +35,7 @@ def _hardware(status: HardwareCapabilityStatus) -> HardwareCapability:
 
 
 def test_api_only_forces_api_runtime() -> None:
-    decision = DeterministicLLMRuntimeRouter().decide(
+    decision = _router().decide(
         RouteDecisionInput(
             build_profile="API_ONLY",
             requested_mode=RequestedRuntimeMode.API_LLM,
@@ -45,7 +52,7 @@ def test_api_only_forces_api_runtime() -> None:
 
 
 def test_api_only_blocks_local_gpu_request() -> None:
-    decision = DeterministicLLMRuntimeRouter().decide(
+    decision = _router().decide(
         RouteDecisionInput(
             build_profile="API_ONLY",
             requested_mode=RequestedRuntimeMode.LOCAL_GPU,
@@ -62,7 +69,7 @@ def test_api_only_blocks_local_gpu_request() -> None:
 
 
 def test_auto_allows_one_api_fallback_when_local_is_unavailable_and_consent_exists() -> None:
-    decision = DeterministicLLMRuntimeRouter().decide(
+    decision = _router().decide(
         RouteDecisionInput(
             build_profile="LOCAL_CAPABLE",
             requested_mode=RequestedRuntimeMode.AUTO,
@@ -83,7 +90,7 @@ def test_auto_allows_one_api_fallback_when_local_is_unavailable_and_consent_exis
 
 
 def test_local_gpu_never_allows_api_fallback() -> None:
-    decision = DeterministicLLMRuntimeRouter().decide(
+    decision = _router().decide(
         RouteDecisionInput(
             build_profile="LOCAL_CAPABLE",
             requested_mode=RequestedRuntimeMode.LOCAL_GPU,

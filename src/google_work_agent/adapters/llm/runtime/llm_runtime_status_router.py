@@ -7,9 +7,9 @@ from typing import cast
 
 from google_work_agent.adapters.llm.api_provider import APIProviderConnectionService
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
-from google_work_agent.adapters.system.json_settings import AppSettings
 from google_work_agent.ports import (
     ApprovedModelInfo,
+    AppSettings,
     AvailabilityState,
     HardwareProbe,
     OllamaRuntimeProbe,

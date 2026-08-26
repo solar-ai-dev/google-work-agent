@@ -7,11 +7,14 @@ import os
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from google_work_agent.adapters.runtime.build_manifest import BuildProfile
 from google_work_agent.ports import AppSettings, SettingsPatch, WorkHours
+
+if TYPE_CHECKING:
+    from google_work_agent.adapters.runtime.build_manifest import BuildProfile
 
 _MAX_SETTINGS_BYTES = 32 * 1024
 _SECRET_LIKE_KEYS = {
@@ -37,7 +40,7 @@ class FileSettingsStore:
         approved_model_ids: frozenset[str] | None = None,
     ) -> AppSettings:
         if not self._path.exists():
-            settings = AppSettings(deployment_profile=deployment_profile.value)
+            settings = AppSettings(deployment_profile=str(deployment_profile))
             self.save(settings)
             return settings
         raw = self._path.read_bytes()
@@ -142,11 +145,11 @@ def validate_settings(
     deployment_profile: BuildProfile,
     approved_model_ids: frozenset[str] | None = None,
 ) -> None:
-    if settings.deployment_profile != deployment_profile.value:
+    if settings.deployment_profile != str(deployment_profile):
         raise ValueError("deployment_profile is build-fixed")
     if settings.requested_runtime_mode not in {"API_LLM", "AUTO", "LOCAL_GPU"}:
         raise ValueError("invalid requested_runtime_mode")
-    if deployment_profile is BuildProfile.API_ONLY and settings.requested_runtime_mode != "API_LLM":
+    if deployment_profile == "API_ONLY" and settings.requested_runtime_mode != "API_LLM":
         raise ValueError("API_ONLY build cannot enable local runtime modes")
     try:
         ZoneInfo(settings.timezone)
@@ -159,7 +162,7 @@ def validate_settings(
         raise ValueError("run_retention_days out of range")
     if settings.log_level not in {"INFO", "WARNING", "ERROR", "DEBUG"}:
         raise ValueError("invalid log_level")
-    if deployment_profile is BuildProfile.LOCAL_CAPABLE:
+    if deployment_profile == "LOCAL_CAPABLE":
         if settings.ollama_endpoint is not None:
             _validate_loopback_url(settings.ollama_endpoint)
     elif settings.ollama_endpoint is not None:
@@ -226,7 +229,7 @@ def _settings_from_dict(payload: dict[str, object]) -> AppSettings:
     return AppSettings(
         config_schema_version=_as_int(payload.get("config_schema_version", 1)),
         setup_completed=bool(payload.get("setup_completed", False)),
-        deployment_profile=str(payload.get("deployment_profile", BuildProfile.API_ONLY.value)),
+        deployment_profile=str(payload.get("deployment_profile", "API_ONLY")),
         requested_runtime_mode=str(payload.get("requested_runtime_mode", "API_LLM")),
         default_calendar_id=_optional_text(payload.get("default_calendar_id")),
         default_tasklist_id=_optional_text(payload.get("default_tasklist_id")),

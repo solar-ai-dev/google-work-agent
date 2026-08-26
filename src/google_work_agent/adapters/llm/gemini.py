@@ -175,7 +175,7 @@ def _post_with_rate_limit_backoff(request: Request, *, timeout_seconds: int) -> 
     real schema/model, not infra noise). Retries only within
     ``timeout_seconds`` -- the same API_LLM call budget every other caller
     respects -- then gives up by raising ``TimeoutError``, which
-    ``application/llm.py::_invoke_provider`` already maps to
+    ``StructuredInferenceRuntimeRouter._invoke_provider`` already maps to
     ``LLMErrorCode.PROVIDER_TIMEOUT`` (retryable). Non-retryable HTTPErrors
     (e.g. 400/401/403/404) are re-raised immediately and propagate as an
     unhandled error, matching prior behavior for those codes.

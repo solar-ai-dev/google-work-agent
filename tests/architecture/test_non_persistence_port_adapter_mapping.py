@@ -165,9 +165,7 @@ def test_canonical_non_persistence_port_adapter_pair_is_importable(
     assert getattr(import_module(f"google_work_agent.{adapter_module}"), adapter_symbol)
     adapter_source = _source(f"{adapter_module.replace('.', '/')}.py")
     adapter_tree = ast.parse(adapter_source)
-    class_names = {
-        node.name for node in ast.walk(adapter_tree) if isinstance(node, ast.ClassDef)
-    }
+    class_names = {node.name for node in ast.walk(adapter_tree) if isinstance(node, ast.ClassDef)}
     adapter_aliases = {
         alias.asname
         for node in ast.walk(adapter_tree)
@@ -244,7 +242,6 @@ def test_legacy_concrete_authority_is_absent_from_production_source(legacy_symbo
     ("legacy_module", "legacy_symbol"),
     [
         ("google_work_agent.adapters.mcp.oauth", "MCPGoogleOAuthCredentialProvider"),
-        ("google_work_agent.adapters.llm", "ApiStructuredLLMProvider"),
         ("google_work_agent.adapters.llm.credentials", "LLMCredentialService"),
         ("google_work_agent.adapters.llm.status", "LLMRuntimeStatusService"),
         ("google_work_agent.adapters.llm.probes", "DefaultHardwareProbe"),
@@ -284,6 +281,41 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
         "adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter" in launcher
     )
     assert "adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter" in launcher
+
+
+def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:
+    router_source = _source("adapters/llm/runtime/structured_inference_router.py")
+    application_source = _source("application/llm.py")
+    launcher = _source("launcher/dev.py")
+    llm_exports = _source("adapters/llm/__init__.py")
+
+    assert "def decide(" in router_source
+    assert "def _resolve_provider(" in router_source
+    assert "def _should_fallback(" in router_source
+    assert "ActualRuntime.LOCAL_GPU" in router_source
+    assert "ActualRuntime.API_LLM" in router_source
+    assert "self.structured_inference.invoke_structured(" in application_source
+    assert "google_work_agent.adapters" not in application_source
+    assert "router.decide" not in application_source
+    assert "def _invoke_provider(" not in application_source
+    assert "def _should_fallback(" not in application_source
+    assert "DeterministicLLMRuntimeRouter" not in launcher
+    assert "DeterministicLLMRuntimeRouter" not in llm_exports
+    assert not (Path("src") / "google_work_agent" / "adapters/llm/router.py").exists()
+
+
+def test_structured_inference_has_one_canonical_production_binding() -> None:
+    from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+        StructuredInferenceRuntimeRouter,
+    )
+    from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+
+    assert (
+        NON_PERSISTENCE_P0_BINDINGS.count(
+            (StructuredInferencePort, StructuredInferenceRuntimeRouter)
+        )
+        == 1
+    )
 
 
 def _source(relative_path: str) -> str:

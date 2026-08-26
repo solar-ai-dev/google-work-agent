@@ -11,10 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.ports.observability_events import (
-    ObservabilityContext,
-    Severity,
-)
 from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.ports import (
     ActualRuntime,
@@ -27,14 +23,11 @@ from google_work_agent.ports import (
     LLMCredentialStore,
     LLMErrorCode,
     LLMInvocationError,
-    LLMRuntimeRouter,
     LLMRuntimeStatusReader,
     OutputSchemaDefinition,
     ProbeResult,
     PromptReference,
     RequestedRuntimeMode,
-    RouteDecision,
-    RouteDecisionInput,
     RuntimePolicy,
     SchemaRepairer,
     StructuredLLMProvider,
@@ -43,6 +36,11 @@ from google_work_agent.ports import (
     ToolCallProviderResponse,
     ToolCallSchemaRepairer,
     ToolDefinition,
+)
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+from google_work_agent.ports.observability_events import (
+    ObservabilityContext,
+    Severity,
 )
 
 
@@ -130,10 +128,9 @@ class LLMRuntimeService:
     settings_service: Callable[[], AppSettings]
     status_service: LLMRuntimeStatusReader
     credential_service: LLMCredentialStore
-    api_provider: StructuredLLMProvider
     ollama_provider_factory: Callable[[ApprovedModelInfo, AppSettings], StructuredLLMProvider]
-    router: LLMRuntimeRouter
     runtime_policy: RuntimePolicy
+    structured_inference: StructuredInferencePort
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
     tool_call_schema_repairer: ToolCallSchemaRepairer | None = None
@@ -239,117 +236,13 @@ class LLMRuntimeService:
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None,
     ) -> StructuredLLMResult:
-        settings = self.settings_service()
-        requested_mode = RequestedRuntimeMode(settings.requested_runtime_mode)
-        status = self.status_service.get_runtime_status(settings)
-        api_provider_summary = cast(dict[str, object], status["api_provider"])
-        ollama_summary = cast(dict[str, object], status["ollama"])
-        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
-        hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
-        decision = self.router.decide(
-            RouteDecisionInput(
-                build_profile=settings.deployment_profile,
-                requested_mode=requested_mode,
-                external_llm_consent=settings.external_llm_consent,
-                api_credential_state=self.credential_service.describe_state(),
-                api_probe=_probe_from_dict(api_provider_summary),
-                hardware_capability=hardware_capability,
-                ollama_probe=_probe_from_dict(ollama_summary),
-                approved_model=approved_model,
-            )
+        return self.structured_inference.invoke_structured(
+            prompt_ref=prompt_ref,
+            prompt_input=prompt_input,
+            output_schema=output_schema,
+            trace_context=trace_context,
+            semantic_validate=semantic_validate,
         )
-        self.event_recorder.record(
-            event_name="LLM_RUNTIME_SELECTED",
-            severity=Severity.INFO,
-            correlation=trace_context,
-            attributes={
-                "prompt_id": prompt_ref.prompt_id,
-                "prompt_version": prompt_ref.prompt_version,
-                "prompt_content_hash": prompt_ref.content_hash,
-                "requested_mode": requested_mode.value,
-                "primary_runtime": decision.primary_runtime.value,
-                "fallback_allowed": decision.fallback_allowed,
-                "fallback_target": None
-                if decision.fallback_target is None
-                else decision.fallback_target.value,
-                "safe_error_code": decision.safe_reason_code,
-            },
-            result_code="ROUTED",
-            status="COMPLETED",
-        )
-        provider = self._resolve_provider(
-            runtime=decision.primary_runtime,
-            settings=settings,
-            approved_model=approved_model,
-            hardware_capability=hardware_capability,
-        )
-        try:
-            return self._invoke_provider(
-                provider=provider,
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                requested_mode=requested_mode,
-                trace_context=trace_context,
-                fallback_reason=None,
-                semantic_validate=semantic_validate,
-            )
-        except LLMInvocationError as error:
-            if not self._should_fallback(
-                error=error,
-                decision=decision,
-                requested_mode=requested_mode,
-                settings=settings,
-            ):
-                raise
-            self.event_recorder.record(
-                event_name="LLM_FALLBACK_STARTED",
-                severity=Severity.WARNING,
-                correlation=trace_context,
-                attributes={
-                    "requested_mode": requested_mode.value,
-                    "fallback_reason": error.code.value,
-                    "from_runtime": decision.primary_runtime.value,
-                    "to_runtime": (
-                        decision.fallback_target.value
-                        if decision.fallback_target is not None
-                        else None
-                    ),
-                },
-                result_code="FALLBACK_STARTED",
-                status="STARTED",
-            )
-            api_provider = self._resolve_provider(
-                runtime=ActualRuntime.API_LLM,
-                settings=settings,
-                approved_model=approved_model,
-                hardware_capability=hardware_capability,
-            )
-            result = self._invoke_provider(
-                provider=api_provider,
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                requested_mode=requested_mode,
-                trace_context=trace_context,
-                fallback_reason=error.code.value,
-                semantic_validate=semantic_validate,
-            )
-            self.event_recorder.record(
-                event_name="LLM_FALLBACK_COMPLETED",
-                severity=Severity.INFO,
-                correlation=trace_context,
-                attributes={
-                    "requested_mode": requested_mode.value,
-                    "fallback_reason": error.code.value,
-                    "actual_runtime": result.actual_runtime.value,
-                    "provider": result.provider,
-                    "model": result.model,
-                },
-                result_code="FALLBACK_COMPLETED",
-                status="COMPLETED",
-            )
-            return result
 
     def _invoke_tool_call_locked(
         self,
@@ -376,8 +269,7 @@ class LLMRuntimeService:
         ollama_summary = cast(dict[str, object], status["ollama"])
         approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
         hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
-        provider = self._resolve_provider(
-            runtime=ActualRuntime.LOCAL_GPU,
+        provider = self._resolve_local_tool_provider(
             settings=settings,
             approved_model=approved_model,
             hardware_capability=hardware_capability,
@@ -411,26 +303,13 @@ class LLMRuntimeService:
             semantic_validate=semantic_validate,
         )
 
-    def _resolve_provider(
+    def _resolve_local_tool_provider(
         self,
         *,
-        runtime: ActualRuntime,
         settings: AppSettings,
         approved_model: ApprovedModelInfo | None,
         hardware_capability: HardwareCapability,
     ) -> StructuredLLMProvider:
-        if runtime is ActualRuntime.API_LLM:
-            if not settings.external_llm_consent:
-                raise LLMInvocationError(
-                    LLMErrorCode.CONSENT_REQUIRED,
-                    "external LLM consent is disabled",
-                )
-            if self.credential_service.read_secret() is None:
-                raise LLMInvocationError(
-                    LLMErrorCode.API_KEY_MISSING,
-                    "LLM API key is not configured",
-                )
-            return self.api_provider
         if hardware_capability.capability_status is not HardwareCapabilityStatus.VALIDATED:
             raise LLMInvocationError(
                 LLMErrorCode.LOCAL_UNAVAILABLE,
@@ -447,192 +326,6 @@ class LLMRuntimeService:
                 "Ollama endpoint is not configured",
             )
         return self.ollama_provider_factory(approved_model, settings)
-
-    def _invoke_provider(
-        self,
-        *,
-        provider: StructuredLLMProvider,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        requested_mode: RequestedRuntimeMode,
-        trace_context: ObservabilityContext,
-        fallback_reason: str | None,
-        semantic_validate: Callable[[object], object] | None = None,
-    ) -> StructuredLLMResult:
-        started = time.perf_counter()
-        self.event_recorder.record(
-            event_name="LLM_CALL_STARTED",
-            severity=Severity.INFO,
-            correlation=trace_context,
-            attributes={
-                "prompt_id": prompt_ref.prompt_id,
-                "prompt_version": prompt_ref.prompt_version,
-                "prompt_content_hash": prompt_ref.content_hash,
-                "requested_mode": requested_mode.value,
-                "actual_runtime": provider.runtime.value,
-                "provider": provider.provider_name,
-            },
-            result_code="STARTED",
-            status="STARTED",
-        )
-        api_key = (
-            self.credential_service.read_secret()
-            if provider.runtime is ActualRuntime.API_LLM
-            else None
-        )
-        try:
-            payload = provider.invoke_structured(
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                runtime_policy=self.runtime_policy,
-                api_key=api_key,
-            )
-            structured_output, attempts = self._validate_or_repair(
-                provider=provider,
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                payload=payload.content,
-                output_schema=output_schema,
-                api_key=api_key,
-                trace_context=trace_context,
-                semantic_validate=semantic_validate,
-            )
-        except ValueError as error:
-            raise LLMInvocationError(
-                LLMErrorCode.INVALID_PROVIDER_RESPONSE,
-                str(error),
-            ) from error
-        except LLMInvocationError:
-            raise
-        except TimeoutError as error:
-            code = (
-                LLMErrorCode.PROVIDER_TIMEOUT
-                if provider.runtime is ActualRuntime.API_LLM
-                else LLMErrorCode.PROVIDER_TIMEOUT
-            )
-            raise LLMInvocationError(code, "LLM invocation timed out", retryable=True) from error
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        result = StructuredLLMResult(
-            structured_output=structured_output,
-            provider=provider.provider_name,
-            model=payload.model,
-            requested_mode=requested_mode,
-            actual_runtime=provider.runtime,
-            input_tokens=payload.input_tokens,
-            output_tokens=payload.output_tokens,
-            total_tokens=_sum_tokens(payload.input_tokens, payload.output_tokens),
-            latency_ms=max(duration_ms, payload.latency_ms),
-            estimated_cost_usd=payload.estimated_cost_usd,
-            fallback_reason=fallback_reason,
-            structured_output_attempts=attempts,
-            provider_request_id=payload.provider_request_id,
-            safe_error_code=None,
-            provider_calls_consumed=attempts,
-        )
-        self.event_recorder.record(
-            event_name="LLM_CALL_COMPLETED",
-            severity=Severity.INFO,
-            correlation=trace_context,
-            attributes={
-                "prompt_id": prompt_ref.prompt_id,
-                "prompt_version": prompt_ref.prompt_version,
-                "prompt_content_hash": prompt_ref.content_hash,
-                "requested_mode": requested_mode.value,
-                "actual_runtime": result.actual_runtime.value,
-                "provider": result.provider,
-                "model": result.model,
-                "input_tokens": result.input_tokens,
-                "output_tokens": result.output_tokens,
-                "total_tokens": result.total_tokens,
-                "estimated_cost_usd": result.estimated_cost_usd,
-                "fallback_reason": result.fallback_reason,
-                "structured_output_attempts": result.structured_output_attempts,
-            },
-            result_code="COMPLETED",
-            status="COMPLETED",
-            duration_ms=result.latency_ms,
-        )
-        return result
-
-    def _validate_or_repair(
-        self,
-        *,
-        provider: StructuredLLMProvider,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        payload: object,
-        output_schema: OutputSchemaDefinition,
-        api_key: str | None,
-        trace_context: ObservabilityContext,
-        semantic_validate: Callable[[object], object] | None,
-    ) -> tuple[object, int]:
-        candidate = _parse_payload(payload)
-        validator_errors = self._collect_validation_errors(
-            candidate, output_schema=output_schema, semantic_validate=semantic_validate
-        )
-        if not validator_errors:
-            return candidate, 1
-        self.event_recorder.record(
-            event_name="LLM_SCHEMA_VALIDATION_FAILED",
-            severity=Severity.WARNING,
-            correlation=trace_context,
-            attributes={
-                "prompt_id": prompt_ref.prompt_id,
-                "prompt_version": prompt_ref.prompt_version,
-                "prompt_content_hash": prompt_ref.content_hash,
-                "failure_count": len(validator_errors),
-                "failure_reason_code": LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
-            },
-            result_code=LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
-            status="FAILED",
-        )
-        if self.schema_repairer is None or self.runtime_policy.structured_output_repair_budget < 1:
-            raise LLMInvocationError(
-                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
-                "structured output did not satisfy schema",
-            )
-        self.event_recorder.record(
-            event_name="LLM_REPAIR_REQUESTED",
-            severity=Severity.INFO,
-            correlation=trace_context,
-            attributes={
-                "prompt_id": prompt_ref.prompt_id,
-                "prompt_version": prompt_ref.prompt_version,
-                "prompt_content_hash": prompt_ref.content_hash,
-                "attempt_no": 1,
-                "repair_kind": "SCHEMA_REPAIR",
-                "failure_reason_code": LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
-            },
-            result_code="REPAIR_REQUESTED",
-            status="STARTED",
-        )
-        try:
-            repaired = self.schema_repairer.repair(
-                provider=provider,
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                failed_output=candidate,
-                output_schema=output_schema,
-                runtime_policy=self.runtime_policy,
-                api_key=api_key,
-                attempt_no=1,
-                max_attempts=self.runtime_policy.structured_output_repair_budget,
-                failure_reason_code=LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
-                validator_errors=tuple(validator_errors),
-            )
-        except LLMInvocationError:
-            raise
-        repaired_errors = self._collect_validation_errors(
-            repaired, output_schema=output_schema, semantic_validate=semantic_validate
-        )
-        if repaired_errors:
-            raise LLMInvocationError(
-                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
-                "schema repair did not produce a valid payload",
-            )
-        return repaired, 2
 
     def _invoke_tool_call_provider(
         self,
@@ -862,30 +555,6 @@ class LLMRuntimeService:
             return [str(error)]
         return []
 
-    def _should_fallback(
-        self,
-        *,
-        error: LLMInvocationError,
-        decision: RouteDecision,
-        requested_mode: RequestedRuntimeMode,
-        settings: AppSettings,
-    ) -> bool:
-        if requested_mode is not RequestedRuntimeMode.AUTO:
-            return False
-        if not settings.external_llm_consent:
-            return False
-        if not decision.fallback_allowed:
-            return False
-        return error.code in {
-            LLMErrorCode.LOCAL_UNAVAILABLE,
-            LLMErrorCode.MODEL_NOT_FOUND,
-            LLMErrorCode.MODEL_NOT_APPROVED,
-            LLMErrorCode.MODEL_LOAD_FAILED,
-            LLMErrorCode.GPU_OOM,
-            LLMErrorCode.PROVIDER_TIMEOUT,
-            LLMErrorCode.OUTPUT_SCHEMA_INVALID,
-        }
-
 
 _JSON_PATH_PREFIX = re.compile(r"^\$[\w.\[\]]*")
 _SEMANTIC_VARIANT_SUFFIXES = (".revise", ".recheck")
@@ -903,7 +572,7 @@ def _repair_prompt_id(prompt_id: str) -> str:
 
     for suffix in _SEMANTIC_VARIANT_SUFFIXES:
         if prompt_id.endswith(suffix):
-            return f"{prompt_id[:-len(suffix)]}.repair"
+            return f"{prompt_id[: -len(suffix)]}.repair"
     return f"{prompt_id}.repair"
 
 

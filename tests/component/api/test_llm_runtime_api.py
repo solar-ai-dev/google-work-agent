@@ -18,14 +18,16 @@ from tests.support.fakes import (
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
     CredentialStorageMode,
-    DeterministicLLMRuntimeRouter,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.api_provider import (
+    ApiStructuredLLMProvider as StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
-    StructuredInferenceRuntimeRouter,
+    StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -42,8 +44,10 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.llm import (
     DeleteLLMApiKeyService,
     GetLLMConnectionService,
-    LLMRuntimeService,
     StoreLLMApiKeyService,
+)
+from google_work_agent.application.llm import (
+    LLMRuntimeService as _LLMRuntimeService,
 )
 from google_work_agent.application.llm import (
     TestLLMConnectionService as LLMConnectionTestService,
@@ -70,6 +74,29 @@ class _CoordinatorStub:
 
     def stop(self) -> None:
         return None
+
+
+def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
+    kwargs.pop("router", None)
+    router_kwargs = {
+        key: kwargs[key]
+        for key in (
+            "settings_service",
+            "status_service",
+            "credential_service",
+            "api_provider",
+            "ollama_provider_factory",
+            "runtime_policy",
+            "event_recorder",
+            "schema_repairer",
+        )
+        if key in kwargs
+    }
+    kwargs.pop("api_provider")
+    return _LLMRuntimeService(
+        structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
+        **kwargs,
+    )
 
 
 class _AllowGuard:
@@ -218,7 +245,7 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
     container = ApiContainer(

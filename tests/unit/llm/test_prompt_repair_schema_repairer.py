@@ -14,9 +14,7 @@ from tests.support.prompt_manifests import (
     write_runtime_active_manifest,
 )
 
-from google_work_agent.adapters.llm.runtime.structured_inference_router import (
-    StructuredInferenceRuntimeRouter,
-)
+from google_work_agent.adapters.llm.api_provider import ApiStructuredLLMProvider
 from google_work_agent.application.llm import PromptRepairSchemaRepairer
 from google_work_agent.ports import (
     LLMErrorCode,
@@ -51,10 +49,8 @@ OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 
-def _provider(transport: FakeAPIProviderTransport) -> StructuredInferenceRuntimeRouter:
-    return StructuredInferenceRuntimeRouter(
-        provider_name="generic-api", transport=transport, model="m"
-    )
+def _provider(transport: FakeAPIProviderTransport) -> ApiStructuredLLMProvider:
+    return ApiStructuredLLMProvider(provider_name="generic-api", transport=transport, model="m")
 
 
 def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(

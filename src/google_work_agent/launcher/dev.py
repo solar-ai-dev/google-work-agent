@@ -33,13 +33,13 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
-    DeterministicLLMRuntimeRouter,
     GeminiHTTPClient,
     LoopbackOllamaProbe,
     OllamaHTTPClient,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
 )
+from google_work_agent.adapters.llm.api_provider import ApiStructuredLLMProvider
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
@@ -161,7 +161,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 RELEASE_VERSION = "0.1.0-dev"
 # Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
-# that is not "approved" (see DeterministicLLMRuntimeRouter._local_runtime_reason),
+# that is not "approved" (the structured-inference router's local-runtime gate),
 # so at least one already-`ollama pull`-ed model must be listed here. This never
 # pulls or downloads anything; override via env var if a different model is
 # installed locally.
@@ -963,11 +963,11 @@ def _build_llm_runtime(
         },
         runtime_policy=RuntimePolicy(),
     )
-    llm_runtime = LLMRuntimeService(
+    structured_inference = StructuredInferenceRuntimeRouter(
         settings_service=settings_service.get,
         status_service=status_service,
         credential_service=credential_service,
-        api_provider=StructuredInferenceRuntimeRouter(
+        api_provider=ApiStructuredLLMProvider(
             provider_name="gemini",
             transport=gemini_transport,
             model=DEFAULT_GEMINI_MODEL_ID,
@@ -984,7 +984,16 @@ def _build_llm_runtime(
                 prompt_ref.prompt_id, prompt_manifest_path
             ),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        runtime_policy=RuntimePolicy(),
+        schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
+        prompt_manifest_path=prompt_manifest_path,
+    )
+    llm_runtime = LLMRuntimeService(
+        settings_service=settings_service.get,
+        status_service=status_service,
+        credential_service=credential_service,
+        ollama_provider_factory=structured_inference.ollama_provider_factory,
+        structured_inference=structured_inference,
         runtime_policy=RuntimePolicy(),
         schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
     )

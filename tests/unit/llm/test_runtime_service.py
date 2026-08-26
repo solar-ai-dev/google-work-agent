@@ -17,17 +17,19 @@ from tests.support.fakes import (
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
     CredentialStorageMode,
-    DeterministicLLMRuntimeRouter,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.api_provider import (
+    ApiStructuredLLMProvider as StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
-    StructuredInferenceRuntimeRouter,
+    StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.application.llm import LLMRuntimeService
+from google_work_agent.application.llm import LLMRuntimeService as _LLMRuntimeService
 from google_work_agent.ports import (
     ActualRuntime,
     HardwareCapabilityStatus,
@@ -126,6 +128,30 @@ def _status_service(
     )
 
 
+def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
+    """Inject the canonical Router into historical application-service tests."""
+    kwargs.pop("router", None)
+    router_kwargs = {
+        key: kwargs[key]
+        for key in (
+            "settings_service",
+            "status_service",
+            "credential_service",
+            "api_provider",
+            "ollama_provider_factory",
+            "runtime_policy",
+            "event_recorder",
+            "schema_repairer",
+        )
+        if key in kwargs
+    }
+    kwargs.pop("api_provider")
+    return _LLMRuntimeService(
+        structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
+        **kwargs,
+    )
+
+
 def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
@@ -164,7 +190,6 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
             provider_name="ollama",
@@ -173,7 +198,7 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
 
@@ -236,7 +261,6 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
             provider_name="ollama",
@@ -245,7 +269,7 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
 
@@ -305,7 +329,6 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
@@ -314,7 +337,7 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
         event_recorder=recorder,
     )
@@ -365,7 +388,6 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
@@ -374,7 +396,7 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
 
@@ -441,7 +463,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
 
@@ -497,7 +519,6 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
@@ -506,7 +527,7 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
         schema_repairer=repairer,
     )
@@ -570,7 +591,6 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
@@ -579,7 +599,7 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
         schema_repairer=repairer,
     )
@@ -642,7 +662,6 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
             provider_name="ollama",
@@ -651,7 +670,7 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             model_id=model.model_id,
             prompt_manifest_path=_manifest(tmp_path),
         ),
-        router=DeterministicLLMRuntimeRouter(),
+        router=None,
         runtime_policy=RuntimePolicy(),
     )
 

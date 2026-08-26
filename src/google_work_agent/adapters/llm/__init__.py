@@ -23,7 +23,6 @@ from google_work_agent.adapters.llm.ollama import (
 )
 from google_work_agent.adapters.llm.probes import LoopbackOllamaProbe
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.adapters.llm.router import DeterministicLLMRuntimeRouter
 from google_work_agent.adapters.llm.runtime.llm_credential_router import SessionMemorySecretStore
 from google_work_agent.adapters.llm.schema import validate_output_schema
 from google_work_agent.application.orchestration.prompt_input_contract import (
@@ -74,7 +73,6 @@ __all__ = [
     "CredentialStorageMode",
     "DEFAULT_GEMINI_BASE_URL",
     "DEFAULT_GEMINI_MODEL_ID",
-    "DeterministicLLMRuntimeRouter",
     "GeminiHTTPClient",
     "LoopbackOllamaProbe",
     "OllamaHTTPClient",
