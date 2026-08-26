@@ -6,9 +6,9 @@
 
 **Status:** CANONICAL_FOR_REFACTOR
 
-**Version:** 1.14
+**Version:** 1.15
 
-**Effective:** 2026-08-25
+**Effective:** 2026-08-26
 
 **Scope owner:** repository placement, module responsibility, naming grammar, repository import/export dependency realization and enforcement, repository semantic-owner/package mapping, single production authority, refactor procedure, architecture enforcement. Behavioral semantic authority itself remains with the applicable concern-owning sources in 01–15, the Domain State Transition Contract, and 04 Domain·DB required DB invariant contract. The State Transition Test Matrix is normative verification authority for those lifecycle contracts and does not independently define behavior.
 
@@ -131,7 +131,7 @@ These names are repository owner/package mappings for concern-owned semantics in
 Do not replace these with synonyms such as `job`, `manager`, `processor`, or generic `runtime` terminology.
 
 ## Operation verb taxonomy and closed-manifest rule
-The verb families below are **naming taxonomy, not an exhaustive list of every current operation prefix**. The exact closed set of current **Domain/Application/Agent semantic operations** is the Canonical Required-Operation Manifest in subordinate `01 Spec → Code Deterministic Mapping` plus the explicit 06/15 Agent mapping below. Adapter/runtime structural responsibilities are closed by this Source의 normative subordinate placement grammars—특히 `07 Connector · API · Persistence Grammar`의 Connector Runtime/MCP Server grammar—이며 verb taxonomy 자체로 새 operation을 도출하지 않는다. A precise verb outside the taxonomy is valid only when that exact operation/role is present in one of these 16-owned closed manifests. Future Agents may not invent an unlisted operation/verb; a new operation requires concern-owner contract + 16 manifest mapping update.
+The verb families below are **naming taxonomy, not an exhaustive list of every current operation prefix**. The sole repository-side exact closed set of current **Domain/Application/Agent semantic operations** is the Canonical Required-Operation Manifest in subordinate `01 Spec → Code Deterministic Mapping`; 06/15 remain semantic/runtime responsibility owners and are consumed by that manifest. Adapter/runtime structural responsibilities are closed by this Source의 normative subordinate placement grammars—특히 `07 Connector · API · Persistence Grammar`의 Connector Runtime/MCP Server grammar—이며 verb taxonomy 자체로 새 operation을 도출하지 않는다. A precise verb outside the taxonomy is valid only when that exact operation/role is present in one of these 16-owned closed manifests. Future Agents may not invent an unlisted operation/verb; a new operation requires concern-owner contract + 16 manifest mapping update.
 
 External/resource operations:
 
@@ -342,56 +342,7 @@ Repository semantic owner/package is `Tool Routing` / `tool_routing`; existing c
 
 Versioned runtime Node identifiers and PromptRef IDs remain owned by 06 Workflow / 15 Prompt·Failure and are **not silently renamed by this document**. Repository Architecture maps the same semantic capabilities to canonical repository owner/path/file/symbol labels, but identifier namespaces are distinct. For example `06` may use a runtime Node ID such as `analysis.extract_facts` while repository ownership is `work_analysis.extract_work_facts`; likewise runtime `request.*` identities map to repository owner `request_understanding.*`. This mapping must be explicit in graph/node wiring and tests; string equality across namespaces is not required. `planning.compose_dependencies` does not exist as a Product Prompt/LLM authority; dependency construction is deterministic `planning.build_dependencies`.
 
-The following list defines canonical repository implementation capability labels. 대부분은 현재 06/15 atomic responsibility와 직접 대응하지만, concern-owning behavioral contract가 별도 deterministic supporting operation을 요구하는 경우도 포함한다. 그런 operation은 repository capability이지만 06이 독립 Runtime Node/Edge로 정의하지 않는 한 LangGraph Node 수를 증가시키지 않는다. 현재 `retrieval.resolve_availability`가 그 예다: semantic behavior는 05 Retrieval이 소유하고 12 Test가 검증하는 deterministic availability 계산 operation이며 Retrieval flow 내부에서 호출되고 별도 Supervisor routing authority를 만들지 않는다.
-
-```
-request_understanding.identify_goal
-request_understanding.detect_ambiguity
-request_understanding.finalize_intent
-request_understanding.validate_intent
-
-tool_routing.determine_io_resources
-tool_routing.bind_registry_candidates
-tool_routing.select_tool_if_needed
-tool_routing.finalize_route
-tool_routing.validate_route
-
-retrieval.plan_query
-retrieval.build_query
-retrieval.execute_read
-retrieval.normalize_segments
-retrieval.resolve_availability
-retrieval.rag_retrieve_rerank
-retrieval.select_evidence
-retrieval.assess_sufficiency
-retrieval.finalize_retrieval
-
-work_analysis.extract_work_facts
-work_analysis.resolve_entity_relations
-work_analysis.resolve_temporal_dependencies
-work_analysis.detect_duplicate_conflict_candidates
-work_analysis.validate_relations
-work_analysis.assess_information_gaps
-work_analysis.assess_operational_risks
-work_analysis.assemble_work_analysis
-work_analysis.validate_work_analysis
-
-planning.choose_answer_or_action_from_route
-planning.outline_answer
-planning.compose_answer
-planning.draft_action_objective_per_output_route
-planning.compose_arguments_per_output_route
-planning.build_dependencies
-planning.assemble_plan
-planning.validate_plan
-
-review.inspect_goal_and_evidence
-review.inspect_action_scope_and_route
-review.inspect_constraints_and_policy_summary
-review.aggregate_review_findings
-review.validate_review
-review.recheck_affected_dimensions
-```
+The exact current Agent repository operation closed set is defined **only** by subordinate `01 Spec → Code Deterministic Mapping / Canonical Required-Operation Manifest`. This parent Source retains owner vocabulary, namespace-separation rules, and thin-node constraints, but does not duplicate the 43-row operation list. Deterministic supporting operations such as `tool_routing.resolve_policy_preconditions` and `planning.resolve_default_container` are therefore governed by the same single manifest and do not increase LangGraph Node count unless 06 explicitly maps a runtime Node.
 
 A LangGraph node is a thin adapter only: typed projection → application call → typed owner-field patch → optional WorkflowSignal.
 

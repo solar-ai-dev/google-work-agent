@@ -1,7 +1,7 @@
 # 12. 테스트 설계서
 
 > **Authority:** current owner contract와 State Transition Test Matrix의 product regression verification. Expected assertion은 검증 oracle이며 새 behavioral authority가 아니다.  
-> **상태:** Draft v3.50 · **기준일:** 2026-08-25 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
+> **상태:** Draft v3.51 · **기준일:** 2026-08-26 · **OS:** Windows 11 x64 · **Browser:** Chrome·Edge
 
 ## 1. 목적과 계층
 
@@ -164,7 +164,7 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 
 - 같은 Conversation에서 Run A가 Terminal이 된 뒤 업무적으로 관련 없는 USER 요청으로 Run B를 시작할 수 있어야 한다. 새 Conversation 강제는 실패다.
 - Run B는 Run A와 다른 `run_id`와 다른 `langgraph_thread_id`를 가져야 하고, 같은 Conversation에 비Terminal Run이 이미 있으면 두 번째 Run 생성은 실패해야 한다.
-- `POST /api/v1/runs`의 Browser Request가 `run_id`, `user_message_id`, `workflow_key`, `langgraph_thread_id`를 지정하거나 override할 수 있으면 실패다. API/Application은 해당 필드를 StartRun Request Schema에서 수신하지 않아야 하며, Domain `StartRun` 성공 후 Server가 새 Run/User Message identity를 만들고 Application/Workflow가 새 thread/workflow binding을 생성해야 한다.
+- `POST /api/v1/runs`의 Browser Request가 `run_id`, `user_message_id`, `workflow_key`, `langgraph_thread_id`를 지정하거나 override할 수 있으면 실패다. Application은 네 server-owned ID를 Domain guard 전에 preallocate하고 `WorkflowBindingV1`을 materialize해야 한다. 04 §10.1의 같은 StartRun UoW가 Run·USER Message·선택 ResourceRef·initial WorkflowBinding·START handoff를 commit하며, 이후 일반 checkpoint write는 별도 transaction이어야 한다.
 - Run B의 initial `RunInputV1`/Request Understanding/Prompt Projection에는 Run A의 Message history, RequestIntent, Tool Route, Retrieval/Evidence, Work Analysis, Plan/Review, `prompt_context`, Confirmation Receipt가 포함되지 않아야 한다.
 - Run A의 Approval·Claim·Policy Confirmation Receipt를 Run B의 Write/Scope 확장 권한으로 재사용하면 실패다.
 - 사용자가 Run B에서 과거 Resource를 명시적으로 다시 선택하면 해당 Resource Ref만 current-run Entry Context로 허용하고, Evidence·Approval은 Run B에서 다시 조회·검증해야 한다.
@@ -756,7 +756,7 @@ Conversation UI 추가 회귀:
 | `TST-UI-203` | Component | Gmail/Tasks/Calendar 탭, 검색/필터, compact resource row, selected/hover/focus/disabled, 긴 문자열 ellipsis와 keyboard navigation을 검증한다. |
 | `TST-UI-204` | Integration | configured `SIDEBAR_PAGE_SIZE`와 configured `RETRIEVAL_PAGE_SIZE`의 독립 계약을 검증한다. Gmail은 intermediate token-only traversal과 visible target metadata hydration, 이미 hydrate한 page 재방문 Provider 호출 0을 검증한다. Tasks는 Provider metadata batch를 configured `SIDEBAR_PAGE_SIZE`로 slice하고 continuation이 있으면 현재 materialized batch에서 계산되는 page 범위만 노출하며 알려진 마지막 page에서만 다음 batch를 append한다. Local API continuation을 UI page number나 Provider token으로 해석하지 않고 조건 변경·수동 Refresh에서 cache를 무효화한다. Calendar Month View는 visible grid terminal materialization을 사용하고 numeric pagination을 생성하지 않는다. |
 | `TST-UI-205` | Integration | Gmail은 기본 `INBOX + PRIMARY` scope에서 `GET /api/v1/resources/gmail/count`의 exact count만 badge로 표시하고 추정값을 exact로 표시하지 않는다. Tasks는 incomplete browse의 terminal/continuation 상태에 따라 알려진 count를 표시하고 terminal materialization 뒤 exact total을 확정한다. Calendar tab에는 numeric badge가 없고 startup·Calendar refresh에서 별도 Calendar Count Read를 호출하지 않는다. Frontend count 생성을 위한 임의 전체 Page 순회·hard code가 없음을 검증한다. |
-| `TST-UI-206` | Integration | Resource row click은 Focus Viewer만 갱신하고 checkbox는 다중 선택 Context 집합만 변경함을 검증한다. 선택 집합이 있으면 Composer Context Summary에 사용자 의미 label과 선택 수를 표시하고, 중복 없는 선택 ID 전체로 `RESOURCE_SELECTED`가 최신 상세 조회를 시작함을 검증한다. 선택 집합이 없으면 `AGENT_SEARCH`를 검증한다. |
+| `TST-UI-206` | Integration | Resource row click은 Focus Viewer만 갱신하고 checkbox는 다중 선택 Context 집합만 변경함을 검증한다. 선택 집합이 있으면 Composer Context Summary에 사용자 의미 label과 선택 수를 표시하고, 중복 없는 authenticated `selection_handle` 전체로 `RESOURCE_SELECTED`가 current identity resolve 후 최신 상세 조회를 시작함을 검증한다. 선택 집합이 없으면 `AGENT_SEARCH`를 검증한다. |
 | `TST-UI-207` | Integration | 선택 없는 자연어 요청은 `AGENT_SEARCH`, Quick Action은 Agent 요청이며 Connector Write를 직접 호출하지 않음을 검증한다. |
 | `TST-UI-208` | Component | Viewer와 Approval detail은 실제 REST/SSE Projection의 필드만 표시하며 fake count/detail/approval data가 없음을 검증한다. |
 | `TST-UI-209` | Component | Inline Approval의 approve/modify/reject, detail expand, pending/submitting/completed 상태와 duplicate click 방지를 검증한다. |
@@ -767,7 +767,7 @@ Conversation UI 추가 회귀:
 
 ### Calendar·Tasks·Viewer 회귀
 
-- Calendar Sidebar는 기본 Query가 사용자 Timezone 기준 현재부터 향후 90일이며 실제 Event 제목과 같은 날/날짜가 다른 시간 범위, All-day 형식을 검증한다.
+- Calendar UI regression은 `TST-UI-204`의 selected-month Month View visible-grid contract와 Event 시간/All-day 표시를 검증한다. `time_min/time_max` 생략 시 90일 default는 Sidebar와 분리된 generic Upcoming Browse API case에서만 검증한다.
 - Tasks Sidebar는 기본 Query가 미완료 Task 전체를 대상으로 하고 완료 Task는 기본 count/list에서 제외됨을 검증한다.
 - 같은 날 시간 Event에는 연도·월·일·요일·시작/종료 시간이 있고 `시작`·`종료` label은 없으며, All-day Event에는 연도·월·일·요일과 `하루 종일`이 있다.
 - Calendar 중앙 Viewer에는 실제 Projection의 `시작`, `종료` 필드가 남아 있음을 검증한다.
@@ -922,8 +922,8 @@ Architecture/Release test는 16 `Launcher · Installer · Release exact manifest
 - installer source root는 `installer/windows/**`, release tooling root는 `release/**`뿐이며 alternate `packaging/`, `build/`, `scripts/release/` production authority 0.
 - `API_ONLY`/`LOCAL_CAPABLE` profile, One-folder assembly, Windows installer build, Release Manifest, Code Signing/Timestamp가 각 canonical operation으로 존재한다.
 - product runtime import graph에서 `installer/**` 또는 `release/**` import 0.
-- Signed Build Config installed authority는 `release-manifest.json + .sig` 하나뿐이다. manifest는 closed `ReleaseManifestV1`이며 `oauth_env/oauth_client_id`를 포함하고 `release/generate_release_manifest.py`가 materialize, `launcher/verify_installation.py`가 signature/hash verify, `launcher/release_build_config.py`가 verified manifest에서만 `SignedBuildConfigV1`을 project해야 한다. competing `build-config.json`, unsigned production env/settings authority는 0이다.
-- Production signed-locked field를 Launcher arg/User Settings/ambient env로 override 0. tampered/missing signature, wrong `oauth_env/oauth_client_id`, manifest-field mismatch는 MCP child spawn 전 fail-closed다. MCP child의 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`는 verified projection과 exact match해야 한다.
+- Signed Build Config installed authority는 `release-manifest.json + .sig` 하나뿐이다. manifest는 closed `ReleaseManifestV1`이며 `oauth_env/oauth_client_id`를 포함하고 `release/generate_release_manifest.py`가 materialize, `launcher/verify_installation.py`가 signature/hash verify, `launcher/release_build_config.py`가 verified manifest에서만 `SignedBuildConfigV1`을 project해야 한다. competing `build-config.json`, unsigned production env/settings authority는 0이다. P0 manifest/Installer/Keyring/environment/CLI에 `client_secret` 또는 `OAUTH_CLIENT_SECRET` field/path가 있으면 실패다.
+- Production signed-locked field를 Launcher arg/User Settings/ambient env로 override 0. tampered/missing signature, wrong `oauth_env/oauth_client_id`, manifest-field mismatch는 MCP child spawn 전 fail-closed다. MCP child의 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`는 verified projection과 exact match해야 한다. Downloaded provider config에 `client_secret`이 있어도 P0 loader가 무시하고 child environment/token request input에 전달하지 않으며, `oauth_client_id + PKCE/state/loopback` 경로만 활성화됨을 검증한다.
 - `LOCAL_CAPABLE`은 `release/generate_model_manifest.py`가 생성하고 Release Manifest hash chain에 포함된 `ModelManifestV1 → model-manifest-v1.json(minimum_ollama_version + approved model_id/model_hash)`을 요구한다. 같은 Ollama/model allowlist authority가 `SignedBuildConfigV1`에도 중복되면 실패다. `API_ONLY`는 model manifest 부재를 정상 허용한다.
 
 ### 27.3 Final structural negative tests

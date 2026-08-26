@@ -5,8 +5,8 @@
 ## 0. 문서 정보
 
 - **문서명:** 10. Google Work Agent · 인프라 · 환경 설정 설계서
-- **상태:** Draft v2.19
-- **기준일:** 2026-08-25
+- **상태:** Draft v2.20
+- **기준일:** 2026-08-26
 - **대상:** P0 MVP
 - **공식 운영체제:** Windows 11 x64
 - **공식 브라우저:** 최신 Chrome·Microsoft Edge
@@ -489,7 +489,7 @@ TEMP
 TMP
 ```
 
-Production의 `GOOGLE_OAUTH_ENV`와 `GOOGLE_OAUTH_CLIENT_ID`는 ambient user/process environment에서 읽는 configuration source가 아니다. Launcher가 검증한 `SignedBuildConfigV1`에서 Service startup composition으로 전달된 non-secret value를 Connector MCP child environment에 allowlist injection한다. LLM API Key, Bootstrap Secret, Local Session, 전체 Parent Environment를 전달하지 않는다. Google user Credential은 Keyring Adapter를 통해 필요한 시점에만 읽는다.
+Production의 `GOOGLE_OAUTH_ENV`와 `GOOGLE_OAUTH_CLIENT_ID`는 ambient user/process environment에서 읽는 configuration source가 아니다. Launcher가 검증한 `SignedBuildConfigV1`에서 Service startup composition으로 전달된 non-secret value를 Connector MCP child environment에 allowlist injection한다. LLM API Key, Bootstrap Secret, Local Session, 전체 Parent Environment를 전달하지 않는다. Google user Credential은 Keyring Adapter를 통해 필요한 시점에만 읽는다. `GOOGLE_OAUTH_CLIENT_SECRET`은 allowlist/config schema에 존재하지 않으며 P0 child process에 주입하는 대체 provisioning path도 없다.
 
 ### 8.12 `SEC-INF-012` Installer Signature
 
@@ -530,7 +530,7 @@ class ReleaseManifestV1:
     files: list[ReleaseManifestFileV1]
 ```
 
-`release-manifest.json`은 `ReleaseManifestV1`의 canonical serialization이다. `file_path/file_size/sha256`은 top-level 반복 field가 아니라 `files[]` entry다. Unknown top-level/file-entry field와 duplicate `file_path`는 fail-closed한다. Launcher는 내장된 Release Public Key로 Manifest Signature를 검증하고 주요 Executable·Schema·Frontend Asset Hash를 확인한다. `oauth_client_id`는 non-secret Desktop OAuth client identity이며 `client_secret`은 이 Manifest에 절대 포함하지 않는다.
+`release-manifest.json`은 `ReleaseManifestV1`의 canonical serialization이다. `file_path/file_size/sha256`은 top-level 반복 field가 아니라 `files[]` entry다. Unknown top-level/file-entry field와 duplicate `file_path`는 fail-closed한다. Launcher는 내장된 Release Public Key로 Manifest Signature를 검증하고 주요 Executable·Schema·Frontend Asset Hash를 확인한다. `oauth_client_id`는 non-secret Desktop OAuth client identity다. P0는 `client_secret`을 요구하지 않으므로 Manifest·Installer·Keyring·환경 변수·CLI에 이를 포함하거나 별도 provisioning path를 만들지 않는다.
 
 #### Signed Build Config single authority
 
@@ -554,7 +554,7 @@ class SignedBuildConfigV1:
 - `launcher/verify_installation.py → verify_installation()`이 signature와 referenced file hash를 검증한다.
 - 검증 성공 뒤에만 `launcher/release_build_config.py → load_signed_build_config()`가 `SignedBuildConfigV1`을 만든다. Loader가 signature verifier를 복제하거나 raw unsigned file을 fallback으로 읽지 않는다.
 - `launcher/start_service.py → start_service()`는 이 검증된 projection을 Service startup composition에 전달한다. exact process-bootstrap serialization은 launcher-private implementation choice지만, Service가 ambient environment/Settings에서 signed-locked field를 다시 해석하는 두 번째 authority는 금지한다.
-- Service는 여기서 받은 `oauth_env/oauth_client_id`만 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`로 Connector MCP child에 allowlist injection한다. Production MCP Credential Provider는 이 값과 Keyring user credential을 결합하며 React/FastAPI wire가 OAuth client identity를 공급하지 않는다.
+- Service는 여기서 받은 `oauth_env/oauth_client_id`만 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`로 Connector MCP child에 allowlist injection한다. Production MCP Credential Provider는 이 값과 Keyring user credential을 결합하며 React/FastAPI wire가 OAuth client identity를 공급하지 않는다. `client_secret` field/environment/keyring/installer channel은 P0에 존재하지 않는다.
 
 Production signed-locked fields는 `APP_VERSION | BUILD_CHANNEL | DEPLOYMENT_PROFILE | OAUTH_ENV | OAUTH_CLIENT_ID | API_CONTRACT_VERSION | MCP_SCHEMA_VERSION | POLICY_VERSION | DATABASE_MIGRATION_VERSION`이며 Launcher runtime argument나 User Settings로 override할 수 없다.
 
@@ -790,6 +790,8 @@ Run Retrieval Cache는 기본적으로 Process Memory를 사용하며 canonical 
 ## 10. 환경 설정 Schema
 
 ### 10.1 Build-time Config
+
+Production은 §8.13 signed build config만 사용한다. Development 전용 local config는 non-secret `OAUTH_ENV/OAUTH_CLIENT_ID`만 제공할 수 있으며 `OAUTH_CLIENT_SECRET` key는 current schema에 없다.
 
 ```
 APP_VERSION

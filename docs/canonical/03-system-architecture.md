@@ -7,8 +7,8 @@
 | 항목 | 내용 |
 | --- | --- |
 | 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v3.12 |
-| 기준일 | 2026-08-24 |
+| 상태 | Draft v3.13 |
+| 기준일 | 2026-08-26 |
 | 대상 릴리스 | P0 MVP |
 | 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
 | 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
@@ -199,7 +199,7 @@ FastAPI Route
 - Domain Migration은 LangGraph 관리 Table을 생성·변경하지 않는다.
 - LangGraph Checkpointer Package Version과 Schema Compatibility를 Release Manifest에 Pin한다.
 - Backup은 SQLite Online Backup API 또는 정상 종료 상태의 일관된 복사를 사용한다.
-- Domain Transaction과 Checkpoint Transaction은 하나의 원자 Transaction으로 묶지 않는다.
+- 일반 Domain transaction과 LangGraph checkpoint-state transaction은 하나의 원자 Transaction으로 묶지 않는다. 단 `StartRun`의 initial `WorkflowBindingV1` metadata와 `START WorkflowHandoff(PENDING)`은 LangGraph checkpoint-state write가 아니며, 04/07의 crash-safe Run creation contract에 따라 Run·USER Message·선택 ResourceRef와 같은 `SqliteUnitOfWork`에 참여한다. 이후 LangGraph checkpoint write는 다시 별도 transaction이다.
 - Domain과 Checkpoint가 충돌하면 Domain Store를 실행 사실의 기준점으로 사용하고 `RECOVERY_REQUIRED`로 전환한다.
 - WAL 크기와 Checkpoint 주기를 운영 설정으로 관리한다.
 
@@ -325,7 +325,7 @@ flowchart LR
 책임:
 
 - 시작 검사, 온보딩, 메인 3열 레이아웃, 설정·진단 렌더링
-- Gmail·Task·Event 목록과 Page Token을 UI Session Cache에서 관리
+- Gmail·Tasks의 materialized page/batch와 opaque Local API continuation, Calendar Month cache를 UI Session Cache에서 관리
 - 사용자 메시지, 확인 질문, 승인, 수정, 거절, 취소 Command 수집
 - REST Response, Run Snapshot과 SSE Event를 View State로 반영
 - Event Cursor·Aggregate Version으로 중복·오래된 화면 Event 제거
@@ -456,9 +456,9 @@ flowchart TB
 
 ### 8.3 요청 진입 방식과 Source 조회
 
-- `RESOURCE_SELECTED`: 사용자가 사이드바에서 선택한 Resource ID를 시작점으로 최신 상세를 조회하고, 요청 수행에 필요할 때만 다른 Source를 확장한다.
+- `RESOURCE_SELECTED`: Browser의 authenticated opaque `selection_handle`을 Application이 current account/session/connector/resource identity로 resolve한 결과를 시작점으로 사용하고, 요청 수행에 필요할 때만 다른 Source를 확장한다.
 - `AGENT_SEARCH`: Query·기간·사람·이메일·Keyword를 구조화해 Google Source-native 목록 검색을 수행하고, Metadata로 후보를 축소한 뒤 필요한 후보만 상세 조회한다.
-- 사이드바 목록 페이지와 Page Token은 React Client Session Cache에만 유지하며 SQLite에 영구 저장하지 않는다.
+- Gmail·Tasks Sidebar의 materialized page/batch와 opaque Local API continuation, Calendar Month cache는 React Client Session Cache에만 유지하며 SQLite에 영구 저장하지 않는다.
 - 두 진입 방식은 Context 구성 이후 동일한 분석·계획·승인·실행·검증 Workflow를 사용한다.
 
 ## 9. 컴포넌트 책임
@@ -467,7 +467,7 @@ flowchart TB
 | --- | --- | --- |
 | React Frontend | 사용자 입력, View State, REST·SSE 렌더링 | Connector Write 실행, 정책 결정, Secret 접근 |
 | Typed API Client | Versioned REST·SSE 통신, Cursor·Request ID | Domain 상태 결정 |
-| Frontend Session Cache | 사이드바 목록 페이지·Page Token의 UI 세션 재사용 | 영구 승인·실행 상태 |
+| Frontend Session Cache | Gmail·Tasks page/batch·opaque Local API continuation과 Calendar Month cache의 UI 세션 재사용 | 영구 승인·실행 상태 |
 | FastAPI Adapter | Local Session·Schema·Command·Event 경계 | Policy·Domain 규칙 복제 |
 | Application use cases | Run 명령, 상태 전이, 승인·실행·복구 조정 | LLM 의미 판단, Google SDK 세부사항 |
 | LangGraph Runtime | Workflow, Interrupt, Checkpoint 재개 | 승인·실행 사실의 유일한 저장 |
@@ -486,7 +486,7 @@ flowchart TB
 | 데이터 | 기준 저장소 | 설명 |
 | --- | --- | --- |
 | 패널 열림·너비, 현재 탭, 임시 선택 | React Client State 또는 비밀이 아닌 로컬 설정 | UX 상태이며 실행 사실이 아님 |
-| 사이드바 목록 페이지·Page Token | React Client Session Cache | UI 세션 종료·계정 변경·수동 새로고침 시 폐기 |
+| Sidebar page/batch·opaque Local API continuation·Calendar Month cache | React Client Session Cache | UI 세션 종료·계정/container/scope 변경·수동 새로고침 시 폐기 |
 | Agent 검색 중간 후보와 상세 원문 | 현재 Run 메모리 | 사용되지 않은 후보와 전체 원문은 영구 저장하지 않음 |
 | Conversation·Message | SQLite Domain Store | 대화 내역 복원 |
 | Run·Action·Approval | SQLite Domain Store | 제품의 제안·승인 사실 기준점 |
@@ -511,11 +511,11 @@ Graph Node 구성이 변경되거나 Checkpoint가 정리돼도 승인·실행·
 
 ### 10.2 Google Source Cache 소유권
 
-- 목록 페이지는 사용자 탐색 속도를 위한 세션 데이터다.
-- Cache Key는 Google 계정, Source, 검색·필터, 정렬, Page Token 조합으로 구성한다.
-- 동일 세션에서 이미 본 페이지를 재방문할 때만 재사용한다.
-- Cache는 승인·중복·충돌·검증 판단의 기준점이 아니다.
-- 선택형 요청 시작, 계획 확정, 승인 후 실행 직전, 실행 직후에는 Google API 응답을 우선한다.
+03은 Cache의 **위치·수명·비권위성**만 소유한다. exact UI cache identity/invalidation은 02가, opaque Local API continuation과 Provider raw continuation 경계는 07이 소유한다.
+
+- Gmail·Tasks의 materialized page/batch와 opaque Local API continuation, Calendar Month cache는 UI 세션 데이터다.
+- Cache는 승인·중복·충돌·검증 판단의 기준점이 아니며 SQLite·Checkpoint에 승격하지 않는다.
+- 선택형 요청 시작, 계획 확정, 승인 후 실행 직전, 실행 직후에는 Connector를 통한 최신 Provider Read를 우선한다.
 
 ## 10-A. Local API와 Event 계약
 
@@ -865,7 +865,7 @@ sequenceDiagram
 
 - Gmail 전체 원문
 - 사용하지 않은 검색 후보
-- 사이드바 목록 페이지·Page Token
+- Sidebar page/batch·opaque Local API continuation·Calendar Month cache
 - OAuth Token·API Key
 - Prompt 원문·LLM Completion 원문
 

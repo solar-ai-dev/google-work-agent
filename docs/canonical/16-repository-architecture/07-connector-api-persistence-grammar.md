@@ -36,82 +36,34 @@ ports/<boundary>/<capability>_port.py
 
 The current closed boundary package vocabulary is `connector`, `llm`, `keyring`, and `system`. These packages realize the outbound abstractions required by 03/07/09/10 without importing concrete adapters into Application. Adding another boundary package requires an explicit Repository Architecture contract update and Source Guide synchronization before implementation; version numbers are traceability metadata, not an independent Gate. Persistence remains a Repository abstraction and keeps the separate persistence grammar above.
 
-Canonical capability Port mapping required by the current behavioral contracts:
+Canonical non-persistence Port↔Adapter mapping required by the current behavioral contracts is defined by the single closed table below. The table is the only exact Port-set authority in this page; do not maintain a second path/symbol list.
 
-```
-# Connector boundary — 07 Tool/MCP
-ports/connector/connector_read_port.py
-→ ConnectorReadPort
-
-ports/connector/connector_write_port.py
-→ ConnectorWritePort
-
-ports/connector/oauth_credential_port.py
-→ OAuthCredentialPort
-
-ports/connector/mcp_client_port.py
-→ MCPClientPort
-
-# LLM boundary — 03/07/09
-ports/llm/structured_inference_port.py
-→ StructuredInferencePort
-
-ports/llm/llm_credential_port.py
-→ LlmCredentialPort
-
-ports/llm/llm_runtime_status_port.py
-→ LlmRuntimeStatusPort
-
-# Keyring abstraction — 03/09/10
-ports/keyring/secret_store_port.py
-→ SecretStorePort
-
-# Local system/runtime boundary — 03/08/10/11
-ports/system/clock_port.py
-→ ClockPort
-
-ports/system/uuid_port.py
-→ UUIDPort
-
-ports/system/browser_launcher_port.py
-→ BrowserLauncherPort
-
-ports/system/checkpoint_port.py
-→ CheckpointPort
-
-ports/system/run_retrieval_cache_port.py
-→ RunRetrievalCachePort
-
-ports/system/workflow_execution_port.py
-→ WorkflowExecutionPort
-
-ports/system/settings_port.py
-→ SettingsPort
-
-ports/system/runtime_mode_port.py
-→ RuntimeModePort
-
-ports/system/backup_port.py
-→ BackupPort
-
-ports/system/diagnostics_port.py
-→ DiagnosticsPort
-
-ports/system/shutdown_port.py
-→ ShutdownPort
-
-ports/system/attachment_staging_port.py
-→ AttachmentStagingPort
-
-ports/system/hardware_probe_port.py
-→ HardwareProbePort
-
-ports/system/component_circuit_state_port.py
-→ ComponentCircuitStatePort
-
-ports/system/sse_event_buffer_port.py
-→ SseEventBufferPort
-```
+| Boundary | Canonical Port path | Abstract Port | Canonical concrete P0 path | Canonical symbol |
+| --- | --- | --- | --- | --- |
+| Connector | `ports/connector/connector_read_port.py` | `ConnectorReadPort` | `adapters/connectors/runtime/mcp_connector_read.py` | `McpConnectorReadAdapter` |
+| Connector | `ports/connector/connector_write_port.py` | `ConnectorWritePort` | `adapters/connectors/runtime/mcp_connector_write.py` | `McpConnectorWriteAdapter` |
+| Connector | `ports/connector/oauth_credential_port.py` | `OAuthCredentialPort` | `adapters/connectors/runtime/mcp_oauth_credential.py` | `McpOAuthCredentialAdapter` |
+| Connector | `ports/connector/mcp_client_port.py` | `MCPClientPort` | `adapters/connectors/runtime/stdio_mcp_client.py` | `StdioMCPClientAdapter` |
+| LLM | `ports/llm/structured_inference_port.py` | `StructuredInferencePort` | `adapters/llm/runtime/structured_inference_router.py` | `StructuredInferenceRuntimeRouter` |
+| LLM | `ports/llm/llm_credential_port.py` | `LlmCredentialPort` | `adapters/llm/runtime/llm_credential_router.py` | `LlmCredentialRouter` |
+| LLM | `ports/llm/llm_runtime_status_port.py` | `LlmRuntimeStatusPort` | `adapters/llm/runtime/llm_runtime_status_router.py` | `LlmRuntimeStatusRouter` |
+| Keyring | `ports/keyring/secret_store_port.py` | `SecretStorePort` | `adapters/keyring/os_keyring_secret_store.py` | `OsKeyringSecretStoreAdapter` |
+| System | `ports/system/checkpoint_port.py` | `CheckpointPort` | `adapters/system/sqlite_checkpoint.py` | `SqliteCheckpointAdapter` |
+| System | `ports/system/run_retrieval_cache_port.py` | `RunRetrievalCachePort` | `adapters/system/memory/run_retrieval_cache.py` | `InMemoryRunRetrievalCache` |
+| System | `ports/system/workflow_execution_port.py` | `WorkflowExecutionPort` | `adapters/langgraph/runtime/background_run_executor.py` | `BackgroundRunExecutorAdapter` |
+| System | `ports/system/settings_port.py` | `SettingsPort` | `adapters/system/json_settings.py` | `JsonSettingsAdapter` |
+| System | `ports/system/runtime_mode_port.py` | `RuntimeModePort` | `adapters/system/process_runtime_mode.py` | `ProcessRuntimeModeAdapter` |
+| System | `ports/system/backup_port.py` | `BackupPort` | `adapters/system/filesystem_backup.py` | `FilesystemBackupAdapter` |
+| System | `ports/system/diagnostics_port.py` | `DiagnosticsPort` | `adapters/system/filesystem_diagnostics.py` | `FilesystemDiagnosticsAdapter` |
+| System | `ports/system/shutdown_port.py` | `ShutdownPort` | `adapters/system/process_shutdown.py` | `ProcessShutdownAdapter` |
+| System | `ports/system/operational_command_replay_port.py` | `OperationalCommandReplayPort` | `adapters/system/filesystem_operational_command_replay.py` | `FilesystemOperationalCommandReplayAdapter` |
+| System | `ports/system/attachment_staging_port.py` | `AttachmentStagingPort` | `adapters/system/filesystem_attachment_staging.py` | `FilesystemAttachmentStagingAdapter` |
+| System | `ports/system/clock_port.py` | `ClockPort` | `adapters/system/system_clock.py` | `SystemClockAdapter` |
+| System | `ports/system/uuid_port.py` | `UUIDPort` | `adapters/system/uuid4.py` | `Uuid4Adapter` |
+| System | `ports/system/hardware_probe_port.py` | `HardwareProbePort` | `adapters/system/windows_hardware_probe.py` | `WindowsHardwareProbeAdapter` |
+| System | `ports/system/browser_launcher_port.py` | `BrowserLauncherPort` | `adapters/system/default_browser_launcher.py` | `DefaultBrowserLauncherAdapter` |
+| System | `ports/system/component_circuit_state_port.py` | `ComponentCircuitStatePort` | `adapters/system/process_component_circuit_state.py` | `ProcessComponentCircuitStateAdapter` |
+| System | `ports/system/sse_event_buffer_port.py` | `SseEventBufferPort` | `adapters/system/memory/sse_event_buffer.py` | `InMemorySseEventBuffer` |
 
 Boundary rules:
 
@@ -127,36 +79,11 @@ Boundary rules:
 
 Repository means Domain persistence only; it must not become workflow/application authority. LangGraph checkpoint persistence is explicitly separate and uses `CheckpointPort`, even if its concrete implementation shares the same SQLite file.
 
-**Concrete Adapter mapping status:** Connector operation adapters, SQLite repositories, and every required non-persistence Port have deterministic P0 placement below. Application/LangGraph import abstract Ports only; composition root owns concrete binding.
+**Concrete Adapter mapping status:** Connector operation adapters, SQLite repositories, and every required non-persistence Port have deterministic P0 placement. The non-persistence exact mapping is the single table above; Application/LangGraph import abstract Ports only and composition root owns concrete binding.
 
-## Concrete non-persistence Adapter grammar
+## Concrete non-persistence Adapter rules
 
-| Abstract Port | Canonical concrete P0 path | Canonical symbol |
-| --- | --- | --- |
-| `ConnectorReadPort` | `adapters/connectors/runtime/mcp_connector_read.py` | `McpConnectorReadAdapter` |
-| `ConnectorWritePort` | `adapters/connectors/runtime/mcp_connector_write.py` | `McpConnectorWriteAdapter` |
-| `MCPClientPort` | `adapters/connectors/runtime/stdio_mcp_client.py` | `StdioMCPClientAdapter` |
-| `OAuthCredentialPort` | `adapters/connectors/runtime/mcp_oauth_credential.py` | `McpOAuthCredentialAdapter` |
-| `StructuredInferencePort` | `adapters/llm/runtime/structured_inference_router.py` | `StructuredInferenceRuntimeRouter` |
-| `LlmCredentialPort` | `adapters/llm/runtime/llm_credential_router.py` | `LlmCredentialRouter` |
-| `LlmRuntimeStatusPort` | `adapters/llm/runtime/llm_runtime_status_router.py` | `LlmRuntimeStatusRouter` |
-| `SecretStorePort` | `adapters/keyring/os_keyring_secret_store.py` | `OsKeyringSecretStoreAdapter` |
-| `CheckpointPort` | `adapters/system/sqlite_checkpoint.py` | `SqliteCheckpointAdapter` |
-| `RunRetrievalCachePort` | `adapters/system/memory/run_retrieval_cache.py` | `InMemoryRunRetrievalCache` |
-| `WorkflowExecutionPort` | `adapters/langgraph/runtime/background_run_executor.py` | `BackgroundRunExecutorAdapter` |
-| `SettingsPort` | `adapters/system/json_settings.py` | `JsonSettingsAdapter` |
-| `RuntimeModePort` | `adapters/system/process_runtime_mode.py` | `ProcessRuntimeModeAdapter` |
-| `BackupPort` | `adapters/system/filesystem_backup.py` | `FilesystemBackupAdapter` |
-| `DiagnosticsPort` | `adapters/system/filesystem_diagnostics.py` | `FilesystemDiagnosticsAdapter` |
-| `ShutdownPort` | `adapters/system/process_shutdown.py` | `ProcessShutdownAdapter` |
-| `OperationalCommandReplayPort` | `adapters/system/filesystem_operational_command_replay.py` | `FilesystemOperationalCommandReplayAdapter` |
-| `AttachmentStagingPort` | `adapters/system/filesystem_attachment_staging.py` | `FilesystemAttachmentStagingAdapter` |
-| `ClockPort` | `adapters/system/system_clock.py` | `SystemClockAdapter` |
-| `UUIDPort` | `adapters/system/uuid4.py` | `Uuid4Adapter` |
-| `HardwareProbePort` | `adapters/system/windows_hardware_probe.py` | `WindowsHardwareProbeAdapter` |
-| `BrowserLauncherPort` | `adapters/system/default_browser_launcher.py` | `DefaultBrowserLauncherAdapter` |
-| `ComponentCircuitStatePort` | `adapters/system/process_component_circuit_state.py` | `ProcessComponentCircuitStateAdapter` |
-| `SseEventBufferPort` | `adapters/system/memory/sse_event_buffer.py` | `InMemorySseEventBuffer` |
+The exact Port path, abstract symbol, concrete Adapter path, and concrete symbol are the single table above. Application/LangGraph import abstract Ports only; composition root owns concrete binding.
 
 Operational replay callables are closed by 07: `FilesystemOperationalCommandReplayAdapter` persists/returns stable `operation_ref`; every mutable non-Domain operation uses its exact operation-specific reconcile callable before any retry. `McpOAuthCredentialAdapter`, `LlmCredentialRouter`, `JsonSettingsAdapter`, `ProcessRuntimeModeAdapter`, `FilesystemBackupAdapter`, `FilesystemDiagnosticsAdapter`, `ProcessShutdownAdapter`, and `FilesystemAttachmentStagingAdapter` implement those callables at their existing Port boundaries. Artifact adapters receive `operation_ref` for create/stage; Restore uses `backup_ref + operation_ref`. Application code never scans filesystem/keyring/process internals or invents deterministic names outside adapters.
 
@@ -329,7 +256,7 @@ Tool-specific transport/schema validation remains owned by 07 Interface. Provide
 | Recovery | `ports/persistence/recovery_repository.py → RecoveryRepository` | `adapters/persistence/sqlite/repositories/recovery_repository.py → SqliteRecoveryRepository` | `store_context`, `load_current_context`, `clear_context`, `list_candidates_bounded` | `require_recovery`, `resolve_recovery`, startup reconciliation | `tests/unit/adapters/persistence/sqlite/repositories/test_recovery_repository.py` |
 | ResourceRef | `ports/persistence/resource_ref_repository.py → ResourceRefRepository` | `adapters/persistence/sqlite/repositories/resource_ref_repository.py → SqliteResourceRefRepository` | `upsert_bound_ref`, `get`, `list_for_run_bounded` | resource_ref use cases / evidence materialization | `tests/unit/adapters/persistence/sqlite/repositories/test_resource_ref_repository.py` |
 | Evidence | `ports/persistence/evidence_repository.py → EvidenceRepository` | `adapters/persistence/sqlite/repositories/evidence_repository.py → SqliteEvidenceRepository` | `insert_bounded`, `list_for_run`, `list_for_action` | Retrieval/Planning persistence projections | `tests/unit/adapters/persistence/sqlite/repositories/test_evidence_repository.py` |
-| Command Receipt | `ports/persistence/command_receipt_repository.py → CommandReceiptRepository` | `adapters/persistence/sqlite/repositories/command_receipt_repository.py → SqliteCommandReceiptRepository` | `get_by_command_id`, `reserve_or_replay`, `store_result` | every state-changing command handler | `tests/unit/adapters/persistence/sqlite/repositories/test_command_receipt_repository.py` |
+| Command Receipt | `ports/persistence/command_receipt_repository.py → CommandReceiptRepository` | `adapters/persistence/sqlite/repositories/command_receipt_repository.py → SqliteCommandReceiptRepository` | `get_by_command_id`, `reserve_or_replay`, `store_result` | Domain aggregate lifecycle/state-changing handlers governed by the Domain Command Receipt contract only; non-Domain commands use `OperationalCommandReplayPort` | `tests/unit/adapters/persistence/sqlite/repositories/test_command_receipt_repository.py` |
 | Retention | `ports/persistence/retention_repository.py → RetentionRepository` | `adapters/persistence/sqlite/repositories/retention_repository.py → SqliteRetentionRepository` | `purge_batch(cutoffs, batch_limit)` only; `cutoffs` is the 04-typed category cutoff set derived from persisted P0 `retention_days(1..30)` plus fixed Audit 90-day rule; purge ordering preserves open-run/replay/audit invariants | `application/maintenance/purge_retention.py → PurgeRetentionHandler` inside `UnitOfWork` | `tests/unit/adapters/persistence/sqlite/repositories/test_retention_repository.py` + `tests/unit/application/maintenance/test_purge_retention.py` |
 
 `update_if_version_and_status(...)` is the **exact public mutation method symbol** on `RunRepository`, `PlanRepository`, `ActionRepository`, and `ExecutionAttemptRepository`. `ApprovalRepository` uses the exact `update_if_status(approval_id, expected_status, values) -> bool` symbol because Approval concurrency is guarded by current status plus the enclosing Action/Command expected-version UoW rather than a separate Approval version authority. `expected_statuses` is the caller-authorized source-state set and `values` contains only already-validated persisted fields for that owner. The repository performs identity/version/status compare-and-set and returns success/failure only; it does **not** choose next status, evaluate lifecycle guards, or infer command semantics. Lifecycle handlers may not add alternate public mutation aliases such as `transition_status`, `compare_and_set`, `apply_transition`, `update_status`, or command-specific repository methods. SQLite adapters implement the same method name/signature.
@@ -337,7 +264,7 @@ Tool-specific transport/schema validation remains owned by 07 Interface. Provide
 Atomicity rule:
 
 ```text
-Application lifecycle handler
+Application Domain lifecycle handler
 → UnitOfWork
 → CommandReceiptRepository
 → required owner repositories

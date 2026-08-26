@@ -1,6 +1,6 @@
 # 00. Project Source Guide
 
-**Canonical snapshot coordination guide — 2026-08-24**
+**Canonical snapshot coordination guide — 2026-08-26**
 
 ## Concern authority
 

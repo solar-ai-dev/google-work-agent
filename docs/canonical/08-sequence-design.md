@@ -1,7 +1,7 @@
 # 08. 시퀀스 설계서
 
 > **Authority:** cross-layer participant interaction order와 crash/replay cut. State/Workflow/API/Infrastructure semantics는 해당 owner를 따른다.  
-> **상태:** Draft v3.27 · **기준일:** 2026-08-24 · **대상:** P0 MVP
+> **상태:** Draft v3.28 · **기준일:** 2026-08-26 · **대상:** P0 MVP
 
 ## 1. 목적과 범위
 
@@ -74,7 +74,7 @@
 
 ### 3.0-A Conversation · Run 시작/재개 구분
 
-- **Terminal Run 뒤 새 USER 요청:** 같은 `conversation_id`를 유지할 수 있지만 Browser는 새 Run/Message/Workflow identity를 제출하지 않는다. Domain `StartRun`이 새 Run과 USER Message를 생성해 `run_id`를 확정한 뒤, 성공 결과를 받은 Application/Workflow가 해당 Run 전용 새 `langgraph_thread_id`/workflow binding과 `RunInputV1`을 구성한다. 과거 `langgraph_thread_id`/Checkpoint/Main State를 이어받지 않는다.
+- **Terminal Run 뒤 새 USER 요청:** 같은 `conversation_id`를 유지할 수 있지만 Browser는 새 Run/Message/Workflow identity를 제출하지 않는다. Application은 server-owned `run_id`, `user_message_id`, `workflow_key`, `langgraph_thread_id`를 먼저 preallocate하고 `WorkflowBindingV1`을 materialize한 뒤 Domain `StartRun` guard를 평가한다. 04 §10.1의 StartRun UoW가 Run·USER Message·선택 ResourceRef·initial WorkflowBinding·START handoff를 commit한 후 `RunInputV1`을 구성한다. 과거 `langgraph_thread_id`/Checkpoint/Main State를 이어받지 않는다.
 - **비Terminal 동일 Run 재개:** confirmation·reauth·recovery·명시적 `/resume`만 기존 `run_id + langgraph_thread_id + checkpoint`를 사용한다.
 - Conversation Timeline 복원은 UI Query이며 Graph resume 자체가 아니다. 과거 Message가 화면에 표시돼도 새 Run Request Understanding/Prompt 입력으로 자동 전달하지 않는다.
 - 같은 Conversation에 Open Run이 있으면 새 `StartRun`을 병렬 생성하지 않는다.
@@ -333,11 +333,10 @@ sequenceDiagram
     FE->>API: POST /api/v1/runs<br>command_id·conversation_id<br>request_text·entry_mode·selected_resource_handles·requested_mode
     API->>API: Session·Schema·Version 검증
     API->>APP: start_run(command)
-    APP->>DOM: StartRun(command_id·canonical request hash)
     APP->>APP: server-owned run_id·user_message_id·langgraph_thread_id·workflow_key preallocate
-    APP->>DOM: StartRun guard/effect with server-owned IDs
     APP->>APP: current graph_profile/version + requested_mode로 WorkflowBindingV1 materialize
-    APP->>DB: StartRun UoW · Receipt + Run/User Message + WorkflowBinding + START WorkflowHandoff(PENDING) commit
+    APP->>DOM: StartRun guard/effect<br>command_id·canonical request hash + server-owned IDs
+    APP->>DB: 04 §10.1 StartRun UoW commit<br>Receipt + Run/USER Message + selected ResourceRef + WorkflowBinding + START Handoff
     DB-->>APP: COMMIT · applied=true·run_id·handoff_id·version
     APP->>SUP: post-commit schedule_run_execution(handoff_id) → WorkflowExecutionPort → BackgroundRunExecutor → Graph invoke
     API-->>FE: 202 Accepted·run_id·snapshot_version
@@ -518,7 +517,7 @@ sequenceDiagram
 - Tool Route는 한 번 Main State에 저장되며 Retrieval·Planning이 Tool 종류를 다시 선택하지 않는다. Output Route는 요청된 capability를 고정하지만 Retrieval/Analysis에서 목표가 이미 충족된 정확 중복·동일 상태를 확인하면 Planning은 Route를 바꾸지 않고 새 Action 0개의 Evidence 기반 Answer로 종료할 수 있다. `InputRoutePlanV1`과 `OutputPlanV1`은 독립 revision/based_on을 가져 OUT-only 변경이 기존 Retrieval을 불필요하게 재실행시키지 않는다.
 - Retrieval은 고정 IN Route 안에서 Query→Read→Run-scoped RAG→Evidence→Sufficiency를 완료한다.
 - Planning은 고정 OUT Route의 `selected_tool_id`와 해당 Tool Schema만 사용해 Arguments를 작성한다.
-- Query candidate·Page Token·RAG score·LLM candidate는 Subgraph Local State/Run Cache에 두고 Parent에는 공식 Typed Result와 필요한 Typed Workflow Signal만 반환한다.
+- Query candidate·RAG score·LLM candidate는 Subgraph Local State에, Provider raw continuation은 05/07의 Run Retrieval Cache entry에만 두고 Parent에는 공식 Typed Result와 필요한 Typed Workflow Signal만 반환한다.
 
 ## 7. RESOURCE_SELECTED 요청 시퀀스
 
@@ -541,11 +540,12 @@ sequenceDiagram
 
     U->>FE: Gmail·Task·Event 선택 후 요청
     FE->>API: POST /api/v1/runs<br>selected_resource_handles·command_id
-    API->>APP: start_run(command)<br>selected_resource_handles signature/session/account 검증·resolve → StartRun UoW ResourceRef materialize
-    APP->>DOM: StartRun(command_id·canonical request hash)
-    APP->>DB: UoW commit · Receipt 검증 + Open Run Guard + Run CREATED·User Message INSERT<br>같은 Transaction
-    DB-->>APP: COMMIT · applied=true·run_id·version
-    APP->>SUP: durable START handoff → WorkflowExecutionPort<br>RunInputV1.selected_resource_refs
+    API->>APP: start_run(command)<br>selected_resource_handles signature/session/account 검증·resolve
+    APP->>APP: §5의 server-owned ID preallocation + WorkflowBinding materialization 재사용
+    APP->>DOM: StartRun guard/effect with resolved selected identities
+    APP->>DB: §5/04 §10.1 StartRun UoW commit<br>resolved ResourceRef도 같은 transaction에 materialize
+    DB-->>APP: COMMIT · applied=true·run_id·handoff_id·version
+    APP->>SUP: post-commit schedule_run_execution(handoff_id)<br>RunInputV1.selected_resource_refs
     SUP->>REQ: RESOURCE_SELECTED Input Projection
     REQ->>LLM: goal/ambiguity PromptRef
     LLM-->>REQ: RequestIntentV2

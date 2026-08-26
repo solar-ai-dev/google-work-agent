@@ -1,7 +1,7 @@
 # 01-B. 정책 정의서
 
 > **Authority:** 안전·금지·승인 정책. 시스템·Domain·Interface 구현 세부는 `00 Project Source Guide`의 전문 owner를 따른다.  
-> **상태:** Draft v2.14 · **기준일:** 2026-08-23
+> **상태:** Draft v2.15 · **기준일:** 2026-08-26
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -274,9 +274,8 @@ Tentative는 경고로 처리하고, Declined 또는 Free Event는 Busy에서 �
 - `state` 검증 필수
 - OOB 수동 코드 복사 방식 금지
 - Refresh Token은 OS Keyring 저장
-- Desktop OAuth Client가 `client_secret`을 발급하고 실제 Token Endpoint가 이를 요구하는 경우, 해당 값은 Confidential Secret 또는 사용자 Credential이 아니라 **Protocol Compatibility Client Credential**로 취급한다.
-- Client Secret은 PKCE·`state`·ephemeral loopback을 대체하거나 완화하는 인증 보안 경계로 사용하지 않는다.
-- Client Secret 원문은 MCP Credential Provider 경계를 벗어나 React/Vite·FastAPI API payload·SQLite·Log·Trace·Diagnostic·OS Keyring으로 전달·저장하지 않는다.
+- P0 Installed/Desktop OAuth는 non-secret `oauth_client_id`와 PKCE·`state`·ephemeral loopback만 사용하며 `client_secret`을 요구하지 않는다.
+- Provider/downloaded client configuration에 `client_secret` field가 있어도 current P0 loader는 무시하고 Token request, MCP child environment, React/Vite, FastAPI wire, SQLite, Log, Trace, Diagnostic, OS Keyring으로 전달·저장하지 않는다.
 
 ### POL-OAUTH-004 팀 테스트
 
@@ -454,7 +453,7 @@ P0의 persisted `retention_days`는 **기본 30일, 허용 범위 1..30일**이�
 | LangGraph Checkpoint | owning Run과 같은 보존 창. resume/recovery가 필요한 동안 선행 삭제 금지 | 예 — owning Run에 종속 | owning Run 삭제와 함께 |
 | Command Receipt | 독립 숫자 보존기간 없음. owning Aggregate의 replay/recovery 가능 기간보다 먼저 삭제 금지 | 직접 적용하지 않음 | owning Aggregate purge UoW에서 순서 보장 |
 | Audit Log | 90일 고정 | **아니오** | 제품 데이터 삭제 뒤에도 업무 원문 없이 최소 식별·상태만 유지 |
-| 사이드바 목록 페이지·Page Token | React Client Session Cache, 세션 종료 시 삭제 | 아니오 | 세션 폐기 |
+| Sidebar page/batch·opaque Local API continuation·Calendar Month cache | React Client Session Cache, 세션 종료 시 삭제 | 아니오 | 세션 폐기 |
 | Agent 검색 중간 후보 | 현재 Run 메모리, Run 종료 시 삭제 | 아니오 | Run 종료 시 폐기 |
 | Gmail 전체 원문 | 영구 저장하지 않음 | 아니오 | 해당 없음 |
 | Task·Event 상세 원문 | 기본적으로 영구 저장하지 않음 | 아니오 | 해당 없음 |
@@ -464,7 +463,7 @@ P0의 persisted `retention_days`는 **기본 30일, 허용 범위 1..30일**이�
 
 **Purge 보호 규칙:** nonterminal Run, active Confirmation/Reauth/Recovery, replay에 필요한 Command Receipt, 아직 보존 대상인 child를 가진 parent는 retention cutoff가 지났다는 이유만으로 먼저 삭제하지 않는다. Conversation은 retained Message/Run이 모두 정리되고 open Run이 0일 때만 삭제한다. Audit 90일은 `retention_days`로 줄이거나 늘리지 않는다. 정확한 timestamp/cascade/UoW realization은 04가 이 Policy를 그대로 소비한다.
 
-사이드바 목록 페이지와 Page Token은 React Client Session Cache에, Agent 검색 중간 후보는 Python Run 메모리에만 유지한다. Google Workspace 목록 전체를 SQLite에 동기화하거나 상시 복제하지 않는다.
+Sidebar page/batch·opaque Local API continuation·Calendar Month cache는 React Client Session Cache에, Agent 검색 중간 후보는 Python Run 메모리에만 유지한다. Google Workspace 목록 전체를 SQLite에 동기화하거나 상시 복제하지 않는다.
 
 ## 19. 로그·감사 정책
 
@@ -511,23 +510,18 @@ Google Workspace API는 사용자 PC의 로컬 MCP Server가 사용자 OAuth Cre
 
 ### POL-SRC-003 사이드바 목록
 
-- Gmail은 최근 수신 순으로 표시한다.
-- Tasks는 미완료와 예정일 임박 항목을 우선 표시한다.
-- Calendar는 현재 이후의 가까운 예정 일정부터 표시한다.
-- Sidebar의 페이지 단위와 Source별 기본 조회 범위는 안전 정책이 아니라 `01-A 기능 정의서`와 `07 Interface`가 소유한다.
-- 다음 페이지 이동 시 새 Page Token으로 Google API를 호출한다.
+Sidebar의 표시 순서·기본 범위·Month View·페이지 presentation은 `01-A Functional`과 `02 UI·UX`, wire/continuation semantics는 `07 Interface`가 소유한다. Policy는 사용자가 허용한 Source·기간·계정 범위를 벗어난 조회를 금지하고, Browser가 Provider raw continuation을 생성·해석·수정하지 못하게 한다.
 
 ### POL-SRC-004 페이지 메모리 캐시
 
-- 이미 조회한 목록 페이지와 Page Token은 React Client Session Cache에 유지한다.
-- 동일 Google 계정, Source, 검색·필터, 정렬, Page Token 조합이 같으면 메모리 결과를 재사용한다.
-- 페이지 이동만으로 이미 조회한 페이지를 다시 호출하지 않는다.
-- UI 세션 종료, Google 계정 변경, 해당 Source 수동 새로고침 시 관련 Cache를 폐기한다.
-- 사이드바 페이지 Cache는 SQLite에 영구 저장하지 않는다.
+- 이미 materialize한 Gmail·Tasks page/batch와 opaque Local API continuation, Calendar Month cache만 React Client Session Cache에서 재사용한다.
+- Cache identity/invalidation은 02/07의 current contract를 따르며 Provider raw continuation은 Connector/MCP Adapter 내부에 남는다.
+- UI 세션 종료, 계정·container·scope·검색·filter·sort 변경 또는 수동 새로고침 시 관련 Cache를 폐기한다.
+- Sidebar Cache는 승인·중복·충돌·검증의 기준점이 아니며 SQLite에 영구 저장하지 않는다.
 
 ### POL-SRC-005 직접 선택
 
-- 사용자가 선택한 Resource는 다시 검색해 찾지 않고 Resource ID로 최신 상세를 조회한다.
+- authenticated `selection_handle`에서 resolve된 current Resource identity는 다시 검색해 추측하지 않고 canonical Connector detail Read로 최신 상세를 조회한다.
 - 하나 또는 여러 Resource를 선택할 수 있다.
 - 추가 Source 검색은 사용자의 요청을 수행하는 데 필요한 경우에만 허용한다.
 - 선택한 Resource의 사람·날짜·제목을 사용자에게 다시 입력하도록 요구하지 않는다.
@@ -552,7 +546,7 @@ SQLite에는 실제 Run에서 사용된 Resource ID, Source, 원본 링크, 최�
 
 ### POL-SRC-009 수동 새로고침
 
-사용자가 Source의 새로고침을 실행하면 해당 Source의 목록 Cache와 Page Token을 폐기하고 첫 페이지를 최신 데이터로 다시 조회한다.
+사용자가 Source의 새로고침을 실행하면 해당 Source의 materialized Cache와 opaque Local API continuation generation을 폐기하고 current initial scope를 최신 데이터로 다시 조회한다.
 
 ## 23. Secure & Resilient 시스템 정책
 
@@ -560,7 +554,7 @@ SQLite에는 실제 Run에서 사용된 Resource ID, Source, 원본 링크, 최�
 
 #### POL-INP-001 중앙 입력 검증
 
-사용자 입력, Google API 응답, LLM Structured Output, Resource ID, Page Token, 날짜·시간, 이메일 주소는 중앙 Schema에서 타입·길이·개수·허용값을 검증한다. UI·Agent·MCP가 서로 다른 검증 규칙을 임의로 가지지 않는다.
+사용자 입력, Connector 응답, LLM Structured Output, Resource ID, opaque Local API continuation, 날짜·시간, 이메일 주소는 해당 typed boundary에서 타입·길이·개수·허용값을 검증한다. Provider raw continuation은 Connector/MCP Adapter 경계에서만 검증한다. UI·Agent·MCP가 서로 다른 검증 규칙을 임의로 가지지 않는다.
 
 #### POL-INP-002 허용 목록 우선
 
@@ -688,7 +682,7 @@ Conversation, Message, Run, Audit처럼 증가하는 목록은 안정된 정렬�
 
 #### POL-QRY-003 Google Pagination 분리
 
-Google Source 목록은 Google Page Token을 사용하고 React Client Session Cache에서 재사용한다. Google Page Token을 SQLite 로컬 Cursor와 혼용하지 않는다.
+Browser는 opaque Local API continuation만 보존·재전송한다. Provider raw continuation은 Connector/MCP Adapter 내부 구현 세부사항이며 SQLite local keyset cursor와 혼용하지 않는다.
 
 #### POL-QRY-004 Index 근거
 
@@ -799,9 +793,9 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 ### POL-OAUTH-008 Credential Provider 소유권
 
 - Google Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider가 소유한다.
-- Desktop OAuth Client가 실제 Token Endpoint 호환을 위해 `client_secret`을 요구하는 경우, 해당 compatibility credential의 로드와 authorization-code/refresh-token grant 사용도 MCP Credential Provider가 소유한다.
+- Authorization-code/refresh-token grant는 `oauth_client_id`와 PKCE/state/loopback contract만 소비하며 `client_secret` load/use branch를 두지 않는다.
 - FastAPI와 React에는 계정·Scope·연결 상태 Metadata만 반환한다.
-- Refresh Token 또는 Desktop OAuth Client Secret 원문을 FastAPI Process Memory나 React로 복사하는 구현은 금지한다.
+- Refresh Token 원문을 FastAPI Process Memory나 React로 복사하는 구현은 금지한다.
 
 ## 26. Clarification·조회 범위·일정 관계 정책
 

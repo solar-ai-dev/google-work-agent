@@ -4,8 +4,8 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.31
-- **기준일:** 2026-08-24
+- **상태:** Draft v2.32
+- **기준일:** 2026-08-26
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -2296,7 +2296,7 @@ metadata
 | `tasks_update_task` | tasklist_id, task_id, 허용 필드 + claim context | TaskMetadata | tasks | configured connector timeout | 전달 불명 시 금지 |
 | `tasks_delete_task` | tasklist_id, task_id + claim context | DeleteResult(resource_id) | tasks | configured connector timeout | 전달 불명 시 자동 retry 금지 |
 | `calendar_list_calendars` | page_token?, page_size | CalendarMetadata[] | calendarlist.readonly | configured connector timeout | Read 1회 |
-| `calendar_list_events` | calendar_id, time_min, time_max, query?, page_token? | EventMetadata[] + exact `total_count` when requested by Sidebar | `calendar.events` | configured connector timeout | Read 1회 |
+| `calendar_list_events` | calendar_id, time_min, time_max, query?, page_token? | EventMetadata[] + opaque continuation | `calendar.events` | configured connector timeout | Read 1회 |
 | `calendar_query_freebusy` | calendar_ids&lt;=20, time_min, time_max | BusyInterval[] | `calendar.events.freebusy` | configured connector timeout | Read 1회 |
 | `calendar_get_event` | calendar_id, event_id | EventDetail | `calendar.events` | configured connector timeout | Read 1회 |
 | `calendar_create_event` | calendar_id, title, start, end, description? + claim context | EventMetadata | `calendar.events` | configured connector timeout | 전달 불명 시 금지 |
@@ -2309,11 +2309,7 @@ metadata
 
 ### 27.1 Sidebar Query Projection 계약
 
-- Gmail·Tasks Sidebar visible `page_size`와 Agent Retrieval page size는 각각 configured 값이며 lifetime·consumer·continuation 계약은 별도다. Calendar Month View는 visible grid 범위를 materialize하므로 Sidebar numeric page size를 적용하지 않는다.
-- Tasks Sidebar 기본 범위는 **미완료 Task 전체**다. 완료 Task는 사용자가 완료 상태 필터를 명시한 경우에만 기본 범위에 포함한다.
-- Calendar Sidebar 기본 범위는 사용자 Timezone의 현재 시각을 `time_min`, 그 시각부터 **90일 후**를 `time_max`로 사용한다. 사용자 지정 기간이 있으면 지정 범위를 우선한다.
-- Sidebar 응답의 `total_count`는 현재 Source·검색·필터 범위 전체의 **정확한 수가 확정된 경우에만** 채운다. Gmail badge는 기본 `INBOX + PRIMARY` scope의 별도 exact Count Query 결과만 사용하고 Provider `resultSizeEstimate` 같은 추정치는 exact `total_count`로 승격하지 않는다. Tasks incomplete browse는 첫 Provider batch가 terminal일 때만 exact `total_count`를 확정하며 continuation이 남아 있으면 `total_count=null`로 두고 UI는 확인된 최소 수에 `+`를 붙인다. Tasks completed scope는 terminal materialization 후 exact completed count를 제공한다. Calendar tab은 numeric badge를 사용하지 않으며 startup/refresh에서 badge 목적의 Calendar Count Query를 호출하지 않는다.
-- exact count가 필요한 경우 Frontend가 Provider Page를 직접 순회하지 않는다. Count/materialization 책임은 Local API가 호출한 Application Query operation에 있고 Provider 접근은 `ConnectorReadPort → Core-side Connector Adapter → ConnectorRuntimeRegistry/MCPClientPort` 경계를 따른다.
+이 절의 Google Tool 표는 §3.2.1의 **단일 Sidebar Browse·Count 계약**을 소비하며 같은 목록을 다시 정의하지 않는다. Calendar Sidebar 호출은 selected `monthAnchor`에서 계산한 explicit `[gridStart, gridEnd)`를 사용하고, `time_min/time_max` 생략 시 90일 기본값은 Sidebar가 아닌 generic Upcoming Browse에만 적용한다. Count·continuation·cache lifetime은 §3.2.1을 그대로 따른다.
 
 ## 27. Verification·Recovery 계약
 

@@ -4,8 +4,8 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.12
-- **기준일:** 2026-08-23
+- **상태:** Draft v2.13
+- **기준일:** 2026-08-26
 - **대상:** P0 MVP
 - **배포:** Windows Installer 기반 로컬 애플리케이션
 
@@ -145,11 +145,10 @@ React
 - Refresh Token은 OS Keyring에 저장한다.
 - Access Token은 MCP Credential Provider Process Memory에서만 사용한다.
 - Token을 SQLite, Checkpoint, Trace, Audit, 환경 변수와 Process Argument에 저장하지 않는다.
-- Google Desktop OAuth Client의 `client_secret`은 **사용자 Credential 또는 Confidential Security Boundary가 아니라 Google OAuth Protocol Compatibility용 Client Credential**로 분류한다.
-- `client_secret`이 존재하더라도 PKCE S256, `state`, ephemeral loopback callback을 Authorization Security Boundary로 유지하며 어느 것도 완화하지 않는다.
-- DEV에서는 MCP Credential Provider만 repo-root `.env.local`의 `GOOGLE_OAUTH_CLIENT_ID`와 `GOOGLE_OAUTH_CLIENT_SECRET`을 읽을 수 있다. React/Vite와 FastAPI API Payload로 전달하지 않는다.
-- Desktop OAuth Client Secret은 Refresh Token·Access Token과 다른 수명주기와 저장 정책을 가지며 OS Keyring, SQLite, Trace, Audit, Diagnostic Payload에 저장하지 않는다.
-- Production은 `.env.local` 또는 사용자 환경 변수에서 Desktop OAuth Client identity를 읽지 않는다. non-secret `OAUTH_ENV/OAUTH_CLIENT_ID`는 10의 verified `release-manifest.json → SignedBuildConfigV1`이 유일한 build authority이며, Service가 그 값을 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`로 MCP child allowlist에 주입한다. MCP Credential Provider가 ambient environment를 configuration source로 재해석하거나 React/API payload에서 client identity를 받는 경로는 금지한다. Production `client_secret`이 provider protocol상 필요한 경우에도 이 signed build artifact에 저장하지 않고 10의 별도 secret provisioning boundary를 따른다.
+- P0 Google Installed/Desktop OAuth는 **non-secret `oauth_client_id` + PKCE S256 + `state` + ephemeral loopback callback**만 사용하며 `client_secret`을 protocol input, build artifact, runtime configuration 또는 credential storage로 요구하지 않는다.
+- Provider/downloaded client configuration에 `client_secret` field가 존재해도 P0 loader는 이를 무시하며 React/Vite, FastAPI wire, MCP child environment, OS Keyring, SQLite, Trace, Audit, Diagnostic Payload로 전달·저장하지 않는다.
+- Development의 local configuration도 `GOOGLE_OAUTH_CLIENT_ID`만 허용하고 `GOOGLE_OAUTH_CLIENT_SECRET` key/path는 current P0 contract에 존재하지 않는다.
+- Production은 `.env.local` 또는 ambient 사용자 환경 변수에서 Desktop OAuth Client identity를 읽지 않는다. non-secret `OAUTH_ENV/OAUTH_CLIENT_ID`는 10의 verified `release-manifest.json → SignedBuildConfigV1`이 유일한 build authority이며 Service가 그 값만 MCP child allowlist에 주입한다. 별도 `client_secret` provisioning boundary는 P0에 두지 않는다.
 - 연결 해제 시 Google Revoke를 시도하고 Local Keyring Credential을 삭제한다.
 
 
@@ -220,7 +219,7 @@ OAuth callback success is connector credential state and is intentionally Run-ne
 - 검증된 Executable 절대 경로와 Argument List를 사용한다.
 - Shell 실행과 Search Path 의존을 금지한다.
 - OAuth Token과 API Key를 환경 변수·Command Line으로 전달하지 않는다.
-- Google Desktop OAuth Client의 `client_secret`은 사용자 Token이 아니며 DEV protocol-compatibility credential로만 예외적으로 `.env.local`에서 MCP Credential Provider가 읽을 수 있다. 이 예외는 Access/Refresh Token, LLM API Key 또는 다른 Secret의 환경 변수 저장을 허용하지 않는다.
+- P0 MCP Credential Provider는 Google Desktop OAuth `client_secret`을 읽거나 전달하지 않는다. Development와 Production 모두 `oauth_client_id`만 configuration identity로 사용하며 Access/Refresh Token, LLM API Key 또는 다른 Secret의 환경 변수 저장은 계속 금지한다.
 - 허용 Tool만 등록한다. `gmail_send`, Task 완료 Update, `tasks_delete_task`, `calendar_delete_event`, 참석자 Update는 승인·Hash·Policy 검증이 연결된 경우에만 등록한다. Gmail 원문 삭제·반복 Event 전체 일괄 수정 Tool은 포함하지 않는다.
 - Write Tool은 Action·Approval·Attempt, `approval_arguments_hash`, 실제 Payload의 `execution_arguments_hash`와 검증된 `ClaimContextV2`를 요구한다.
 - Claim V2는 HMAC-SHA-256, 기본 TTL 30초·최대 60초, 1회용 Nonce를 사용한다. `version`과 `issued_at_ms`도 Signature 대상이며, Service 또는 MCP Process 재시작 후 이전 Claim은 무효다.

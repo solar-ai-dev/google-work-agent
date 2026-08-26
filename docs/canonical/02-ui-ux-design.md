@@ -1,7 +1,7 @@
 # 02. UI · UX 설계서
 
 > **Authority:** 사용자 화면·상호작용과 UX 상태 표현. Domain/Workflow/API semantics는 해당 전문 owner를 따른다.  
-> **상태:** Draft v2.15 · **기준일:** 2026-08-23 · **대상:** P0 MVP
+> **상태:** Draft v2.16 · **기준일:** 2026-08-26 · **대상:** P0 MVP
 
 ## 1. 문서 목적
 
@@ -231,7 +231,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - 검색·필터
 - 마지막 갱신 시간
 - 수동 새로고침
-- Gmail·Tasks는 configured `SIDEBAR_PAGE_SIZE` 단위의 Resource 목록. Calendar는 Month View visible grid를 사용하며 numeric pagination을 사용하지 않음
+- Gmail·Tasks는 configured `SIDEBAR_PAGE_SIZE` 단위의 Resource 목록을 사용한다. Calendar는 §30.1 Month View contract를 따른다.
 - Gmail·Tasks는 이전·다음 목록 페이지 이동, Calendar는 이전·다음 월 이동
 - 단일 선택과 다중 선택
 - 원본 서비스에서 열기 또는 찾기 — 실제 동작은 Provider capability에 따르며 direct Thread permalink를 보장하지 않는다. Gmail P0는 `Gmail에서 찾기`이며 원본 Thread를 직접 열지 않고 Gmail 검색 결과 화면으로 이동한다.
@@ -270,7 +270,7 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 - Gmail·Tasks Sidebar의 visible page size는 configured `SIDEBAR_PAGE_SIZE`이며 Agent Retrieval의 configured `RETRIEVAL_PAGE_SIZE`와는 별도 계약이다. Local API continuation은 opaque 값으로 취급하고 Frontend가 Provider token이나 page number로 해석하지 않는다.
 - Gmail은 아직 방문하지 않은 intermediate page에서 metadata hydration을 생략해 다음 continuation만 확보하고 visible target page만 metadata를 hydrate한다. token-known과 metadata-loaded 상태를 React Client Session Cache에서 구분하며 이미 받은 page 재방문은 API를 호출하지 않는다.
 - Tasks는 Provider가 허용하는 metadata batch를 받고 UI에서 configured `SIDEBAR_PAGE_SIZE`로 slice한다. continuation이 있으면 현재 materialized batch에서 계산되는 page 범위만 표시하고 알려진 마지막 page에서만 다음 batch를 가져온다. terminal batch 뒤 누적 수로 exact total과 마지막 page를 확정한다.
-- Calendar Sidebar는 선택 월의 Sunday-start 실제 visible grid `[gridStart, gridEnd)`를 terminal까지 materialize하는 Month View이며 UI pagination을 사용하지 않는다. 날짜 클릭과 Month cache 검색은 client-side presentation이고 Provider를 다시 조회하지 않는다.
+- Calendar Sidebar의 exact visible-grid materialization·date interaction·pagination prohibition은 §30.1이 단일 UI authority다.
 - Sidebar 최초 진입에서는 Gmail exact count와 Tasks incomplete 첫 batch를 독립적으로 준비한다. 최초 preload UI는 둘이 success/failure로 모두 settle된 뒤 성공한 count만 함께 노출하며 실패·미확정 Source를 `0`으로 표시하지 않는다. Calendar count는 startup preload하지 않고 Calendar tab에는 numeric badge를 표시하지 않는다.
 - Gmail 검색 변경은 Browse cache만 바꾸고 기본 `INBOX + PRIMARY` badge count를 유지한다. 수동 Refresh·계정·container·scope·검색/filter/sort 변경은 관련 Session Cache를 무효화한다.
 
@@ -278,13 +278,13 @@ Gmail·Tasks·Calendar를 확인하는 동시에 현재 항목에서 바로 Agen
 
 - Gmail: 최근 수신 Thread부터 표시한다.
 - Tasks: configured/default Task List의 미완료 Task를 Google Tasks Provider 반환 순으로 표시한다. 정렬 옵션은 `기본 순서`와 `날짜순`만 제공하며, 날짜순을 명시한 경우에만 전체 결과를 materialize해 `scheduled_date` 오름차순·날짜 없는 Task 후순위로 정렬한다.
-- Calendar: Sidebar는 Month View를 사용한다. 일반 Upcoming Browse가 필요한 다른 화면/기능은 사용자 Timezone 기준 현재부터 향후 90일 기본 범위를 유지한다.
+- Calendar의 Sidebar Month View와 별도 generic Upcoming Browse 범위는 §30.1이 단일 UI authority다.
 - 과거 Calendar 조회에서는 사용자가 지정한 기간을 우선한다.
 
 ### 9.6 React Client Session Cache
 
-- Cache Key는 Google 계정, Source, 검색·필터, 정렬, Page Token 조합으로 구성한다.
-- 목록 Metadata와 Page Token은 React Client Session Cache에만 유지한다.
+- Cache identity는 Google 계정, Source/container, 검색·필터·정렬·scope와 opaque continuation/batch generation으로 구성한다.
+- 목록 Metadata, opaque Local API continuation과 Calendar Month cache는 React Client Session Cache에만 유지한다. Provider raw continuation을 저장·해석하지 않는다.
 - UI 세션 종료, Google 계정 변경, 해당 Source 수동 새로고침 시 관련 Cache를 삭제한다.
 - 사이드바 목록과 사용되지 않은 검색 결과를 SQLite에 영구 저장하지 않는다.
 - 수동 새로고침을 누르면 해당 Source Cache를 비우고 첫 페이지를 최신 데이터로 다시 조회한다.
@@ -692,7 +692,7 @@ P0 Settings Drawer는 **로그 삭제나 전체 앱 초기화 Command를 제공�
 | 상태 | 소유 위치 | 규칙 |
 | --- | --- | --- |
 | 패널·Drawer·현재 탭·입력 중 Text | React Client State | 화면 상태이며 실행 사실이 아님 |
-| Sidebar 목록·Page Token | React Client Session Cache | 세션 종료·계정 변경·새로고침 정책에 따라 폐기 |
+| Sidebar page/batch·opaque Local API continuation·Calendar Month cache | React Client Session Cache | 세션 종료·계정/container/scope 변경·새로고침 정책에 따라 폐기 |
 | Conversation·Message·Run·Action | SQLite Domain Store | 대화와 업무 사실의 기준점 |
 | Graph State·Interrupt | LangGraph Checkpointer | Workflow 재개 위치의 기준점 |
 | Google Refresh Token | OS Keyring | Frontend·SQLite·Event·일반 Local Agent session memory에 원문 노출 금지 |
@@ -841,7 +841,7 @@ Local Storage에는 Secret, Approval/Claim 실행 권위 값(`approval_id`, `cla
 
 ```
 Header: Google Work Agent | Google 연결 상태 | 현재 계정 | 설정
-Left:   Google 업무 자료 (메일·Tasks·Calendar, 검색/필터, Resource List, 숫자 페이지)
+Left:   Google 업무 자료 (메일·Tasks 목록/페이지 · Calendar Month View · 검색/필터)
 Center: 선택 Resource Detail Viewer → Agent Conversation → Inline Status/Approval → Chat Input
 Right:  Conversation (새 대화·검색·목록) → Recent Execution
 ```
@@ -855,7 +855,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 
 - 탭은 메일, Tasks, Calendar이며 검색/필터와 수동 새로고침을 제공한다. 목록은 compact row, selected/hover/focus/disabled 상태와 키보드 탐색을 제공한다.
 - Gmail·Tasks의 visible UI page size는 configured `SIDEBAR_PAGE_SIZE`를 사용한다. Local API의 opaque continuation을 React Session Memory에서 이미 materialize한 page/batch와 연결하며, Provider raw token을 직접 해석하지 않는다. Calendar는 Month View visible grid를 사용하고 숫자 pagination을 사용하지 않는다. Agent Retrieval은 configured `RETRIEVAL_PAGE_SIZE`를 사용하며 값이 우연히 같더라도 독립 계약이다.
-- Tasks 기본 목록은 **미완료 Task 전체**를 대상으로 하고, Calendar 기본 목록은 사용자 Timezone 기준 **현재부터 향후 90일** Event를 대상으로 한다.
+- Tasks 기본 목록은 **미완료 Task 전체**를 대상으로 한다. Calendar Sidebar는 §30.1의 selected-month Month View를 사용한다.
 - Count/Badge는 Source별 계약을 따른다. Gmail은 기본 `INBOX + PRIMARY` scope의 exact count만 badge로 표시하고 추정값을 exact로 표시하지 않는다. Tasks는 incomplete browse batch의 terminal/continuation 상태에서 확정 가능한 범위만 숫자로 표시하며 terminal materialization 뒤 exact total을 확정한다. Calendar tab에는 numeric badge를 표시하지 않고 startup·Calendar refresh에서 별도 Calendar Count Read를 호출하지 않는다. Frontend가 count를 만들기 위해 전체 페이지를 임의 순회하거나 hard code하는 것을 금지한다.
 - 행을 선택하면 Center 상단 Viewer에 제공 가능한 Resource 상세를 표시한다. Gmail sender/recipient/subject/received time/body/attachment metadata, Task title/task_status/scheduled_date/list/notes, Calendar title/start/end/attendees/location/description/calendar는 제공된 필드만 표시한다. 누락값의 추정·생성은 금지한다.
 - 선택 Resource는 Center 상단의 독립 Card/Box로 표시해 아래 Conversation Timeline과의 시각적 경계를 명확히 한다.
