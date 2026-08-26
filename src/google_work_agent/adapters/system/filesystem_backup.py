@@ -26,7 +26,7 @@ class BackupIdGenerator(Protocol):
     def next_id(self) -> str: ...
 
 
-class BackupService:
+class FilesystemBackupAdapter:
     def __init__(
         self,
         *,
@@ -163,8 +163,6 @@ class RestorePlanner:
             current_db_backup_required=True,
             downgrade_blocked=downgrade_blocked,
         )
-
-
 def _manifest_from_path(path: Path) -> BackupManifestRecord:
     payload = json.loads(path.read_text(encoding="utf-8"))
     return BackupManifestRecord(
@@ -194,7 +192,3 @@ def _pragma_single_value(connection: sqlite3.Connection, statement: str) -> str:
     if row is None:
         raise ValueError(f"pragma returned no result: {statement}")
     return str(row[0])
-
-
-# BackupService retains the existing SQLite backup/retention semantics.
-FilesystemBackupAdapter = BackupService

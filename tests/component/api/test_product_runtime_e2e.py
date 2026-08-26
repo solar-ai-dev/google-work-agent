@@ -27,7 +27,6 @@ from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGate
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -42,7 +41,11 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.runtime import BuildProfile
-from google_work_agent.adapters.system.json_settings import FileSettingsStore, SettingsService
+from google_work_agent.adapters.system.json_settings import (
+    FileSettingsStore,
+    JsonSettingsAdapter,
+)
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
@@ -388,7 +391,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         ),
         now_ms=clock.now_ms,
     )
-    settings_service = SettingsService(
+    settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
         approved_model_ids=frozenset(),

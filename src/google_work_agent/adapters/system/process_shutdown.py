@@ -30,7 +30,7 @@ class ComponentShutdownPort(Protocol):
     def invalidate_all(self) -> None: ...
 
 
-class GracefulShutdownCoordinator:
+class ProcessShutdownAdapter:
     def __init__(
         self,
         *,
@@ -83,6 +83,3 @@ class GracefulShutdownCoordinator:
             duration_ms=self._clock.now_ms() - started,
             safe_error_codes=tuple(errors),
         )
-
-
-ProcessShutdownAdapter = GracefulShutdownCoordinator

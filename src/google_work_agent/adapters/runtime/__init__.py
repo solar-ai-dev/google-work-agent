@@ -1,12 +1,5 @@
 """Runtime infrastructure adapters for packaging and local execution."""
 
-from google_work_agent.adapters.system.filesystem_backup import (
-    BackupCreateResult,
-    BackupManifestRecord,
-    BackupService,
-    RestorePlan,
-    RestorePlanner,
-)
 from google_work_agent.adapters.runtime.build_manifest import (
     ArtifactRecord,
     BuildArtifactType,
@@ -37,16 +30,20 @@ from google_work_agent.adapters.runtime.safe_mode import (
     SafeModeController,
     SafeModeState,
 )
+from google_work_agent.adapters.system.filesystem_backup import (
+    BackupCreateResult,
+    BackupManifestRecord,
+    RestorePlan,
+    RestorePlanner,
+)
 from google_work_agent.adapters.system.json_settings import (
     AppSettings,
     FileSettingsStore,
     SettingsPatch,
-    SettingsService,
     WorkHours,
 )
 from google_work_agent.adapters.system.process_shutdown import (
     ComponentShutdownPort,
-    GracefulShutdownCoordinator,
     ShutdownPhase,
     ShutdownReport,
 )
@@ -56,7 +53,6 @@ __all__ = [
     "ArtifactRecord",
     "BackupCreateResult",
     "BackupManifestRecord",
-    "BackupService",
     "BrowserLaunchRequest",
     "BrowserLauncher",
     "BuildArtifactType",
@@ -68,7 +64,6 @@ __all__ = [
     "DynamicLoopbackPortAllocator",
     "FileSettingsStore",
     "FrontendSite",
-    "GracefulShutdownCoordinator",
     "InstanceAcquireResult",
     "InstanceRegistry",
     "LauncherCore",
@@ -86,7 +81,6 @@ __all__ = [
     "ServiceProcessHandle",
     "ServiceProcessLauncher",
     "SettingsPatch",
-    "SettingsService",
     "ShutdownPhase",
     "ShutdownReport",
     "SignedBuildManifest",

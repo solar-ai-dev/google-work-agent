@@ -9,6 +9,7 @@ import os
 import secrets
 import sqlite3
 import sys
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,6 @@ from fastapi import FastAPI
 from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
     McpConnectorWriteAdapter,
 )
-from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
@@ -33,16 +33,17 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
-    ApiStructuredLLMProvider,
-    DefaultHardwareProbe,
     DeterministicLLMRuntimeRouter,
     GeminiHTTPClient,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
     LoopbackOllamaProbe,
     OllamaHTTPClient,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.mcp import (
     build_manifest_payload,
@@ -54,14 +55,16 @@ from google_work_agent.adapters.runtime import (
     BuildProfile,
     FileSettingsStore,
     SafeModeController,
-    SettingsService,
 )
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
-from google_work_agent.adapters.system.system_clock import SystemClockAdapter
+from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
+from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import (
     build_production_runtime,
@@ -929,14 +932,14 @@ def _build_llm_runtime(
     settings_path: Path,
     query_service: QueryService,
     prompt_manifest_path: Path,
-) -> tuple[LLMRuntimeService, SettingsService]:
-    settings_service = SettingsService(
+) -> tuple[LLMRuntimeService, JsonSettingsAdapter]:
+    settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
         approved_model_ids=frozenset({DEFAULT_DEV_OLLAMA_MODEL_ID}),
         has_active_runs=lambda: bool(query_service.list_open_runs()),
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="gemini",
         environment="DEVELOPMENT",
         keyring_store=OsKeyringSecretStoreAdapter(),
@@ -944,11 +947,11 @@ def _build_llm_runtime(
     )
     ollama_transport = OllamaHTTPClient()
     gemini_transport = GeminiHTTPClient()
-    status_service = LLMRuntimeStatusService(
+    status_service = LlmRuntimeStatusRouter(
         build_profile=BuildProfile.LOCAL_CAPABLE.value,
         credential_service=credential_service,
         api_connection_service=APIProviderConnectionService(transport=gemini_transport),
-        hardware_probe=DefaultHardwareProbe(),
+        hardware_probe=WindowsHardwareProbeAdapter(),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
         approved_models={
             DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
@@ -964,7 +967,7 @@ def _build_llm_runtime(
         settings_service=settings_service.get,
         status_service=status_service,
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="gemini",
             transport=gemini_transport,
             model=DEFAULT_GEMINI_MODEL_ID,

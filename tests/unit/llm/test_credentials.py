@@ -2,14 +2,14 @@ from tests.support.fakes import FakeKeyring
 
 from google_work_agent.adapters.llm import (
     CredentialStorageMode,
-    LLMCredentialService,
     SessionMemorySecretStore,
 )
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.ports import LLMCredentialState
 
 
 def test_keyring_storage_round_trip() -> None:
-    service = LLMCredentialService(
+    service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -24,7 +24,7 @@ def test_keyring_storage_round_trip() -> None:
 
 
 def test_session_memory_storage_does_not_require_keyring() -> None:
-    service = LLMCredentialService(
+    service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=None,
@@ -45,7 +45,7 @@ def test_delete_removes_current_provider_key_only() -> None:
         account="other",
         secret="other-key",
     )
-    service = LLMCredentialService(
+    service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=keyring,

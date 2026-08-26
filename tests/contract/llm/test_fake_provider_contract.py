@@ -3,7 +3,9 @@ from pathlib import Path
 
 from tests.support.fakes import FakeAPIProviderTransport
 
-from google_work_agent.adapters.llm import ApiStructuredLLMProvider
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
+)
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -49,7 +51,7 @@ def test_fake_api_provider_transport_obeys_structured_contract(tmp_path: Path) -
             latency_ms=30,
         )
     )
-    provider = ApiStructuredLLMProvider(
+    provider = StructuredInferenceRuntimeRouter(
         provider_name="generic-api",
         transport=transport,
         model="fake-api-model",

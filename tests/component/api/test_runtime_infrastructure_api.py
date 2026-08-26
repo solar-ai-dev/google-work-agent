@@ -14,16 +14,16 @@ from google_work_agent.adapters.readiness.composite import (
     StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.runtime import (
-    BackupService,
     BuildProfile,
     FileSettingsStore,
     FrontendSite,
-    GracefulShutdownCoordinator,
     RestorePlanner,
     SafeModeController,
-    SettingsService,
 )
 from google_work_agent.adapters.runtime.build_manifest import hash_file
+from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
+from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
+from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.settings import (
@@ -45,9 +45,9 @@ from google_work_agent.ports import (
     ProjectionEvent,
     ReadinessReport,
     ReadinessState,
-    SseEventBufferPort,
     RunEventSubscription,
     RuntimeSummary,
+    SseEventBufferPort,
     WorkflowCancelRequest,
     WorkflowInvocationResult,
     WorkflowOutcome,
@@ -261,13 +261,13 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
 
     clock = FakeClockPort(100)
     settings_store = FileSettingsStore(tmp_path / "settings" / "app-settings.json")
-    settings_service = SettingsService(
+    settings_service = JsonSettingsAdapter(
         store=settings_store,
         deployment_profile=BuildProfile.API_ONLY,
         approved_model_ids=frozenset(),
         has_active_runs=lambda: False,
     )
-    backup_service = BackupService(
+    backup_service = FilesystemBackupAdapter(
         database_path=database_path,
         backups_dir=tmp_path / "backups",
         clock=clock,
@@ -286,7 +286,7 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
     safe_mode = SafeModeController()
     start_run_stub = _StartRunStub()
     shutdown_port = _ShutdownPort()
-    shutdown = GracefulShutdownCoordinator(
+    shutdown = ProcessShutdownAdapter(
         command_gate=shutdown_port,
         coordinator=shutdown_port,
         workflow_runtime=shutdown_port,

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 from importlib import import_module
+from pathlib import Path
 
 import pytest
 
@@ -161,9 +163,132 @@ def test_canonical_non_persistence_port_adapter_pair_is_importable(
 ) -> None:
     assert getattr(import_module(f"google_work_agent.{port_module}"), port_symbol)
     assert getattr(import_module(f"google_work_agent.{adapter_module}"), adapter_symbol)
+    adapter_source = _source(f"{adapter_module.replace('.', '/')}.py")
+    adapter_tree = ast.parse(adapter_source)
+    class_names = {
+        node.name for node in ast.walk(adapter_tree) if isinstance(node, ast.ClassDef)
+    }
+    adapter_aliases = {
+        alias.asname
+        for node in ast.walk(adapter_tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert adapter_symbol in class_names
+    assert adapter_symbol not in adapter_aliases
 
 
 def test_non_persistence_p0_bindings_are_closed_and_unique() -> None:
     assert len(NON_PERSISTENCE_P0_BINDINGS) == 24
     assert len({port for port, _adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
     assert len({adapter for _port, adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
+
+
+@pytest.mark.parametrize(
+    ("canonical_path", "canonical_symbol", "legacy_symbol"),
+    [
+        (
+            "adapters/connectors/runtime/mcp_oauth_credential.py",
+            "McpOAuthCredentialAdapter",
+            "MCPGoogleOAuthCredentialProvider",
+        ),
+        (
+            "adapters/llm/runtime/structured_inference_router.py",
+            "StructuredInferenceRuntimeRouter",
+            None,
+        ),
+        (
+            "adapters/llm/runtime/llm_credential_router.py",
+            "LlmCredentialRouter",
+            "LLMCredentialService",
+        ),
+        (
+            "adapters/llm/runtime/llm_runtime_status_router.py",
+            "LlmRuntimeStatusRouter",
+            "LLMRuntimeStatusService",
+        ),
+        (
+            "adapters/system/windows_hardware_probe.py",
+            "WindowsHardwareProbeAdapter",
+            "DefaultHardwareProbe",
+        ),
+    ],
+)
+def test_migrated_concrete_adapter_is_its_own_canonical_implementation(
+    canonical_path: str, canonical_symbol: str, legacy_symbol: str | None
+) -> None:
+    source = _source(canonical_path)
+    tree = ast.parse(source)
+    class_names = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    assert canonical_symbol in class_names
+    assert f" as {canonical_symbol}" not in source
+    if legacy_symbol is not None:
+        assert legacy_symbol not in source
+
+
+@pytest.mark.parametrize(
+    "legacy_symbol",
+    [
+        "MCPGoogleOAuthCredentialProvider",
+        "LLMCredentialService",
+        "LLMRuntimeStatusService",
+        "DefaultHardwareProbe",
+    ],
+)
+def test_legacy_concrete_authority_is_absent_from_production_source(legacy_symbol: str) -> None:
+    production_sources = (Path("src") / "google_work_agent").rglob("*.py")
+    assert all(legacy_symbol not in path.read_text(encoding="utf-8") for path in production_sources)
+
+
+@pytest.mark.parametrize(
+    ("legacy_module", "legacy_symbol"),
+    [
+        ("google_work_agent.adapters.mcp.oauth", "MCPGoogleOAuthCredentialProvider"),
+        ("google_work_agent.adapters.llm", "ApiStructuredLLMProvider"),
+        ("google_work_agent.adapters.llm.credentials", "LLMCredentialService"),
+        ("google_work_agent.adapters.llm.status", "LLMRuntimeStatusService"),
+        ("google_work_agent.adapters.llm.probes", "DefaultHardwareProbe"),
+        ("google_work_agent.adapters.runtime", "SettingsService"),
+        ("google_work_agent.adapters.runtime", "BackupService"),
+        ("google_work_agent.adapters.runtime", "GracefulShutdownCoordinator"),
+    ],
+)
+def test_legacy_concrete_import_and_construction_are_absent_from_production(
+    legacy_module: str, legacy_symbol: str
+) -> None:
+    for source_path in _production_source_paths():
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        imported_symbols = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == legacy_module
+            for alias in node.names
+        }
+        constructed_symbols = {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert legacy_symbol not in imported_symbols, source_path
+        assert legacy_symbol not in constructed_symbols, source_path
+
+
+def test_production_callers_import_the_canonical_concrete_owners() -> None:
+    launcher = _source("launcher/dev.py")
+    connector = _source("adapters/connectors/google_workspace.py")
+    assert "adapters.connectors.runtime.mcp_oauth_credential import (" in connector
+    assert "McpOAuthCredentialAdapter," in connector
+    assert "adapters.llm.runtime.structured_inference_router import" in launcher
+    assert "adapters.llm.runtime.llm_credential_router import LlmCredentialRouter" in launcher
+    assert (
+        "adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter" in launcher
+    )
+    assert "adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter" in launcher
+
+
+def _source(relative_path: str) -> str:
+    return (Path("src") / "google_work_agent" / relative_path).read_text(encoding="utf-8")
+
+
+def _production_source_paths() -> tuple[Path, ...]:
+    return tuple((Path("src") / "google_work_agent").rglob("*.py"))

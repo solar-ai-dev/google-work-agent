@@ -16,17 +16,18 @@ from tests.support.fakes import (
 
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
-    ApiStructuredLLMProvider,
     CredentialStorageMode,
     DeterministicLLMRuntimeRouter,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
 )
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
+)
 from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.llm import LLMRuntimeService
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import (
     ActualRuntime,
     HardwareCapabilityStatus,
@@ -37,6 +38,7 @@ from google_work_agent.ports import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 PROMPT_REF = PromptReference(
     prompt_bundle_version="1",
@@ -98,12 +100,12 @@ class RecordingEventRecorder:
 def _status_service(
     *,
     build_profile: str,
-    credential_service: LLMCredentialService,
+    credential_service: LlmCredentialRouter,
     api_transport: FakeAPIProviderTransport,
     ollama_transport: FakeOllamaTransport,
     hardware_probe: FakeHardwareProbe | None = None,
-) -> LLMRuntimeStatusService:
-    return LLMRuntimeStatusService(
+) -> LlmRuntimeStatusRouter:
+    return LlmRuntimeStatusRouter(
         build_profile=build_profile,
         credential_service=credential_service,
         api_connection_service=APIProviderConnectionService(api_transport),
@@ -137,7 +139,7 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
         )
     )
     ollama_transport = FakeOllamaTransport()
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -158,7 +160,7 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
             ollama_transport=ollama_transport,
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -209,7 +211,7 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
             latency_ms=20,
         )
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -230,7 +232,7 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
             ollama_transport=FakeOllamaTransport(),
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -275,7 +277,7 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
     ollama_transport.queued_payloads.append(
         LLMInvocationError(LLMErrorCode.GPU_OOM, "gpu oom", fallback_reason="GPU_OOM")
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -299,7 +301,7 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
             ollama_transport=ollama_transport,
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -336,7 +338,7 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
     ollama_transport.queued_payloads.append(
         LLMInvocationError(LLMErrorCode.PROVIDER_TIMEOUT, "local timeout")
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -359,7 +361,7 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
             ollama_transport=ollama_transport,
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -399,7 +401,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     """
     api_transport = FakeAPIProviderTransport()
     ollama_transport = FakeOllamaTransport()
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -428,7 +430,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
             hardware_probe=not_validated_probe,
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -469,7 +471,7 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
             latency_ms=10,
         )
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -491,7 +493,7 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
             ollama_transport=FakeOllamaTransport(),
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -542,7 +544,7 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             latency_ms=10,
         )
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -564,7 +566,7 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             ollama_transport=FakeOllamaTransport(),
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
@@ -615,7 +617,7 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             latency_ms=10,
         )
     )
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -636,7 +638,7 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             ollama_transport=FakeOllamaTransport(),
         ),
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",

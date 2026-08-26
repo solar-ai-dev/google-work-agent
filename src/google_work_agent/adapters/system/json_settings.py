@@ -70,7 +70,7 @@ class FileSettingsStore:
         os.replace(temp_path, self._path)
 
 
-class SettingsService:
+class JsonSettingsAdapter:
     def __init__(
         self,
         *,
@@ -253,4 +253,3 @@ def _as_int(value: object) -> int:
 
 # The existing service is the only JSON-backed settings implementation; this
 # canonical name is its production boundary binding.
-JsonSettingsAdapter = SettingsService

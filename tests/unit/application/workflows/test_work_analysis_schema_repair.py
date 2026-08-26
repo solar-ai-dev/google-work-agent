@@ -26,13 +26,15 @@ from tests.support.prompt_manifests import (
 
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
-    ApiStructuredLLMProvider,
     CredentialStorageMode,
     DeterministicLLMRuntimeRouter,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.llm import LLMRuntimeService, PromptRepairSchemaRepairer
@@ -43,9 +45,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.work_analysis import (
     WorkAnalysisAgent,
+    WorkAnalysisValidationError,
     validate_work_analysis_result_v1,
 )
-from google_work_agent.application.orchestration.work_analysis import WorkAnalysisValidationError
 from google_work_agent.ports import (
     LLMErrorCode,
     LLMInvocationError,
@@ -220,7 +222,7 @@ def _real_llm_runtime(
     *,
     manifest_path: Path,
 ) -> LLMRuntimeService:
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=FakeKeyring(),
@@ -234,7 +236,7 @@ def _real_llm_runtime(
     )
     from tests.support.fakes import FakeOllamaTransport, approved_model
 
-    status_service = LLMRuntimeStatusService(
+    status_service = LlmRuntimeStatusRouter(
         build_profile="API_ONLY",
         credential_service=credential_service,
         api_connection_service=APIProviderConnectionService(api_transport),
@@ -251,7 +253,7 @@ def _real_llm_runtime(
         settings_service=lambda: settings,
         status_service=status_service,
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",

@@ -8,6 +8,13 @@ from google_work_agent.adapters.connectors.connector_mcp_runtime import (
     ConnectorMcpRuntime,
     RestartableMCPClientPort,
 )
+from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
+    McpOAuthCredentialAdapter,
+)
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    MCPArtifactConfig,
+    MCPConnectorDescriptor,
+)
 from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
@@ -27,16 +34,11 @@ from google_work_agent.adapters.mcp.manifest_guard import (
     ManifestEnforcedMCPClientPort,
     RestartableManifestDelegate,
 )
-from google_work_agent.adapters.mcp.oauth import MCPGoogleOAuthCredentialProvider
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
-    MCPArtifactConfig,
-    MCPConnectorDescriptor,
-)
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
 from google_work_agent.domain.tool_registry import SignedToolRegistry
-from google_work_agent.ports import MCPRuntimeMetadata, MCPClientPort
+from google_work_agent.ports import MCPClientPort, MCPRuntimeMetadata
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
 _VERIFIED_MCP_MODULE_NAME = "google_work_agent.adapters.connectors.google.mcp.verified_server"
@@ -101,7 +103,7 @@ class GoogleWorkspaceConnector:
             transport_factory=_guarded_transport_factory(base_factory),
         )
         self._gateway: MCPGoogleWorkspaceGateway | None = None
-        self._oauth_provider: MCPGoogleOAuthCredentialProvider | None = None
+        self._oauth_provider: McpOAuthCredentialAdapter | None = None
         self._gmail_ui_gateway: MCPGmailUiReadGateway | None = None
         self._gmail_attachment_gateway: MCPGmailAttachmentGateway | None = None
 
@@ -124,7 +126,7 @@ class GoogleWorkspaceConnector:
         return self._gateway
 
     @property
-    def oauth_provider(self) -> MCPGoogleOAuthCredentialProvider:
+    def oauth_provider(self) -> McpOAuthCredentialAdapter:
         if self._oauth_provider is None:
             raise RuntimeError("Google Workspace connector is not started")
         return self._oauth_provider
@@ -145,7 +147,7 @@ class GoogleWorkspaceConnector:
         transport = self._runtime.start()
         if self._gateway is None:
             self._gateway = DeliveryAwareMCPGoogleWorkspaceGateway(transport=transport)
-            self._oauth_provider = MCPGoogleOAuthCredentialProvider(transport=transport)
+            self._oauth_provider = McpOAuthCredentialAdapter(transport=transport)
             self._gmail_ui_gateway = MCPGmailUiReadGateway(transport=transport)
             self._gmail_attachment_gateway = MCPGmailAttachmentGateway(transport=transport)
         return transport

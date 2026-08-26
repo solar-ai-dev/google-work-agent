@@ -1,11 +1,11 @@
-"""Unit tests for FileSettingsStore/SettingsService approved_model_id round-trip.
+"""Unit tests for FileSettingsStore/JsonSettingsAdapter approved_model_id round-trip.
 
 Regression coverage: `FileSettingsStore.load()` used to call
 `validate_settings(...)` without an `approved_model_ids` allowlist, so it
 always defaulted to None and *any* previously-saved non-null
 `approved_model_id` made every subsequent settings read raise
 `ValueError("approved_model_id is not allowed")` -- even one that
-`SettingsService.patch()` had itself just validated and written.
+`JsonSettingsAdapter.patch()` had itself just validated and written.
 """
 
 from __future__ import annotations
@@ -17,13 +17,13 @@ import pytest
 from google_work_agent.adapters.runtime.build_manifest import BuildProfile
 from google_work_agent.adapters.system.json_settings import (
     FileSettingsStore,
+    JsonSettingsAdapter,
     SettingsPatch,
-    SettingsService,
 )
 
 
-def _service(tmp_path: Path, *, approved_model_ids: frozenset[str]) -> SettingsService:
-    return SettingsService(
+def _service(tmp_path: Path, *, approved_model_ids: frozenset[str]) -> JsonSettingsAdapter:
+    return JsonSettingsAdapter(
         store=FileSettingsStore(tmp_path / "app-settings.json"),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
         approved_model_ids=approved_model_ids,

@@ -12,9 +12,11 @@ from tests.support.fakes import DeterministicUUID, FakeClockPort
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
+from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
+    McpOAuthCredentialAdapter,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
-    MCPGoogleOAuthCredentialProvider,
     MCPRuntimeStatusProvider,
     StdioMCPClientAdapter,
     build_manifest_payload,
@@ -86,7 +88,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             )
         )
     )
-    provider = MCPGoogleOAuthCredentialProvider(transport=transport)
+    provider = McpOAuthCredentialAdapter(transport=transport)
     runtime_provider = MCPRuntimeStatusProvider(
         google_provider=provider,
         transport=transport,

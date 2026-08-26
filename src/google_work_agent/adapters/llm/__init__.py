@@ -9,14 +9,6 @@ from google_work_agent.adapters.llm.api_provider import (
     APIProviderConnectionService,
     APIProviderTransport,
 )
-from google_work_agent.adapters.llm.api_provider import (
-    ApiStructuredLLMProvider as _ApiStructuredLLMProvider,
-)
-from google_work_agent.adapters.llm.credentials import (
-    CredentialStorageMode,
-    LLMCredentialService,
-    SessionMemorySecretStore,
-)
 from google_work_agent.adapters.llm.gemini import (
     DEFAULT_GEMINI_BASE_URL,
     DEFAULT_GEMINI_MODEL_ID,
@@ -29,52 +21,21 @@ from google_work_agent.adapters.llm.ollama import (
 from google_work_agent.adapters.llm.ollama import (
     OllamaStructuredLLMProvider as _OllamaStructuredLLMProvider,
 )
-from google_work_agent.adapters.llm.probes import (
-    DefaultHardwareProbe,
-    LoopbackOllamaProbe,
-)
+from google_work_agent.adapters.llm.probes import LoopbackOllamaProbe
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
 from google_work_agent.adapters.llm.router import DeterministicLLMRuntimeRouter
+from google_work_agent.adapters.llm.runtime.llm_credential_router import SessionMemorySecretStore
 from google_work_agent.adapters.llm.schema import validate_output_schema
-from google_work_agent.adapters.llm.status import LLMRuntimeStatusService
 from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
 from google_work_agent.application.orchestration.prompt_registry import default_prompt_manifest_path
-from google_work_agent.ports import ActualRuntime, PromptReference
+from google_work_agent.ports import ActualRuntime, CredentialStorageMode, PromptReference
 
 
 def _no_instruction_text(prompt_ref: PromptReference) -> str:
     del prompt_ref
     return ""
-
-
-class ApiStructuredLLMProvider(PromptInputGuardedProvider):
-    """Production API provider with mandatory Product Prompt input validation."""
-
-    __slots__ = ()
-
-    def __init__(
-        self,
-        *,
-        provider_name: str,
-        transport: APIProviderTransport,
-        model: str,
-        runtime: ActualRuntime = ActualRuntime.API_LLM,
-        resolve_instruction_text: Callable[[PromptReference], str] = _no_instruction_text,
-        prompt_manifest_path: Path | None = None,
-    ) -> None:
-        manifest_path = prompt_manifest_path or default_prompt_manifest_path()
-        super().__init__(
-            delegate=_ApiStructuredLLMProvider(
-                provider_name=provider_name,
-                transport=transport,
-                model=model,
-                runtime=runtime,
-                resolve_instruction_text=resolve_instruction_text,
-            ),
-            validator=PromptRuntimeInputContractValidator(manifest_path=manifest_path),
-        )
 
 
 class OllamaStructuredLLMProvider(PromptInputGuardedProvider):
@@ -110,15 +71,11 @@ class OllamaStructuredLLMProvider(PromptInputGuardedProvider):
 __all__ = [
     "APIProviderConnectionService",
     "APIProviderTransport",
-    "ApiStructuredLLMProvider",
     "CredentialStorageMode",
     "DEFAULT_GEMINI_BASE_URL",
     "DEFAULT_GEMINI_MODEL_ID",
-    "DefaultHardwareProbe",
     "DeterministicLLMRuntimeRouter",
     "GeminiHTTPClient",
-    "LLMCredentialService",
-    "LLMRuntimeStatusService",
     "LoopbackOllamaProbe",
     "OllamaHTTPClient",
     "OllamaStructuredLLMProvider",

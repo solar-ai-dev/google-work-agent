@@ -10,9 +10,11 @@ import pytest
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
+from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
+    McpOAuthCredentialAdapter,
+)
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
-    MCPGoogleOAuthCredentialProvider,
     StdioMCPClientAdapter,
     build_manifest_payload,
     calculate_file_sha256,
@@ -44,7 +46,7 @@ def test_subprocess_transport_handshakes_without_fixture_google_tools(tmp_path: 
             extra_environment={"GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id"},
         )
     )
-    provider = MCPGoogleOAuthCredentialProvider(transport=transport)
+    provider = McpOAuthCredentialAdapter(transport=transport)
     try:
         assert provider.get_connection_status().connected is False
         runtime = transport.runtime_metadata()
@@ -102,7 +104,7 @@ def test_subprocess_transport_restarts_once_after_child_process_exit(tmp_path: P
     process.wait(timeout=5)
 
     try:
-        provider = MCPGoogleOAuthCredentialProvider(transport=transport)
+        provider = McpOAuthCredentialAdapter(transport=transport)
         assert provider.get_connection_status().connected is False
         metadata = transport.runtime_metadata()
         assert metadata.process_status == "READY"

@@ -17,13 +17,15 @@ from tests.support.fakes import (
 
 from google_work_agent.adapters.llm import (
     APIProviderConnectionService,
-    ApiStructuredLLMProvider,
     CredentialStorageMode,
     DeterministicLLMRuntimeRouter,
-    LLMCredentialService,
-    LLMRuntimeStatusService,
     OllamaStructuredLLMProvider,
     SessionMemorySecretStore,
+)
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.structured_inference_router import (
+    StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -33,8 +35,8 @@ from google_work_agent.adapters.runtime import (
     BuildProfile,
     FileSettingsStore,
     SettingsPatch,
-    SettingsService,
 )
+from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.llm import (
@@ -54,10 +56,10 @@ from google_work_agent.ports import (
     ProviderResponsePayload,
     ReadinessReport,
     ReadinessState,
-    SseEventBufferPort,
     RuntimePolicy,
     RuntimeStatusProvider,
     RuntimeSummary,
+    SseEventBufferPort,
     WorkflowRuntime,
 )
 
@@ -120,8 +122,8 @@ class _WorkflowRuntimeStub:
 
 @dataclass
 class _RuntimeStatusProvider(RuntimeStatusProvider):
-    settings_service: SettingsService
-    llm_status_service: LLMRuntimeStatusService
+    settings_service: JsonSettingsAdapter
+    llm_status_service: LlmRuntimeStatusRouter
 
     def get_summary(self) -> RuntimeSummary:
         settings = self.settings_service.get()
@@ -161,13 +163,13 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         )
     )
     ollama_transport = FakeOllamaTransport()
-    credential_service = LLMCredentialService(
+    credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
         keyring_store=keyring,
         session_store=SessionMemorySecretStore(),
     )
-    settings_service = SettingsService(
+    settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
         deployment_profile=BuildProfile.LOCAL_CAPABLE,
         approved_model_ids=frozenset({approved_model().model_id}),
@@ -181,7 +183,7 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
             ollama_endpoint="http://127.0.0.1:11434",
         )
     )
-    status_service = LLMRuntimeStatusService(
+    status_service = LlmRuntimeStatusRouter(
         build_profile="LOCAL_CAPABLE",
         credential_service=credential_service,
         api_connection_service=APIProviderConnectionService(api_transport),
@@ -205,7 +207,7 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         settings_service=settings_service.get,
         status_service=status_service,
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,
             model="api-model",
