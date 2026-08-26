@@ -16,7 +16,8 @@ def test_background_executor_has_one_production_binding_in_composition_root() ->
 def test_production_composition_symbol_is_exact() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     assert "def build_production_runtime(" in source
-    assert "CheckpointEffectiveBindingResolver(checkpoint)" in source
+    assert "CheckpointEffectiveBindingResolver(" in source
+    assert "checkpoint, resume_target_registry" in source
 
 
 def test_sqlite_checkpoint_adapter_is_the_only_production_sqlite_saver_owner() -> None:

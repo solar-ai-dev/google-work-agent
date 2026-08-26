@@ -676,7 +676,19 @@ def build_container(
                 if binding.execution_kind == "START":
                     result = workflow_runtime.start(_start_request(admission))
                 else:
-                    if handoff.control_kind == "CONFIRMATION_RESPONSE":
+                    # CONSUMED_CONTINUATION_RECOVERY is a crash-recovery
+                    # re-submission of an *already-consumed* handoff -- its
+                    # in-memory `handoff` object (fetched before consumption
+                    # in BackgroundRunExecutorAdapter._consume) still carries
+                    # the original one-shot control_kind/control, but that
+                    # payload was already applied once and must never be
+                    # replayed. Recovery resumes solely from the checkpoint-
+                    # derived binding.resume_target (CheckpointEffectiveBindingResolver),
+                    # never by re-reading the handoff's original control.
+                    if (
+                        admission.submission_kind == "NORMAL_HANDOFF"
+                        and handoff.control_kind == "CONFIRMATION_RESPONSE"
+                    ):
                         control = handoff.control
                         if not isinstance(control, ConfirmationResumeControlV1):
                             raise ValueError("confirmation handoff control is invalid")
@@ -724,6 +736,7 @@ def build_container(
         checkpoint=checkpoint,
         materialize_admission_checkpoint=_materialize_admission_checkpoint,
         invoke_semantic_owner=_invoke_semantic_owner,
+        resume_target_registry=resume_target_registry,
     )
 
     async def _start_workflow_handoff_reconciliation() -> None:

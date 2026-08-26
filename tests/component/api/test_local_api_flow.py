@@ -6,6 +6,13 @@ from tests.support.fakes import DeterministicUUID, FakeClock, FakeWorkflowRuntim
 from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
@@ -119,6 +126,10 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         checkpoint=checkpoint,
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
+        resume_target_registry=ResumeTargetRegistry(
+            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+            graph_version=RESUME_CONTRACT_VERSION,
+        ),
     )
     bind_host = "127.0.0.1"
     bind_port = 8765

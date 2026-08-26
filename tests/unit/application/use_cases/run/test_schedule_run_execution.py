@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
@@ -117,7 +121,13 @@ def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
             assert (run_id, thread_id) == ("r-1", "t-1")
             return checkpoint
 
-    resolver = CheckpointEffectiveBindingResolver(_CheckpointPort())  # type: ignore[arg-type]
+    resume_target_registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version="v1"), graph_version="v1"
+    )
+    resolver = CheckpointEffectiveBindingResolver(
+        _CheckpointPort(),  # type: ignore[arg-type]
+        resume_target_registry,
+    )
     binding = resolver(_consumed_handoff(), "CONSUMED_CONTINUATION_RECOVERY")
 
     assert binding is not None

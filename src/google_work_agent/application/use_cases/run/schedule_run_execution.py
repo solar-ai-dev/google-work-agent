@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.run.resume_confirmation import (
+    ResumeTargetValidator,
+)
 from google_work_agent.domain.run.model import TERMINAL_RUN_STATUSES
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -32,42 +35,6 @@ _RECOVERY_PREEMPTING_STATUSES = {
     "FAILED",
     "BLOCKED",
 }
-_MAIN_RESUME_STAGES = {
-    "RETRIEVAL_ENTRY",
-    "PLANNING_ENTRY",
-    "REVIEW_ENTRY",
-    "PREFLIGHT",
-    "READ_EXECUTION",
-    "VERIFICATION",
-    "RECOVERY",
-    "CANCEL_RESOLUTION",
-}
-_COMPILED_OWNER_BY_PROFILE = {
-    "SINGLE_BASELINE": {
-        "REQUEST_UNDERSTANDING": "UNIFIED_AGENT",
-        "TOOL_ROUTE": "UNIFIED_AGENT",
-        "RETRIEVAL": "UNIFIED_AGENT",
-        "WORK_ANALYSIS": "UNIFIED_AGENT",
-        "PLANNING": "UNIFIED_AGENT",
-        "REVIEW": "UNIFIED_AGENT",
-    },
-    "THREE_STAGE": {
-        "REQUEST_UNDERSTANDING": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "TOOL_ROUTE": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "RETRIEVAL": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "WORK_ANALYSIS": "STAGE_ANALYSIS_PLANNING",
-        "PLANNING": "STAGE_ANALYSIS_PLANNING",
-        "REVIEW": "STAGE_REVIEW",
-    },
-    "SIX_ROLE_BASELINE": {
-        "REQUEST_UNDERSTANDING": "SIX_REQUEST_UNDERSTANDING",
-        "TOOL_ROUTE": "SIX_TOOL_ROUTE",
-        "RETRIEVAL": "SIX_RETRIEVAL",
-        "WORK_ANALYSIS": "SIX_WORK_ANALYSIS",
-        "PLANNING": "SIX_PLANNING",
-        "REVIEW": "SIX_REVIEW",
-    },
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,10 +44,22 @@ class ScheduleRunExecutionCommand:
 
 
 class CheckpointEffectiveBindingResolver:
-    """Resolve recovery only from the latest typed active-lineage checkpoint."""
+    """Resolve recovery only from the latest typed active-lineage checkpoint.
 
-    def __init__(self, checkpoint_port: CheckpointPort) -> None:
+    Target legality (main resume stage / profile-to-compiled-subgraph /
+    node registration) is delegated entirely to ResumeTargetRegistry via the
+    shared ResumeTargetValidator Protocol -- this resolver owns only
+    checkpoint/handoff lineage matching, never a second copy of registry
+    authority.
+    """
+
+    def __init__(
+        self,
+        checkpoint_port: CheckpointPort,
+        resume_target_registry: ResumeTargetValidator,
+    ) -> None:
         self._checkpoint_port = checkpoint_port
+        self._resume_target_registry = resume_target_registry
 
     def __call__(
         self, handoff: WorkflowHandoffV1, submission_kind: str
@@ -105,7 +84,9 @@ class CheckpointEffectiveBindingResolver:
             handoff.execution.run_id,
             handoff.execution.langgraph_thread_id,
         )
-        if checkpoint is None or not _checkpoint_authorizes_recovery(checkpoint, handoff):
+        if checkpoint is None or not _checkpoint_authorizes_recovery(
+            checkpoint, handoff, self._resume_target_registry
+        ):
             return None
         return WorkflowExecutionBindingV1(
             schema_version=1,
@@ -251,7 +232,11 @@ def _binding_matches_handoff(
     )
 
 
-def _checkpoint_authorizes_recovery(checkpoint: object, handoff: WorkflowHandoffV1) -> bool:
+def _checkpoint_authorizes_recovery(
+    checkpoint: object,
+    handoff: WorkflowHandoffV1,
+    resume_target_registry: ResumeTargetValidator,
+) -> bool:
     from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 
     if not isinstance(checkpoint, GraphCheckpointEnvelopeV1):
@@ -274,12 +259,11 @@ def _checkpoint_authorizes_recovery(checkpoint: object, handoff: WorkflowHandoff
         or target.graph_version != checkpoint.graph_version
     ):
         return False
-    if target.kind == "MAIN_CONTROL":
-        return target.stage_id in _MAIN_RESUME_STAGES
-    expected_subgraph = _COMPILED_OWNER_BY_PROFILE[checkpoint.graph_profile].get(
-        target.semantic_owner_id
-    )
-    return bool(target.node_id) and target.compiled_subgraph_id == expected_subgraph
+    try:
+        resume_target_registry.validate(target)
+    except ValueError:
+        return False
+    return True
 
 
 def _rejected(reason_code: str) -> RunExecutionAcceptedV1:

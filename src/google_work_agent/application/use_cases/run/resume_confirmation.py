@@ -26,13 +26,23 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ConfirmationResumeControlV1,
+    RegisteredResumeTargetRefV2,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
 
 
 class ResumeTargetValidator(Protocol):
-    def validate(self, ref: AgentNodeResumeTargetV2) -> None: ...
+    """Single canonical resume-target legality authority (ResumeTargetRegistry).
+
+    Declared against the full RegisteredResumeTargetRefV2 union (AGENT_NODE |
+    MAIN_CONTROL) so every caller needing target-legality validation --
+    Confirmation resume (AgentNodeResumeTargetV2 only) and crash-recovery
+    checkpoint binding (either kind) -- shares this one Protocol instead of
+    each declaring its own narrower duplicate.
+    """
+
+    def validate(self, ref: RegisteredResumeTargetRefV2) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,6 +15,9 @@ from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop impo
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
     RedriveWorkflowHandoffsHandler,
 )
+from google_work_agent.application.use_cases.run.resume_confirmation import (
+    ResumeTargetValidator,
+)
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
@@ -47,6 +50,8 @@ def build_production_runtime(
     invoke_semantic_owner: Callable[
         [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None
     ],
+    resume_target_registry: ResumeTargetValidator,
+    reconcile_blocked_binding: Callable[[str], None] | None = None,
     reconciliation_interval_seconds: float = 1.0,
     reconciliation_batch_limit: int = 32,
 ) -> ProductionRuntime:
@@ -69,11 +74,14 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         workflow_execution=workflow_execution,
         id_factory=id_factory,
-        effective_binding_resolver=CheckpointEffectiveBindingResolver(checkpoint),
+        effective_binding_resolver=CheckpointEffectiveBindingResolver(
+            checkpoint, resume_target_registry
+        ),
     )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=unit_of_work_factory,
         schedule_run_execution=schedule,
+        reconcile_blocked_binding=reconcile_blocked_binding,
     )
     loop = WorkflowHandoffReconciliationLoop(
         redrive=redrive,
