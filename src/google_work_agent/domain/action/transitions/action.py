@@ -1,6 +1,9 @@
 """Action transition table and compatibility transition policy."""
 
 from google_work_agent.domain.action.model import ActionCommand
+from google_work_agent.domain.action.transitions.prepare_write_retry import (
+    transition_prepare_write_retry,
+)
 from google_work_agent.domain.enums import ActionStatus, EffectType, ResultCode, VerificationStatus
 from google_work_agent.domain.exceptions import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
@@ -63,7 +66,6 @@ WRITE_ACTION_TRANSITIONS: dict[tuple[ActionStatus, ActionCommand], ActionStatus]
     (ActionStatus.EXECUTING, ActionCommand.MARK_UNKNOWN_RESULT): ActionStatus.UNKNOWN_RESULT,
     (ActionStatus.UNKNOWN_RESULT, ActionCommand.RECOVER_EXISTING_RESULT): ActionStatus.EXECUTED,
     (ActionStatus.UNKNOWN_RESULT, ActionCommand.RESOLVE_AS_FAILED): ActionStatus.FAILED,
-    (ActionStatus.FAILED, ActionCommand.PREPARE_WRITE_RETRY): ActionStatus.MODIFIED,
     (ActionStatus.PROPOSED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
     (ActionStatus.MODIFIED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
     (ActionStatus.APPROVED, ActionCommand.CANCEL_PENDING_ACTION): ActionStatus.CANCELLED,
@@ -84,6 +86,7 @@ def next_allowed_action_commands(
         and (
             (current_status, command) in transition_table
             or _is_store_verification_candidate(effect_type, current_status, command)
+            or _is_prepare_write_retry_candidate(effect_type, current_status, command)
         )
     ]
     return tuple(dict.fromkeys(commands))
@@ -110,6 +113,13 @@ def transition_action(
             effect_type,
             ResultCode.VERSION_CONFLICT,
             "expected_version does not match current_version",
+        )
+    if command is ActionCommand.PREPARE_WRITE_RETRY:
+        return transition_prepare_write_retry(
+            current_status,
+            current_version,
+            expected_version,
+            effect_type=effect_type,
         )
     invariant_error = _validate_action_invariants(
         current_status,
@@ -164,6 +174,16 @@ def _is_store_verification_candidate(
         effect_type in WRITE_EFFECTS
         and current_status is ActionStatus.EXECUTED
         and command is ActionCommand.STORE_VERIFICATION
+    )
+
+
+def _is_prepare_write_retry_candidate(
+    effect_type: EffectType, current_status: ActionStatus, command: ActionCommand
+) -> bool:
+    return (
+        effect_type in WRITE_EFFECTS
+        and current_status is ActionStatus.FAILED
+        and command is ActionCommand.PREPARE_WRITE_RETRY
     )
 
 

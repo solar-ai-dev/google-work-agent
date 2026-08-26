@@ -2,6 +2,9 @@
 
 from google_work_agent.domain.enums import RecoveryResolution, ResultCode, RunStatus
 from google_work_agent.domain.exceptions import InvariantViolationError
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
 from google_work_agent.domain.results import CommandResult
 from google_work_agent.domain.run.model import RunCommand, RunTransitionRejected
 from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
@@ -26,6 +29,18 @@ RECOVERY_RESOLUTION_TARGETS: dict[RecoveryResolution, RunStatus] = {
 _RECOVERY_TARGET_RESOLUTIONS = {
     target: resolution for resolution, target in RECOVERY_RESOLUTION_TARGETS.items()
 }
+
+_RECOVERY_RESUME_STATUSES = frozenset(
+    {
+        RunStatus.ANALYZING,
+        RunStatus.RETRIEVING,
+        RunStatus.WAITING_CONFIRMATION,
+        RunStatus.PLANNING,
+        RunStatus.WAITING_APPROVAL,
+        RunStatus.EXECUTING,
+        RunStatus.VERIFYING,
+    }
+)
 
 
 RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
@@ -106,6 +121,7 @@ def transition_run(
     plan_requires_approval: bool | None = None,
     recovery_resolution: RecoveryResolution | None = None,
     recovery_next_status: RunStatus | None = None,
+    validated_recovery_target: bool = False,
 ) -> CommandResult[RunStatus, RunCommand]:
     """Apply a Run transition; recovery targets are canonical variants.
 
@@ -135,10 +151,15 @@ def transition_run(
         recovery_resolution = _normalize_recovery_resolution(
             recovery_resolution=recovery_resolution,
             recovery_next_status=recovery_next_status,
+            validated_recovery_target=validated_recovery_target,
         )
 
     next_status = _resolve_run_next_status(
-        current_status, command, plan_requires_approval, recovery_resolution
+        current_status,
+        command,
+        plan_requires_approval,
+        recovery_resolution,
+        recovery_next_status,
     )
     if next_status is None:
         return _run_failure(
@@ -154,7 +175,8 @@ def _normalize_recovery_resolution(
     *,
     recovery_resolution: RecoveryResolution | None,
     recovery_next_status: RunStatus | None,
-) -> RecoveryResolution:
+    validated_recovery_target: bool,
+) -> RecoveryResolution | None:
     if recovery_resolution is not None and recovery_next_status is not None:
         expected_target = RECOVERY_RESOLUTION_TARGETS.get(recovery_resolution)
         if expected_target is not recovery_next_status:
@@ -165,7 +187,9 @@ def _normalize_recovery_resolution(
     if recovery_next_status is None:
         raise InvariantViolationError("recovery_resolution is required")
     normalized = _RECOVERY_TARGET_RESOLUTIONS.get(recovery_next_status)
-    if normalized is None:
+    if normalized is None and (
+        not validated_recovery_target or recovery_next_status not in _RECOVERY_RESUME_STATUSES
+    ):
         raise InvariantViolationError("recovery target is not a registered recovery variant")
     return normalized
 
@@ -175,6 +199,7 @@ def _resolve_run_next_status(
     command: RunCommand,
     plan_requires_approval: bool | None,
     recovery_resolution: RecoveryResolution | None,
+    recovery_next_status: RunStatus | None,
 ) -> RunStatus | None:
     if (
         current_status is RunStatus.PLANNING
@@ -187,6 +212,8 @@ def _resolve_run_next_status(
     if _is_require_recovery_candidate(current_status, command):
         return RunStatus.RECOVERY_REQUIRED
     if _is_resolve_recovery_candidate(current_status, command):
+        if recovery_next_status is not None:
+            return recovery_next_status
         return (
             None
             if recovery_resolution is None
@@ -208,11 +235,15 @@ def _is_cancel_candidate(current_status: RunStatus, command: RunCommand) -> bool
 
 
 def _is_require_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:
-    return (
-        command is RunCommand.REQUIRE_RECOVERY
-        and current_status not in RUN_TERMINAL_STATUSES
-        and current_status is not RunStatus.RECOVERY_REQUIRED
-    )
+    if command is not RunCommand.REQUIRE_RECOVERY:
+        return False
+    if current_status is RunStatus.RECOVERY_REQUIRED:
+        return False
+    try:
+        transition_require_recovery(current_status)
+    except RunTransitionRejected:
+        return False
+    return True
 
 
 def _is_resolve_recovery_candidate(current_status: RunStatus, command: RunCommand) -> bool:

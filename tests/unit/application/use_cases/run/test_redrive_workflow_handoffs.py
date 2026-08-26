@@ -22,7 +22,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.enums import RecoveryResolution
+from google_work_agent.domain.enums import RecoveryResolution, RunStatus
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -238,10 +238,12 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
             command_id="cmd-resolve-1",
             request_hash="b" * 64,
             resolution=RecoveryResolution.RECHECK,
+            recheck_input_changed=True,
+            validated_resume_status=RunStatus.ANALYZING,
         )
     )
     assert resolved.applied
-    assert _run_status(database_path, "r-1") == "VERIFYING"
+    assert _run_status(database_path, "r-1") == "ANALYZING"
 
     resumed_pass = _redrive(factory, schedule_run_execution=schedule)(
         RedriveWorkflowHandoffsCommand(limit=10)
@@ -296,9 +298,7 @@ def _redrive(
     )
 
 
-def _seed_pre_recovery(
-    require_recovery: RequireRecoveryHandler, handoff: WorkflowHandoffV1
-) -> str:
+def _seed_pre_recovery(require_recovery: RequireRecoveryHandler, handoff: WorkflowHandoffV1) -> str:
     resume_target = handoff.execution.resume_target
     fingerprint = calculate_canonical_json_hash(
         {
@@ -333,9 +333,7 @@ def _stage_blocked_binding(
     factory: _UnitOfWorkFactory, database_path: Path, handoff_id: str, command_id: str
 ) -> WorkflowHandoffV1:
     with factory() as unit_of_work:
-        handoff = unit_of_work.workflow_handoffs.stage_pending(
-            _stage(handoff_id, command_id)
-        )
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage(handoff_id, command_id))
         unit_of_work.commit()
     with connect_sqlite(database_path) as connection:
         connection.execute(

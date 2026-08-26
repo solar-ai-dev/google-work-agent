@@ -194,7 +194,7 @@ class BeginPlanningHandler:
             plan
             if plan is not None
             and plan.run_id == command.run_id
-            and plan.status in {PlanStatus.WAITING_APPROVAL, PlanStatus.ACTIVE}
+            and plan.status is PlanStatus.WAITING_APPROVAL
             else None
         )
 

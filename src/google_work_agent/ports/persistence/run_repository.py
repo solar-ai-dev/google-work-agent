@@ -95,6 +95,7 @@ class RunRepository(Protocol):
         expected_version: int,
         recovery_next_status: RunStatus,
         finished_at_ms: int | None = None,
+        validated_recovery_target: bool = False,
     ) -> CommandResult[RunStatus, RunCommand]: ...
     def set_recovery_required(
         self, run_id: str, *, finished_at_ms: int | None = None

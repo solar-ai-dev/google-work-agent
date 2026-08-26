@@ -26,7 +26,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import TERMINAL_RUN_STATUSES
+from google_work_agent.domain.run.model import is_preempting_run_status, is_terminal_run_status
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import WorkflowHandoffV1
 
@@ -83,9 +83,7 @@ class RedriveWorkflowHandoffsHandler:
                 continue
             seen_runs.add(handoff.execution.run_id)
             run_handoffs = [
-                item
-                for item in redriveable
-                if item.execution.run_id == handoff.execution.run_id
+                item for item in redriveable if item.execution.run_id == handoff.execution.run_id
             ]
             consumed = next(
                 (
@@ -106,9 +104,7 @@ class RedriveWorkflowHandoffsHandler:
                 if result.accepted or result.reason_code == "ALREADY_RUNNING":
                     continue
             with self._unit_of_work_factory() as unit_of_work:
-                head = unit_of_work.workflow_handoffs.get_dispatch_head(
-                    handoff.execution.run_id
-                )
+                head = unit_of_work.workflow_handoffs.get_dispatch_head(handoff.execution.run_id)
             if not self._may_dispatch(head):
                 continue
             assert head is not None
@@ -136,13 +132,7 @@ class RedriveWorkflowHandoffsHandler:
             return False
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get_by_id(head.execution.run_id)
-        if run is None or run.status in TERMINAL_RUN_STATUSES:
-            return False
-        return run.status not in {
-            RunStatus.REAUTH_REQUIRED,
-            RunStatus.RECOVERY_REQUIRED,
-            RunStatus.CANCEL_REQUESTED,
-        }
+        return run is not None and not is_preempting_run_status(run.status)
 
     def _reconcile_blocked_binding(self, handoff_id: str) -> None:
         """Canonical 7-step BLOCKED_BINDING reconciliation sequence: reload ->
@@ -161,7 +151,7 @@ class RedriveWorkflowHandoffsHandler:
         if run is None:
             return
 
-        if run.status in TERMINAL_RUN_STATUSES:
+        if is_terminal_run_status(run.status):
             self._supersede_if_still_blocked(handoff_id, _RUN_NOT_EXECUTABLE)
             return
 
@@ -208,9 +198,7 @@ class RedriveWorkflowHandoffsHandler:
             run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
             if run is None or run.status is not RunStatus.RECOVERY_REQUIRED:
                 return
-            context = unit_of_work.recovery_contexts.load_current_context(
-                handoff.execution.run_id
-            )
+            context = unit_of_work.recovery_contexts.load_current_context(handoff.execution.run_id)
             if (
                 context is None
                 or context["reason"] != "CHECKPOINT_MISMATCH"

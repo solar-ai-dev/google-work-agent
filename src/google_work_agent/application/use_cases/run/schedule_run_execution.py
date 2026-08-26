@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeTargetValidator,
 )
-from google_work_agent.domain.run.model import TERMINAL_RUN_STATUSES
+from google_work_agent.domain.run.model import (
+    is_preempting_run_status,
+    is_terminal_run_status,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -25,16 +28,6 @@ type EffectiveBindingResolver = Callable[
     [WorkflowHandoffV1, str], WorkflowExecutionBindingV1 | None
 ]
 type ScheduleRunExecutionResult = RunExecutionAcceptedV1
-
-_RECOVERY_PREEMPTING_STATUSES = {
-    "REAUTH_REQUIRED",
-    "RECOVERY_REQUIRED",
-    "CANCEL_REQUESTED",
-    "COMPLETED",
-    "CANCELLED",
-    "FAILED",
-    "BLOCKED",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +120,7 @@ class ScheduleRunExecutionHandler:
             if handoff is None:
                 return _rejected("NOT_COMMITTED")
             run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
-            if run is None or run.status in TERMINAL_RUN_STATUSES:
+            if run is None or is_terminal_run_status(run.status):
                 if handoff.execution_admission is None and handoff.status not in {
                     "CONSUMED",
                     "SUPERSEDED",
@@ -139,7 +132,7 @@ class ScheduleRunExecutionHandler:
                 return _rejected("NOT_COMMITTED")
             if (
                 command.submission_kind == "CONSUMED_CONTINUATION_RECOVERY"
-                and run.status.value in _RECOVERY_PREEMPTING_STATUSES
+                and is_preempting_run_status(run.status)
             ):
                 return _rejected("BINDING_MISMATCH")
             existing = handoff.execution_admission

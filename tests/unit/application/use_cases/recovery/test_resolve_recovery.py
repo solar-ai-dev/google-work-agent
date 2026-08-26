@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
@@ -11,7 +9,6 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.enums import RecoveryResolution
-from google_work_agent.domain.run.model import RunTransitionRejected
 
 
 def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path) -> None:
@@ -49,10 +46,11 @@ def test_cancel_without_durable_intent_fails_closed_via_domain_guard(tmp_path: P
         now_ms=lambda: 10,
     )
 
-    with pytest.raises(RunTransitionRejected):
-        handler(_command("cmd-1", RecoveryResolution.CANCEL))
+    result = handler(_command("cmd-1", RecoveryResolution.CANCEL))
 
-    assert _count(database_path, "command_receipts") == 0
+    assert result.applied is False
+    assert result.result_code == "RESOLUTION_NOT_ALLOWED"
+    assert _count(database_path, "command_receipts") == 1
 
 
 def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_guard(
@@ -64,10 +62,11 @@ def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_gu
         now_ms=lambda: 10,
     )
 
-    with pytest.raises(RunTransitionRejected):
-        handler(_command("cmd-1", RecoveryResolution.RECHECK))
+    result = handler(_command("cmd-1", RecoveryResolution.RECHECK))
 
-    assert _count(database_path, "command_receipts") == 0
+    assert result.applied is False
+    assert result.result_code == "STATE_CONFLICT"
+    assert _count(database_path, "command_receipts") == 1
 
 
 def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommand:
@@ -77,6 +76,7 @@ def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecovery
         command_id=command_id,
         request_hash="a" * 64,
         resolution=resolution,
+        recheck_input_changed=True,
     )
 
 
@@ -103,6 +103,15 @@ def _database(tmp_path: Path, *, run_status: str) -> Path:
                       'AUTO', NULL, '{}', 0, 1, NULL);
             """,
             (run_status,),
+        )
+        connection.execute(
+            """
+            INSERT INTO recovery_contexts (
+                run_id, reason, scope, action_id, pre_recovery_status,
+                recovery_fingerprint, version, created_at_ms, updated_at_ms
+            ) VALUES ('r-1', 'VERIFICATION_MISMATCH', 'RUN', NULL, 'WAITING_APPROVAL',
+                      'test-fingerprint', 0, 1, 1);
+            """
         )
         connection.commit()
     return path

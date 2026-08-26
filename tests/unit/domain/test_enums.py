@@ -98,6 +98,8 @@ def test_other_enum_values_match_contract() -> None:
         "DUPLICATE_COMMAND",
         "RECOVERY_REQUIRED",
         "SCHEMA_VIOLATION",
+        "NO_PROGRESS",
+        "RESOLUTION_NOT_ALLOWED",
     )
 
 

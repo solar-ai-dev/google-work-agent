@@ -38,6 +38,22 @@ TERMINAL_RUN_STATUSES = frozenset(
     }
 )
 
+PREEMPTING_RUN_STATUSES = TERMINAL_RUN_STATUSES | frozenset(
+    {
+        RunStatus.CANCEL_REQUESTED,
+        RunStatus.REAUTH_REQUIRED,
+        RunStatus.RECOVERY_REQUIRED,
+    }
+)
+
+
+def is_terminal_run_status(status: RunStatus) -> bool:
+    return status in TERMINAL_RUN_STATUSES
+
+
+def is_preempting_run_status(status: RunStatus) -> bool:
+    return status in PREEMPTING_RUN_STATUSES
+
 
 class RunTransitionRejected(ValueError):
     """Raised when a requested Run lifecycle transition violates the domain contract."""

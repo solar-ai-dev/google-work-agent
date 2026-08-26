@@ -157,6 +157,7 @@ class SQLiteRunRepository:
         finished_at_ms: int | None = None,
         plan_requires_approval: bool | None = None,
         recovery_next_status: RunStatus | None = None,
+        validated_recovery_target: bool = False,
     ) -> CommandResult[RunStatus, RunCommand]:
         cur = self.get_by_id(run_id)
         if cur is None:
@@ -166,6 +167,8 @@ class SQLiteRunRepository:
             kwargs["plan_requires_approval"] = plan_requires_approval
         if recovery_next_status is not None:
             kwargs["recovery_next_status"] = recovery_next_status
+        if validated_recovery_target:
+            kwargs["validated_recovery_target"] = True
         result = transition_run(
             cur.status,
             command=command,
@@ -336,6 +339,7 @@ class SQLiteRunRepository:
         expected_version: int,
         recovery_next_status: RunStatus,
         finished_at_ms: int | None = None,
+        validated_recovery_target: bool = False,
     ):
         return self._transition(
             run_id,
@@ -343,6 +347,7 @@ class SQLiteRunRepository:
             command=RunCommand.RESOLVE_RECOVERY,
             finished_at_ms=finished_at_ms,
             recovery_next_status=recovery_next_status,
+            validated_recovery_target=validated_recovery_target,
         )
 
     def complete_read_only_run(
