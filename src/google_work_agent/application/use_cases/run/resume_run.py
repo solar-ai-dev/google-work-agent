@@ -7,8 +7,15 @@ from json import dumps
 from typing import cast
 
 from google_work_agent.application.run_command_receipts import finish_json_receipt, resolve_existing_receipt
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    build_recovery_context,
+    build_recovery_required_audit_event,
+)
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
-from google_work_agent.ports import AuditEventRecord, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports.models import AuditEventRecord, TraceEventRecord
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 ResumeAuthority = Mapping[str, object]
 
@@ -144,6 +151,7 @@ class ResumeRunHandler:
                     run.version,
                     authority,
                     reauth_dispatch_uncertain=reauth_dispatch_uncertain,
+                    now_ms=now_ms,
                 )
                 response = ResumeRunResult(
                     applied=decision.applied,
@@ -217,6 +225,7 @@ class ResumeRunHandler:
         authority: ResumeAuthority | None,
         *,
         reauth_dispatch_uncertain: bool,
+        now_ms: int,
     ):
         if command.resume_kind == "REAUTH_COMPLETED":
             restored = unit_of_work.runs.resume_after_reauth(
@@ -229,12 +238,49 @@ class ResumeRunHandler:
             if restored.current_status is RunStatus.RECOVERY_REQUIRED:
                 return restored, False
             if reauth_dispatch_uncertain:
+                pre_recovery_status = restored.current_status.value
                 recovery = unit_of_work.runs.require_recovery(
                     command.run_id,
                     expected_version=restored.current_version,
                 )
                 if not recovery.applied:
                     raise RuntimeError("reauth recovery fail-safe transition was not applied")
+                fingerprint = calculate_canonical_json_hash(
+                    {
+                        "command_id": command.command_id,
+                        "run_id": command.run_id,
+                        "pre_recovery_status": pre_recovery_status,
+                    }
+                )
+                require_recovery_command = RequireRecoveryCommand(
+                    run_id=command.run_id,
+                    expected_version=restored.current_version,
+                    command_id=f"system:reauth-dispatch-uncertain-recovery:{command.command_id}",
+                    request_hash=fingerprint,
+                    reason="CHECKPOINT_MISMATCH",
+                    scope="RUN",
+                    recovery_fingerprint=fingerprint,
+                    contract_or_checkpoint_fingerprint=fingerprint,
+                )
+                current_context = unit_of_work.recovery_contexts.load_current_context(
+                    command.run_id
+                )
+                next_context_version = (
+                    0 if current_context is None else current_context["version"] + 1
+                )
+                unit_of_work.recovery_contexts.store_context(
+                    build_recovery_context(
+                        require_recovery_command,
+                        pre_recovery_status=pre_recovery_status,
+                        version=next_context_version,
+                        now_ms=now_ms,
+                    )
+                )
+                unit_of_work.audits.add(
+                    build_recovery_required_audit_event(
+                        require_recovery_command, recovery.result_code.value, now_ms
+                    )
+                )
                 return recovery, False
             return restored, True
         if command.resume_kind == "RECOVERY_RECHECK":

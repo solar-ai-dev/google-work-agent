@@ -18,6 +18,8 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
+    WorkflowExecutionAdmissionV1,
+    WorkflowExecutionBindingV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffStageV1,
     WorkflowHandoffV1,
@@ -91,6 +93,58 @@ def test_non_accepted_submit_releases_equal_epoch_admission(tmp_path: Path) -> N
     assert persisted.status == "PENDING"
     assert persisted.execution_admission is None
     assert persisted.last_submit_reason == "ALREADY_RUNNING"
+
+
+def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage())
+        claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id,
+            handoff.version,
+            _admission_for(handoff),
+        )
+        unit_of_work.commit()
+    assert claimed.status == "DISPATCHED"
+
+    class _StaleBindingResolver:
+        def __call__(
+            self, handoff: WorkflowHandoffV1, submission_kind: str
+        ) -> WorkflowExecutionBindingV1:
+            return WorkflowExecutionBindingV1(
+                schema_version=1,
+                execution_kind="START",
+                run_id="r-1",
+                langgraph_thread_id="t-1",
+                graph_profile="SIX_ROLE_BASELINE",
+                graph_version="v2",
+                requested_mode="AUTO",
+                checkpoint_id=None,
+                checkpoint_generation=0,
+                resume_target=None,
+            )
+
+    execution = _ExecutionPort()
+    handler = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory,
+        workflow_execution=execution,
+        id_factory=lambda: "admission-2",
+        effective_binding_resolver=_StaleBindingResolver(),
+    )
+
+    result = handler(ScheduleRunExecutionCommand("h-1"))
+
+    assert not result.accepted
+    assert result.reason_code == "BINDING_MISMATCH"
+    assert execution.submissions == []
+    with factory() as unit_of_work:
+        persisted = unit_of_work.workflow_handoffs.get("h-1")
+    assert persisted is not None
+    assert persisted.status == "BLOCKED_BINDING"
+    assert persisted.execution_admission is None
 
 
 def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
@@ -171,6 +225,29 @@ def _stage() -> WorkflowHandoffStageV1:
         control_kind="NONE",
         control=None,
         control_payload_hash=None,
+    )
+
+
+def _admission_for(handoff: WorkflowHandoffV1) -> WorkflowExecutionAdmissionV1:
+    return WorkflowExecutionAdmissionV1(
+        schema_version=1,
+        admission_id="admission-1",
+        handoff_id=handoff.handoff_id,
+        handoff_run_sequence=handoff.run_sequence,
+        submission_kind="NORMAL_HANDOFF",
+        effective_binding=WorkflowExecutionBindingV1(
+            schema_version=1,
+            execution_kind="START",
+            run_id="r-1",
+            langgraph_thread_id="t-1",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="v1",
+            requested_mode="AUTO",
+            checkpoint_id=None,
+            checkpoint_generation=0,
+            resume_target=None,
+        ),
+        expected_run_version=0,
     )
 
 

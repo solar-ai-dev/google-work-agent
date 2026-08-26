@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommand,
+    ResolveRecoveryHandler,
+)
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
     RedriveWorkflowHandoffsCommand,
     RedriveWorkflowHandoffsHandler,
@@ -11,12 +21,18 @@ from google_work_agent.application.use_cases.run.redrive_workflow_handoffs impor
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.enums import RecoveryResolution
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffStageV1,
+    WorkflowHandoffV1,
 )
+
+_UnitOfWorkFactory = Callable[[], UnitOfWork]
 
 
 class _ExecutionPort:
@@ -33,7 +49,7 @@ class _ExecutionPort:
 
 
 def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_path: Path) -> None:
-    database_path = _database(tmp_path)
+    database_path = _database(tmp_path, run_status="CREATED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
         unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
@@ -57,7 +73,302 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     assert execution.submitted == ["h-1"]
 
 
-def _database(tmp_path: Path) -> Path:
+# --- BLOCKED_BINDING reconciliation crash/idempotency scenarios (A-G) -------------
+
+
+def test_a_d_one_redrive_pass_reaches_recovery_required_and_settles_without_restart(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    redrive = _redrive(factory)
+
+    result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.blocked_binding == 1
+    assert _count(database_path, "command_receipts") == 1
+    assert _count(database_path, "recovery_contexts") == 1
+    assert _run_status(database_path, "r-1") == "RECOVERY_REQUIRED"
+    assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
+
+
+def test_b_crash_after_context_committed_before_superseded_completes_without_remutating(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    handoff = _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    require_recovery = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20)
+    _seed_pre_recovery(require_recovery, handoff)
+    assert _run_status(database_path, "r-1") == "RECOVERY_REQUIRED"
+    assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
+
+    redrive = _redrive(factory, require_recovery=require_recovery)
+    result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.blocked_binding == 1
+    assert _count(database_path, "command_receipts") == 1
+    assert _count(database_path, "recovery_contexts") == 1
+    assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
+
+
+def test_c_repeated_redrive_passes_produce_exactly_one_transition(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    redrive = _redrive(factory)
+
+    first = redrive(RedriveWorkflowHandoffsCommand(limit=10))
+    second = redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert first.blocked_binding == 1
+    assert second.blocked_binding == 0
+    assert _count(database_path, "command_receipts") == 1
+    assert _count(database_path, "recovery_contexts") == 1
+    with factory() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("r-1")
+    assert run is not None
+    assert run.version == 1
+
+
+def test_e_terminal_run_supersedes_stale_handoff_without_creating_a_false_recovery(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="COMPLETED")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    redrive = _redrive(factory)
+
+    redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert _count(database_path, "command_receipts") == 0
+    assert _count(database_path, "recovery_contexts") == 0
+    assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
+
+
+def test_e_preempting_run_status_leaves_handoff_blocked_without_creating_a_false_recovery(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="CANCEL_REQUESTED")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    redrive = _redrive(factory)
+
+    redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert _count(database_path, "command_receipts") == 0
+    assert _count(database_path, "recovery_contexts") == 0
+    assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
+
+
+def test_f_non_matching_recovery_context_fails_closed_without_superseding(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    require_recovery = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20)
+    unrelated = require_recovery(
+        RequireRecoveryCommand(
+            run_id="r-1",
+            expected_version=0,
+            command_id="system:action-recovery:unrelated-1",
+            request_hash=calculate_canonical_json_hash({"unrelated": True}),
+            reason="UNKNOWN_RESULT",
+            scope="RUN",
+            recovery_fingerprint="unrelated-fingerprint",
+        )
+    )
+    assert unrelated.applied
+
+    redrive = _redrive(factory, require_recovery=require_recovery)
+    redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
+    with factory() as unit_of_work:
+        context = unit_of_work.recovery_contexts.load_current_context("r-1")
+    assert context is not None
+    assert context["reason"] == "UNKNOWN_RESULT"
+
+
+def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-2", "cmd-2"))
+        unit_of_work.commit()
+    schedule = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory, workflow_execution=_ExecutionPort(), id_factory=lambda: "a-1"
+    )
+
+    blocked_pass = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory, schedule_run_execution=schedule
+    )(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert blocked_pass.accepted == 0
+    assert _handoff_status(database_path, "h-2") == "PENDING"
+
+    # h-1 settles (BLOCKED_BINDING -> SUPERSEDED) and Run enters RECOVERY_REQUIRED --
+    # h-2 still cannot bypass: the Domain-progress fence now blocks NORMAL dispatch
+    # while a Recovery authority governs the run, not merely while the head is
+    # BLOCKED_BINDING.
+    settled_pass = _redrive(factory, schedule_run_execution=schedule)(
+        RedriveWorkflowHandoffsCommand(limit=10)
+    )
+
+    assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
+    assert _run_status(database_path, "r-1") == "RECOVERY_REQUIRED"
+    assert settled_pass.accepted == 0
+    assert _handoff_status(database_path, "h-2") == "PENDING"
+
+    # Once Recovery resolves, the obsolete lower-sequence head no longer blocks the
+    # lane forever -- h-2 can now dispatch.
+    resolve_recovery = ResolveRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 30)
+    with factory() as unit_of_work:
+        run = unit_of_work.runs.get_by_id("r-1")
+    assert run is not None
+    resolved = resolve_recovery(
+        ResolveRecoveryCommand(
+            run_id="r-1",
+            expected_version=run.version,
+            command_id="cmd-resolve-1",
+            request_hash="b" * 64,
+            resolution=RecoveryResolution.RECHECK,
+        )
+    )
+    assert resolved.applied
+    assert _run_status(database_path, "r-1") == "VERIFYING"
+
+    resumed_pass = _redrive(factory, schedule_run_execution=schedule)(
+        RedriveWorkflowHandoffsCommand(limit=10)
+    )
+
+    assert resumed_pass.accepted == 1
+    assert _handoff_status(database_path, "h-2") == "DISPATCHED"
+
+
+# --- Domain-progress pre-admission fence ------------------------------------------
+
+
+def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        unit_of_work.commit()
+    execution = _ExecutionPort()
+    schedule = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory, workflow_execution=execution, id_factory=lambda: "a-1"
+    )
+    redrive = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory, schedule_run_execution=schedule
+    )
+
+    result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.accepted == 0
+    assert execution.submitted == []
+    assert _handoff_status(database_path, "h-1") == "PENDING"
+
+
+def _redrive(
+    factory: _UnitOfWorkFactory,
+    *,
+    schedule_run_execution: ScheduleRunExecutionHandler | None = None,
+    require_recovery: RequireRecoveryHandler | None = None,
+) -> RedriveWorkflowHandoffsHandler:
+    schedule = schedule_run_execution or ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory, workflow_execution=_ExecutionPort(), id_factory=lambda: "a-1"
+    )
+    recovery = require_recovery or RequireRecoveryHandler(
+        unit_of_work_factory=factory, now_ms=lambda: 20
+    )
+    return RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory,
+        schedule_run_execution=schedule,
+        require_recovery=recovery,
+    )
+
+
+def _seed_pre_recovery(
+    require_recovery: RequireRecoveryHandler, handoff: WorkflowHandoffV1
+) -> str:
+    resume_target = handoff.execution.resume_target
+    fingerprint = calculate_canonical_json_hash(
+        {
+            "handoff_id": handoff.handoff_id,
+            "run_id": handoff.execution.run_id,
+            "langgraph_thread_id": handoff.execution.langgraph_thread_id,
+            "graph_profile": handoff.execution.graph_profile,
+            "graph_version": handoff.execution.graph_version,
+            "checkpoint_id": handoff.checkpoint_id,
+            "checkpoint_generation": handoff.checkpoint_generation,
+            "resume_target": None if resume_target is None else asdict(resume_target),
+        }
+    )
+    result = require_recovery(
+        RequireRecoveryCommand(
+            run_id=handoff.execution.run_id,
+            expected_version=0,
+            command_id=f"system:handoff-binding-recovery:{handoff.handoff_id}",
+            request_hash=fingerprint,
+            reason="CHECKPOINT_MISMATCH",
+            scope="RUN",
+            recovery_fingerprint=fingerprint,
+            registered_resume_target=resume_target,
+            contract_or_checkpoint_fingerprint=fingerprint,
+        )
+    )
+    assert result.applied
+    return fingerprint
+
+
+def _stage_blocked_binding(
+    factory: _UnitOfWorkFactory, database_path: Path, handoff_id: str, command_id: str
+) -> WorkflowHandoffV1:
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            _stage(handoff_id, command_id)
+        )
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute(
+            "UPDATE workflow_handoffs SET status = 'BLOCKED_BINDING' WHERE handoff_id = ?;",
+            (handoff_id,),
+        )
+        connection.commit()
+    return handoff
+
+
+def _count(database_path: Path, table: str) -> int:
+    with connect_sqlite(database_path) as connection:
+        row = connection.execute(f"SELECT COUNT(*) AS n FROM {table};").fetchone()
+    return int(row["n"])
+
+
+def _run_status(database_path: Path, run_id: str) -> str:
+    with connect_sqlite(database_path) as connection:
+        row = connection.execute("SELECT status FROM runs WHERE id = ?;", (run_id,)).fetchone()
+    assert row is not None
+    return str(row["status"])
+
+
+def _handoff_status(database_path: Path, handoff_id: str) -> str:
+    with connect_sqlite(database_path) as connection:
+        row = connection.execute(
+            "SELECT status FROM workflow_handoffs WHERE handoff_id = ?;", (handoff_id,)
+        ).fetchone()
+    assert row is not None
+    return str(row["status"])
+
+
+def _database(tmp_path: Path, *, run_status: str) -> Path:
     path = tmp_path / "redrive.db"
     with connect_sqlite(path) as connection:
         apply_migrations(connection, now_ms=lambda: 1)
@@ -70,9 +381,10 @@ def _database(tmp_path: Path) -> Path:
             INSERT INTO runs (
                 id, conversation_id, entry_mode, status, langgraph_thread_id,
                 requested_mode, actual_runtime, budget_json, version, started_at_ms, finished_at_ms
-            ) VALUES ('r-1', 'c-1', 'AGENT_SEARCH', 'CREATED', 't-1',
+            ) VALUES ('r-1', 'c-1', 'AGENT_SEARCH', ?, 't-1',
                       'AUTO', NULL, '{}', 0, 1, NULL);
-            """
+            """,
+            (run_status,),
         )
         connection.commit()
     return path

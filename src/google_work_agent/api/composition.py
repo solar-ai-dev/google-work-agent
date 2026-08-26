@@ -12,14 +12,12 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
-from google_work_agent.application.use_cases.run.reconcile_blocked_binding import (
-    ReconcileBlockedBindingHandler,
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
+    RedriveWorkflowHandoffsCommand,
     RedriveWorkflowHandoffsHandler,
-)
-from google_work_agent.application.use_cases.run.require_recovery import (
-    RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeTargetValidator,
@@ -88,14 +86,10 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
     )
-    reconcile_blocked_binding = ReconcileBlockedBindingHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        require_recovery=require_recovery,
-    )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=unit_of_work_factory,
         schedule_run_execution=schedule,
-        reconcile_blocked_binding=reconcile_blocked_binding,
+        require_recovery=require_recovery,
     )
     loop = WorkflowHandoffReconciliationLoop(
         redrive=redrive,
@@ -108,4 +102,32 @@ def build_production_runtime(
         schedule_run_execution=schedule,
         redrive_workflow_handoffs=redrive,
         workflow_handoff_reconciliation_loop=loop,
+    )
+
+
+def drain_workflow_handoffs_to_quiescence(
+    redrive: RedriveWorkflowHandoffsHandler,
+    *,
+    batch_limit: int = 32,
+    max_passes: int = 1000,
+) -> int:
+    """Repeatedly invoke bounded redrive passes before the live reconciliation
+    loop starts / READY is published, stopping only once a pass proves
+    ``has_more=false`` -- it saw strictly fewer than ``batch_limit`` actionable
+    rows, so every remaining actionable row was inspected this pass. Startup
+    and the live ``WorkflowHandoffReconciliationLoop`` both drive this same
+    ``RedriveWorkflowHandoffsHandler`` -- there is exactly one reconciliation
+    authority. ``max_passes`` is a hard circuit breaker: it guarantees this
+    never spins forever even if actionable rows are permanently stuck (e.g.
+    fail-closed BLOCKED_BINDING handoffs), raising instead of hanging.
+    Returns the number of passes executed.
+    """
+    if batch_limit < 1:
+        raise ValueError("batch_limit must be positive")
+    for pass_index in range(1, max_passes + 1):
+        result = redrive(RedriveWorkflowHandoffsCommand(limit=batch_limit))
+        if result.inspected < batch_limit:
+            return pass_index
+    raise RuntimeError(
+        f"workflow handoff startup drain did not reach quiescence within {max_passes} passes"
     )

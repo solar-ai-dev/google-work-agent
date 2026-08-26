@@ -63,7 +63,10 @@ from google_work_agent.adapters.runtime.attachment_staging import (
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import build_production_runtime
+from google_work_agent.api.composition import (
+    build_production_runtime,
+    drain_workflow_handoffs_to_quiescence,
+)
 from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
@@ -741,7 +744,10 @@ def build_container(
     )
 
     async def _start_workflow_handoff_reconciliation() -> None:
-        await asyncio.to_thread(production_runtime.redrive_workflow_handoffs)
+        await asyncio.to_thread(
+            drain_workflow_handoffs_to_quiescence,
+            production_runtime.redrive_workflow_handoffs,
+        )
         production_runtime.workflow_handoff_reconciliation_loop.start()
 
     def _stop_workflow_handoff_runtime() -> None:

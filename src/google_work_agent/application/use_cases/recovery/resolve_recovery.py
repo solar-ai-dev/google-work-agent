@@ -6,7 +6,7 @@ from json import dumps, loads
 from google_work_agent.domain.enums import RecoveryResolution, ResultCode, RunStatus
 from google_work_agent.domain.run.transitions.resolve_recovery import transition_resolve_recovery
 from google_work_agent.ports.models import CommandReceiptStatus
-from google_work_agent.ports.repositories import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 @dataclass(frozen=True, slots=True)
 class ResolveRecoveryCommand:

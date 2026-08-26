@@ -103,12 +103,27 @@ class _Runs:
         return self._move("resolve_recovery", recovery_next_status)
 
 
+class _RecoveryContexts:
+    def __init__(self) -> None:
+        self.current: dict | None = None
+        self.stored: list[dict] = []
+
+    def load_current_context(self, run_id):
+        return self.current
+
+    def store_context(self, context):
+        self.stored.append(context)
+        self.current = context
+        return context
+
+
 class _Uow:
     def __init__(self, status, action_statuses=()):
         self.runs = _Runs(status)
         self.command_receipts = _Receipts()
         self.traces = _Sink()
         self.audits = _Sink()
+        self.recovery_contexts = _RecoveryContexts()
         self.commits = 0
         plan = SimpleNamespace(id="plan-1", revision_no=1, created_at_ms=1)
         self.plans = SimpleNamespace(list_by_run=lambda run_id: [plan] if action_statuses else [])
@@ -188,6 +203,15 @@ def test_reauth_dispatched_write_facts_fail_safe_to_recovery_without_runtime_res
         assert h.uow.runs.calls == ["resume_after_reauth", "require_recovery"]
         assert h.uow.commits == 1 and h.enqueues == []
         assert not hasattr(h.uow, "execution_attempts") and not hasattr(h.uow, "approvals")
+        assert len(h.uow.recovery_contexts.stored) == 1
+        context = h.uow.recovery_contexts.stored[0]
+        assert context["reason"] == "CHECKPOINT_MISMATCH"
+        assert context["scope"] == "RUN"
+        assert context["version"] == 0
+        assert [item.event_type for item in h.uow.audits.items] == [
+            "RECOVERY_REQUIRED",
+            "RUN_RESUMED",
+        ]
 
 
 def test_reauth_recovery_checkpoint_restores_domain_truth_without_runtime_recovery_selection() -> (

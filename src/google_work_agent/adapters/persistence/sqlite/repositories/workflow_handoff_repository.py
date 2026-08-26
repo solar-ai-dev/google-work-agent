@@ -205,7 +205,13 @@ class SqliteWorkflowHandoffRepository:
             return self._retire_stale(current)
         if reason_code == "AUTHORITY_EPOCH_CHANGED":
             raise WorkflowHandoffConflictError("invalid authority release")
-        status = "PENDING" if admission.submission_kind == "NORMAL_HANDOFF" else "CONSUMED"
+        if reason_code == "BINDING_MISMATCH" and admission.submission_kind == "NORMAL_HANDOFF":
+            # A NORMAL dispatch head whose binding no longer validates is not
+            # redriveable as ordinary PENDING -- it must wait for canonical
+            # RequireRecovery(CHECKPOINT_MISMATCH) reconciliation.
+            status = "BLOCKED_BINDING"
+        else:
+            status = "PENDING" if admission.submission_kind == "NORMAL_HANDOFF" else "CONSUMED"
         self._connection.execute(
             """
             UPDATE workflow_handoffs

@@ -8,11 +8,9 @@ from json import dumps, loads
 from typing import Literal, cast
 
 from google_work_agent.domain.enums import ResultCode
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.ports.models import AuditEventRecord, CommandReceiptStatus
-from google_work_agent.ports.persistence.recovery_repository import (
-    RecoveryContextV1,
-    RecoveryReasonV1,
-)
+from google_work_agent.ports.persistence.recovery_repository import RecoveryContextV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import RegisteredResumeTargetRefV2
 
@@ -99,14 +97,14 @@ class RequireRecoveryHandler:
             if r.applied:
                 current = u.recovery_contexts.load_current_context(command.run_id)
                 next_version = 0 if current is None else current["version"] + 1
-                context = _build_context(
+                context = build_recovery_context(
                     command,
                     pre_recovery_status=pre_recovery_status,
                     version=next_version,
                     now_ms=n,
                 )
                 u.recovery_contexts.store_context(context)
-                u.audits.add(_audit(command, r, n))
+                u.audits.add(build_recovery_required_audit_event(command, r.result_code, n))
             u.command_receipts.finish_json(
                 command_id=command.command_id,
                 applied=r.applied,
@@ -119,13 +117,20 @@ class RequireRecoveryHandler:
             return r
 
 
-def _build_context(
+def build_recovery_context(
     command: RequireRecoveryCommand,
     *,
     pre_recovery_status: str,
     version: int,
     now_ms: int,
 ) -> RecoveryContextV1:
+    """Build the closed RecoveryContextV1 record from a RequireRecoveryCommand.
+
+    Pure (no I/O) -- shared by every atomic writer that must persist a durable
+    RequireRecovery outcome inside its own single transaction (this handler,
+    and ``ResumeRunHandler``'s REAUTH_COMPLETED dispatch-uncertain fail-safe).
+    ``RecoveryRepository.store_context`` remains the sole write authority.
+    """
     context: dict[str, object] = {
         "schema_version": 1,
         "run_id": command.run_id,
@@ -160,9 +165,13 @@ def _build_context(
     return cast(RecoveryContextV1, context)
 
 
-def _audit(
-    command: RequireRecoveryCommand, result: RequireRecoveryResult, now_ms: int
+def build_recovery_required_audit_event(
+    command: RequireRecoveryCommand, result_code: str, now_ms: int
 ) -> AuditEventRecord:
+    """Canonical RequireRecovery -> RECOVERY_REQUIRED Audit event (11-observability
+    -logging-audit.md). Shared by every atomic writer that persists a RequireRecovery
+    outcome -- there is exactly one Audit-event shape for this transition.
+    """
     return AuditEventRecord(
         account_id=None,
         run_id=command.run_id,
@@ -171,7 +180,7 @@ def _audit(
         actor_id="run_lifecycle",
         actor_display="Run lifecycle",
         event_type="RECOVERY_REQUIRED",
-        outcome=result.result_code,
+        outcome=result_code,
         metadata_json=dumps(
             {
                 "command_id": command.command_id,

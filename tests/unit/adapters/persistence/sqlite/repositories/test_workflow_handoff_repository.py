@@ -80,6 +80,37 @@ def test_stale_run_epoch_retires_normal_admission_without_resurrecting_head(
     assert head is None
 
 
+def test_binding_mismatch_release_of_normal_admission_writes_blocked_binding(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        admission = _admission(handoff.version, handoff.run_sequence)
+        claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id, handoff.version, admission
+        )
+        unit_of_work.commit()
+
+    with factory() as unit_of_work:
+        released = unit_of_work.workflow_handoffs.release_execution_admission(
+            claimed.handoff_id,
+            claimed.version,
+            admission.admission_id,
+            "BINDING_MISMATCH",
+        )
+        blocked = unit_of_work.workflow_handoffs.list_blocked_binding(10)
+        head = unit_of_work.workflow_handoffs.get_dispatch_head("r-1")
+        unit_of_work.commit()
+
+    assert released.status == "BLOCKED_BINDING"
+    assert released.execution_admission is None
+    assert released.last_submit_reason == "BINDING_MISMATCH"
+    assert [item.handoff_id for item in blocked] == ["h-1"]
+    assert head is not None and head.handoff_id == "h-1"
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "handoff.db"
     with connect_sqlite(path) as connection:

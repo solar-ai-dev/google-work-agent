@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, Protocol, Required, TypedDict
 
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.ports.system.contracts.workflow_handoff import RegisteredResumeTargetRefV2
-
-RecoveryReasonV1 = Literal[
-    "UNKNOWN_RESULT", "VERIFICATION_MISMATCH", "CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"
-]
 
 
 class RecoveryContextV1(TypedDict):

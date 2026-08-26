@@ -152,10 +152,19 @@ class ScheduleRunExecutionHandler:
                 )
                 unit_of_work.commit()
                 return _rejected("BINDING_MISMATCH")
+            binding = self._resolve_binding(handoff, command.submission_kind)
             if existing is not None:
+                if binding is None or binding != existing.effective_binding:
+                    unit_of_work.workflow_handoffs.release_execution_admission(
+                        handoff.handoff_id,
+                        handoff.version,
+                        existing.admission_id,
+                        "BINDING_MISMATCH",
+                    )
+                    unit_of_work.commit()
+                    return _rejected("BINDING_MISMATCH")
                 admission = existing
             else:
-                binding = self._resolve_binding(handoff, command.submission_kind)
                 if binding is None or not _binding_matches_handoff(binding, handoff):
                     return _rejected("BINDING_MISMATCH")
                 admission = WorkflowExecutionAdmissionV1(

@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommand,
+    ResolveRecoveryHandler,
+)
+from google_work_agent.domain.enums import RecoveryResolution
+from google_work_agent.domain.run.model import RunTransitionRejected
+
+
+def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    result = handler(_command("cmd-1", RecoveryResolution.RECHECK))
+
+    assert result.applied
+    assert result.current_status == "VERIFYING"
+    assert _count(database_path, "command_receipts") == 1
+
+
+def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    first = handler(_command("cmd-1", RecoveryResolution.RECHECK))
+    second = handler(_command("cmd-1", RecoveryResolution.RECHECK))
+
+    assert first == second
+    assert _count(database_path, "command_receipts") == 1
+
+
+def test_cancel_without_durable_intent_fails_closed_via_domain_guard(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    with pytest.raises(RunTransitionRejected):
+        handler(_command("cmd-1", RecoveryResolution.CANCEL))
+
+    assert _count(database_path, "command_receipts") == 0
+
+
+def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_guard(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    with pytest.raises(RunTransitionRejected):
+        handler(_command("cmd-1", RecoveryResolution.RECHECK))
+
+    assert _count(database_path, "command_receipts") == 0
+
+
+def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommand:
+    return ResolveRecoveryCommand(
+        run_id="r-1",
+        expected_version=0,
+        command_id=command_id,
+        request_hash="a" * 64,
+        resolution=resolution,
+    )
+
+
+def _count(database_path: Path, table: str) -> int:
+    with connect_sqlite(database_path) as connection:
+        row = connection.execute(f"SELECT COUNT(*) AS n FROM {table};").fetchone()
+    return int(row["n"])
+
+
+def _database(tmp_path: Path, *, run_status: str) -> Path:
+    path = tmp_path / "resolve-recovery.db"
+    with connect_sqlite(path) as connection:
+        apply_migrations(connection, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('a-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute("INSERT INTO conversations VALUES ('c-1', 'a-1', 'Test', 1, 1);")
+        connection.execute(
+            """
+            INSERT INTO runs (
+                id, conversation_id, entry_mode, status, langgraph_thread_id,
+                requested_mode, actual_runtime, budget_json, version, started_at_ms, finished_at_ms
+            ) VALUES ('r-1', 'c-1', 'AGENT_SEARCH', ?, 't-1',
+                      'AUTO', NULL, '{}', 0, 1, NULL);
+            """,
+            (run_status,),
+        )
+        connection.commit()
+    return path
