@@ -5,7 +5,7 @@ import pytest
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,

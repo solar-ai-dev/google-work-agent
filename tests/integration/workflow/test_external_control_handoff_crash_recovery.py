@@ -10,7 +10,7 @@ from google_work_agent.adapters.langgraph.runtime.background_run_executor import
     BackgroundRunExecutorAdapter,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
@@ -196,9 +196,7 @@ class _GraphState(TypedDict):
 
 def _graph(checkpoint):
     builder = StateGraph(_GraphState)
-    builder.add_node(
-        "request_understanding", lambda state: {"value": state["value"] + 1}
-    )
+    builder.add_node("request_understanding", lambda state: {"value": state["value"] + 1})
     builder.add_node("context_retriever", lambda state: {"value": state["value"] + 1})
     builder.add_edge(START, "request_understanding")
     builder.add_edge("request_understanding", "context_retriever")

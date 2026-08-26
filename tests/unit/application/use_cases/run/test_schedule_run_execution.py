@@ -7,7 +7,7 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
     ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionCommand,
@@ -148,9 +148,7 @@ def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted
 
 
 def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
-    target = MainControlResumeTargetV2(
-        "MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1"
-    )
+    target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     checkpoint = GraphCheckpointEnvelopeV1(
         1,
         "cp-latest",
@@ -256,9 +254,7 @@ def _consumed_handoff() -> WorkflowHandoffV1:
         1,
         "h-1",
         "cmd-1",
-        RunExecutionRefV1(
-            1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None
-        ),
+        RunExecutionRefV1(1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None),
         None,
         0,
         1,

@@ -125,7 +125,7 @@ def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 11
+    assert len(migrations) == 12
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -149,6 +149,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[9].name == "plan_review_disposition"
     assert migrations[10].version == 11
     assert migrations[10].name == "recovery_context"
+    assert migrations[11].version == 12
+    assert migrations[11].name == "recovery_context_currentness"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -161,7 +163,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 11
+        assert len(first_results) == 12
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -175,6 +177,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (9, "workflow_handoff_outbox"),
             (10, "plan_review_disposition"),
             (11, "recovery_context"),
+            (12, "recovery_context_currentness"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -185,9 +188,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 11
+        assert len(second_results) == 12
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 11
+        assert len(rows) == 12
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -222,6 +225,56 @@ def test_crlf_applied_database_is_compatible_with_lf_runtime_migrations(
         assert all(not result.applied for result in second_results)
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
+    finally:
+        connection.close()
+
+
+def test_populated_0011_upgrade_preserves_current_recovery_context(tmp_path: Path) -> None:
+    legacy_dir = tmp_path / "through-0011"
+    legacy_dir.mkdir()
+    for source in sorted(RUNTIME_MIGRATIONS_DIR.glob("*.sql")):
+        if source.name <= "0011_recovery_context.sql":
+            shutil.copyfile(source, legacy_dir / source.name)
+
+    connection = connect_sqlite(tmp_path / "recovery-upgrade.db")
+    try:
+        apply_migrations(connection, migrations_dir=legacy_dir, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('a-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute("INSERT INTO conversations VALUES ('c-1', 'a-1', 'Test', 1, 1);")
+        connection.execute(
+            """
+            INSERT INTO runs (
+                id, conversation_id, entry_mode, status, langgraph_thread_id,
+                requested_mode, actual_runtime, budget_json, version, started_at_ms, finished_at_ms
+            ) VALUES ('r-1', 'c-1', 'AGENT_SEARCH', 'RECOVERY_REQUIRED', 't-1',
+                      'AUTO', NULL, '{}', 0, 1, NULL);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO recovery_contexts (
+                run_id, reason, scope, action_id, pre_recovery_status,
+                recovery_fingerprint, version, created_at_ms, updated_at_ms
+            ) VALUES ('r-1', 'CHECKPOINT_MISMATCH', 'RUN', NULL, 'ANALYZING',
+                      'fp-1', 0, 1, 1);
+            """
+        )
+        connection.commit()
+
+        results = apply_migrations(connection, now_ms=lambda: 2)
+
+        assert [result.applied for result in results] == [False] * 11 + [True]
+        row = connection.execute(
+            "SELECT recovery_fingerprint, version FROM recovery_contexts WHERE run_id = 'r-1';"
+        ).fetchone()
+        assert row is not None
+        assert tuple(row) == ("fp-1", 0)
+        tombstone_count = connection.execute(
+            "SELECT COUNT(*) FROM recovery_context_tombstones;"
+        ).fetchone()[0]
+        assert tombstone_count == 0
     finally:
         connection.close()
 
@@ -289,6 +342,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,

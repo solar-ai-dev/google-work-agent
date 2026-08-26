@@ -5,9 +5,9 @@ from secrets import token_urlsafe
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import SQLiteUnitOfWork
-from google_work_agent.ports.observability_events import SanitizationError
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import SqliteUnitOfWork
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord
+from google_work_agent.ports.observability_events import SanitizationError
 
 
 def _secret(prefix: str) -> str:
@@ -83,7 +83,7 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
         **allowed_metadata,
     }
 
-    with SQLiteUnitOfWork(database_path) as unit_of_work:
+    with SqliteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.traces.add(
             TraceEventRecord(
                 run_id="run-1",
@@ -173,19 +173,18 @@ def test_production_trace_boundary_rejects_invalid_json_fail_closed(tmp_path: Pa
     database_path = tmp_path / "secret-boundary-invalid.db"
     _seed_run(database_path)
 
-    with SQLiteUnitOfWork(database_path) as unit_of_work:
-        with pytest.raises(SanitizationError):
-            unit_of_work.traces.add(
-                TraceEventRecord(
-                    run_id="run-1",
-                    action_id=None,
-                    event_type="INVALID_SECRET_BOUNDARY_TRACE",
-                    status="ERROR",
-                    duration_ms=None,
-                    payload_json="not-json",
-                    created_at_ms=2,
-                )
+    with SqliteUnitOfWork(database_path) as unit_of_work, pytest.raises(SanitizationError):
+        unit_of_work.traces.add(
+            TraceEventRecord(
+                run_id="run-1",
+                action_id=None,
+                event_type="INVALID_SECRET_BOUNDARY_TRACE",
+                status="ERROR",
+                duration_ms=None,
+                payload_json="not-json",
+                created_at_ms=2,
             )
+        )
 
     connection = connect_sqlite(database_path)
     try:

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+import time
+from collections.abc import Callable
 from dataclasses import asdict
 from json import dumps, loads
 from typing import Any, cast
 
 from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff_repository import (
-    _resume_target,
+    deserialize_resume_target,
 )
 from google_work_agent.ports.persistence.recovery_repository import (
     RecoveryConflictError,
@@ -19,16 +21,26 @@ from google_work_agent.ports.persistence.recovery_repository import (
 class SqliteRecoveryRepository:
     """One canonical current RecoveryContextV1 row per Run."""
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self, connection: sqlite3.Connection, *, now_ms: Callable[[], int] | None = None
+    ) -> None:
         self._connection = connection
+        self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
 
     def store_context(self, context: RecoveryContextV1) -> RecoveryContextV1:
         existing = self._connection.execute(
             "SELECT version FROM recovery_contexts WHERE run_id = ?;", (context["run_id"],)
         ).fetchone()
         if existing is None:
-            if context["version"] != 0:
-                raise RecoveryConflictError("new RecoveryContext must start at version 0")
+            tombstone = self._connection.execute(
+                "SELECT last_version FROM recovery_context_tombstones WHERE run_id = ?;",
+                (context["run_id"],),
+            ).fetchone()
+            expected_version = 0 if tombstone is None else int(tombstone["last_version"]) + 1
+            if context["version"] != expected_version:
+                raise RecoveryConflictError(
+                    "new RecoveryContext version does not follow currentness history"
+                )
             self._connection.execute(
                 """
                 INSERT INTO recovery_contexts (
@@ -37,7 +49,7 @@ class SqliteRecoveryRepository:
                     observed_external_state_fingerprint, verification_input_fingerprint,
                     contract_or_checkpoint_fingerprint, last_recheck_input_hash,
                     version, created_at_ms, updated_at_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 _insert_params(context),
             )
@@ -96,8 +108,21 @@ class SqliteRecoveryRepository:
         )
         if cursor.rowcount != 1:
             raise RecoveryConflictError(f"RecoveryContext clear conflict for run {run_id}")
+        self._connection.execute(
+            """
+            INSERT INTO recovery_context_tombstones (run_id, last_version, cleared_at_ms)
+            VALUES (?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                last_version = excluded.last_version,
+                cleared_at_ms = excluded.cleared_at_ms
+            WHERE recovery_context_tombstones.last_version < excluded.last_version;
+            """,
+            (run_id, expected_version, self._now_ms()),
+        )
 
     def list_candidates_bounded(self, limit: int) -> list[RecoveryContextV1]:
+        if limit < 1 or limit > 1000:
+            raise ValueError("RecoveryContext candidate limit must be between 1 and 1000")
         rows = self._connection.execute(
             "SELECT * FROM recovery_contexts ORDER BY created_at_ms, run_id LIMIT ?;",
             (limit,),
@@ -132,6 +157,7 @@ def _insert_params(context: RecoveryContextV1) -> tuple[object, ...]:
         context.get("verification_input_fingerprint"),
         context.get("contract_or_checkpoint_fingerprint"),
         context.get("last_recheck_input_hash"),
+        context["version"],
         context["created_at_ms"],
         context["updated_at_ms"],
     )
@@ -140,7 +166,7 @@ def _insert_params(context: RecoveryContextV1) -> tuple[object, ...]:
 def _to_context(row: sqlite3.Row) -> RecoveryContextV1:
     resume_target_json = row["registered_resume_target_json"]
     resume_target = (
-        None if resume_target_json is None else _resume_target(loads(resume_target_json))
+        None if resume_target_json is None else deserialize_resume_target(loads(resume_target_json))
     )
     context: RecoveryContextV1 = {
         "schema_version": 1,

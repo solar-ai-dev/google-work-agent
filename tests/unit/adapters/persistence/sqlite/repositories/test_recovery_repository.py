@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.ports.persistence.recovery_repository import (
     RecoveryConflictError,
     RecoveryContextV1,
@@ -86,6 +86,26 @@ def test_clear_context_rejects_stale_expected_version(tmp_path: Path) -> None:
         unit_of_work.commit()
 
 
+def test_clear_context_preserves_version_monotonicity_across_recreation(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.store_context(_context(version=0))
+        unit_of_work.commit()
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.clear_context("r-1", expected_version=0)
+        unit_of_work.commit()
+
+    with factory() as unit_of_work, pytest.raises(RecoveryConflictError):
+        unit_of_work.recovery_contexts.store_context(_context(version=0))
+
+    with factory() as unit_of_work:
+        recreated = unit_of_work.recovery_contexts.store_context(_context(version=1))
+        unit_of_work.commit()
+
+    assert recreated["version"] == 1
+
+
 def test_list_candidates_bounded_orders_by_created_at(tmp_path: Path) -> None:
     database_path = _database(tmp_path, extra_runs=["r-2"])
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
@@ -98,6 +118,17 @@ def test_list_candidates_bounded_orders_by_created_at(tmp_path: Path) -> None:
         candidates = unit_of_work.recovery_contexts.list_candidates_bounded(10)
 
     assert [item["run_id"] for item in candidates] == ["r-1", "r-2"]
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1001])
+def test_list_candidates_rejects_non_positive_or_unbounded_limit(
+    tmp_path: Path, limit: int
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+
+    with factory() as unit_of_work, pytest.raises(ValueError):
+        unit_of_work.recovery_contexts.list_candidates_bounded(limit)
 
 
 def _database(tmp_path: Path, *, extra_runs: list[str] | None = None) -> Path:

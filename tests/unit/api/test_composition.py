@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.api.composition import drain_workflow_handoffs_to_quiescence
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,

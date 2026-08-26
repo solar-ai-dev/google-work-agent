@@ -64,7 +64,9 @@ def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
 
 def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
     start_run = (ROOT / "application/use_cases/run/start_run.py").read_text(encoding="utf-8")
-    unit_of_work = (ROOT / "adapters/persistence/unit_of_work.py").read_text(encoding="utf-8")
+    unit_of_work = (ROOT / "adapters/persistence/sqlite/unit_of_work.py").read_text(
+        encoding="utf-8"
+    )
     launcher = (ROOT / "launcher/dev.py").read_text(encoding="utf-8")
 
     assert "unit_of_work.checkpoints.create_workflow_binding(" in start_run

@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import (
-    SQLiteUnitOfWork,
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
@@ -80,7 +80,7 @@ def test_commit_failure_leaves_no_partial_start_run_participant(tmp_path: Path) 
     _assert_no_start_run_participant(database_path)
 
 
-class _CommitFailingUnitOfWork(SQLiteUnitOfWork):
+class _CommitFailingUnitOfWork(SqliteUnitOfWork):
     def commit(self) -> None:
         self.rollback()
         raise sqlite3.OperationalError("simulated commit failure")

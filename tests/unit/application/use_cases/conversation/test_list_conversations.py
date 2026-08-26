@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
     ListConversationsQuery,

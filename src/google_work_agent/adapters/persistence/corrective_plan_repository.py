@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from google_work_agent.adapters.persistence.repositories import SQLitePlanRepository
+from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
+    SQLitePlanRepository,
+)
 from google_work_agent.ports import PlanRecord, PlanStatus
 
 

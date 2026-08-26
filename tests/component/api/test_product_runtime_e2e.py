@@ -36,7 +36,7 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
     ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
@@ -330,9 +330,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         plan_factory(),
         _review_output("PASS"),
     ]
-    checkpoint = SqliteCheckpointAdapter(
-        tmp_path / "product-checkpoints.db", now_ms=clock.now_ms
-    )
+    checkpoint = SqliteCheckpointAdapter(tmp_path / "product-checkpoints.db", now_ms=clock.now_ms)
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=llm_payloads,

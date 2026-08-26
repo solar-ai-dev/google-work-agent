@@ -16,7 +16,6 @@ def test_run_repository_has_no_phase_transition_command_authority() -> None:
         ROOT / "ports" / "persistence" / "run_repository.py",
         ROOT / "adapters" / "persistence" / "sqlite" / "repositories" / "run_repository.py",
         ROOT / "ports" / "repositories.py",
-        ROOT / "adapters" / "persistence" / "repositories.py",
     )
     for path in repository_sources:
         source = path.read_text(encoding="utf-8")
@@ -27,6 +26,7 @@ def test_run_repository_has_no_phase_transition_command_authority() -> None:
             "def replan(",
         ):
             assert method not in source
+    assert not (ROOT / "adapters" / "persistence" / "repositories.py").exists()
 
 
 def test_workflow_uses_explicit_phase_handlers_without_dynamic_repository_dispatch() -> None:

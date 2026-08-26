@@ -16,8 +16,8 @@ from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import (
-    SQLiteUnitOfWork,
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
@@ -131,7 +131,7 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
             created_at_ms=3,
         ),
     )
-    with SQLiteUnitOfWork(database_path) as unit_of_work:
+    with SqliteUnitOfWork(database_path) as unit_of_work:
         for evidence in old_evidence:
             unit_of_work.evidence.insert(evidence)
         for action in old_actions:
@@ -140,12 +140,8 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
             action_id="old-action-2",
             depends_on_action_id="old-action-1",
         )
-        unit_of_work.evidence.link_to_action(
-            action_id="old-action-1", evidence_id="old-evidence-1"
-        )
-        unit_of_work.evidence.link_to_action(
-            action_id="old-action-2", evidence_id="old-evidence-2"
-        )
+        unit_of_work.evidence.link_to_action(action_id="old-action-1", evidence_id="old-evidence-1")
+        unit_of_work.evidence.link_to_action(action_id="old-action-2", evidence_id="old-evidence-2")
         unit_of_work.commit()
 
 
@@ -371,9 +367,7 @@ def _aggregate_snapshot(database_path: Path) -> dict[str, Any]:
                 "WHERE run_id = 'run-1' ORDER BY revision_no;"
             ).fetchall()
         ]
-        run_status = connection.execute(
-            "SELECT status FROM runs WHERE id = 'run-1';"
-        ).fetchone()[0]
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[0]
         new_actions = [
             tuple(row)
             for row in connection.execute(

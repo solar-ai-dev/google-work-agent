@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from google_work_agent.adapters.persistence.repositories import SQLiteCommandReceiptRepository
+from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
+    SQLiteCommandReceiptRepository,
+)
 from google_work_agent.application.cancel_intent import is_applied_request_cancel_receipt
 
 

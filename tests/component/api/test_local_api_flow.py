@@ -14,7 +14,7 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
     ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -282,9 +282,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         )
 
         deadline = time.time() + 2
-        while time.time() < deadline and not publisher.replay(
-            run_id=run_id, after_event_id=None
-        ):
+        while time.time() < deadline and not publisher.replay(run_id=run_id, after_event_id=None):
             time.sleep(0.01)
 
         assert runtime.call_log

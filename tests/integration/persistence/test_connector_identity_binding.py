@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import (
-    SQLiteUnitOfWork,
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application.read_contracts import (
@@ -89,7 +89,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         captured_at_ms=3,
     )
 
-    with SQLiteUnitOfWork(database_path) as unit_of_work:
+    with SqliteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.actions.insert_write_action(action)
         persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
         assert persisted is not None
@@ -98,12 +98,18 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
 
     connection = connect_sqlite(database_path)
     try:
-        assert connection.execute(
-            "SELECT connector_id FROM actions WHERE id = 'action-1';"
-        ).fetchone()[0] == "github"
-        assert connection.execute(
-            "SELECT connector_id FROM resource_refs WHERE id = 'resource-ref-1';"
-        ).fetchone()[0] == "github"
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM actions WHERE id = 'action-1';"
+            ).fetchone()[0]
+            == "github"
+        )
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM resource_refs WHERE id = 'resource-ref-1';"
+            ).fetchone()[0]
+            == "github"
+        )
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
         connection.close()
@@ -133,7 +139,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
         created_at_ms=2,
         updated_at_ms=2,
     )
-    with SQLiteUnitOfWork(database_path) as unit_of_work:
+    with SqliteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.actions.insert_read_action(action)
         unit_of_work.commit()
 
@@ -167,12 +173,18 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
 
     connection = connect_sqlite(database_path)
     try:
-        assert connection.execute(
-            "SELECT connector_id FROM actions WHERE id = 'read-action-1';"
-        ).fetchone()[0] == "github"
-        assert connection.execute(
-            "SELECT connector_id FROM resource_refs WHERE id = 'read-resource-1';"
-        ).fetchone()[0] == "github"
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM actions WHERE id = 'read-action-1';"
+            ).fetchone()[0]
+            == "github"
+        )
+        assert (
+            connection.execute(
+                "SELECT connector_id FROM resource_refs WHERE id = 'read-resource-1';"
+            ).fetchone()[0]
+            == "github"
+        )
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
         connection.close()

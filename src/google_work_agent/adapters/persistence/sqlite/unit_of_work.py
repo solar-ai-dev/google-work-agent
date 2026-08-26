@@ -59,7 +59,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-class SQLiteUnitOfWork:
+class SqliteUnitOfWork:
     """Context-managed SQLite transaction boundary using BEGIN IMMEDIATE."""
 
     def __init__(self, database_path: Path, *, now_ms: Callable[[], int] | None = None) -> None:
@@ -68,7 +68,7 @@ class SQLiteUnitOfWork:
         self._connection: sqlite3.Connection | None = None
         self._committed = False
 
-    def __enter__(self) -> "SQLiteUnitOfWork":
+    def __enter__(self) -> "SqliteUnitOfWork":
         connection = connect_sqlite(self._database_path)
         connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
@@ -87,7 +87,7 @@ class SQLiteUnitOfWork:
         self.audits = SQLiteAuditRepository(connection)
         self.traces = SQLiteTraceRepository(connection)
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
-        self.recovery_contexts = SqliteRecoveryRepository(connection)
+        self.recovery_contexts = SqliteRecoveryRepository(connection, now_ms=self._now_ms)
         self.checkpoints = SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
         return self
 
@@ -116,7 +116,7 @@ class SQLiteUnitOfWork:
 def sqlite_unit_of_work_factory(
     database_path: Path, *, now_ms: Callable[[], int] | None = None
 ) -> Callable[[], UnitOfWork]:
-    def _factory() -> SQLiteUnitOfWork:
-        return SQLiteUnitOfWork(database_path, now_ms=now_ms)
+    def _factory() -> SqliteUnitOfWork:
+        return SqliteUnitOfWork(database_path, now_ms=now_ms)
 
     return cast(Callable[[], UnitOfWork], _factory)

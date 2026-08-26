@@ -142,7 +142,7 @@ class FaultInjectingSQLiteConnection:
         raise FaultInjectingSQLiteError(f"injected sqlite fault at {stage.value}")
 
 
-class FaultInjectingSQLiteUnitOfWork:
+class FaultInjectingSqliteUnitOfWork:
     """SQLite unit of work backed by a fault-injecting connection proxy."""
 
     def __init__(self, database_path: Path, plan: SQLiteFaultPlan | None) -> None:
@@ -151,7 +151,7 @@ class FaultInjectingSQLiteUnitOfWork:
         self._connection: FaultInjectingSQLiteConnection | None = None
         self._committed = False
 
-    def __enter__(self) -> FaultInjectingSQLiteUnitOfWork:
+    def __enter__(self) -> FaultInjectingSqliteUnitOfWork:
         raw_connection = connect_sqlite(self._database_path)
         connection = FaultInjectingSQLiteConnection(raw_connection, self._plan)
         connection.execute("BEGIN IMMEDIATE;")
@@ -204,7 +204,7 @@ def fault_injecting_unit_of_work_factory(
 ) -> Callable[[], UnitOfWork]:
     """Create a unit-of-work factory that injects SQLite faults."""
 
-    def _factory() -> FaultInjectingSQLiteUnitOfWork:
-        return FaultInjectingSQLiteUnitOfWork(database_path, plan)
+    def _factory() -> FaultInjectingSqliteUnitOfWork:
+        return FaultInjectingSqliteUnitOfWork(database_path, plan)
 
     return cast(Callable[[], UnitOfWork], _factory)

@@ -283,13 +283,9 @@ def test_conversation_message_slice_has_one_production_authority() -> None:
     assert not (USE_CASE_ROOT / "message/list_messages.py").exists()
     assert (USE_CASE_ROOT / "message/list_conversation_messages.py").exists()
     broad_ports = (ROOT / "src/google_work_agent/ports/repositories.py").read_text(encoding="utf-8")
-    broad_adapters = (
-        ROOT / "src/google_work_agent/adapters/persistence/repositories.py"
-    ).read_text(encoding="utf-8")
+    assert not (ROOT / "src/google_work_agent/adapters/persistence/repositories.py").exists()
     assert "class ConversationRepository" not in broad_ports
     assert "class MessageRepository" not in broad_ports
-    assert "class SQLiteConversationRepository" not in broad_adapters
-    assert "class SQLiteMessageRepository" not in broad_adapters
 
 
 def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:

@@ -406,7 +406,7 @@ def _json_or_none(value: object | None) -> str | None:
     return None if value is None else _canonical_json(value)
 
 
-def _resume_target(
+def deserialize_resume_target(
     value: object | None,
 ) -> AgentNodeResumeTargetV2 | MainControlResumeTargetV2 | None:
     if value is None:
@@ -465,7 +465,7 @@ def _binding(value: dict[str, object]) -> WorkflowExecutionBindingV1:
         requested_mode=cast(RequestedModeV1, value["requested_mode"]),
         checkpoint_id=None if value.get("checkpoint_id") is None else str(value["checkpoint_id"]),
         checkpoint_generation=int(str(value["checkpoint_generation"])),
-        resume_target=_resume_target(value.get("resume_target")),
+        resume_target=deserialize_resume_target(value.get("resume_target")),
     )
 
 
@@ -485,7 +485,7 @@ def _admission(value: object | None) -> WorkflowExecutionAdmissionV1 | None:
 
 
 def _to_handoff(row: sqlite3.Row) -> WorkflowHandoffV1:
-    resume_target = _resume_target(_load_json(row["resume_target_json"]))
+    resume_target = deserialize_resume_target(_load_json(row["resume_target_json"]))
     execution = RunExecutionRefV1(
         schema_version=1,
         execution_kind=cast(str, row["execution_kind"]),  # type: ignore[arg-type]

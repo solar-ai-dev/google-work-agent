@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.conversation.get_conversation_history import (
     GetConversationHistoryHandler,
     GetConversationHistoryQuery,
@@ -13,7 +14,6 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.message.list_conversation_messages import (
     MAX_HISTORY_MESSAGES,
 )
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 
 
 class _UnusedRuntimeStatusProvider:
@@ -245,9 +245,10 @@ def test_history_is_empty_for_a_conversation_without_messages(tmp_path: Path) ->
 def test_history_is_none_for_an_unknown_conversation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
-    assert _history_handler(database_path)(
-        GetConversationHistoryQuery(conversation_id="missing")
-    ) is None
+    assert (
+        _history_handler(database_path)(GetConversationHistoryQuery(conversation_id="missing"))
+        is None
+    )
 
 
 def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path) -> None:

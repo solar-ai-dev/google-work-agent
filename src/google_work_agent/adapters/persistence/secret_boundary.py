@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from google_work_agent.adapters.persistence.repositories import (
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
     SQLiteAuditRepository,
+)
+from google_work_agent.adapters.persistence.sqlite.repositories.trace_repository import (
     SQLiteTraceRepository,
 )
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord

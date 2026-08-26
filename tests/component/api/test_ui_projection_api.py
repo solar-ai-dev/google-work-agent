@@ -16,7 +16,7 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
     ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -75,9 +75,13 @@ def _tamper_handle_payload(handle: str, *, field: str, value: str) -> str:
         base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4))
     )
     payload[field] = value
-    tampered = base64.urlsafe_b64encode(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).rstrip(b"=").decode("ascii")
+    tampered = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        )
+        .rstrip(b"=")
+        .decode("ascii")
+    )
     return f"{version}.{tampered}.{signature}"
 
 
@@ -526,12 +530,18 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             tasks.json()["items"][0]["resource_id"]
         ]
         with connect_sqlite(database_path) as connection:
-            assert connection.execute(
-                "SELECT COUNT(*) FROM workflow_bindings WHERE run_id=?", (selected_run_id,)
-            ).fetchone()[0] == 1
-            assert connection.execute(
-                "SELECT COUNT(*) FROM resource_refs WHERE run_id=?", (selected_run_id,)
-            ).fetchone()[0] == 1
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM workflow_bindings WHERE run_id=?", (selected_run_id,)
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM resource_refs WHERE run_id=?", (selected_run_id,)
+                ).fetchone()[0]
+                == 1
+            )
 
         started = client.post(
             "/api/v1/runs",
