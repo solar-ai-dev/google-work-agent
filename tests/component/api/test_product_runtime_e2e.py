@@ -388,6 +388,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
             graph_version=RESUME_CONTRACT_VERSION,
         ),
+        now_ms=clock.now_ms,
     )
     settings_service = SettingsService(
         store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),

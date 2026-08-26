@@ -130,6 +130,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
             node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
             graph_version=RESUME_CONTRACT_VERSION,
         ),
+        now_ms=clock.now_ms,
     )
     bind_host = "127.0.0.1"
     bind_port = 8765

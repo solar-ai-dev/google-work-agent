@@ -5,11 +5,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.run.reconcile_blocked_binding import (
+    ReconcileBlockedBindingCommand,
+    ReconcileBlockedBindingResult,
+)
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+type ReconcileBlockedBinding = Callable[
+    [ReconcileBlockedBindingCommand], ReconcileBlockedBindingResult
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +38,7 @@ class RedriveWorkflowHandoffsHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         schedule_run_execution: ScheduleRunExecutionHandler,
-        reconcile_blocked_binding: Callable[[str], None] | None = None,
+        reconcile_blocked_binding: ReconcileBlockedBinding | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._schedule_run_execution = schedule_run_execution
@@ -51,7 +59,9 @@ class RedriveWorkflowHandoffsHandler:
 
         for handoff in blocked:
             if self._reconcile_blocked_binding is not None:
-                self._reconcile_blocked_binding(handoff.handoff_id)
+                self._reconcile_blocked_binding(
+                    ReconcileBlockedBindingCommand(handoff_id=handoff.handoff_id)
+                )
 
         accepted = 0
         seen_runs: set[str] = set()

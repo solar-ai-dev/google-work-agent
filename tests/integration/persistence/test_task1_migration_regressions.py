@@ -117,6 +117,7 @@ def test_populated_v1_2_upgrade_preserves_action_children_and_approval(tmp_path:
             True,
             True,
             True,
+            True,
         ]
         assert connection.execute("SELECT COUNT(*) FROM actions;").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM action_dependencies;").fetchone()[0] == 1

@@ -12,8 +12,14 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
+from google_work_agent.application.use_cases.run.reconcile_blocked_binding import (
+    ReconcileBlockedBindingHandler,
+)
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
     RedriveWorkflowHandoffsHandler,
+)
+from google_work_agent.application.use_cases.run.require_recovery import (
+    RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeTargetValidator,
@@ -51,7 +57,7 @@ def build_production_runtime(
         [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None
     ],
     resume_target_registry: ResumeTargetValidator,
-    reconcile_blocked_binding: Callable[[str], None] | None = None,
+    now_ms: Callable[[], int],
     reconciliation_interval_seconds: float = 1.0,
     reconciliation_batch_limit: int = 32,
 ) -> ProductionRuntime:
@@ -77,6 +83,14 @@ def build_production_runtime(
         effective_binding_resolver=CheckpointEffectiveBindingResolver(
             checkpoint, resume_target_registry
         ),
+    )
+    require_recovery = RequireRecoveryHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+    )
+    reconcile_blocked_binding = ReconcileBlockedBindingHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        require_recovery=require_recovery,
     )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=unit_of_work_factory,

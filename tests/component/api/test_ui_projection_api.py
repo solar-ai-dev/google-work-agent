@@ -180,6 +180,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
             graph_version=RESUME_CONTRACT_VERSION,
         ),
+        now_ms=clock.now_ms,
     )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,

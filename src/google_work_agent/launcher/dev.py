@@ -737,6 +737,7 @@ def build_container(
         materialize_admission_checkpoint=_materialize_admission_checkpoint,
         invoke_semantic_owner=_invoke_semantic_owner,
         resume_target_registry=resume_target_registry,
+        now_ms=clock.now_ms,
     )
 
     async def _start_workflow_handoff_reconciliation() -> None:
