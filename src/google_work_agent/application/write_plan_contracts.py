@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
 
 
 @dataclass(frozen=True, slots=True)

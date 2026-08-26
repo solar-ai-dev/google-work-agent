@@ -1,7 +1,6 @@
 """Canonical guard for entering a confirmation interrupt."""
 
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected, require_status
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected, require_status
 
 _PRE_PUBLISH = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING, RunStatus.PLANNING})
 _PUBLISHED_REVIEW = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})

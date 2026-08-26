@@ -12,7 +12,7 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     provider_dispatch_execution_scope,
 )
-from google_work_agent.domain import RunStatus
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import (
     WorkflowCancelRequest,
     WorkflowInvocationResult,

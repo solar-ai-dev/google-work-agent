@@ -15,7 +15,6 @@ def test_run_repository_has_no_phase_transition_command_authority() -> None:
     repository_sources = (
         ROOT / "ports" / "persistence" / "run_repository.py",
         ROOT / "adapters" / "persistence" / "sqlite" / "repositories" / "run_repository.py",
-        ROOT / "ports" / "repositories.py",
     )
     for path in repository_sources:
         source = path.read_text(encoding="utf-8")
@@ -51,4 +50,5 @@ def test_superseded_plan_children_cannot_regain_mutation_or_execution_authority(
     claim = (ROOT / "application" / "use_cases" / "claim" / "claim_execution.py").read_text(
         encoding="utf-8"
     )
-    assert "plan_superseded=plan.status is PlanStatus.SUPERSEDED" in claim
+    assert "plan_status=plan.status" in claim
+    assert "plan_is_current=current_plan is not None and current_plan.id == plan.id" in claim

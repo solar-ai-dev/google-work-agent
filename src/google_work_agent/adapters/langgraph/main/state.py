@@ -52,10 +52,9 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     ToolRouteResultV1,
 )
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
-    ResourceRefRecord,
-    ResourceSource,
-    StoredResourceType,
     WorkflowStartRequest,
 )
 
@@ -193,12 +192,6 @@ def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
         ("CALENDAR", "calendar"): "calendar",
         ("CALENDAR", "calendar_event"): "calendar_event",
         ("CALENDAR", "calendar_freebusy"): "calendar_freebusy",
-        ("GMAIL", "THREAD"): "gmail_thread",
-        ("GMAIL", "MESSAGE"): "gmail_message",
-        ("TASKS", "TASK_LIST"): "task_list",
-        ("TASKS", "TASK"): "task",
-        ("CALENDAR", "CALENDAR"): "calendar",
-        ("CALENDAR", "EVENT"): "calendar_event",
     }
     prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type))
     if prefix is None:
@@ -263,14 +256,14 @@ def request_from_state(state: GraphState) -> WorkflowStartRequest:
 
 def _stored_resource_type_for_acquired_resource(
     *, source: ResourceSource, resource_type: str
-) -> StoredResourceType:
+) -> str:
     mapping = {
-        (ResourceSource.GMAIL, "gmail_thread"): StoredResourceType.THREAD,
-        (ResourceSource.GMAIL, "gmail_message"): StoredResourceType.MESSAGE,
-        (ResourceSource.TASKS, "task_list"): StoredResourceType.TASK_LIST,
-        (ResourceSource.TASKS, "task"): StoredResourceType.TASK,
-        (ResourceSource.CALENDAR, "calendar"): StoredResourceType.CALENDAR,
-        (ResourceSource.CALENDAR, "calendar_event"): StoredResourceType.EVENT,
+        (ResourceSource.GMAIL, "gmail_thread"): "GMAIL_THREAD",
+        (ResourceSource.GMAIL, "gmail_message"): "GMAIL_MESSAGE",
+        (ResourceSource.TASKS, "task_list"): "TASK_LIST",
+        (ResourceSource.TASKS, "task"): "TASK",
+        (ResourceSource.CALENDAR, "calendar"): "CALENDAR",
+        (ResourceSource.CALENDAR, "calendar_event"): "CALENDAR_EVENT",
     }
     stored_type = mapping.get((source, resource_type))
     if stored_type is None:

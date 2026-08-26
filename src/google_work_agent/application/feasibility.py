@@ -15,18 +15,20 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_freebusy_payload_intervals,
     residual_calendar_freebusy,
 )
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.action_risk import normalize_action_risk
+from google_work_agent.domain.calendar_conflict import (
     CalendarEventCandidate,
     CalendarInterval,
     CalendarIntervalKind,
     CalendarWorkHours,
+    classify_calendar_event,
+)
+from google_work_agent.domain.feasibility import (
     FeasibilityDecision,
     FeasibilityFreshness,
-    PolicyViolationError,
-    classify_calendar_event,
     derive_deadline_cutoff,
     evaluate_feasibility,
-    normalize_action_risk,
 )
 from google_work_agent.ports import FreeBusyCalendar, ResourcePage, ResourceType, TimeRange
 

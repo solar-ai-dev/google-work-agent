@@ -20,24 +20,22 @@ from google_work_agent.application.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
+from google_work_agent.application.read_execution import ExecuteReadActionService
 from google_work_agent.application.read_lifecycle import (
     ClaimReadActionService,
     CompleteReadActionService,
     FailReadActionService,
     FinalizeReadActionService,
 )
-from google_work_agent.application.read_execution import ExecuteReadActionService
 from google_work_agent.application.read_plan import (
     PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
 )
-from google_work_agent.domain import ResultCode, RunStatus
-from google_work_agent.ports import (
-    EvidenceOriginType,
-    PlanStatus,
-    ResourceSource,
-    StoredResourceType,
-)
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
@@ -256,7 +254,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         assert plan_row["status"] == "COMPLETED"
         assert len(resource_rows) == 1
         assert resource_rows[0]["source"] == "GMAIL"
-        assert resource_rows[0]["resource_type"] == "THREAD"
+        assert resource_rows[0]["resource_type"] == "GMAIL_THREAD"
         assert resource_rows[0]["resource_id"] == "thread-project"
         assert '"participant_count": 2' in resource_rows[0]["metadata_json"]
         assert len(evidence_rows) == 2
@@ -854,7 +852,7 @@ def test_received_receipts_recover_already_applied_complete_and_finalize_without
                 CompletedResourceRef(
                     id="resource-ref-run-1-gmail_thread-thread-project",
                     source=ResourceSource.GMAIL,
-                    resource_type=StoredResourceType.THREAD,
+                    resource_type="GMAIL_THREAD",
                     resource_id="thread-project",
                     parent_resource_id=None,
                     canonical_url=None,
@@ -927,7 +925,7 @@ def test_received_receipt_partial_complete_returns_recovery_required_without_mor
                 CompletedResourceRef(
                     id="resource-ref-run-1-gmail_thread-thread-project",
                     source=ResourceSource.GMAIL,
-                    resource_type=StoredResourceType.THREAD,
+                    resource_type="GMAIL_THREAD",
                     resource_id="thread-project",
                     parent_resource_id=None,
                     canonical_url=None,
@@ -1229,7 +1227,7 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
             )
             VALUES (
                 'resource-ref-run-1-gmail_thread-thread-project',
-                'run-1', ?, 'GMAIL', 'THREAD', 'thread-project', NULL,
+                'run-1', ?, 'GMAIL', 'GMAIL_THREAD', 'thread-project', NULL,
                 NULL, 'Project sync follow-up', NULL, '3',
                 '{"participant_count":2,"subject":"Project sync follow-up"}', 1030
             );

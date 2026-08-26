@@ -7,12 +7,13 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import Protocol
 
-from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 from google_work_agent.domain.run.transitions.request_confirmation import (
     transition_request_confirmation,
 )
-from google_work_agent.ports.models import CommandReceiptStatus
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
@@ -230,7 +231,7 @@ def _result(
 
 
 def _audit(command: RequestConfirmationCommand, result: RequestConfirmationResult, now_ms: int):
-    from google_work_agent.ports.models import AuditEventRecord
+    from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 
     return AuditEventRecord(
         account_id=None,

@@ -9,7 +9,10 @@ from hmac import new as hmac_new
 from json import loads
 from typing import cast
 
-from google_work_agent.domain import calculate_canonical_json_hash, canonicalize_json_value
+from google_work_agent.domain.canonical import (
+    calculate_canonical_json_hash,
+    canonicalize_json_value,
+)
 
 CLAIM_TOKEN_VERSION = "v1"
 

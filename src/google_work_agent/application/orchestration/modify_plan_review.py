@@ -29,7 +29,9 @@ from google_work_agent.application.orchestration.state_artifacts import (
     WorkAnalysisResultV2,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.ports import ActionRecord, PlanRecord, PlanReviewStatus
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanReviewStatus
 
 
 class ModifyReviewV2Error(ValueError):
@@ -80,7 +82,9 @@ def reconstruct_modified_action_plan_v2(
     persisted_actions = sorted(durable.actions, key=lambda item: item.position)
     expected_positions = list(range(1, len(current_actions) + 1))
     if [item.position for item in persisted_actions] != expected_positions:
-        raise ModifyReviewV2Error("persisted action positions are not a complete deterministic order")
+        raise ModifyReviewV2Error(
+            "persisted action positions are not a complete deterministic order"
+        )
     if len(persisted_actions) != len(current_actions):
         raise ModifyReviewV2Error("persisted action count does not match current V2 plan")
 

@@ -8,17 +8,31 @@ from json import dumps, loads
 from re import fullmatch
 
 from google_work_agent.application.projections import build_snapshot_required_event
-from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
-from google_work_agent.domain import ActionStatus, EffectType, ResultCode, next_allowed_action_commands
+from google_work_agent.application.write_persistence import (
+    emit_command_rejected_hash_mismatch,
+    revoke_active_approvals,
+)
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
+    ActionStatus,
+    EffectType,
+    next_allowed_action_commands,
+)
 from google_work_agent.domain.action.transitions.reject_action import transition_reject_action
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
+)
+from google_work_agent.domain.run.transitions.complete_write_run import (
+    transition_complete_write_run,
+)
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    PlanStatus,
     SseEventBufferPort,
-    TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -59,7 +73,10 @@ class RejectActionHandler:
         self._event_publisher = event_publisher
 
     def __call__(self, command: RejectActionCommand) -> RejectActionResult:
-        if command.reason_code is not None and fullmatch(r"[A-Z][A-Z0-9_]{0,127}", command.reason_code) is None:
+        if (
+            command.reason_code is not None
+            and fullmatch(r"[A-Z][A-Z0-9_]{0,127}", command.reason_code) is None
+        ):
             raise ValueError("reason_code must be a safe uppercase identifier")
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -78,24 +95,42 @@ class RejectActionHandler:
             plan = unit_of_work.plans.get_by_id(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
-            run = unit_of_work.runs.get_by_id(plan.run_id)
+            run = unit_of_work.runs.get(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
             conversation = unit_of_work.conversations.get(run.conversation_id)
             if conversation is None:
                 raise LookupError(f"conversation not found: {run.conversation_id}")
             actor_account_id = conversation.account_id
 
             preview = transition_reject_action(
-                ActionStatus(action.status), action.version, command.expected_version,
+                ActionStatus(action.status),
+                action.version,
+                command.expected_version,
                 effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
             )
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
-                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
-            result = unit_of_work.actions.reject_write(
-                action.id, expected_version=command.expected_version, updated_at_ms=now_ms
-            )
+                revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
+                if (
+                    unit_of_work.actions.update_if_version_and_status(
+                        action.id,
+                        expected_version=action.version,
+                        expected_status=ActionStatus(action.status),
+                        next_status=preview.current_status,
+                        updated_at_ms=now_ms,
+                    )
+                    is None
+                ):
+                    raise RuntimeError("validated RejectAction CAS failed")
+            result = preview
             response = RejectActionResult(
                 applied=result.applied,
                 result_code=result.result_code.value,
@@ -103,7 +138,8 @@ class RejectActionHandler:
                 action_status=result.current_status.value,
                 action_version=result.current_version,
                 next_allowed_commands=tuple(
-                    item.value for item in next_allowed_action_commands(
+                    item.value
+                    for item in next_allowed_action_commands(
                         result.current_status, effect_type=EffectType(action.effect_type)
                     )
                 ),
@@ -130,31 +166,70 @@ class RejectActionHandler:
                 }
                 if command.reason_code is not None:
                     metadata["reason_code"] = command.reason_code
-                unit_of_work.traces.add(TraceEventRecord(
-                    run_id=run.id, action_id=action.id, event_type="ACTION_REJECTED",
-                    status=result.current_status.value, duration_ms=None,
-                    payload_json=dumps({"command_id": command.command_id}, sort_keys=True),
-                    created_at_ms=now_ms,
-                ))
-                unit_of_work.audits.add(self._audit_event(
-                    run_id=run.id, action_id=action.id, actor_account_id=actor_account_id,
-                    event_type="ACTION_REJECTED", metadata=metadata, created_at_ms=now_ms,
-                ))
+                unit_of_work.traces.add(
+                    TraceEventRecord(
+                        run_id=run.id,
+                        action_id=action.id,
+                        event_type="ACTION_REJECTED",
+                        status=result.current_status.value,
+                        duration_ms=None,
+                        payload_json=dumps({"command_id": command.command_id}, sort_keys=True),
+                        created_at_ms=now_ms,
+                    )
+                )
+                unit_of_work.audits.add(
+                    self._audit_event(
+                        run_id=run.id,
+                        action_id=action.id,
+                        actor_account_id=actor_account_id,
+                        event_type="ACTION_REJECTED",
+                        metadata=metadata,
+                        created_at_ms=now_ms,
+                    )
+                )
                 terminal = {
-                    ActionStatus.REJECTED.value, ActionStatus.VERIFIED.value,
-                    ActionStatus.FAILED.value, ActionStatus.BLOCKED.value,
-                    ActionStatus.DEPENDENCY_BLOCKED.value, ActionStatus.MISMATCH.value,
+                    ActionStatus.REJECTED.value,
+                    ActionStatus.VERIFIED.value,
+                    ActionStatus.FAILED.value,
+                    ActionStatus.BLOCKED.value,
+                    ActionStatus.DEPENDENCY_BLOCKED.value,
+                    ActionStatus.MISMATCH.value,
                     ActionStatus.CANCELLED.value,
                 }
                 current_actions = unit_of_work.actions.list_by_plan(plan.id)
                 if current_actions and all(item.status in terminal for item in current_actions):
-                    if plan.status in {PlanStatus.WAITING_APPROVAL, PlanStatus.ACTIVE}:
-                        unit_of_work.plans.complete(plan.id)
-                    completed = unit_of_work.runs.finalize_action_outcomes(
-                        run.id, expected_version=run.version, finished_at_ms=now_ms
-                    )
-                    if not completed.applied:
-                        raise RuntimeError(f"reject terminal finalization failed: {completed.result_code.value}")
+                    verifying_status = transition_begin_verification(run.status)
+                    if not unit_of_work.runs.update_if_version_and_status(
+                        run.id,
+                        run.version,
+                        frozenset({run.status}),
+                        {"status": verifying_status.value, "version": run.version + 1},
+                    ):
+                        raise RuntimeError("validated BeginVerification CAS failed")
+                    completed_status = transition_complete_write_run(verifying_status)
+                    if not unit_of_work.runs.update_if_version_and_status(
+                        run.id,
+                        run.version + 1,
+                        frozenset({verifying_status}),
+                        {
+                            "status": completed_status.value,
+                            "version": run.version + 2,
+                            "finished_at_ms": now_ms,
+                        },
+                    ):
+                        raise RuntimeError("validated CompleteWriteRun CAS failed")
+                    if plan.status in {
+                        PlanStatus.WAITING_APPROVAL,
+                        PlanStatus.ACTIVE,
+                    } and (
+                        unit_of_work.plans.update_if_status(
+                            plan.id,
+                            expected_status=plan.status,
+                            next_status=PlanStatus.COMPLETED,
+                        )
+                        is None
+                    ):
+                        raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             response = self._finish(unit_of_work, command, response, now_ms)
             if response.applied and self._event_publisher is not None:
                 self._event_publisher.publish(
@@ -166,16 +241,37 @@ class RejectActionHandler:
                 )
             return response
 
-    def _resolve_existing_receipt(self, unit_of_work: UnitOfWork, receipt: CommandReceiptRecord, command: RejectActionCommand) -> RejectActionResult:
+    def _resolve_existing_receipt(
+        self, unit_of_work: UnitOfWork, receipt: CommandReceiptRecord, command: RejectActionCommand
+    ) -> RejectActionResult:
         if receipt.request_hash != command.request_hash:
             emit_command_rejected_hash_mismatch(
-                unit_of_work=unit_of_work, receipt=receipt, run_id=None,
-                action_id=command.action_id, now_ms=self._now_ms(),
+                unit_of_work=unit_of_work,
+                receipt=receipt,
+                run_id=None,
+                action_id=command.action_id,
+                now_ms=self._now_ms(),
             )
             action = unit_of_work.actions.get_by_id(command.action_id)
             if action is None:
-                return RejectActionResult(False, ResultCode.DUPLICATE_COMMAND.value, command.action_id, "UNKNOWN", receipt.result_version or 0, (), True, "command_id already exists with a different request_hash")
-            return replace(self._result(action, ResultCode.DUPLICATE_COMMAND, "command_id already exists with a different request_hash"), request_replayed=True)
+                return RejectActionResult(
+                    False,
+                    ResultCode.DUPLICATE_COMMAND.value,
+                    command.action_id,
+                    "UNKNOWN",
+                    receipt.result_version or 0,
+                    (),
+                    True,
+                    "command_id already exists with a different request_hash",
+                )
+            return replace(
+                self._result(
+                    action,
+                    ResultCode.DUPLICATE_COMMAND,
+                    "command_id already exists with a different request_hash",
+                ),
+                request_replayed=True,
+            )
         if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
             raise RuntimeError("RECEIVED receipt recovery requires aggregate-specific handling")
         payload = loads(receipt.response_json)
@@ -186,34 +282,76 @@ class RejectActionHandler:
         return replace(RejectActionResult(**payload), request_replayed=True)
 
     @staticmethod
-    def _finish(unit_of_work: UnitOfWork, command: RejectActionCommand, response: RejectActionResult, now_ms: int) -> RejectActionResult:
+    def _finish(
+        unit_of_work: UnitOfWork,
+        command: RejectActionCommand,
+        response: RejectActionResult,
+        now_ms: int,
+    ) -> RejectActionResult:
         unit_of_work.command_receipts.finish_json(
-            command_id=command.command_id, applied=response.applied,
-            result_code=ResultCode(response.result_code), result_version=response.action_version,
-            response_json=dumps(asdict(response), sort_keys=True), completed_at_ms=now_ms,
+            command_id=command.command_id,
+            applied=response.applied,
+            result_code=ResultCode(response.result_code),
+            result_version=response.action_version,
+            response_json=dumps(asdict(response), sort_keys=True),
+            completed_at_ms=now_ms,
         )
         unit_of_work.commit()
         return response
 
     @staticmethod
-    def _result(action: ActionRecord, result_code: ResultCode, conflict_detail: str | None) -> RejectActionResult:
+    def _result(
+        action: ActionRecord, result_code: ResultCode, conflict_detail: str | None
+    ) -> RejectActionResult:
         return RejectActionResult(
-            False, result_code.value, action.id, action.status, action.version,
-            tuple(item.value for item in next_allowed_action_commands(ActionStatus(action.status), effect_type=EffectType(action.effect_type))),
+            False,
+            result_code.value,
+            action.id,
+            action.status,
+            action.version,
+            tuple(
+                item.value
+                for item in next_allowed_action_commands(
+                    ActionStatus(action.status), effect_type=EffectType(action.effect_type)
+                )
+            ),
             conflict_detail=conflict_detail,
         )
 
     @staticmethod
-    def _audit_event(*, run_id: str, action_id: str, actor_account_id: str, event_type: str, metadata: dict[str, object], created_at_ms: int) -> AuditEventRecord:
+    def _audit_event(
+        *,
+        run_id: str,
+        action_id: str,
+        actor_account_id: str,
+        event_type: str,
+        metadata: dict[str, object],
+        created_at_ms: int,
+    ) -> AuditEventRecord:
         return AuditEventRecord(
-            account_id=actor_account_id, run_id=run_id, action_id=action_id,
-            actor_type="USER", actor_id=actor_account_id, actor_display=None,
-            event_type=event_type, outcome=ResultCode.TRANSITION_APPLIED.value,
-            metadata_json=dumps(metadata, sort_keys=True), created_at_ms=created_at_ms,
+            account_id=actor_account_id,
+            run_id=run_id,
+            action_id=action_id,
+            actor_type="USER",
+            actor_id=actor_account_id,
+            actor_display=None,
+            event_type=event_type,
+            outcome=ResultCode.TRANSITION_APPLIED.value,
+            metadata_json=dumps(metadata, sort_keys=True),
+            created_at_ms=created_at_ms,
         )
 
     @classmethod
-    def _block_dependents(cls, *, unit_of_work: UnitOfWork, rejected_action_id: str, run_id: str, command_id: str, actor_account_id: str, now_ms: int) -> tuple[str, ...]:
+    def _block_dependents(
+        cls,
+        *,
+        unit_of_work: UnitOfWork,
+        rejected_action_id: str,
+        run_id: str,
+        command_id: str,
+        actor_account_id: str,
+        now_ms: int,
+    ) -> tuple[str, ...]:
         blocked: list[str] = []
         pending = list(unit_of_work.action_dependencies.list_dependents(rejected_action_id))
         visited: set[str] = set()
@@ -223,27 +361,56 @@ class RejectActionHandler:
                 continue
             visited.add(dependent_id)
             dependent = unit_of_work.actions.get_by_id(dependent_id)
-            if dependent is None or dependent.status not in {ActionStatus.PROPOSED.value, ActionStatus.MODIFIED.value, ActionStatus.APPROVED.value}:
+            if dependent is None or dependent.status not in {
+                ActionStatus.PROPOSED.value,
+                ActionStatus.MODIFIED.value,
+                ActionStatus.APPROVED.value,
+            }:
                 continue
-            revoked = unit_of_work.approvals.revoke_active_by_action(dependent_id)
-            if not unit_of_work.actions.mark_dependency_blocked(dependent_id, updated_at_ms=now_ms):
+            revoked = revoke_active_approvals(unit_of_work, dependent_id)
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    dependent_id,
+                    expected_version=dependent.version,
+                    expected_status=ActionStatus(dependent.status),
+                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
                 raise RuntimeError(f"dependency block transition failed: {dependent_id}")
             blocked.append(dependent_id)
-            metadata = {
-                "command_id": command_id, "blocked_by_action_id": rejected_action_id,
-                "previous_status": dependent.status, "new_status": ActionStatus.DEPENDENCY_BLOCKED.value,
+            metadata: dict[str, object] = {
+                "command_id": command_id,
+                "blocked_by_action_id": rejected_action_id,
+                "previous_status": dependent.status,
+                "new_status": ActionStatus.DEPENDENCY_BLOCKED.value,
                 "revoked_approval_ids": list(revoked),
             }
-            unit_of_work.traces.add(TraceEventRecord(
-                run_id=run_id, action_id=dependent_id, event_type="ACTION_DEPENDENCY_BLOCKED",
-                status=ActionStatus.DEPENDENCY_BLOCKED.value, duration_ms=None,
-                payload_json=dumps({"command_id": command_id, "blocked_by_action_id": rejected_action_id}, sort_keys=True),
-                created_at_ms=now_ms,
-            ))
-            unit_of_work.audits.add(cls._audit_event(
-                run_id=run_id, action_id=dependent_id, actor_account_id=actor_account_id,
-                event_type="ACTION_DEPENDENCY_BLOCKED", metadata=metadata, created_at_ms=now_ms,
-            ))
+            unit_of_work.traces.add(
+                TraceEventRecord(
+                    run_id=run_id,
+                    action_id=dependent_id,
+                    event_type="ACTION_DEPENDENCY_BLOCKED",
+                    status=ActionStatus.DEPENDENCY_BLOCKED.value,
+                    duration_ms=None,
+                    payload_json=dumps(
+                        {"command_id": command_id, "blocked_by_action_id": rejected_action_id},
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
+            unit_of_work.audits.add(
+                cls._audit_event(
+                    run_id=run_id,
+                    action_id=dependent_id,
+                    actor_account_id=actor_account_id,
+                    event_type="ACTION_DEPENDENCY_BLOCKED",
+                    metadata=metadata,
+                    created_at_ms=now_ms,
+                )
+            )
             pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_id))
         return tuple(blocked)
 

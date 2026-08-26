@@ -66,7 +66,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
-from google_work_agent.domain.enums import RecoveryResolution
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")

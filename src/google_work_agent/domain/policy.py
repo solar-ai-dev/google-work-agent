@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.domain.exceptions import PolicyViolationError
+from google_work_agent.domain.action.model import PolicyViolationError
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,12 +16,14 @@ from google_work_agent.adapters.mcp import (
     calculate_file_sha256,
 )
 from google_work_agent.adapters.runtime import BuildProfile
-from google_work_agent.adapters.system.filesystem_attachment_staging import ATTACHMENT_STAGING_DIR_ENV
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
+)
 from google_work_agent.application.connector_registry import ConnectorRegistry
-from google_work_agent.domain import ConnectorToolCatalog
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
     MCP_TOOL_REGISTRY_VERSION,

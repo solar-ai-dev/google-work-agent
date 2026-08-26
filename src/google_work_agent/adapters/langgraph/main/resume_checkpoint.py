@@ -10,7 +10,7 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
-from google_work_agent.domain import RunStatus
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 

@@ -6,11 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
+from google_work_agent.application.use_cases.verification.normalize_snapshot import (
+    normalize_snapshot,
 )
-from google_work_agent.application.use_cases.verification.normalize_snapshot import normalize_snapshot
-from google_work_agent.application.write_action_arguments import dict_argument, required_argument_string
+from google_work_agent.application.write_action_arguments import (
+    dict_argument,
+    required_argument_string,
+)
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import (
     action_response_from_result,
@@ -28,23 +30,31 @@ from google_work_agent.application.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
-from google_work_agent.domain import (
-    ActionCommand,
-    ActionStatus,
-    EffectType,
-    ExecutionAttemptStatus,
-    ResultCode,
-    VerificationStatus,
-    canonicalize_json_value,
-    transition_action,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.canonical import canonicalize_json_value
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.domain.verification.model import Verification as VerificationRecord
+from google_work_agent.domain.verification.model import VerificationStatus
+from google_work_agent.domain.verification.transitions.store_verification import (
+    transition_store_verification,
 )
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceType,
-    TraceEventRecord,
     UnitOfWork,
-    VerificationRecord,
+)
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
 )
 
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
@@ -253,12 +263,10 @@ class VerifyActionHandler:
                     VerificationStatus.VERIFIED if not diff else VerificationStatus.MISMATCH
                 )
 
-            preview = transition_action(
+            preview = transition_store_verification(
                 ActionStatus(action.status),
-                command=ActionCommand.STORE_VERIFICATION,
                 current_version=action.version,
                 expected_version=command.expected_action_version,
-                effect_type=EffectType(action.effect_type),
                 verification_status=verification_status,
             )
             if not preview.applied:
@@ -286,14 +294,18 @@ class VerifyActionHandler:
                 verified_at_ms=now_ms,
             )
             unit_of_work.verifications.insert(verification)
-            transition = unit_of_work.actions.store_verification(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-                verification_status=verification_status.value,
-            )
-            if not transition.applied:
-                raise RuntimeError("validated verification transition was not applied")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=preview.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated StoreVerification CAS failed")
+            transition = preview
 
             if verification_status is VerificationStatus.MISMATCH:
                 propagate_dependency_blocked(
@@ -302,7 +314,17 @@ class VerifyActionHandler:
                     run_id=plan.run_id,
                     updated_at_ms=now_ms,
                 )
-                unit_of_work.runs.set_recovery_required(plan.run_id)
+                current_run = unit_of_work.runs.get(plan.run_id)
+                if current_run is None:
+                    raise LookupError(f"run not found: {plan.run_id}")
+                next_run_status = transition_require_recovery(current_run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    current_run.id,
+                    current_run.version,
+                    frozenset({current_run.status}),
+                    {"status": next_run_status.value, "version": current_run.version + 1},
+                ):
+                    raise RuntimeError("validated RequireRecovery CAS failed")
 
             trace_payload: dict[str, object] = {
                 "attempt_id": attempt.id,
@@ -339,7 +361,9 @@ class VerifyActionHandler:
                 action_id=action.id,
                 action_status=transition.current_status.value,
                 action_version=transition.current_version,
-                next_allowed_commands=tuple(item.value for item in transition.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value for item in transition.next_allowed_commands
+                ),
                 attempt_id=attempt.id,
             )
             finish_json_receipt(
@@ -357,8 +381,8 @@ class VerifyActionHandler:
         *,
         unit_of_work: UnitOfWork,
         command: VerifyActionCommand,
-        action: object,
-        attempt: object,
+        action: ActionRecord,
+        attempt: ExecutionAttemptRecord,
         detail: str,
     ) -> VerifyActionResult:
         now_ms = self._now_ms()

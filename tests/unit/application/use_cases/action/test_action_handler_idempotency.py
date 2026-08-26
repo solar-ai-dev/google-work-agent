@@ -16,8 +16,9 @@ from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
 )
-from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import CommandReceiptStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
 
 
 def _uow_with_receipt(response_json: str) -> MagicMock:
@@ -42,16 +43,20 @@ def _uow_with_receipt(response_json: str) -> MagicMock:
 
 
 def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
-    unit_of_work = _uow_with_receipt(dumps({
-        "applied": True,
-        "result_code": ResultCode.TRANSITION_APPLIED.value,
-        "action_id": "action-1",
-        "action_status": ActionStatus.MODIFIED.value,
-        "action_version": 2,
-        "next_allowed_commands": [],
-        "request_replayed": False,
-        "conflict_detail": None,
-    }))
+    unit_of_work = _uow_with_receipt(
+        dumps(
+            {
+                "applied": True,
+                "result_code": ResultCode.TRANSITION_APPLIED.value,
+                "action_id": "action-1",
+                "action_status": ActionStatus.MODIFIED.value,
+                "action_version": 2,
+                "next_allowed_commands": [],
+                "request_replayed": False,
+                "conflict_detail": None,
+            }
+        )
+    )
     result = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
@@ -59,14 +64,16 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
         id_generator=MagicMock(),
         resume_target_registry=MagicMock(),
         schedule_run_execution=MagicMock(),
-    )(ModifyActionCommand(
-        command_id="cmd-1",
-        request_hash="same-hash",
-        request_id="req-1",
-        action_id="action-1",
-        expected_version=1,
-        arguments_patch={"subject": "new"},
-    ))
+    )(
+        ModifyActionCommand(
+            command_id="cmd-1",
+            request_hash="same-hash",
+            request_id="req-1",
+            action_id="action-1",
+            expected_version=1,
+            arguments_patch={"subject": "new"},
+        )
+    )
     assert result.request_replayed is True
     assert result.action_version == 2
     unit_of_work.actions.modify_write.assert_not_called()
@@ -74,25 +81,31 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
 
 
 def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> None:
-    unit_of_work = _uow_with_receipt(dumps({
-        "applied": True,
-        "result_code": ResultCode.TRANSITION_APPLIED.value,
-        "action_id": "action-1",
-        "action_status": ActionStatus.REJECTED.value,
-        "action_version": 2,
-        "next_allowed_commands": [],
-        "request_replayed": False,
-        "conflict_detail": None,
-    }))
+    unit_of_work = _uow_with_receipt(
+        dumps(
+            {
+                "applied": True,
+                "result_code": ResultCode.TRANSITION_APPLIED.value,
+                "action_id": "action-1",
+                "action_status": ActionStatus.REJECTED.value,
+                "action_version": 2,
+                "next_allowed_commands": [],
+                "request_replayed": False,
+                "conflict_detail": None,
+            }
+        )
+    )
     result = RejectActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
-    )(RejectActionCommand(
-        command_id="cmd-1",
-        request_hash="same-hash",
-        action_id="action-1",
-        expected_version=1,
-    ))
+    )(
+        RejectActionCommand(
+            command_id="cmd-1",
+            request_hash="same-hash",
+            action_id="action-1",
+            expected_version=1,
+        )
+    )
     assert result.request_replayed is True
     unit_of_work.actions.reject_write.assert_not_called()
     unit_of_work.audits.add.assert_not_called()
@@ -100,29 +113,35 @@ def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> No
 
 
 def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> None:
-    unit_of_work = _uow_with_receipt(dumps({
-        "applied": True,
-        "result_code": ResultCode.TRANSITION_APPLIED.value,
-        "action_id": "action-1",
-        "action_status": ActionStatus.MODIFIED.value,
-        "action_version": 2,
-        "next_allowed_commands": [],
-        "approval_id": None,
-        "attempt_id": None,
-        "claim_token": None,
-        "safe_error_code": None,
-        "request_replayed": False,
-        "conflict_detail": None,
-    }))
+    unit_of_work = _uow_with_receipt(
+        dumps(
+            {
+                "applied": True,
+                "result_code": ResultCode.TRANSITION_APPLIED.value,
+                "action_id": "action-1",
+                "action_status": ActionStatus.MODIFIED.value,
+                "action_version": 2,
+                "next_allowed_commands": [],
+                "approval_id": None,
+                "attempt_id": None,
+                "claim_token": None,
+                "safe_error_code": None,
+                "request_replayed": False,
+                "conflict_detail": None,
+            }
+        )
+    )
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
-    )(PrepareWriteRetryCommand(
-        command_id="cmd-1",
-        request_hash="same-hash",
-        action_id="action-1",
-        expected_action_version=1,
-    ))
+    )(
+        PrepareWriteRetryCommand(
+            command_id="cmd-1",
+            request_hash="same-hash",
+            action_id="action-1",
+            expected_action_version=1,
+        )
+    )
     assert result.request_replayed is True
     unit_of_work.actions.prepare_write_retry.assert_not_called()
     assert unit_of_work.execution_attempts.method_calls == []

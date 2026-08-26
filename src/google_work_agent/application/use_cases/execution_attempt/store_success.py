@@ -17,8 +17,14 @@ from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt,
     upsert_resource_ref,
 )
-from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import ResourceSnapshot, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.transitions.store_success import (
+    transition_store_success,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import ResourceSnapshot, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +98,16 @@ class StoreSuccessHandler:
             action = require_action(unit_of_work, command.action_id)
             attempt = require_attempt(unit_of_work, command.attempt_id)
             plan = require_plan(unit_of_work, action.plan_id)
+            transition = transition_store_success(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
+            )
+            if not transition.applied:
+                raise RuntimeError(transition.conflict_detail or "StoreSuccess rejected")
             resource_ref = resource_ref_from_snapshot(
                 run_id=plan.run_id,
                 connector_id=action.connector_id,
@@ -102,9 +118,13 @@ class StoreSuccessHandler:
                 unit_of_work=unit_of_work,
                 resource_ref=resource_ref,
             )
-            unit_of_work.execution_attempts.mark_succeeded(
+            unit_of_work.execution_attempts.update_if_version_and_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
+                status=ExecutionAttemptStatus.SUCCEEDED,
+                error_code=None,
+                error_detail_json=None,
                 result_resource_ref_id=persisted_resource_ref.id,
                 response_metadata_json=dumps(
                     {"operation": action.tool_name, "resource_id": command.snapshot.resource_id},
@@ -112,13 +132,17 @@ class StoreSuccessHandler:
                 ),
                 finished_at_ms=now_ms,
             )
-            transition = unit_of_work.actions.store_success(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-            )
-            if not transition.applied:
-                raise RuntimeError("store_success action transition failed after attempt success")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=transition.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated StoreSuccess CAS failed")
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -139,7 +163,10 @@ class StoreSuccessHandler:
                     action_id=action.id,
                     event_type="WRITE_EXECUTED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},
+                    metadata={
+                        "attempt_id": attempt.id,
+                        "resource_ref_id": persisted_resource_ref.id,
+                    },
                     created_at_ms=now_ms,
                 )
             )
@@ -149,7 +176,9 @@ class StoreSuccessHandler:
                 action_id=action.id,
                 action_status=transition.current_status.value,
                 action_version=transition.current_version,
-                next_allowed_commands=tuple(item.value for item in transition.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value for item in transition.next_allowed_commands
+                ),
                 attempt_id=attempt.id,
             )
             finish_json_receipt(

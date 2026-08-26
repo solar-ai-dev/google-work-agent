@@ -58,6 +58,7 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
 )
+from google_work_agent.application.write_persistence import revoke_active_approvals
 from google_work_agent.application.write_persistence import (
     upsert_resource_ref as _upsert_resource_ref,
 )
@@ -81,20 +82,38 @@ from google_work_agent.application.write_verification import (
 from google_work_agent.application.write_verification import (
     normalize_verification_projection,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    ExecutionAttemptStatus,
-    PolicyViolationError,
-    ResultCode,
-    RunStatus,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.action.transitions.prepare_write_retry import (
+    transition_prepare_write_retry,
 )
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.transitions.mark_unknown_result import (
+    transition_mark_unknown_result,
+)
+from google_work_agent.domain.execution_attempt.transitions.recover_existing_result import (
+    transition_recover_existing_result,
+)
+from google_work_agent.domain.execution_attempt.transitions.resolve_as_failed import (
+    transition_resolve_as_failed,
+)
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
+)
+from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    ExecutionAttemptRecord,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
-    TraceEventRecord,
     UnitOfWork,
 )
 from google_work_agent.ports.connector.connector_write_port import (
@@ -136,23 +155,48 @@ class MarkWriteActionUnknownResultService:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            unit_of_work.execution_attempts.mark_unknown_result(
-                attempt.id,
-                expected_version=command.expected_attempt_version,
-                error_code=command.error_code,
-                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
-                finished_at_ms=now_ms,
-            )
-            result = unit_of_work.actions.mark_unknown_result(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            result = transition_mark_unknown_result(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
             )
             if not result.applied:
-                raise RuntimeError(
-                    "write action mark_unknown_result transition failed after attempt update"
+                raise RuntimeError(result.conflict_detail or "MarkUnknownResult rejected")
+            unit_of_work.execution_attempts.update_if_version_and_status(
+                attempt.id,
+                expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
+                status=ExecutionAttemptStatus.UNKNOWN_RESULT,
+                error_code=command.error_code,
+                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
+                result_resource_ref_id=None,
+                response_metadata_json=None,
+                finished_at_ms=now_ms,
+            )
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
                 )
-            run = unit_of_work.runs.set_recovery_required(plan.run_id)
+                is None
+            ):
+                raise RuntimeError("validated MarkUnknownResult CAS failed")
+            current_run = _require_run(unit_of_work, plan.run_id)
+            next_run_status = transition_require_recovery(current_run.status)
+            if not unit_of_work.runs.update_if_version_and_status(
+                current_run.id,
+                current_run.version,
+                frozenset({current_run.status}),
+                {"status": next_run_status.value, "version": current_run.version + 1},
+            ):
+                raise RuntimeError("validated RequireRecovery CAS failed")
+            run = _require_run(unit_of_work, plan.run_id)
             unknown_result_trace_payload: dict[str, object] = {
                 "attempt_id": attempt.id,
                 "error_code": command.error_code,
@@ -278,9 +322,10 @@ class RecoverExistingWriteResultService:
                 unit_of_work=unit_of_work,
                 resource_ref=resource_ref,
             )
-            unit_of_work.execution_attempts.update_status(
+            unit_of_work.execution_attempts.update_if_version_and_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
                 status=ExecutionAttemptStatus.SUCCEEDED,
                 error_code=command.safe_error_code,
                 error_detail_json=None,
@@ -291,16 +336,37 @@ class RecoverExistingWriteResultService:
                 ),
                 finished_at_ms=now_ms,
             )
-            result = unit_of_work.actions.recover_existing_result(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            result = transition_recover_existing_result(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
             )
             if not result.applied:
-                raise RuntimeError("recover_existing_result action transition failed")
+                raise RuntimeError(result.conflict_detail or "RecoverExistingResult rejected")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated RecoverExistingResult CAS failed")
             run = _require_run(unit_of_work, plan.run_id)
             if run.status is not RunStatus.VERIFYING:
-                unit_of_work.runs.set_verifying(plan.run_id)
+                next_run_status = transition_begin_verification(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": next_run_status.value, "version": run.version + 1},
+                ):
+                    raise RuntimeError("validated BeginVerification CAS failed")
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -405,9 +471,10 @@ class ResolveUnknownWriteAsFailedService:
                 )
                 unit_of_work.commit()
                 return response
-            unit_of_work.execution_attempts.update_status(
+            unit_of_work.execution_attempts.update_if_version_and_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
                 status=ExecutionAttemptStatus.FAILED,
                 error_code=command.error_code,
                 error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
@@ -415,13 +482,28 @@ class ResolveUnknownWriteAsFailedService:
                 response_metadata_json=None,
                 finished_at_ms=now_ms,
             )
-            result = unit_of_work.actions.resolve_unknown_as_failed(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            result = transition_resolve_as_failed(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
+                result_not_executed_confirmed=True,
             )
             if not result.applied:
-                raise RuntimeError("resolve_unknown_as_failed action transition failed")
+                raise RuntimeError(result.conflict_detail or "ResolveAsFailed rejected")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated ResolveAsFailed CAS failed")
             _propagate_dependency_blocked(
                 unit_of_work=unit_of_work,
                 action_id=action.id,
@@ -744,11 +826,31 @@ class PrepareWriteRetryService:
             )
             action = _require_action(unit_of_work, command.action_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            result = unit_of_work.actions.prepare_write_retry(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
             )
+            result = transition_prepare_write_retry(
+                ActionStatus(action.status),
+                action.version,
+                command.expected_action_version,
+                effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
+            )
+            if (
+                result.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated PrepareWriteRetry CAS failed")
             if not result.applied:
                 response = _action_response_from_result(action_id=action.id, result=result)
                 _finish_json_receipt(
@@ -827,7 +929,16 @@ class RequireWriteReauthService:
                 aggregate_id=command.run_id,
                 created_at_ms=now_ms,
             )
-            updated_run = unit_of_work.runs.set_reauth_required(command.run_id)
+            current_run = _require_run(unit_of_work, command.run_id)
+            next_run_status = transition_require_reauth(current_run.status)
+            if not unit_of_work.runs.update_if_version_and_status(
+                current_run.id,
+                current_run.version,
+                frozenset({current_run.status}),
+                {"status": next_run_status.value, "version": current_run.version + 1},
+            ):
+                raise RuntimeError("validated RequireReauth CAS failed")
+            updated_run = _require_run(unit_of_work, command.run_id)
             plan = _require_latest_plan_for_run(unit_of_work, command.run_id)
             reauth_trace_payload: dict[str, object] = {"safe_error_code": command.safe_error_code}
             reauth_audit_metadata: dict[str, object] = {"safe_error_code": command.safe_error_code}
@@ -874,7 +985,7 @@ class RequireWriteReauthService:
 
 def _revoke_active_approvals_for_plan(*, unit_of_work: UnitOfWork, plan_id: str) -> None:
     for action in unit_of_work.actions.list_by_plan(plan_id):
-        unit_of_work.approvals.revoke_active_by_action(action.id)
+        revoke_active_approvals(unit_of_work, action.id)
 
 
 def _finish_recovery_response(

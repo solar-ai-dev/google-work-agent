@@ -1,4 +1,7 @@
-from google_work_agent.domain import calculate_canonical_json_hash, canonicalize_json_value
+from google_work_agent.domain.canonical import (
+    calculate_canonical_json_hash,
+    canonicalize_json_value,
+)
 
 
 def test_canonicalize_json_value_sorts_keys_and_removes_extra_whitespace() -> None:

@@ -1,7 +1,6 @@
 """Guards shared by the Recovery resolution transition."""
 
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 
 
 def guard_resolve_recovery(current_status: RunStatus) -> None:

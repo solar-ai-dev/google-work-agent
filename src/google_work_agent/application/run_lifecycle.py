@@ -18,8 +18,11 @@ from google_work_agent.application.use_cases.run.resume_run import (
 from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunResult as ResumeRunResponse,
 )
-from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
-from google_work_agent.ports import RunRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.ports import UnitOfWork
 
 
 class ResumeRunService:
@@ -137,7 +140,7 @@ def _latest_plan_id(unit_of_work: UnitOfWork, run_id: str) -> str | None:
 
 
 def _require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
-    run = unit_of_work.runs.get_by_id(run_id)
+    run = unit_of_work.runs.get(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")
     return run

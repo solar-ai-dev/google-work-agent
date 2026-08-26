@@ -7,15 +7,15 @@ from datetime import date, datetime, time
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo
 
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.action_risk import normalize_action_risk
+from google_work_agent.domain.calendar_conflict import (
     CalendarConflictDecision,
     CalendarConflictFreshness,
     CalendarEventCandidate,
     CalendarInterval,
     CalendarWorkHours,
-    PolicyViolationError,
     evaluate_calendar_conflict,
-    normalize_action_risk,
 )
 from google_work_agent.ports import (
     FreeBusyCalendar,

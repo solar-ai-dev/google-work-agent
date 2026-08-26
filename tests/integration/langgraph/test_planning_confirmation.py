@@ -30,9 +30,9 @@ from tests.integration.langgraph.test_runtime import (
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
-    McpConnectorWriteAdapter,
     GraphProfile,
     LangGraphWorkflowRuntime,
+    McpConnectorWriteAdapter,
     Path,
     ProductFixtureSnapshotLoader,
     WorkflowOutcome,
@@ -57,7 +57,7 @@ from tests.support.canonical_workflow_runtime import (
     start_with_admission,
 )
 
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError
 
 

@@ -6,21 +6,19 @@ from typing import cast
 import pytest
 
 from google_work_agent.application.write_run_completion import CompleteWriteRunService
-from google_work_agent.domain import (
-    ActionStatus,
-    ApprovalStatus,
-    ExecutionAttemptStatus,
-    VerificationStatus,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.approval.model import Approval as ApprovalRecord
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.ports import (
-    ActionRecord,
-    ApprovalRecord,
-    ExecutionAttemptRecord,
-    PlanRecord,
-    PlanStatus,
-    UnitOfWork,
-    VerificationRecord,
-)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.verification.model import Verification as VerificationRecord
+from google_work_agent.domain.verification.model import VerificationStatus
+from google_work_agent.ports import UnitOfWork
 
 
 class _CancelReader:
@@ -224,9 +222,7 @@ def test_complete_write_run_rejects_unresolved_attempt(status: ExecutionAttemptS
 
 
 def test_complete_write_run_rejects_unverified_verification() -> None:
-    detail = _conflict(
-        verification=replace(_verification(), status=VerificationStatus.MISMATCH)
-    )
+    detail = _conflict(verification=replace(_verification(), status=VerificationStatus.MISMATCH))
 
     assert detail is not None
     assert "verification is unresolved" in detail

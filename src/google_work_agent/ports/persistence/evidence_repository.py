@@ -1,6 +1,9 @@
 """Evidence persistence port."""
+
 from typing import Protocol
-from google_work_agent.ports.models import EvidenceRecord
+
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+
 
 class EvidenceRepository(Protocol):
     def insert(self, record: EvidenceRecord) -> None: ...

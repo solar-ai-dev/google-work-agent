@@ -19,7 +19,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.domain import SignedToolRegistry
+from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import MCPClientPortError, MCPClientPortErrorCode
 
 

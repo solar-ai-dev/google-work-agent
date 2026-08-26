@@ -81,7 +81,7 @@ class ExecuteClaimedActionHandler:
                         action_id=command.action_id,
                         attempt_id=command.attempt_id,
                         expected_action_version=command.expected_action_version,
-                        expected_attempt_version=command.expected_attempt_version,
+                        expected_attempt_version=command.expected_attempt_version + 1,
                         delivery_certainty=certainty,
                         error_code=error.code.value,
                         error_detail=str(error),
@@ -94,7 +94,7 @@ class ExecuteClaimedActionHandler:
                     action_id=command.action_id,
                     attempt_id=command.attempt_id,
                     expected_action_version=command.expected_action_version,
-                    expected_attempt_version=command.expected_attempt_version,
+                    expected_attempt_version=command.expected_attempt_version + 1,
                     delivery_certainty=certainty,
                     error_code=error.code.value,
                     error_detail=str(error),
@@ -109,7 +109,7 @@ class ExecuteClaimedActionHandler:
                 action_id=command.action_id,
                 attempt_id=command.attempt_id,
                 expected_action_version=command.expected_action_version,
-                expected_attempt_version=command.expected_attempt_version,
+                expected_attempt_version=command.expected_attempt_version + 1,
                 snapshot=execution.snapshot,
             )
         )

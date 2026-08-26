@@ -6,14 +6,12 @@ from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoo
 from google_work_agent.application.execution_phase import WriteExecutionPhaseCoordinator
 from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.domain import (
-    ActionStatus,
-    CommandResult,
-    ResultCode,
-    RunCommand,
-    RunStatus,
-)
-from google_work_agent.ports import ActionRecord, PlanRecord, PlanStatus
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunStatus
 
 
 class _Phase:
@@ -98,9 +96,7 @@ def _completion_response(*, applied: bool, status: RunStatus) -> RunTransitionRe
         run_id="run-1",
         run_status=status.value,
         run_version=7,
-        next_allowed_commands=(
-            (RunCommand.RESOLVE_RECOVERY.value,) if status is RunStatus.RECOVERY_REQUIRED else ()
-        ),
+        next_allowed_commands=(),
     )
 
 
@@ -128,7 +124,9 @@ def _coordinator(
 
 def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() -> None:
     action = _action(ActionStatus.UNKNOWN_RESULT)
-    phase = _Phase(recover_response=_action_response(applied=False, status=ActionStatus.UNKNOWN_RESULT))
+    phase = _Phase(
+        recover_response=_action_response(applied=False, status=ActionStatus.UNKNOWN_RESULT)
+    )
     completion_calls = 0
 
     def completion(_plan_id: str, _run_id: str):
@@ -166,7 +164,7 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
         result_code=ResultCode.STATE_CONFLICT,
         current_status=RunStatus.RECOVERY_REQUIRED,
         current_version=5,
-        next_allowed_commands=(RunCommand.RESOLVE_RECOVERY,),
+        next_allowed_commands=(),
         conflict_detail="already reconciled elsewhere",
     )
     coordinator = _coordinator(

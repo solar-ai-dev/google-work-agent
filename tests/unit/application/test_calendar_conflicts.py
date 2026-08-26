@@ -10,7 +10,8 @@ from google_work_agent.application.calendar_conflicts import (
     evidence_calendar_conflict_risk,
     require_calendar_conflict_acknowledgement,
 )
-from google_work_agent.domain import CalendarWorkHours, PolicyViolationError
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,

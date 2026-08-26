@@ -17,16 +17,17 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (
     SQLiteExecutionAttemptRepository,
 )
-from google_work_agent.application.write_approval_contracts import (
-    ApproveWriteActionCommand,
-)
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
     ClaimExecutionHandler,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_approval_contracts import (
+    ApproveWriteActionCommand,
+)
 from google_work_agent.application.write_execution_integrity import read_claim_token
-from google_work_agent.domain import ActionStatus, ResultCode
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_write_actions import (
     FakeClockPort,
     FakeGoogleGateway,
@@ -185,10 +186,13 @@ def test_receipt_hash_mismatch_does_not_create_second_attempt(write_database: Pa
     assert conflict.result_code is ResultCode.DUPLICATE_COMMAND
     connection = connect_sqlite(write_database)
     try:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
-            (f"approval-{suffix}",),
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 
@@ -229,14 +233,20 @@ def test_hash_mismatch_and_stale_action_version_fail_closed(
                 (f"action-{suffix}",),
             ).fetchone()
         ) == ("APPROVED", 1)
-        assert connection.execute(
-            "SELECT status FROM approvals WHERE id = ?;",
-            (f"approval-{suffix}",),
-        ).fetchone()[0] == "ACTIVE"
-        assert connection.execute(
-            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
-            (f"approval-{suffix}",),
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT status FROM approvals WHERE id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()[0]
+            == "ACTIVE"
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         connection.close()
 
@@ -284,10 +294,13 @@ def test_active_attempt_guard_fails_before_mutation(
                 (f"action-{suffix}",),
             ).fetchone()
         ) == ("APPROVED", 1)
-        assert connection.execute(
-            "SELECT status FROM approvals WHERE id = ?;",
-            (f"approval-{suffix}",),
-        ).fetchone()[0] == "ACTIVE"
+        assert (
+            connection.execute(
+                "SELECT status FROM approvals WHERE id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()[0]
+            == "ACTIVE"
+        )
     finally:
         connection.close()
 
@@ -328,21 +341,33 @@ def test_transaction_failure_rolls_back_claim_children_and_observability(
                 (f"approval-{suffix}",),
             ).fetchone()
         ) == ("ACTIVE", None)
-        assert connection.execute(
-            "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
-            (f"approval-{suffix}",),
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM command_receipts WHERE command_id = ?;",
-            (f"claim-{suffix}",),
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM trace_events WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED';",
-            (f"action-{suffix}",),
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM audit_events WHERE action_id = ? AND event_type IN ('APPROVAL_CONSUMED', 'EXECUTION_CLAIMED');",
-            (f"action-{suffix}",),
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM execution_attempts WHERE approval_id = ?;",
+                (f"approval-{suffix}",),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM command_receipts WHERE command_id = ?;",
+                (f"claim-{suffix}",),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM trace_events WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED';",
+                (f"action-{suffix}",),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE action_id = ? AND event_type IN ('APPROVAL_CONSUMED', 'EXECUTION_CLAIMED');",
+                (f"action-{suffix}",),
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         connection.close()

@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from json import JSONDecodeError, loads
-from typing import Mapping
 
-from google_work_agent.domain import EffectType, PolicyViolationError
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import EffectType, PolicyViolationError
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
-    ActionRecord,
-    ResourceRefRecord,
-    ResourceSource,
     ResourceType,
-    StoredResourceType,
 )
 
 _RESOURCE_AUTHORITY_FIELDS = frozenset(
@@ -24,7 +23,7 @@ _RESOURCE_AUTHORITY_FIELDS = frozenset(
 class _UpdateSourceContract:
     resource_type: ResourceType
     source: ResourceSource
-    stored_resource_type: StoredResourceType
+    stored_resource_type: str
     resource_id_argument: str
     parent_id_argument: str | None
 
@@ -33,21 +32,21 @@ _UPDATE_SOURCE_CONTRACTS = {
     "gmail_update_draft": _UpdateSourceContract(
         resource_type=ResourceType.GMAIL_DRAFT,
         source=ResourceSource.GMAIL,
-        stored_resource_type=StoredResourceType.MESSAGE,
+        stored_resource_type="GMAIL_DRAFT",
         resource_id_argument="draft_id",
         parent_id_argument=None,
     ),
     "tasks_update_task": _UpdateSourceContract(
         resource_type=ResourceType.TASK,
         source=ResourceSource.TASKS,
-        stored_resource_type=StoredResourceType.TASK,
+        stored_resource_type="TASK",
         resource_id_argument="task_id",
         parent_id_argument="task_list_id",
     ),
     "calendar_update_event": _UpdateSourceContract(
         resource_type=ResourceType.CALENDAR_EVENT,
         source=ResourceSource.CALENDAR,
-        stored_resource_type=StoredResourceType.EVENT,
+        stored_resource_type="CALENDAR_EVENT",
         resource_id_argument="event_id",
         parent_id_argument="calendar_id",
     ),
@@ -84,7 +83,7 @@ def build_approval_source_snapshot(
         raise PolicyViolationError("UPDATE approval resource connector binding mismatch")
     if resource_ref.source is not contract.source:
         raise PolicyViolationError("UPDATE approval resource source binding mismatch")
-    if resource_ref.resource_type is not contract.stored_resource_type:
+    if resource_ref.resource_type != contract.stored_resource_type:
         raise PolicyViolationError("UPDATE approval resource type binding mismatch")
     if not resource_ref.resource_id:
         raise PolicyViolationError("UPDATE approval resource id is missing")

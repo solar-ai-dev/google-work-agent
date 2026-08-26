@@ -12,7 +12,8 @@ from google_work_agent.application.feasibility import (
     refresh_feasibility_input_for_arguments,
     require_feasibility_approval,
 )
-from google_work_agent.domain import CalendarWorkHours, PolicyViolationError
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.ports import (
     FreeBusyCalendar,
     ResourcePage,

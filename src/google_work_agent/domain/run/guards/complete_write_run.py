@@ -1,8 +1,9 @@
 """Guard for complete write run."""
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import require_status
 
-_ALLOWED = frozenset({RunStatus.VERIFYING})
+from google_work_agent.domain.run.model import RunStatus, require_status
+
+_ALLOWED = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})
+
 
 def guard_complete_write_run(current_status: RunStatus) -> None:
     """Reject a complete write run request from an invalid Run status."""

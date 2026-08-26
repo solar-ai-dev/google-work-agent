@@ -17,22 +17,28 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
     validate_finalize_intent_v1,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    ResultCode,
+from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import (
     RunCommand,
     RunStatus,
+    RunTransitionRejected,
     next_allowed_run_commands,
-    transition_run,
 )
+from google_work_agent.domain.run.transitions.block_run import transition_block_run
+from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    ConversationRecord,
-    PlanStatus,
-    RunRecord,
-    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -53,14 +59,6 @@ class FailRunCommand:
     run_id: str
     expected_version: int
     reason_code: str
-
-
-@dataclass(frozen=True, slots=True)
-class CompleteWriteRunCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    expected_version: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +101,6 @@ class BlockRunService:
             expected_version=command.expected_version,
             reason_code=command.reason_code,
             target_status=RunStatus.BLOCKED,
-            repository_call="block_run",
             event_type="RUN_BLOCKED",
             actor_id="block_run",
             persist_finished_at_ms=True,
@@ -127,11 +124,10 @@ class FailRunService:
             run_id=command.run_id,
             expected_version=command.expected_version,
             reason_code=command.reason_code,
-            target_status=RunStatus.FAILED,
-            repository_call="fail_run",
-            event_type="RUN_FAILED",
+            target_status=RunStatus.RECOVERY_REQUIRED,
+            event_type="RUN_RECOVERY_REQUIRED",
             actor_id="fail_run",
-            persist_finished_at_ms=True,
+            persist_finished_at_ms=False,
         )
 
 
@@ -153,35 +149,9 @@ class RequireReauthService:
             expected_version=command.expected_version,
             reason_code=command.reason_code,
             target_status=RunStatus.REAUTH_REQUIRED,
-            repository_call="require_reauth",
             event_type="RUN_REAUTH_REQUIRED",
             actor_id="require_reauth",
             persist_finished_at_ms=False,
-        )
-
-
-class CompleteWriteRunService:
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: CompleteWriteRunCommand) -> RunTransitionResponse:
-        return _apply_run_transition(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-            command_id=command.command_id,
-            command_type="CompleteWriteRun",
-            request_hash=command.request_hash,
-            run_id=command.run_id,
-            expected_version=command.expected_version,
-            reason_code="WRITE_VERIFIED",
-            target_status=RunStatus.COMPLETED,
-            repository_call="complete_write_run",
-            event_type="RUN_COMPLETED",
-            actor_id="complete_write_run",
-            persist_finished_at_ms=True,
         )
 
 
@@ -288,7 +258,6 @@ def _apply_run_transition(
     expected_version: int,
     reason_code: str,
     target_status: RunStatus,
-    repository_call: str,
     event_type: str,
     actor_id: str,
     persist_finished_at_ms: bool,
@@ -317,33 +286,40 @@ def _apply_run_transition(
         )
         run = _require_run(unit_of_work, run_id)
         conversation = _require_conversation(unit_of_work, run.conversation_id)
-        repository_method = getattr(unit_of_work.runs, repository_call)
-        kwargs = {
-            "expected_version": expected_version,
-            "finished_at_ms": completed_at_ms if persist_finished_at_ms else None,
-        }
-        preview_command = {
-            RunStatus.FAILED: RunCommand.FAIL_RUN,
-            RunStatus.BLOCKED: RunCommand.BLOCK_RUN,
-        }.get(target_status)
-        if (
-            preview_command is not None
-            and transition_run(
-                run.status,
-                command=preview_command,
-                current_version=run.version,
-                expected_version=expected_version,
-            ).applied
-        ):
+        result = _run_transition_result(
+            run=run,
+            expected_version=expected_version,
+            target_status=target_status,
+        )
+        if result.applied:
             if target_status is RunStatus.BLOCKED:
                 _cleanup_plans_for_block(
                     unit_of_work=unit_of_work,
                     run_id=run_id,
                     updated_at_ms=completed_at_ms,
                 )
-            else:
+            elif target_status is RunStatus.RECOVERY_REQUIRED:
                 _revoke_active_approvals_for_run(unit_of_work=unit_of_work, run_id=run_id)
-        result = repository_method(run_id, **kwargs)
+            values: dict[str, object] = {
+                "status": result.current_status.value,
+                "version": result.current_version,
+            }
+            if persist_finished_at_ms:
+                values["finished_at_ms"] = completed_at_ms
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                values,
+            ):
+                result = CommandResult(
+                    False,
+                    ResultCode.VERSION_CONFLICT,
+                    run.status,
+                    run.version,
+                    next_allowed_run_commands(run.status),
+                    "validated Run CAS failed",
+                )
         response = RunTransitionResponse(
             applied=bool(result.applied),
             result_code=result.result_code.value,
@@ -402,6 +378,45 @@ def _apply_run_transition(
         )
         unit_of_work.commit()
         return response
+
+
+def _run_transition_result(
+    *, run: RunRecord, expected_version: int, target_status: RunStatus
+) -> CommandResult[RunStatus, RunCommand]:
+    if run.version != expected_version:
+        return CommandResult(
+            False,
+            ResultCode.VERSION_CONFLICT,
+            run.status,
+            run.version,
+            next_allowed_run_commands(run.status),
+            "expected_version does not match current_version",
+        )
+    try:
+        if target_status is RunStatus.BLOCKED:
+            next_status = transition_block_run(run.status)
+        elif target_status is RunStatus.REAUTH_REQUIRED:
+            next_status = transition_require_reauth(run.status)
+        elif target_status is RunStatus.RECOVERY_REQUIRED:
+            next_status = transition_require_recovery(run.status)
+        else:
+            raise ValueError(f"unsupported exact Run transition target: {target_status.value}")
+    except RunTransitionRejected as error:
+        return CommandResult(
+            False,
+            ResultCode.STATE_CONFLICT,
+            run.status,
+            run.version,
+            next_allowed_run_commands(run.status),
+            str(error),
+        )
+    return CommandResult(
+        True,
+        ResultCode.TRANSITION_APPLIED,
+        next_status,
+        run.version + 1,
+        next_allowed_run_commands(next_status),
+    )
 
 
 def _handle_existing_receipt(
@@ -507,7 +522,7 @@ def _deserialize_run_transition_response(raw: str) -> RunTransitionResponse:
 
 
 def _require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
-    run = unit_of_work.runs.get_by_id(run_id)
+    run = unit_of_work.runs.get(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")
     return run
@@ -547,38 +562,36 @@ def _cleanup_plans_for_block(
             continue
         actions = unit_of_work.actions.list_by_plan(plan.id)
         for action in actions:
-            unit_of_work.approvals.revoke_active_by_action(action.id)
+            revoke_active_approvals(unit_of_work, action.id)
         for action in actions:
             if action.status not in pending:
                 continue
-            if action.status == ActionStatus.EXPIRED.value:
-                modified = unit_of_work.actions.modify_write(
+            if (
+                unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
                     updated_at_ms=updated_at_ms,
-                    arguments_json=action.arguments_json,
-                    arguments_hash=action.arguments_hash,
-                    risk=action.risk,
                 )
-                if not modified.applied:
-                    raise RuntimeError(
-                        f"BlockRun could not normalize expired action {action.id}: "
-                        f"{modified.result_code.value}"
-                    )
-            if not unit_of_work.actions.mark_dependency_blocked(
-                action.id,
-                updated_at_ms=updated_at_ms,
+                is None
             ):
                 raise RuntimeError(f"BlockRun could not terminalize pending action {action.id}")
-        if plan.status is PlanStatus.DRAFT:
-            unit_of_work.plans.activate(plan.id)
-        unit_of_work.plans.cancel(plan.id)
+        if (
+            unit_of_work.plans.update_if_status(
+                plan.id,
+                expected_status=plan.status,
+                next_status=PlanStatus.CANCELLED,
+            )
+            is None
+        ):
+            raise RuntimeError(f"BlockRun could not cancel Plan {plan.id}")
 
 
 def _revoke_active_approvals_for_run(*, unit_of_work: UnitOfWork, run_id: str) -> None:
     for plan in unit_of_work.plans.list_by_run(run_id):
         for action in unit_of_work.actions.list_by_plan(plan.id):
-            unit_of_work.approvals.revoke_active_by_action(action.id)
+            revoke_active_approvals(unit_of_work, action.id)
 
 
 def _mapping_or_none(value: object) -> dict[str, object] | None:

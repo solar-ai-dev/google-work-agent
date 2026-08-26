@@ -9,7 +9,9 @@ from google_work_agent.application.use_cases.recovery.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
 )
-from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 
@@ -23,9 +25,9 @@ class _ByIdRepo:
 
 class _Uow:
     def __init__(self, *, action: object, attempt: object, approval: object) -> None:
-        self.actions = _ByIdRepo({getattr(action, "id"): action})
-        self.execution_attempts = _ByIdRepo({getattr(attempt, "id"): attempt})
-        self.approvals = _ByIdRepo({getattr(approval, "id"): approval})
+        self.actions = _ByIdRepo({action.id: action})
+        self.execution_attempts = _ByIdRepo({attempt.id: attempt})
+        self.approvals = _ByIdRepo({approval.id: approval})
         self.resource_refs = _ByIdRepo({})
 
     def __enter__(self) -> _Uow:
@@ -118,7 +120,9 @@ def _run_update(
     return result, recovered, failed, connector
 
 
-def _task_snapshot(*, title: str, version: str, extra: dict[str, object] | None = None) -> ResourceSnapshot:
+def _task_snapshot(
+    *, title: str, version: str, extra: dict[str, object] | None = None
+) -> ResourceSnapshot:
     return ResourceSnapshot(
         fixture_snapshot_id="task-fixture",
         resource_type=ResourceType.TASK,

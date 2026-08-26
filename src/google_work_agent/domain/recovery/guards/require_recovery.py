@@ -1,7 +1,10 @@
 """Guard for entering the Recovery lifecycle."""
 
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import TERMINAL_RUN_STATUSES, RunTransitionRejected
+from google_work_agent.domain.run.model import (
+    TERMINAL_RUN_STATUSES,
+    RunStatus,
+    RunTransitionRejected,
+)
 
 
 def guard_require_recovery(current_status: RunStatus) -> None:

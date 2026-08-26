@@ -1,16 +1,18 @@
 """Guard for restoring the persisted pre-reauth safe Run phase."""
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
 
-_SAFE = frozenset({
-    RunStatus.ANALYZING,
-    RunStatus.RETRIEVING,
-    RunStatus.PLANNING,
-    RunStatus.WAITING_APPROVAL,
-    RunStatus.EXECUTING,
-    RunStatus.VERIFYING,
-    RunStatus.RECOVERY_REQUIRED,
-})
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+
+_SAFE = frozenset(
+    {
+        RunStatus.ANALYZING,
+        RunStatus.RETRIEVING,
+        RunStatus.PLANNING,
+        RunStatus.WAITING_APPROVAL,
+        RunStatus.EXECUTING,
+        RunStatus.VERIFYING,
+        RunStatus.RECOVERY_REQUIRED,
+    }
+)
 
 
 def guard_resume_after_reauth(current_status: RunStatus, *, resume_status: RunStatus) -> None:

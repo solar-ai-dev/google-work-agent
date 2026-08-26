@@ -18,7 +18,9 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.adapters.system.filesystem_attachment_staging import FilesystemAttachmentStagingAdapter
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    FilesystemAttachmentStagingAdapter,
+)
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.write_actions import (
     DeliveryCertainty,
@@ -81,16 +83,12 @@ from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
 from google_work_agent.application.write_verification import VerifyWriteActionService
-from google_work_agent.domain import (
-    CalendarWorkHours,
-    InvariantViolationError,
-    PolicyViolationError,
-    ResultCode,
-    RunCommand,
-    RunStatus,
-)
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.results import InvariantViolationError, ResultCode
+from google_work_agent.domain.run.model import RunCommand, RunStatus
 from google_work_agent.ports import (
-    EvidenceOriginType,
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGateway,
@@ -794,7 +792,9 @@ def test_attachment_descriptor_is_reverified_before_write_claim(
     tmp_path: Path,
 ) -> None:
     clock = FakeClockPort(1000)
-    staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    staging = FilesystemAttachmentStagingAdapter(
+        staging_dir=tmp_path / "staging", now_ms=clock.now_ms
+    )
     descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
     _prepare_effect_write_plan(
         write_database=write_database,
@@ -843,7 +843,9 @@ def test_attachment_claim_fails_closed_without_staging_verifier(
     tmp_path: Path,
 ) -> None:
     clock = FakeClockPort(1000)
-    staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging", now_ms=clock.now_ms)
+    staging = FilesystemAttachmentStagingAdapter(
+        staging_dir=tmp_path / "staging", now_ms=clock.now_ms
+    )
     descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
     _prepare_effect_write_plan(
         write_database=write_database,

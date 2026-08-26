@@ -8,17 +8,21 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
-from google_work_agent.domain import ActionStatus, ApprovalStatus, ResultCode, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
-from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
-from google_work_agent.domain.run.transitions.run import next_allowed_run_commands
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    PlanRecord,
-    PlanStatus,
+from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import (
+    RunStatus,
+    RunTransitionRejected,
+    next_allowed_run_commands,
 )
+from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     ContextAdjustmentControlV1,
@@ -170,8 +174,16 @@ class BeginPlanningHandler:
 
         if plan is not None:
             for action in actions:
-                unit_of_work.approvals.revoke_active_by_action(action.id)
-            unit_of_work.plans.supersede(plan.id)
+                revoke_active_approvals(unit_of_work, action.id)
+            if (
+                unit_of_work.plans.update_if_status(
+                    plan.id,
+                    expected_status=plan.status,
+                    next_status=PlanStatus.SUPERSEDED,
+                )
+                is None
+            ):
+                raise RuntimeError(f"validated Plan supersession CAS failed: {plan.id}")
 
         handoff_id = None
         if command.context_adjustment is not None:

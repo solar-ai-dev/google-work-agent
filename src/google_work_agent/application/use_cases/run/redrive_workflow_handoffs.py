@@ -25,8 +25,11 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import is_preempting_run_status, is_terminal_run_status
+from google_work_agent.domain.run.model import (
+    RunStatus,
+    is_preempting_run_status,
+    is_terminal_run_status,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import WorkflowHandoffV1
 
@@ -125,7 +128,7 @@ class RedriveWorkflowHandoffsHandler:
         if head is None or head.status == "BLOCKED_BINDING":
             return False
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(head.execution.run_id)
+            run = unit_of_work.runs.get(head.execution.run_id)
         return run is not None and not is_preempting_run_status(run.status)
 
     def _reconcile_blocked_binding(self, handoff_id: str, expected_version: int) -> bool:
@@ -138,7 +141,7 @@ class RedriveWorkflowHandoffsHandler:
             handoff = unit_of_work.workflow_handoffs.get(handoff_id)
             if handoff is None or handoff.status != "BLOCKED_BINDING":
                 return False
-            run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
+            run = unit_of_work.runs.get(handoff.execution.run_id)
 
         if run is None:
             return False
@@ -201,7 +204,7 @@ class RedriveWorkflowHandoffsHandler:
                 or handoff.version != expected_version
             ):
                 return False
-            run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
+            run = unit_of_work.runs.get(handoff.execution.run_id)
             if run is None or run.status is not RunStatus.RECOVERY_REQUIRED:
                 return False
             context = unit_of_work.recovery_contexts.load_current_context(handoff.execution.run_id)

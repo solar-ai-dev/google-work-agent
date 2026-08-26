@@ -1,42 +1,53 @@
-"""Definitively settle an unknown execution result as not sent."""
+"""Joint deterministic non-execution settlement authority."""
 
-from google_work_agent.domain.action.model import ActionCommand
-from google_work_agent.domain.enums import ActionStatus, ResultCode
-from google_work_agent.domain.exceptions import InvariantViolationError
-from google_work_agent.domain.results import CommandResult
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttemptStatus,
+    ExecutionAttemptTransitionDecision,
+)
+from google_work_agent.domain.results import InvariantViolationError, ResultCode
 
 
 def transition_resolve_as_failed(
-    current_status: ActionStatus,
+    action_status: ActionStatus,
     *,
-    current_version: int,
-    expected_version: int,
+    action_version: int,
+    expected_action_version: int,
+    attempt_status: ExecutionAttemptStatus,
+    attempt_version: int,
+    expected_attempt_version: int,
     result_not_executed_confirmed: bool,
-) -> CommandResult[ActionStatus, ActionCommand]:
+) -> ExecutionAttemptTransitionDecision:
     if not result_not_executed_confirmed:
-        raise InvariantViolationError("RESOLVE_AS_FAILED requires confirmed non-execution")
-    if expected_version != current_version:
-        return CommandResult(
+        raise InvariantViolationError("ResolveAsFailed requires confirmed non-execution")
+    if action_version != expected_action_version or attempt_version != expected_attempt_version:
+        return ExecutionAttemptTransitionDecision(
             False,
             ResultCode.VERSION_CONFLICT,
-            current_status,
-            current_version,
-            (),
-            "expected_version does not match current_version",
+            action_status,
+            action_version,
+            attempt_status,
+            attempt_version,
+            "expected version does not match current version",
         )
-    if current_status is not ActionStatus.UNKNOWN_RESULT:
-        return CommandResult(
+    if (
+        action_status is not ActionStatus.UNKNOWN_RESULT
+        or attempt_status is not ExecutionAttemptStatus.UNKNOWN_RESULT
+    ):
+        return ExecutionAttemptTransitionDecision(
             False,
             ResultCode.STATE_CONFLICT,
-            current_status,
-            current_version,
-            (),
-            "RESOLVE_AS_FAILED requires UNKNOWN_RESULT",
+            action_status,
+            action_version,
+            attempt_status,
+            attempt_version,
+            "ResolveAsFailed requires Action and Attempt UNKNOWN_RESULT",
         )
-    return CommandResult(
+    return ExecutionAttemptTransitionDecision(
         True,
         ResultCode.TRANSITION_APPLIED,
         ActionStatus.FAILED,
-        current_version + 1,
-        (ActionCommand.PREPARE_WRITE_RETRY,),
+        action_version + 1,
+        ExecutionAttemptStatus.FAILED,
+        attempt_version + 1,
     )

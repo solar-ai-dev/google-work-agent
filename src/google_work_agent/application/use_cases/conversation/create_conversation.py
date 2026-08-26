@@ -12,8 +12,9 @@ from google_work_agent.application.run_command_receipts import (
 from google_work_agent.application.run_command_receipts import (
     resolve_existing_receipt as _resolve_existing_receipt,
 )
-from google_work_agent.domain import ResultCode
-from google_work_agent.ports import ConversationRecord, UnitOfWork
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

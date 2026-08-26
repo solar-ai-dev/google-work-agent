@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, cast
 
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.action_risk import normalize_action_risk
+from google_work_agent.domain.task_duplicate import (
     DuplicateDecision,
     DuplicateFreshness,
-    PolicyViolationError,
     TaskDuplicateCandidate,
     evaluate_task_duplicate,
-    normalize_action_risk,
     normalize_scheduled_date,
 )
 from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType

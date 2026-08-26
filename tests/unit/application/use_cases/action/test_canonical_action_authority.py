@@ -30,13 +30,19 @@ def test_canonical_handlers_do_not_delegate_to_legacy_semantic_services() -> Non
 
 def test_canonical_handlers_own_persistence_boundaries() -> None:
     assert "command_receipts" in inspect.getsource(approve_action)
-    assert "unit_of_work.actions.approve_write" in inspect.getsource(approve_action)
+    assert "transition_approve_action" in inspect.getsource(approve_action)
+    assert "unit_of_work.actions.update_if_version_and_status" in inspect.getsource(approve_action)
     assert "command_receipts" in inspect.getsource(modify_action)
-    assert "unit_of_work.actions.modify_write" in inspect.getsource(modify_action)
+    assert "transition_modify_action" in inspect.getsource(modify_action)
+    assert "unit_of_work.actions.update_if_version_and_status" in inspect.getsource(modify_action)
     assert "command_receipts" in inspect.getsource(reject_action)
-    assert "unit_of_work.actions.reject_write" in inspect.getsource(reject_action)
+    assert "transition_reject_action" in inspect.getsource(reject_action)
+    assert "unit_of_work.actions.update_if_version_and_status" in inspect.getsource(reject_action)
     assert "command_receipts" in inspect.getsource(prepare_write_retry)
-    assert "unit_of_work.actions.prepare_write_retry" in inspect.getsource(prepare_write_retry)
+    assert "transition_prepare_write_retry" in inspect.getsource(prepare_write_retry)
+    assert "unit_of_work.actions.update_if_version_and_status" in inspect.getsource(
+        prepare_write_retry
+    )
 
 
 def test_approve_source_authority_is_server_side_persisted_resource_ref_chain() -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from json import dumps
 
-from google_work_agent.domain.enums import (
+from google_work_agent.domain.action.model import (
     ApprovalRequirement,
     EffectType,
     RecoveryPolicy,

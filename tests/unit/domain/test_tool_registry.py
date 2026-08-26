@@ -1,10 +1,10 @@
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import (
     ApprovalRequirement,
     EffectType,
     RecoveryPolicy,
     VerificationPolicy,
-    build_p0_tool_registry,
 )
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 
 
 def test_p0_tool_registry_contains_only_allowed_tools() -> None:

@@ -7,7 +7,8 @@ import sqlite3
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SQLitePlanRepository,
 )
-from google_work_agent.ports import PlanRecord, PlanStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
 
 
 class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):

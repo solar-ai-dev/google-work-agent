@@ -26,14 +26,7 @@ def test_application_scheduler_never_imports_concrete_execution_adapter() -> Non
 
 
 def test_local_coordinator_has_no_start_or_open_run_recovery_authority() -> None:
-    source = (ROOT / "application/coordinator.py").read_text(encoding="utf-8")
-
-    assert "def enqueue_start(" not in source
-    assert "def reserve_start(" not in source
-    assert "def confirm_start(" not in source
-    assert "list_open_runs(" not in source
-    assert 'kind="start"' not in source
-    assert 'kind="recover"' not in source
+    assert not (ROOT / "application/coordinator.py").exists()
 
 
 def test_launcher_never_reduces_admission_to_coordinator_start() -> None:
@@ -72,4 +65,4 @@ def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
     assert "unit_of_work.checkpoints.create_workflow_binding(" in start_run
     assert "SqliteCheckpointAdapter.for_transaction(" in unit_of_work
     assert 'root / "langgraph-checkpoints.sqlite3"' not in launcher
-    assert "SqliteCheckpointAdapter(database_path" in launcher
+    assert "checkpoint = SqliteCheckpointAdapter(" in launcher

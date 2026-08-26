@@ -27,14 +27,30 @@ from google_work_agent.application.read_persistence import (
     require_action,
     require_plan,
 )
-from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import EvidenceRecord, ResourceRefRecord, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.action.transitions.claim_read_action import (
+    transition_claim_read_action,
+)
+from google_work_agent.domain.action.transitions.complete_read_action import (
+    transition_complete_read_action,
+)
+from google_work_agent.domain.action.transitions.fail_read_action import transition_fail_read_action
+from google_work_agent.domain.action.transitions.finalize_read_action import (
+    transition_finalize_read_action,
+)
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import UnitOfWork
 
 
 class ClaimReadActionService:
     """Claim one read action without invoking the external gateway in-transaction."""
 
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -74,26 +90,45 @@ class ClaimReadActionService:
                     result_code=ResultCode.STATE_CONFLICT,
                     conflict_detail="terminal action cannot be claimed again",
                 )
-                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
+                finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
                 unit_of_work.commit()
                 return response
             if len(unit_of_work.action_dependencies.list_dependencies(action.id)) > 0:
-                ready_ids = {item.id for item in unit_of_work.actions.list_ready_actions(action.plan_id)}
+                ready_ids = {
+                    item.id for item in unit_of_work.actions.list_ready_actions(action.plan_id)
+                }
                 if action.id not in ready_ids:
                     response = action_conflict_response(
                         action=action,
                         result_code=ResultCode.STATE_CONFLICT,
                         conflict_detail="dependencies are not yet satisfied",
                     )
-                    finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
+                    finish_json_receipt(
+                        unit_of_work, command.command_id, response, action.version, now_ms
+                    )
                     unit_of_work.commit()
                     return response
 
-            result = unit_of_work.actions.claim_read(
-                command.action_id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+            result = transition_claim_read_action(
+                ActionStatus(action.status),
+                action.version,
+                command.expected_version,
+                effect_type=EffectType(action.effect_type),
             )
+            if (
+                result.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    command.action_id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated ClaimReadAction CAS failed")
             response = action_result_response(command.action_id, result)
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -116,7 +151,9 @@ class ClaimReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
+            finish_json_receipt(
+                unit_of_work, command.command_id, response, response.action_version, now_ms
+            )
             unit_of_work.commit()
             return response
 
@@ -124,7 +161,9 @@ class ClaimReadActionService:
 class CompleteReadActionService:
     """Persist the successful result of one read action."""
 
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -160,14 +199,18 @@ class CompleteReadActionService:
             action = require_action(unit_of_work, command.action_id)
             plan = require_plan(unit_of_work, action.plan_id)
             if len(command.resource_refs) == 0 and len(command.evidence) == 0:
-                raise ValueError("read completion requires at least one projected resource or evidence")
+                raise ValueError(
+                    "read completion requires at least one projected resource or evidence"
+                )
             if action.version != command.expected_version:
                 response = action_conflict_response(
                     action=action,
                     result_code=ResultCode.VERSION_CONFLICT,
                     conflict_detail="expected_version does not match current_version",
                 )
-                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
+                finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
                 unit_of_work.commit()
                 return response
             if ActionStatus(action.status) is not ActionStatus.EXECUTING:
@@ -176,7 +219,9 @@ class CompleteReadActionService:
                     result_code=ResultCode.STATE_CONFLICT,
                     conflict_detail="complete_read_action requires EXECUTING status",
                 )
-                finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
+                finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
                 unit_of_work.commit()
                 return response
 
@@ -215,13 +260,28 @@ class CompleteReadActionService:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.evidence.link_to_action(action_id=command.action_id, evidence_id=evidence.id)
+                unit_of_work.evidence.link_to_action(
+                    action_id=command.action_id, evidence_id=evidence.id
+                )
 
-            result = unit_of_work.actions.complete_read(
-                command.action_id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+            result = transition_complete_read_action(
+                ActionStatus(action.status),
+                action.version,
+                command.expected_version,
+                effect_type=EffectType(action.effect_type),
             )
+            if (
+                result.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    command.action_id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated CompleteReadAction CAS failed")
             response = action_result_response(command.action_id, result)
             unit_of_work.traces.add(
                 TraceEventRecord(
@@ -255,7 +315,9 @@ class CompleteReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
+            finish_json_receipt(
+                unit_of_work, command.command_id, response, response.action_version, now_ms
+            )
             unit_of_work.commit()
             return response
 
@@ -263,7 +325,9 @@ class CompleteReadActionService:
 class FinalizeReadActionService:
     """Finalize one executed read action and reconcile parent state."""
 
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -298,11 +362,24 @@ class FinalizeReadActionService:
 
             action = require_action(unit_of_work, command.action_id)
             plan = require_plan(unit_of_work, action.plan_id)
-            result = unit_of_work.actions.finalize_read(
-                command.action_id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+            result = transition_finalize_read_action(
+                ActionStatus(action.status),
+                action.version,
+                command.expected_version,
+                effect_type=EffectType(action.effect_type),
             )
+            if (
+                result.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    command.action_id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated FinalizeReadAction CAS failed")
             response = action_result_response(command.action_id, result)
             aggregate = reconcile_read_plan_state(unit_of_work, plan.id, now_ms)
             response = ReadActionCommandResponse(
@@ -321,7 +398,8 @@ class FinalizeReadActionService:
                     status=response.action_status,
                     duration_ms=None,
                     payload_json=dumps(
-                        {"command_id": command.command_id, "partial": aggregate.partial}, sort_keys=True
+                        {"command_id": command.command_id, "partial": aggregate.partial},
+                        sort_keys=True,
                     ),
                     created_at_ms=now_ms,
                 )
@@ -336,7 +414,9 @@ class FinalizeReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
+            finish_json_receipt(
+                unit_of_work, command.command_id, response, response.action_version, now_ms
+            )
             unit_of_work.commit()
             return response
 
@@ -344,7 +424,9 @@ class FinalizeReadActionService:
 class FailReadActionService:
     """Mark one executing read action as failed and reconcile dependencies."""
 
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]) -> None:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
@@ -379,11 +461,24 @@ class FailReadActionService:
 
             action = require_action(unit_of_work, command.action_id)
             plan = require_plan(unit_of_work, action.plan_id)
-            result = unit_of_work.actions.fail_read(
-                command.action_id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
+            result = transition_fail_read_action(
+                ActionStatus(action.status),
+                action.version,
+                command.expected_version,
+                effect_type=EffectType(action.effect_type),
             )
+            if (
+                result.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    command.action_id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated FailReadAction CAS failed")
             response = action_result_response(command.action_id, result)
             aggregate = reconcile_read_plan_state(unit_of_work, plan.id, now_ms)
             response = ReadActionCommandResponse(
@@ -427,6 +522,8 @@ class FailReadActionService:
                     created_at_ms=now_ms,
                 )
             )
-            finish_json_receipt(unit_of_work, command.command_id, response, response.action_version, now_ms)
+            finish_json_receipt(
+                unit_of_work, command.command_id, response, response.action_version, now_ms
+            )
             unit_of_work.commit()
             return response

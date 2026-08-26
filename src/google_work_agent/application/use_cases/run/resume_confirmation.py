@@ -12,15 +12,13 @@ from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     PolicyConfirmationReceiptV1,
 )
-from google_work_agent.domain import ResultCode, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 from google_work_agent.domain.run.transitions.resume_confirmation import (
     transition_resume_confirmation,
-)
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1

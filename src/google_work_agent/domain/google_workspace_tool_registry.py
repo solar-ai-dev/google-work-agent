@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from google_work_agent.domain.enums import (
+from google_work_agent.domain.action.model import (
     ApprovalRequirement,
     EffectType,
     RecoveryPolicy,

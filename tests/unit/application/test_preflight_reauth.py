@@ -23,7 +23,8 @@ from google_work_agent.application.write_actions import (
     VerifyWriteActionService,
     WriteRunResponse,
 )
-from google_work_agent.domain import ResultCode, RunStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,

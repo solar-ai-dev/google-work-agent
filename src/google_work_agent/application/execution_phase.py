@@ -31,14 +31,11 @@ from google_work_agent.application.write_actions import (
     VerifyWriteActionService,
     WriteActionResponse,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    CommandResult,
-    PolicyViolationError,
-    ResultCode,
-    RunCommand,
-    RunStatus,
-    transition_run,
+from google_work_agent.domain.action.model import ActionStatus, PolicyViolationError
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunCommand, RunStatus
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
 )
 from google_work_agent.ports import (
     DeliveryCertainty,
@@ -96,7 +93,7 @@ class BeginWriteVerificationService:
 
     def __call__(self, run_id: str) -> CommandResult[RunStatus, RunCommand]:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            run = unit_of_work.runs.get(run_id)
             if run is None:
                 raise LookupError(f"run not found: {run_id}")
             if run.status is RunStatus.VERIFYING:
@@ -108,22 +105,21 @@ class BeginWriteVerificationService:
                     next_allowed_commands=(),
                     conflict_detail=None,
                 )
-            preview = transition_run(
-                run.status,
-                command=RunCommand.BEGIN_VERIFICATION,
-                current_version=run.version,
-                expected_version=run.version,
-            )
-            if not preview.applied:
-                return preview
-            updated = unit_of_work.runs.set_verifying(run_id)
+            next_status = transition_begin_verification(run.status)
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": next_status.value, "version": run.version + 1},
+            ):
+                raise RuntimeError("validated BeginVerification CAS failed")
             unit_of_work.commit()
             return CommandResult(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED,
-                current_status=updated.status,
-                current_version=updated.version,
-                next_allowed_commands=preview.next_allowed_commands,
+                current_status=next_status,
+                current_version=run.version + 1,
+                next_allowed_commands=(),
                 conflict_detail=None,
             )
 
@@ -271,7 +267,7 @@ class WriteExecutionPhaseCoordinator:
                 action_id=request.action_id,
                 attempt_id=attempt_id,
                 expected_action_version=claimed.action_version,
-                expected_attempt_version=0,
+                expected_attempt_version=1,
                 snapshot=executed.snapshot,
             )
         )
@@ -439,7 +435,7 @@ class WriteExecutionPhaseCoordinator:
                     action_id=request.action_id,
                     attempt_id=attempt_id,
                     expected_action_version=claimed_action_version,
-                    expected_attempt_version=0,
+                    expected_attempt_version=1,
                     error_code=error.code.value,
                     error_detail=str(error),
                 )
@@ -478,7 +474,7 @@ class WriteExecutionPhaseCoordinator:
                 action_id=request.action_id,
                 attempt_id=attempt_id,
                 expected_action_version=claimed_action_version,
-                expected_attempt_version=0,
+                expected_attempt_version=1,
                 error_code=error.code.value,
                 error_detail=str(error),
                 mcp_request_id=error.mcp_request_id,

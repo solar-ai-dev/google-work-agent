@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from json import dumps
 from typing import cast
 
@@ -11,31 +12,39 @@ from google_work_agent.application.cancel_intent import (
     has_durable_cancel_intent,
 )
 from google_work_agent.application.run_terminal import (
-    CompleteWriteRunCommand,
     RunTransitionResponse,
     _finish_json_receipt,
     _handle_existing_receipt,
     _require_conversation,
     _require_run,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    ApprovalStatus,
-    ExecutionAttemptStatus,
-    ResultCode,
-    RunStatus,
-    VerificationStatus,
-    next_allowed_run_commands,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.run.transitions.complete_write_run import (
+    transition_complete_write_run,
 )
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports import (
-    ActionRecord,
-    AuditEventRecord,
-    PlanRecord,
-    PlanStatus,
-    RunRecord,
-    TraceEventRecord,
     UnitOfWork,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteWriteRunCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_version: int
+
 
 _UNRESOLVED_ATTEMPT_STATUSES = frozenset(
     {
@@ -113,30 +122,51 @@ class CompleteWriteRunService:
                 )
 
             assert plan is not None
-            result = unit_of_work.runs.complete_write_run(
+            if run.version != command.expected_version:
+                return self._reject(
+                    unit_of_work=unit_of_work,
+                    command=command,
+                    run=run,
+                    completed_at_ms=completed_at_ms,
+                    conflict_detail="expected_version does not match current_version",
+                )
+            next_status = transition_complete_write_run(run.status)
+            if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
-                expected_version=command.expected_version,
-                finished_at_ms=completed_at_ms,
-            )
+                run.version,
+                frozenset({run.status}),
+                {
+                    "status": next_status.value,
+                    "version": run.version + 1,
+                    "finished_at_ms": completed_at_ms,
+                },
+            ):
+                raise RuntimeError("validated CompleteWriteRun CAS failed")
             response = RunTransitionResponse(
-                applied=bool(result.applied),
-                result_code=result.result_code.value,
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
                 run_id=run.id,
-                run_status=result.current_status.value,
-                run_version=result.current_version,
-                next_allowed_commands=tuple(item.value for item in result.next_allowed_commands),
+                run_status=next_status.value,
+                run_version=run.version + 1,
+                next_allowed_commands=(),
                 reason_code="WRITE_VERIFIED",
-                result_kind=result.current_status.value if result.applied else None,
-                conflict_detail=result.conflict_detail,
+                result_kind=next_status.value,
+                conflict_detail=None,
             )
-            if result.applied:
-                unit_of_work.plans.complete(plan.id)
+            if response.applied:
+                if (
+                    unit_of_work.plans.update_if_status(
+                        plan.id, expected_status=plan.status, next_status=PlanStatus.COMPLETED
+                    )
+                    is None
+                ):
+                    raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
                 unit_of_work.traces.add(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
                         event_type="RUN_COMPLETED",
-                        status=result.current_status.value,
+                        status=next_status.value,
                         duration_ms=None,
                         payload_json=dumps(
                             {
@@ -158,7 +188,7 @@ class CompleteWriteRunService:
                         actor_id="complete_write_run",
                         actor_display="CompleteWriteRun",
                         event_type="RUN_COMPLETED",
-                        outcome=result.result_code.value,
+                        outcome=ResultCode.TRANSITION_APPLIED.value,
                         metadata_json=dumps(
                             {"command_id": command.command_id, "reason_code": "WRITE_VERIFIED"},
                             sort_keys=True,
@@ -221,7 +251,9 @@ class CompleteWriteRunService:
             if any(attempt.status in _UNRESOLVED_ATTEMPT_STATUSES for attempt in attempts):
                 return f"action {action.id} has an unresolved execution attempt"
             succeeded = tuple(
-                attempt for attempt in attempts if attempt.status is ExecutionAttemptStatus.SUCCEEDED
+                attempt
+                for attempt in attempts
+                if attempt.status is ExecutionAttemptStatus.SUCCEEDED
             )
             if not succeeded:
                 return f"action {action.id} has no successful execution attempt"

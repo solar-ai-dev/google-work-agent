@@ -8,7 +8,7 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommand,
     ResolveRecoveryHandler,
 )
-from google_work_agent.domain.enums import RecoveryResolution
+from google_work_agent.domain.recovery.model import RecoveryResolution
 
 
 def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path) -> None:

@@ -10,23 +10,21 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
     ResourceSelectionHandlePayloadV1,
 )
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
-from google_work_agent.domain import ResultCode, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.message.model import Message as MessageRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunCreate as RunCreateRecord
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 from google_work_agent.domain.run.transitions.start_run import transition_start_run
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import SelectedResourceRef
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    MessageRecord,
-    PersistedAuditEventRecord,
-    PersistedTraceEventRecord,
-    ResourceRefRecord,
-    ResourceSource,
-    RunCreateRecord,
-    TraceEventRecord,
-)
+from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
+from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,

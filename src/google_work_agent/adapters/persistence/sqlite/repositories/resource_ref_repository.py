@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from google_work_agent.ports.models import ResourceRefRecord, ResourceSource
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 class SqliteResourceRefRepository:

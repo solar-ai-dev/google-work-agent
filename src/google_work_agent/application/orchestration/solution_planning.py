@@ -9,7 +9,6 @@ from typing import Final, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
@@ -42,20 +41,16 @@ from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.domain import (
-    EffectType,
-    EvidencePolicyInput,
-    PolicyViolationError,
-    SignedToolRegistry,
-    build_p0_tool_registry,
-    validate_evidence_policy,
-)
+from google_work_agent.domain.action.model import EffectType, PolicyViolationError
+from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 JsonObject = dict[str, object]
 ANSWER_DRAFT_SCHEMA_VERSION: Final = 1
@@ -225,9 +220,7 @@ def _action_plan_draft_output_schema_for_routes(
     routes: tuple[OutputToolRouteV1, ...],
     read_tool_ids: frozenset[str],
 ) -> OutputSchemaDefinition:
-    tool_names = sorted(
-        {route["selected_tool_id"] for route in routes} | set(read_tool_ids)
-    )
+    tool_names = sorted({route["selected_tool_id"] for route in routes} | set(read_tool_ids))
     base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
     json_schema: dict[str, object] = copy.deepcopy(base_schema)
     properties = cast("dict[str, object]", json_schema["properties"])
@@ -996,8 +989,10 @@ def _validate_frozen_output_routes(
     unexpected = actual - allowed
     if unexpected:
         raise SolutionPlanningValidationError("action escapes frozen output route")
-    if actual and result["status"] == PlanningResult.PLAN_READY.value and not allowed.issubset(
+    if (
         actual
+        and result["status"] == PlanningResult.PLAN_READY.value
+        and not allowed.issubset(actual)
     ):
         raise SolutionPlanningValidationError("plan omits a frozen output route")
 

@@ -15,7 +15,8 @@ from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningValidationError,
     validate_action_plan_draft_v1,
 )
-from google_work_agent.domain import EffectType, SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
 
 
 class DomainValidationValidationError(ValueError):

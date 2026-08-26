@@ -17,24 +17,24 @@ from google_work_agent.application.read_contracts import (
     SaveReadOnlyPlanCommand,
     SaveReadOnlyPlanResponse,
 )
-from google_work_agent.domain import (
-    ActionCommand,
-    ActionStatus,
-    CommandResult,
-    EffectType,
-    ResultCode,
-    RunStatus,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.transitions.complete_read_only_run import (
+    transition_complete_read_only_run,
+)
 from google_work_agent.ports import (
-    ActionRecord,
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    PlanRecord,
-    PlanStatus,
-    RunRecord,
     UnitOfWork,
 )
 
@@ -63,7 +63,7 @@ DEPENDENCY_FAILURE_STATUSES = frozenset(
 
 
 def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
-    run = unit_of_work.runs.get_by_id(run_id)
+    run = unit_of_work.runs.get(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")
     return run
@@ -833,10 +833,14 @@ def reconcile_read_plan_state(
             deps = dependencies[action.id]
             if deps and any(action_statuses[dep] in DEPENDENCY_FAILURE_STATUSES for dep in deps):
                 changed = (
-                    unit_of_work.actions.mark_dependency_blocked(
+                    unit_of_work.actions.update_if_version_and_status(
                         action.id,
+                        expected_version=action.version,
+                        expected_status=ActionStatus(action.status),
+                        next_status=ActionStatus.DEPENDENCY_BLOCKED,
                         updated_at_ms=now_ms,
                     )
+                    is not None
                     or changed
                 )
         if not changed:
@@ -850,15 +854,34 @@ def reconcile_read_plan_state(
 
     plan = require_plan(unit_of_work, plan_id)
     run = require_run(unit_of_work, plan.run_id)
-    if plan.status is PlanStatus.ACTIVE:
-        unit_of_work.plans.complete(plan.id)
-    run_result = unit_of_work.runs.complete_read_only_run(
-        run.id,
-        expected_version=run.version,
-        finished_at_ms=now_ms,
+    next_run_status, next_plan_status = transition_complete_read_only_run(
+        run.status,
+        plan_status=plan.status,
+        action_statuses=tuple(terminal_statuses),
     )
+    if (
+        unit_of_work.plans.update_if_status(
+            plan.id,
+            expected_status=plan.status,
+            next_status=next_plan_status,
+        )
+        is None
+    ):
+        raise RuntimeError("validated CompleteReadOnlyRun Plan CAS failed")
+    run_applied = unit_of_work.runs.update_if_version_and_status(
+        run.id,
+        run.version,
+        frozenset({run.status}),
+        {
+            "status": next_run_status.value,
+            "version": run.version + 1,
+            "finished_at_ms": now_ms,
+        },
+    )
+    if not run_applied:
+        raise RuntimeError("validated CompleteReadOnlyRun Run CAS failed")
     return _AggregateState(
         plan_completed=True,
-        run_completed=run_result.applied,
+        run_completed=True,
         partial=partial,
     )

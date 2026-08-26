@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 
+from google_work_agent.adapters.connectors.google.mcp import verified_server, workspace_tools
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
@@ -12,9 +13,7 @@ from google_work_agent.adapters.mcp import MCPArtifactConfig
 from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.domain import build_p0_tool_registry
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools
-from google_work_agent.adapters.connectors.google.mcp import verified_server
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 
 
 def test_verified_server_declared_surface_maps_to_handlers() -> None:

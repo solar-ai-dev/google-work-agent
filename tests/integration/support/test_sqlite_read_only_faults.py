@@ -30,7 +30,7 @@ from google_work_agent.application.read_plan import (
     PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
 )
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import (
     FakeGoogleGateway,
     SQLiteFaultPlan,

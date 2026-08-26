@@ -6,7 +6,8 @@ from google_work_agent.application.use_cases.resource_ref.persist_resource_ref i
     PersistResourceRefCommand,
     PersistResourceRefHandler,
 )
-from google_work_agent.ports.models import ResourceRefRecord, ResourceSource, StoredResourceType
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
@@ -31,7 +32,7 @@ def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
         "run-1",
         "google_workspace",
         ResourceSource.TASKS,
-        StoredResourceType.TASK,
+        "TASK",
         "task-1",
         "list-1",
         None,

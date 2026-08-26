@@ -22,7 +22,8 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.enums import RecoveryResolution, RunStatus
+from google_work_agent.domain.recovery.model import RecoveryResolution
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -130,7 +131,7 @@ def test_c_repeated_redrive_passes_produce_exactly_one_transition(tmp_path: Path
     assert _count(database_path, "command_receipts") == 1
     assert _count(database_path, "recovery_contexts") == 1
     with factory() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("r-1")
+        run = unit_of_work.runs.get("r-1")
     assert run is not None
     assert run.version == 1
 
@@ -234,7 +235,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
     # lane forever -- h-2 can now dispatch.
     resolve_recovery = ResolveRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 30)
     with factory() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("r-1")
+        run = unit_of_work.runs.get("r-1")
     assert run is not None
     resolved = resolve_recovery(
         ResolveRecoveryCommand(

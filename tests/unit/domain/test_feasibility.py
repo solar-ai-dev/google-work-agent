@@ -4,9 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from google_work_agent.domain import (
-    CalendarInterval,
-    CalendarWorkHours,
+from google_work_agent.domain.calendar_conflict import CalendarInterval, CalendarWorkHours
+from google_work_agent.domain.feasibility import (
     FeasibilityDecision,
     derive_deadline_cutoff,
     evaluate_feasibility,

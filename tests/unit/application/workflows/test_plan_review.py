@@ -9,17 +9,10 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.plan_review import (
-    PLAN_REVIEW_OUTPUT_SCHEMA,
-    PlanReviewAgent,
-    PlanReviewValidationError,
-    build_plan_review_clarification_question,
-    build_policy_review_context_v1,
-    load_plan_review_inspect_prompt_reference,
-    load_plan_review_recheck_prompt_reference,
-    resolve_review_target,
-    validate_plan_review_result_v1,
+from google_work_agent.application.orchestration.contracts import (
+    PlanningResult,
+    ReviewResult,
+    WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -30,21 +23,25 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ReviewIssueV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.contracts import (
-    PlanningResult,
-    ReviewResult,
-    WorkflowPhase,
+from google_work_agent.application.orchestration.plan_review import (
+    PLAN_REVIEW_OUTPUT_SCHEMA,
+    PlanReviewAgent,
+    PlanReviewValidationError,
+    _review_tool_call_to_result_v1,
+    _shortlisted_policy_review_context_v1,
+    build_plan_review_clarification_question,
+    build_policy_review_context_v1,
+    load_plan_review_inspect_prompt_reference,
+    load_plan_review_recheck_prompt_reference,
+    resolve_review_target,
+    validate_plan_review_result_v1,
 )
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.plan_review import (
-    _review_tool_call_to_result_v1,
-    _shortlisted_policy_review_context_v1,
-)
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
-from google_work_agent.domain import build_p0_tool_registry
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     LLMToolCall,
@@ -57,6 +54,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 INSPECT_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",
@@ -415,37 +413,61 @@ def test_recheck_rejects_route_reconsideration_status() -> None:
 
 def test_review_tool_call_mapper_rejects_zero_tool_calls() -> None:
     with pytest.raises(ValueError, match="expected exactly one review tool call, got 0"):
-        _review_tool_call_to_result_v1(ToolCallProviderResponse(
-            calls=(), model="m", provider_request_id=None,
-            input_tokens=None, output_tokens=None, latency_ms=0,
-        ))
+        _review_tool_call_to_result_v1(
+            ToolCallProviderResponse(
+                calls=(),
+                model="m",
+                provider_request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=0,
+            )
+        )
 
 
 def test_review_tool_call_mapper_rejects_multiple_tool_calls() -> None:
     call = LLMToolCall(name="review_pass", arguments={"summary": "ok"})
     with pytest.raises(ValueError, match="expected exactly one review tool call, got 2"):
-        _review_tool_call_to_result_v1(ToolCallProviderResponse(
-            calls=(call, call), model="m", provider_request_id=None,
-            input_tokens=None, output_tokens=None, latency_ms=0,
-        ))
+        _review_tool_call_to_result_v1(
+            ToolCallProviderResponse(
+                calls=(call, call),
+                model="m",
+                provider_request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=0,
+            )
+        )
 
 
 def test_review_tool_call_mapper_rejects_unknown_function() -> None:
     call = LLMToolCall(name="review_maybe", arguments={"summary": "ok"})
     with pytest.raises(ValueError, match="unknown review function: review_maybe"):
-        _review_tool_call_to_result_v1(ToolCallProviderResponse(
-            calls=(call,), model="m", provider_request_id=None,
-            input_tokens=None, output_tokens=None, latency_ms=0,
-        ))
+        _review_tool_call_to_result_v1(
+            ToolCallProviderResponse(
+                calls=(call,),
+                model="m",
+                provider_request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=0,
+            )
+        )
 
 
 def test_review_tool_call_mapper_rejects_missing_summary() -> None:
     call = LLMToolCall(name="review_pass", arguments={})
     with pytest.raises(ValueError, match="arguments.summary must be a string"):
-        _review_tool_call_to_result_v1(ToolCallProviderResponse(
-            calls=(call,), model="m", provider_request_id=None,
-            input_tokens=None, output_tokens=None, latency_ms=0,
-        ))
+        _review_tool_call_to_result_v1(
+            ToolCallProviderResponse(
+                calls=(call,),
+                model="m",
+                provider_request_id=None,
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=0,
+            )
+        )
 
 
 def test_review_pass_tool_call_cannot_express_confirmation() -> None:
@@ -455,10 +477,16 @@ def test_review_pass_tool_call_cannot_express_confirmation() -> None:
     unrepresentable by the mapper in the first place."""
     call = LLMToolCall(name="review_pass", arguments={"summary": "ok", "confirmation": {"x": 1}})
 
-    result = _review_tool_call_to_result_v1(ToolCallProviderResponse(
-        calls=(call,), model="m", provider_request_id=None,
-        input_tokens=None, output_tokens=None, latency_ms=0,
-    ))
+    result = _review_tool_call_to_result_v1(
+        ToolCallProviderResponse(
+            calls=(call,),
+            model="m",
+            provider_request_id=None,
+            input_tokens=None,
+            output_tokens=None,
+            latency_ms=0,
+        )
+    )
 
     assert result["status"] == ReviewResult.PASS.value
     assert result["confirmation"] is None
@@ -510,10 +538,16 @@ def test_review_tool_call_mapper_produces_valid_result_for_each_function(
 ) -> None:
     call = LLMToolCall(name=function_name, arguments=arguments)
 
-    result = _review_tool_call_to_result_v1(ToolCallProviderResponse(
-        calls=(call,), model="m", provider_request_id=None,
-        input_tokens=None, output_tokens=None, latency_ms=0,
-    ))
+    result = _review_tool_call_to_result_v1(
+        ToolCallProviderResponse(
+            calls=(call,),
+            model="m",
+            provider_request_id=None,
+            input_tokens=None,
+            output_tokens=None,
+            latency_ms=0,
+        )
+    )
 
     validated = validate_plan_review_result_v1(
         result,

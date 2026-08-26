@@ -30,8 +30,11 @@ from google_work_agent.application.write_actions import (
     ResolveMismatchRecoveryService,
     SaveWritePlanService,
 )
-from google_work_agent.domain import calculate_canonical_json_hash
-from google_work_agent.ports import ActionRecord, EvidenceOriginType, EvidenceRecord, PlanRecord
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.plan.model import Plan as PlanRecord
 
 
 def _seed_recovery_aggregate(database_path: Path) -> None:

@@ -2,10 +2,10 @@ from dataclasses import replace
 
 import pytest
 
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.policy import (
     ApprovalIntegrityInput,
     EvidencePolicyInput,
-    PolicyViolationError,
     validate_approval_integrity,
     validate_evidence_policy,
 )

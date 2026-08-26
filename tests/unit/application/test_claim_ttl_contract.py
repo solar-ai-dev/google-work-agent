@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 
+from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
 from google_work_agent.adapters.mcp.gateway import MCPGoogleWorkspaceGateway
 from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
 from google_work_agent.application.write_claim import ClaimWriteActionService
@@ -12,12 +13,11 @@ from google_work_agent.application.write_execution_integrity import (
     issue_claim_token,
     read_claim_token,
 )
-from google_work_agent.domain import calculate_canonical_json_hash
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     CLAIM_CONTEXT_MAX_TTL_MS,
 )
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
 from google_work_agent.ports import MCPClientPort
 
 _SESSION_KEY = "11" * 32

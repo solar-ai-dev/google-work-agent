@@ -2,7 +2,7 @@
 
 import pytest
 
-from google_work_agent.domain import (
+from google_work_agent.domain.task_duplicate import (
     DuplicateDecision,
     TaskDuplicateCandidate,
     evaluate_task_duplicate,

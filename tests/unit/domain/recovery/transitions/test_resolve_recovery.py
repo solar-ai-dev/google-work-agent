@@ -1,9 +1,12 @@
 import pytest
 
-from google_work_agent.domain.enums import ActionStatus, RecoveryResolution, ResultCode, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
     transition_resolve_recovery,
 )
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 
 
 def test_recheck_unknown_result_to_executed_enters_verifying() -> None:

@@ -133,7 +133,7 @@ from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.domain import CalendarWorkHours
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.launcher.connector_composition import build_connectors
 from google_work_agent.launcher.development_constants import (
     PROJECT_ROOT,

@@ -39,35 +39,33 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     require_run,
 )
-from google_work_agent.domain import (
-    ActionCommand,
-    ActionStatus,
-    EffectType,
-    ExecutionAttemptStatus,
-    PolicyViolationError,
-    ResultCode,
-    build_p0_tool_registry,
-    calculate_canonical_json_hash,
-)
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.claim.guards.claim_execution import (
     ClaimExecutionGuardInput,
     guard_claim_execution,
 )
+from google_work_agent.domain.claim.model import ClaimCommand
 from google_work_agent.domain.claim.transitions.claim_execution import transition_claim_execution
 from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
 )
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    ExecutionAttemptRecord,
-    TraceEventRecord,
     UnitOfWork,
 )
-from google_work_agent.ports.models import PlanStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +90,7 @@ class ClaimExecutionResult:
     action_id: str
     current_status: ActionStatus
     current_version: int
-    next_allowed_commands: tuple[ActionCommand, ...]
+    next_allowed_commands: tuple[ClaimCommand, ...]
     approval_id: str | None = None
     attempt_id: str | None = None
     claim_token: str | None = None
@@ -166,6 +164,12 @@ class ClaimExecutionHandler:
                 unit_of_work=unit_of_work,
                 action_id=action.id,
             )
+            plans = tuple(unit_of_work.plans.list_by_run(run.id))
+            current_plan = max(
+                plans,
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
 
             try:
                 current_source_snapshot = self._current_source_snapshot(
@@ -192,8 +196,9 @@ class ClaimExecutionHandler:
                     expires_at_ms=approval.expires_at_ms,
                     now_ms=now_ms,
                     run_status=run.status,
+                    plan_status=plan.status,
+                    plan_is_current=current_plan is not None and current_plan.id == plan.id,
                     durable_cancel_intent=has_durable_cancel_intent(cancel_reader, run.id),
-                    plan_superseded=plan.status is PlanStatus.SUPERSEDED,
                     predecessor_verified=predecessor_verified,
                     active_attempt_exists=active_attempt_exists,
                 )
@@ -237,18 +242,25 @@ class ClaimExecutionHandler:
 
             # Order is intentional: executable DB invariant 0005 forbids moving an
             # Action away from APPROVED while its Approval remains ACTIVE.
-            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
-            persisted = unit_of_work.actions.claim_execution(
-                action.id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
-            )
-            if (
-                not persisted.applied
-                or persisted.current_status is not preview.current_status
-                or persisted.current_version != preview.current_version
+            if not unit_of_work.approvals.update_if_status(
+                approval.id,
+                expected_status=approval.status,
+                next_status=ApprovalStatus.CONSUMED,
+                consumed_at_ms=now_ms,
             ):
-                raise RuntimeError("validated durable claim transition did not persist")
+                raise RuntimeError("validated ConsumeApproval CAS failed")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=preview.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated ClaimExecution CAS failed")
+            persisted = preview
 
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
@@ -471,7 +483,9 @@ class ClaimExecutionHandler:
                 current_status=ActionStatus(action.status),
                 current_version=action.version,
                 next_allowed_commands=(),
-                conflict_detail="receipt exists in RECEIVED state; durable claim recovery is inconclusive",
+                conflict_detail=(
+                    "receipt exists in RECEIVED state; durable claim recovery is inconclusive"
+                ),
             )
 
         payload = loads(receipt.response_json)
@@ -482,7 +496,7 @@ class ClaimExecutionHandler:
             current_status=ActionStatus(str(payload["current_status"])),
             current_version=int(payload["current_version"]),
             next_allowed_commands=tuple(
-                ActionCommand(str(item)) for item in payload["next_allowed_commands"]
+                ClaimCommand(str(item)) for item in payload["next_allowed_commands"]
             ),
             approval_id=cast(str | None, payload.get("approval_id")),
             attempt_id=cast(str | None, payload.get("attempt_id")),

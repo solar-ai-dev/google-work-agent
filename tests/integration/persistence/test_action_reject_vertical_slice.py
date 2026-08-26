@@ -10,27 +10,28 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.write_action_mutation import RejectWriteActionService
+from google_work_agent.application.write_action_mutation_contracts import (
+    RejectWriteActionCommand,
+)
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_claim import ClaimWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
-)
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
 )
 from google_work_agent.application.write_plan import (
     PublishWritePlanService,
     SaveWritePlanService,
 )
-from google_work_agent.application.write_action_mutation_contracts import (
-    RejectWriteActionCommand,
+from google_work_agent.application.write_plan_contracts import (
+    PublishWritePlanCommand,
+    SaveWritePlanCommand,
 )
-from google_work_agent.application.write_action_mutation import RejectWriteActionService
-from google_work_agent.domain import ApprovalStatus, ResultCode
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,
 )
@@ -134,7 +135,7 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
         plan = unit_of_work.plans.get_by_id("plan-1")
-        run = unit_of_work.runs.get_by_id("run-1")
+        run = unit_of_work.runs.get("run-1")
         approvals = unit_of_work.approvals.list_by_action("action-1")
         attempts = tuple(
             attempt
@@ -207,7 +208,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
         action_a = unit_of_work.actions.get_by_id("action-a")
         action_b = unit_of_work.actions.get_by_id("action-b")
         plan = unit_of_work.plans.get_by_id("plan-independent")
-        run = unit_of_work.runs.get_by_id("run-1")
+        run = unit_of_work.runs.get("run-1")
     assert action_a is not None and action_a.status == "REJECTED"
     assert action_b is not None and action_b.status == "PROPOSED"
     assert plan is not None and plan.status.value == "WAITING_APPROVAL"

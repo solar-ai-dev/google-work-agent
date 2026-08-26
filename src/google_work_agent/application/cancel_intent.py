@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from google_work_agent.domain import ResultCode
-from google_work_agent.ports import CommandReceiptStatus
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
 
 REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
 RUN_AGGREGATE_TYPE = "Run"

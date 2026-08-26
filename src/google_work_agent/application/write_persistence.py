@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from enum import StrEnum
 from json import dumps, loads
-from typing import cast
+from typing import Any, Protocol, cast
 
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
@@ -14,26 +15,32 @@ from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanResponse,
     SaveWritePlanResponse,
 )
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
     ActionCommand,
     ActionStatus,
-    CommandResult,
     EffectType,
-    ResultCode,
-    RunStatus,
     next_allowed_action_commands,
 )
+from google_work_agent.domain.action.transitions.cancel_pending_action import (
+    transition_cancel_pending_action,
+)
+from google_work_agent.domain.approval.model import Approval as ApprovalRecord
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    ApprovalRecord,
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    ExecutionAttemptRecord,
-    PlanRecord,
-    ResourceRefRecord,
-    RunRecord,
-    TraceEventRecord,
     UnitOfWork,
 )
 from google_work_agent.ports.observability_events import sanitize_event_attributes
@@ -47,6 +54,51 @@ WriteResponseType = (
     | type[WriteActionResponse]
     | type[WriteRunResponse]
 )
+
+
+class ReceiptResponse(Protocol):
+    @property
+    def applied(self) -> bool: ...
+
+    @property
+    def result_code(self) -> str: ...
+
+
+def revoke_active_approvals(unit_of_work: UnitOfWork, action_id: str) -> tuple[str, ...]:
+    revoked: list[str] = []
+    for approval in unit_of_work.approvals.list_by_action(action_id):
+        if approval.status is not ApprovalStatus.ACTIVE:
+            continue
+        if not unit_of_work.approvals.update_if_status(
+            approval.id,
+            expected_status=approval.status,
+            next_status=ApprovalStatus.REVOKED,
+        ):
+            raise RuntimeError(f"validated RevokeApproval CAS failed: {approval.id}")
+        revoked.append(approval.id)
+    return tuple(revoked)
+
+
+def require_plan_review(unit_of_work: UnitOfWork, plan_id: str) -> int:
+    """Invalidate the current review through a persistence-only Plan CAS."""
+    plan = unit_of_work.plans.get_by_id(plan_id)
+    if plan is None:
+        raise LookupError(f"plan not found: {plan_id}")
+    if plan.status not in {PlanStatus.WAITING_APPROVAL, PlanStatus.ACTIVE}:
+        raise RuntimeError(f"Plan review cannot be invalidated from {plan.status.value}")
+    updated = unit_of_work.plans.update_review_if_version_and_status(
+        plan.id,
+        expected_review_version=plan.review_version,
+        expected_review_statuses=frozenset(PlanReviewStatus),
+        values={
+            "review_status": PlanReviewStatus.REQUIRED,
+            "review_disposition": None,
+            "review_version": plan.review_version + 1,
+        },
+    )
+    if updated is None:
+        raise RuntimeError("validated Plan review CAS failed")
+    return updated.review_version
 
 
 def resolve_json_receipt(
@@ -107,7 +159,7 @@ def resolve_json_receipt(
 def finish_json_receipt(
     unit_of_work: UnitOfWork,
     command_id: str,
-    response: WriteResponse,
+    response: ReceiptResponse,
     result_version: int,
     completed_at_ms: int,
 ) -> None:
@@ -116,13 +168,13 @@ def finish_json_receipt(
         applied=bool(response.applied),
         result_code=ResultCode(str(response.result_code)),
         result_version=result_version,
-        response_json=dumps(asdict(response), sort_keys=True),
+        response_json=dumps(asdict(cast(Any, response)), sort_keys=True),
         completed_at_ms=completed_at_ms,
     )
 
 
 def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
-    run = unit_of_work.runs.get_by_id(run_id)
+    run = unit_of_work.runs.get(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")
     return run
@@ -233,6 +285,8 @@ def emit_command_rejected_hash_mismatch(
 def cancel_pending_actions(
     *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
 ) -> None:
+    plan = require_plan(unit_of_work, plan_id)
+    current_plan = require_latest_plan_for_run(unit_of_work, plan.run_id)
     pending_statuses = {
         ActionStatus.PROPOSED.value,
         ActionStatus.MODIFIED.value,
@@ -243,12 +297,28 @@ def cancel_pending_actions(
         if action.status not in pending_statuses:
             continue
         if action.status == ActionStatus.APPROVED.value:
-            unit_of_work.approvals.revoke_active_by_action(action.id)
-        result = unit_of_work.actions.cancel_pending(
-            action.id, expected_version=action.version, updated_at_ms=updated_at_ms
+            revoke_active_approvals(unit_of_work, action.id)
+        result = transition_cancel_pending_action(
+            ActionStatus(action.status),
+            action.version,
+            action.version,
+            effect_type=EffectType(action.effect_type),
+            plan_status=plan.status,
+            plan_is_current=current_plan.id == plan.id,
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
+        if (
+            unit_of_work.actions.update_if_version_and_status(
+                action.id,
+                expected_version=action.version,
+                expected_status=ActionStatus(action.status),
+                next_status=result.current_status,
+                updated_at_ms=updated_at_ms,
+            )
+            is None
+        ):
+            raise RuntimeError(f"pending action cancellation CAS failed: {action.id}")
         unit_of_work.audits.add(
             audit_event(
                 run_id=run_id,
@@ -371,8 +441,8 @@ def upsert_resource_ref(
     return unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
 
 
-def action_response_from_result(
-    *, action_id: str, result: CommandResult[ActionStatus, ActionCommand]
+def action_response_from_result[CommandType: StrEnum](
+    *, action_id: str, result: CommandResult[ActionStatus, CommandType]
 ) -> WriteActionResponse:
     return WriteActionResponse(
         applied=result.applied,
@@ -481,9 +551,16 @@ def propagate_dependency_blocked(
             ActionStatus.MODIFIED.value,
             ActionStatus.APPROVED.value,
         }:
-            unit_of_work.approvals.revoke_active_by_action(dependent_action_id)
-            if not unit_of_work.actions.mark_dependency_blocked(
-                dependent_action_id, updated_at_ms=updated_at_ms
+            revoke_active_approvals(unit_of_work, dependent_action_id)
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    dependent_action_id,
+                    expected_version=dependent.version,
+                    expected_status=ActionStatus(dependent.status),
+                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                    updated_at_ms=updated_at_ms,
+                )
+                is None
             ):
                 raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
             blocked_action_ids.append(dependent_action_id)

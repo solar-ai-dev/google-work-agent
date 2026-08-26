@@ -20,16 +20,15 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
 )
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextRetrievalAgent,
+)
+from google_work_agent.application.orchestration.contracts import (
+    ConfirmationResponseProjectionV1,
 )
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
 )
-from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.orchestration.retrieval_data_boundary import (
     CheckpointSafeAcquisitionFacade,
 )
@@ -48,7 +47,8 @@ from google_work_agent.application.orchestration.retrieval_read_executor import 
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     SourceFetchPlanBuilder,
 )
-from google_work_agent.domain import ConnectorToolCatalog
+from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 
 
 @dataclass(frozen=True, slots=True)

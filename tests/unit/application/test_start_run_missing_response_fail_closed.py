@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
-from google_work_agent.application.use_cases.run.start_run import StartRunHandler
-from google_work_agent.domain import ResultCode
-from google_work_agent.ports.models import CommandReceiptStatus
 from tests.unit.application.test_start_run_receipt_recovery import (
-    _UnitOfWork,
     _command,
     _received,
+    _UnitOfWork,
 )
+
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
 
 
 def test_completed_receipt_without_response_and_without_aggregate_is_not_reapplied() -> None:

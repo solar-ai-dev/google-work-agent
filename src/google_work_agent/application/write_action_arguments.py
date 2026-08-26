@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.domain import PolicyViolationError
+from google_work_agent.domain.action.model import PolicyViolationError
 
 
 def dict_argument(value: object) -> dict[str, object]:

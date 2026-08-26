@@ -5,7 +5,7 @@ import sqlite3
 from google_work_agent.adapters.persistence.sqlite.repositories.conversation_repository import (
     SqliteConversationRepository,
 )
-from google_work_agent.ports.models import ConversationRecord
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
 
 
 def _repository() -> SqliteConversationRepository:

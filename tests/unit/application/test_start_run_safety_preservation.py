@@ -8,8 +8,8 @@ from tests.unit.application.test_start_run_receipt_recovery import (
     _UnitOfWork,
 )
 
-from google_work_agent.domain import RunStatus
-from google_work_agent.ports.models import RunRecord
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 

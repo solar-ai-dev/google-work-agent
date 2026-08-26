@@ -16,7 +16,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, cast
 
-from google_work_agent.domain import SignedToolRegistry
+from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,

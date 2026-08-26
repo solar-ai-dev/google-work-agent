@@ -54,15 +54,14 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    CalendarWorkHours,
-    PolicyViolationError,
-    build_p0_tool_registry,
-)
+from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import (
     GoogleWorkspaceGatewayError,
-    ResourceRefRecord,
     ResourceSnapshot,
     ResourceType,
     UnitOfWork,
@@ -203,6 +202,12 @@ class PreflightWriteActionService:
             must_reapprove = False
             with self._unit_of_work_factory() as unit_of_work:
                 current = _require_action(unit_of_work, action_id)
+                current_plan = _require_plan(unit_of_work, current.plan_id)
+                latest_plan = max(
+                    unit_of_work.plans.list_by_run(current_plan.run_id),
+                    key=lambda candidate: getattr(candidate, "revision_no", 0),
+                    default=None,
+                )
                 current_approval = unit_of_work.approvals.get_active_by_action(action_id)
                 if (
                     current.status != ActionStatus.APPROVED.value
@@ -221,16 +226,31 @@ class PreflightWriteActionService:
                 )
                 now_ms = self._now_ms()
                 if must_reapprove:
-                    unit_of_work.approvals.revoke_active_by_action(current.id)
-                    result = unit_of_work.actions.modify_write(
-                        current.id,
-                        expected_version=current.version,
-                        updated_at_ms=now_ms,
-                        arguments_json=current.arguments_json,
-                        arguments_hash=current.arguments_hash,
-                        risk=merged_risk,
+                    revoke_active_approvals(unit_of_work, current.id)
+                    result = transition_modify_action(
+                        ActionStatus(current.status),
+                        current.version,
+                        current.version,
+                        effect_type=EffectType(current.effect_type),
+                        plan_status=current_plan.status,
+                        plan_is_current=(
+                            latest_plan is not None and latest_plan.id == current_plan.id
+                        ),
                     )
-                    if not result.applied:
+                    if (
+                        not result.applied
+                        or unit_of_work.actions.update_if_version_and_status(
+                            current.id,
+                            expected_version=current.version,
+                            expected_status=ActionStatus(current.status),
+                            next_status=result.current_status,
+                            updated_at_ms=now_ms,
+                            arguments_json=current.arguments_json,
+                            arguments_hash=current.arguments_hash,
+                            risk=merged_risk,
+                        )
+                        is None
+                    ):
                         raise PolicyViolationError(
                             "write action changed during task duplicate preflight"
                         )
@@ -252,12 +272,20 @@ class PreflightWriteActionService:
                         )
                     )
                 else:
-                    unit_of_work.actions.update_risk_snapshot(
-                        current.id,
-                        expected_version=current.version,
-                        updated_at_ms=now_ms,
-                        risk=merged_risk,
-                    )
+                    if (
+                        unit_of_work.actions.update_if_version_and_status(
+                            current.id,
+                            expected_version=current.version,
+                            expected_status=ActionStatus(current.status),
+                            next_status=ActionStatus(current.status),
+                            updated_at_ms=now_ms,
+                            risk=merged_risk,
+                        )
+                        is None
+                    ):
+                        raise PolicyViolationError(
+                            "write action changed during duplicate preflight"
+                        )
                 authority = duplicate_authority(merged_risk) or ("UNKNOWN", ())
                 unit_of_work.audits.add(
                     _audit_event(
@@ -312,6 +340,12 @@ class PreflightWriteActionService:
             must_reapprove = False
             with self._unit_of_work_factory() as unit_of_work:
                 current = _require_action(unit_of_work, action_id)
+                current_plan = _require_plan(unit_of_work, current.plan_id)
+                latest_plan = max(
+                    unit_of_work.plans.list_by_run(current_plan.run_id),
+                    key=lambda candidate: getattr(candidate, "revision_no", 0),
+                    default=None,
+                )
                 current_approval = unit_of_work.approvals.get_active_by_action(action_id)
                 if (
                     current.status != ActionStatus.APPROVED.value
@@ -334,26 +368,49 @@ class PreflightWriteActionService:
                 )
                 now_ms = self._now_ms()
                 if must_reapprove:
-                    unit_of_work.approvals.revoke_active_by_action(current.id)
-                    result = unit_of_work.actions.modify_write(
-                        current.id,
-                        expected_version=current.version,
-                        updated_at_ms=now_ms,
-                        arguments_json=current.arguments_json,
-                        arguments_hash=current.arguments_hash,
-                        risk=merged_risk,
+                    revoke_active_approvals(unit_of_work, current.id)
+                    result = transition_modify_action(
+                        ActionStatus(current.status),
+                        current.version,
+                        current.version,
+                        effect_type=EffectType(current.effect_type),
+                        plan_status=current_plan.status,
+                        plan_is_current=(
+                            latest_plan is not None and latest_plan.id == current_plan.id
+                        ),
                     )
-                    if not result.applied:
+                    if (
+                        not result.applied
+                        or unit_of_work.actions.update_if_version_and_status(
+                            current.id,
+                            expected_version=current.version,
+                            expected_status=ActionStatus(current.status),
+                            next_status=result.current_status,
+                            updated_at_ms=now_ms,
+                            arguments_json=current.arguments_json,
+                            arguments_hash=current.arguments_hash,
+                            risk=merged_risk,
+                        )
+                        is None
+                    ):
                         raise PolicyViolationError(
                             "write action changed during calendar conflict preflight"
                         )
                 else:
-                    unit_of_work.actions.update_risk_snapshot(
-                        current.id,
-                        expected_version=current.version,
-                        updated_at_ms=now_ms,
-                        risk=merged_risk,
-                    )
+                    if (
+                        unit_of_work.actions.update_if_version_and_status(
+                            current.id,
+                            expected_version=current.version,
+                            expected_status=ActionStatus(current.status),
+                            next_status=ActionStatus(current.status),
+                            updated_at_ms=now_ms,
+                            risk=merged_risk,
+                        )
+                        is None
+                    ):
+                        raise PolicyViolationError(
+                            "write action changed during calendar conflict preflight"
+                        )
                 unit_of_work.audits.add(
                     _audit_event(
                         run_id=plan.run_id,

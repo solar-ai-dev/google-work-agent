@@ -20,23 +20,24 @@ from google_work_agent.application.read_persistence import (
     require_plan,
     require_run,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    EffectType,
-    ResultCode,
-    RunStatus,
-    SignedToolRegistry,
-    build_p0_tool_registry,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
-    validate_evidence_policy,
 )
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.transitions.publish_read_only_plan import (
+    transition_publish_read_only_plan,
+)
+from google_work_agent.domain.policy import validate_evidence_policy
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    EvidenceRecord,
-    PlanRecord,
-    PlanStatus,
-    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -91,9 +92,7 @@ class SaveReadOnlyPlanService:
                     action_ids=tuple(action.action_id for action in command.actions),
                     conflict_detail="expected_version does not match current_version",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
                 unit_of_work.commit()
                 return response
             if run.status is not RunStatus.PLANNING:
@@ -107,9 +106,7 @@ class SaveReadOnlyPlanService:
                     action_ids=tuple(action.action_id for action in command.actions),
                     conflict_detail="read-only plan can only be saved while run is PLANNING",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
                 unit_of_work.commit()
                 return response
 
@@ -296,27 +293,40 @@ class PublishReadOnlyPlanService:
                 return response
             _validate_published_actions_are_read(actions)
 
-            run_result = unit_of_work.runs.publish_read_only_plan(
-                command.run_id,
-                expected_version=command.expected_run_version,
-            )
-            if not run_result.applied:
+            if run.version != command.expected_run_version:
                 response = PublishReadOnlyPlanResponse(
                     applied=False,
-                    result_code=run_result.result_code.value,
-                    run_status=run_result.current_status.value,
-                    run_version=run_result.current_version,
+                    result_code=ResultCode.VERSION_CONFLICT.value,
+                    run_status=run.status.value,
+                    run_version=run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    conflict_detail=run_result.conflict_detail,
+                    conflict_detail="expected_version does not match current_version",
                 )
-                finish_json_receipt(
-                    unit_of_work, command.command_id, response, run_result.current_version, now_ms
-                )
+                finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
                 unit_of_work.commit()
                 return response
-
-            unit_of_work.plans.activate(plan.id)
+            next_run_status, next_plan_status = transition_publish_read_only_plan(
+                run.status,
+                plan.status,
+                review_status=plan.review_status,
+            )
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": next_run_status.value, "version": run.version + 1},
+            ):
+                raise RuntimeError("validated PublishReadOnlyPlan Run CAS failed")
+            if (
+                unit_of_work.plans.update_if_status(
+                    plan.id,
+                    expected_status=plan.status,
+                    next_status=next_plan_status,
+                )
+                is None
+            ):
+                raise RuntimeError("validated PublishReadOnlyPlan Plan CAS failed")
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=command.run_id,
@@ -342,21 +352,23 @@ class PublishReadOnlyPlanService:
             )
             response = PublishReadOnlyPlanResponse(
                 applied=True,
-                result_code=run_result.result_code.value,
-                run_status=run_result.current_status.value,
-                run_version=run_result.current_version,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
+                run_status=next_run_status.value,
+                run_version=run.version + 1,
                 plan_id=plan.id,
                 plan_status=PlanStatus.ACTIVE.value,
             )
-            finish_json_receipt(
-                unit_of_work, command.command_id, response, run_result.current_version, now_ms
-            )
+            finish_json_receipt(unit_of_work, command.command_id, response, run.version + 1, now_ms)
             unit_of_work.commit()
             return response
 
 
-def _validate_read_only_plan(command: SaveReadOnlyPlanCommand, registry: SignedToolRegistry) -> None:
-    validate_plan_structure(actions=command.actions, evidence=command.evidence, plan_label="read-only plan")
+def _validate_read_only_plan(
+    command: SaveReadOnlyPlanCommand, registry: SignedToolRegistry
+) -> None:
+    validate_plan_structure(
+        actions=command.actions, evidence=command.evidence, plan_label="read-only plan"
+    )
     for action in command.actions:
         if not action.connector_id:
             raise ValueError("read action connector_id is required")
@@ -366,9 +378,13 @@ def _validate_read_only_plan(command: SaveReadOnlyPlanCommand, registry: SignedT
         if entry.effect_type is not EffectType.READ:
             raise ValueError(f"read-only plan cannot include non-read action: {action.tool_name}")
         if entry.approval_requirement.value != "NONE":
-            raise ValueError(f"read-only plan requires approval_requirement=NONE: {action.tool_name}")
+            raise ValueError(
+                f"read-only plan requires approval_requirement=NONE: {action.tool_name}"
+            )
         if entry.verification_policy.value != "NONE":
-            raise ValueError(f"read-only plan requires verification_policy=NONE: {action.tool_name}")
+            raise ValueError(
+                f"read-only plan requires verification_policy=NONE: {action.tool_name}"
+            )
         if entry.recovery_policy.value != "NONE":
             raise ValueError(f"read-only plan requires recovery_policy=NONE: {action.tool_name}")
         validate_evidence_policy(

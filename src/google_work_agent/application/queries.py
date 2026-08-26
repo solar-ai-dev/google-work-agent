@@ -8,15 +8,14 @@ from pathlib import Path
 from sqlite3 import Row
 
 from google_work_agent.application.cancel_intent import is_applied_request_cancel_receipt
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import (
     ActionCommand,
     ActionStatus,
     EffectType,
-    RunStatus,
     next_allowed_action_commands,
-    next_allowed_run_commands,
-    parse_action_risk_json,
 )
+from google_work_agent.domain.action_risk import parse_action_risk_json
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
 from google_work_agent.ports import (
     QueryConnectionFactory,
     RuntimeStatusProvider,

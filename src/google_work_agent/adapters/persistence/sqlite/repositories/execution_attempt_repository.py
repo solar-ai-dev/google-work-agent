@@ -3,8 +3,10 @@
 import sqlite3
 from typing import cast
 
-from google_work_agent.domain import ExecutionAttemptStatus
-from google_work_agent.ports.models import ExecutionAttemptRecord
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateKindV1,
     ExecutionReconciliationCandidateV1,
@@ -78,11 +80,12 @@ class SQLiteExecutionAttemptRepository:
             ),
         )
 
-    def update_status(
+    def update_if_version_and_status(
         self,
         attempt_id: str,
         *,
         expected_version: int,
+        expected_status: ExecutionAttemptStatus,
         status: ExecutionAttemptStatus,
         error_code: str | None,
         error_detail_json: str | None,
@@ -99,7 +102,7 @@ class SQLiteExecutionAttemptRepository:
             """UPDATE execution_attempts SET
                 status=?, version=version+1, result_resource_ref_id=?,
                 response_metadata_json=?, error_code=?, error_detail_json=?, finished_at_ms=?
-            WHERE id=? AND version=?;""",
+            WHERE id=? AND version=? AND status=?;""",
             (
                 status.value,
                 result_resource_ref_id,
@@ -109,6 +112,7 @@ class SQLiteExecutionAttemptRepository:
                 finished_at_ms,
                 attempt_id,
                 expected_version,
+                expected_status.value,
             ),
         )
         if c.rowcount != 1:
@@ -119,66 +123,6 @@ class SQLiteExecutionAttemptRepository:
         if updated is None:
             raise LookupError(f"execution attempt not found after update: {attempt_id}")
         return updated
-
-    def mark_succeeded(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
-        result_resource_ref_id: str | None,
-        response_metadata_json: str | None,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord:
-        return self.update_status(
-            attempt_id,
-            expected_version=expected_version,
-            status=ExecutionAttemptStatus.SUCCEEDED,
-            error_code=None,
-            error_detail_json=None,
-            result_resource_ref_id=result_resource_ref_id,
-            response_metadata_json=response_metadata_json,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def mark_failed(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
-        error_code: str,
-        error_detail_json: str,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord:
-        return self.update_status(
-            attempt_id,
-            expected_version=expected_version,
-            status=ExecutionAttemptStatus.FAILED,
-            error_code=error_code,
-            error_detail_json=error_detail_json,
-            result_resource_ref_id=None,
-            response_metadata_json=None,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def mark_unknown_result(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
-        error_code: str,
-        error_detail_json: str,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord:
-        return self.update_status(
-            attempt_id,
-            expected_version=expected_version,
-            status=ExecutionAttemptStatus.UNKNOWN_RESULT,
-            error_code=error_code,
-            error_detail_json=error_detail_json,
-            result_resource_ref_id=None,
-            response_metadata_json=None,
-            finished_at_ms=finished_at_ms,
-        )
 
     def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:
         return tuple(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from google_work_agent.ports.models import ConversationRecord
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
 
 
 class SqliteConversationRepository:

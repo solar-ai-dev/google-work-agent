@@ -7,9 +7,6 @@ from dataclasses import dataclass
 from json import loads
 from typing import cast
 
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-)
 from google_work_agent.application.recovery_source_projection import (
     project_source_resource,
 )
@@ -21,7 +18,9 @@ from google_work_agent.application.use_cases.recovery.resolve_as_failed import (
     ResolveAsFailedCommand,
     ResolveAsFailedResult,
 )
-from google_work_agent.application.use_cases.verification.normalize_snapshot import normalize_snapshot
+from google_work_agent.application.use_cases.verification.normalize_snapshot import (
+    normalize_snapshot,
+)
 from google_work_agent.application.write_persistence import (
     require_action,
     require_approval,
@@ -32,8 +31,11 @@ from google_work_agent.application.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +61,9 @@ class RecoverUpdateResult:
     conflict_detail: str | None = None
 
 
-def _to_result(response: RecoverExistingResultResult | ResolveAsFailedResult) -> RecoverUpdateResult:
+def _to_result(
+    response: RecoverExistingResultResult | ResolveAsFailedResult,
+) -> RecoverUpdateResult:
     return RecoverUpdateResult(
         applied=response.applied,
         result_code=response.result_code,

@@ -9,18 +9,18 @@ from json import dumps, loads
 from google_work_agent.application.write_persistence import (
     audit_event,
     emit_command_rejected_hash_mismatch,
+    require_plan_review,
 )
-from google_work_agent.domain import ActionCommand, ActionStatus, EffectType, ResultCode
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
 from google_work_agent.domain.action.transitions.prepare_write_retry import (
     transition_prepare_write_retry,
 )
-from google_work_agent.ports import (
-    ActionRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    PlanStatus,
-    TraceEventRecord,
-)
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -79,6 +79,11 @@ class PrepareWriteRetryHandler:
             plan = unit_of_work.plans.get_by_id(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
             if plan.status is PlanStatus.SUPERSEDED:
                 return self._finish(
                     unit_of_work,
@@ -96,6 +101,8 @@ class PrepareWriteRetryHandler:
                 action.version,
                 command.expected_action_version,
                 effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
             )
             if not preview.applied:
                 response = PrepareWriteRetryResult(
@@ -111,11 +118,18 @@ class PrepareWriteRetryHandler:
                 )
                 return self._finish(unit_of_work, command, response, now_ms)
 
-            result = unit_of_work.actions.prepare_write_retry(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
-            )
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=preview.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated PrepareWriteRetry CAS failed")
+            result = preview
             if not result.applied:
                 response = PrepareWriteRetryResult(
                     applied=False,
@@ -130,7 +144,7 @@ class PrepareWriteRetryHandler:
                 )
                 return self._finish(unit_of_work, command, response, now_ms)
 
-            review_version = unit_of_work.plans.require_review(action.plan_id)
+            review_version = require_plan_review(unit_of_work, action.plan_id)
             response = PrepareWriteRetryResult(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
@@ -253,7 +267,7 @@ class PrepareWriteRetryHandler:
         result_code: ResultCode,
         conflict_detail: str | None,
     ) -> PrepareWriteRetryResult:
-        from google_work_agent.domain import next_allowed_action_commands
+        from google_work_agent.domain.action.model import next_allowed_action_commands
 
         return PrepareWriteRetryResult(
             applied=False,

@@ -6,15 +6,16 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.domain import ResultCode, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
-from google_work_agent.domain.run.transitions.begin_retrieval import transition_begin_retrieval
-from google_work_agent.domain.run.transitions.run import next_allowed_run_commands
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import (
+    RunStatus,
+    RunTransitionRejected,
+    next_allowed_run_commands,
 )
+from google_work_agent.domain.run.transitions.begin_retrieval import transition_begin_retrieval
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

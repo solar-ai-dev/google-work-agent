@@ -15,7 +15,8 @@ from google_work_agent.application.observability import (
     PurgeObservabilityDataService,
     StaticMaintenanceGate,
 )
-from google_work_agent.ports import AuditEventRecord, TraceEventRecord
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 
 
 @pytest.fixture()

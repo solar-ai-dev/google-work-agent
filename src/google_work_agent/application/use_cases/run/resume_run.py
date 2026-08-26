@@ -22,10 +22,16 @@ from google_work_agent.application.use_cases.run.resume_confirmation import Resu
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.transitions.resume_after_reauth import (
+    transition_resume_after_reauth,
+)
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UUIDPort
-from google_work_agent.ports.models import AuditEventRecord, TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -156,7 +162,7 @@ class ResumeRunHandler:
                 aggregate_id=command.run_id,
                 created_at_ms=now_ms,
             )
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             plans = unit_of_work.plans.list_by_run(command.run_id)
@@ -316,16 +322,16 @@ class ResumeRunHandler:
         if command.resume_kind == "REAUTH_COMPLETED" and (
             authority is None or not isinstance(authority.get("resume_status"), str)
         ):
-                return ResumeRunResult(
-                    False,
-                    ResultCode.STATE_CONFLICT.value,
-                    command.run_id,
-                    status.value,
-                    version,
-                    False,
-                    False,
-                    "persisted resume authority is unavailable",
-                )
+            return ResumeRunResult(
+                False,
+                ResultCode.STATE_CONFLICT.value,
+                command.run_id,
+                status.value,
+                version,
+                False,
+                False,
+                "persisted resume authority is unavailable",
+            )
         if command.resume_kind == "REAUTH_COMPLETED":
             assert authority is not None
             try:
@@ -367,13 +373,34 @@ class ResumeRunHandler:
         now_ms: int,
     ):
         if command.resume_kind == "REAUTH_COMPLETED":
-            restored = unit_of_work.runs.resume_after_reauth(
-                command.run_id,
-                expected_version=current_version,
-                resume_status=RunStatus(cast(str, authority["resume_status"])),
+            run = unit_of_work.runs.get(command.run_id)
+            if run is None:
+                raise LookupError(f"run not found: {command.run_id}")
+            resume_status = RunStatus(cast(str, authority["resume_status"]))
+            next_status = transition_resume_after_reauth(
+                run.status,
+                resume_status=resume_status,
             )
-            if not restored.applied:
+            if run.version != current_version:
+                restored = CommandResult(
+                    False,
+                    ResultCode.VERSION_CONFLICT,
+                    run.status,
+                    run.version,
+                    (),
+                    "expected_version does not match current_version",
+                )
                 return restored, False
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": next_status.value, "version": run.version + 1},
+            ):
+                raise RuntimeError("validated ResumeAfterReauth CAS failed")
+            restored = CommandResult(
+                True, ResultCode.TRANSITION_APPLIED, next_status, run.version + 1, ()
+            )
             if restored.current_status is RunStatus.RECOVERY_REQUIRED:
                 return restored, False
             if reauth_dispatch_uncertain:

@@ -1,15 +1,15 @@
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import (
     ActionStatus,
     ApprovalRequirement,
-    ApprovalStatus,
     EffectType,
-    ExecutionAttemptStatus,
     RecoveryPolicy,
-    ResultCode,
-    RunStatus,
     VerificationPolicy,
-    VerificationStatus,
 )
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.verification.model import VerificationStatus
 
 
 def test_run_status_values_match_sql() -> None:
@@ -69,8 +69,6 @@ def test_other_enum_values_match_contract() -> None:
     assert tuple(status.value for status in VerificationStatus) == (
         "VERIFIED",
         "MISMATCH",
-        "NOT_FOUND",
-        "ERROR",
     )
     assert tuple(policy.value for policy in VerificationPolicy) == (
         "NONE",

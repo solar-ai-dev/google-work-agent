@@ -26,10 +26,11 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     require_duplicate_acknowledgement,
 )
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
+from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_execution_integrity import calculate_recovery_fingerprint
 from google_work_agent.application.write_persistence import (
     action_response_from_result,
@@ -39,23 +40,27 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
 )
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
     ActionStatus,
-    ApprovalStatus,
-    CalendarConflictDecision,
     EffectType,
     PolicyViolationError,
-    ResultCode,
-    build_p0_tool_registry,
-    calculate_canonical_json_hash,
-    canonicalize_json_value,
     next_allowed_action_commands,
 )
+from google_work_agent.domain.action.transitions.approve_action import transition_approve_action
+from google_work_agent.domain.approval.model import Approval as ApprovalRecord
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.calendar_conflict import CalendarConflictDecision
+from google_work_agent.domain.canonical import (
+    calculate_canonical_json_hash,
+    canonicalize_json_value,
+)
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ApprovalRecord,
-    PlanReviewStatus,
-    PlanStatus,
-    TraceEventRecord,
     UnitOfWork,
     UUIDPort,
 )
@@ -98,7 +103,7 @@ class ApproveActionHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
-        resume_target_registry: ResumeTargetValidator,
+        resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
     ) -> None:
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
@@ -149,7 +154,7 @@ class ApproveActionHandler:
                 )
                 action = require_action(unit_of_work, command.action_id)
                 plan = require_plan(unit_of_work, action.plan_id)
-                run = unit_of_work.runs.get_by_id(plan.run_id)
+                run = unit_of_work.runs.get(plan.run_id)
                 if run is None:
                     raise LookupError(f"run not found: {plan.run_id}")
                 conversation = unit_of_work.conversations.get(run.conversation_id)
@@ -157,7 +162,19 @@ class ApproveActionHandler:
                     raise LookupError(f"conversation not found: {run.conversation_id}")
                 entry = self._registry.require(action.tool_name)
 
-                if plan.status is PlanStatus.SUPERSEDED:
+                plans = tuple(unit_of_work.plans.list_by_run(run.id))
+                current_plan = max(
+                    plans,
+                    key=lambda candidate: getattr(candidate, "revision_no", 0),
+                    default=None,
+                )
+                if (
+                    plan.status is not PlanStatus.WAITING_APPROVAL
+                    or current_plan is None
+                    or current_plan.id != plan.id
+                    or getattr(run, "status", RunStatus.WAITING_APPROVAL)
+                    is not RunStatus.WAITING_APPROVAL
+                ):
                     result = ApproveActionResult(
                         applied=False,
                         result_code=ResultCode.STATE_CONFLICT.value,
@@ -165,7 +182,11 @@ class ApproveActionHandler:
                         action_status=action.status,
                         action_version=action.version,
                         next_allowed_commands=(),
-                        conflict_detail="superseded Plan children are history-only",
+                        conflict_detail=(
+                            "superseded Plan children are history-only"
+                            if plan.status is PlanStatus.SUPERSEDED
+                            else "approval requires the current published Plan and parent Run"
+                        ),
                     )
                     finish_json_receipt(
                         unit_of_work,
@@ -184,13 +205,7 @@ class ApproveActionHandler:
                         action_id=action.id,
                         action_status=action.status,
                         action_version=action.version,
-                        next_allowed_commands=tuple(
-                            item.value
-                            for item in next_allowed_action_commands(
-                                ActionStatus(action.status),
-                                effect_type=EffectType(action.effect_type),
-                            )
-                        ),
+                        next_allowed_commands=(),
                         conflict_detail=(
                             "plan review must pass after the latest action modification"
                         ),
@@ -333,10 +348,14 @@ class ApproveActionHandler:
                         **approval_source_snapshot_for_feasibility(risk=action.risk),
                     }
 
-                approval_result = unit_of_work.actions.approve_write(
-                    action.id,
-                    expected_version=command.expected_version,
-                    updated_at_ms=now_ms,
+                approval_result = transition_approve_action(
+                    ActionStatus(action.status),
+                    action.version,
+                    command.expected_version,
+                    effect_type=EffectType(action.effect_type),
+                    plan_review_passed=plan.review_status is PlanReviewStatus.PASSED,
+                    plan_status=plan.status,
+                    plan_is_current=current_plan is not None and current_plan.id == plan.id,
                 )
                 if not approval_result.applied:
                     response = action_response_from_result(
@@ -353,6 +372,17 @@ class ApproveActionHandler:
                     )
                     unit_of_work.commit()
                     return result
+                if (
+                    unit_of_work.actions.update_if_version_and_status(
+                        action.id,
+                        expected_version=action.version,
+                        expected_status=ActionStatus(action.status),
+                        next_status=approval_result.current_status,
+                        updated_at_ms=now_ms,
+                    )
+                    is None
+                ):
+                    raise RuntimeError("validated ApproveAction CAS failed")
 
                 source_snapshot_hash = calculate_canonical_json_hash(source_snapshot)
                 approval = ApprovalRecord(
@@ -389,8 +419,7 @@ class ApproveActionHandler:
                 )
                 unit_of_work.approvals.insert(approval)
 
-                if plan.status is PlanStatus.WAITING_APPROVAL:
-                    unit_of_work.plans.activate_waiting(plan.id)
+                # Write Plans remain WAITING_APPROVAL while approved Actions execute.
 
                 unit_of_work.traces.add(
                     TraceEventRecord(
@@ -528,7 +557,7 @@ class ApproveActionHandler:
         return handoff.handoff_id
 
     @staticmethod
-    def _result_from_response(response: object) -> ApproveActionResult:
+    def _result_from_response(response: WriteActionResponse) -> ApproveActionResult:
         return ApproveActionResult(
             applied=bool(response.applied),
             result_code=str(response.result_code),
@@ -540,7 +569,7 @@ class ApproveActionHandler:
         )
 
     @staticmethod
-    def _blocked_result(action: object, detail: str) -> ApproveActionResult:
+    def _blocked_result(action: ActionRecord, detail: str) -> ApproveActionResult:
         effect_type = EffectType(action.effect_type)
         status = ActionStatus(action.status)
         return ApproveActionResult(

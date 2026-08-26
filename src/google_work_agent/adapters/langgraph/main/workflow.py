@@ -173,7 +173,6 @@ from google_work_agent.application.read_plan import (
 from google_work_agent.application.run_terminal import (
     BlockRunCommand,
     BlockRunService,
-    CompleteWriteRunCommand,
     FailRunCommand,
     FailRunService,
     derive_finalize_intent,
@@ -231,27 +230,31 @@ from google_work_agent.application.write_result_persistence import (
     MarkWriteActionFailedService,
     StoreWriteActionSuccessService,
 )
-from google_work_agent.application.write_run_completion import CompleteWriteRunService
-from google_work_agent.application.write_verification import VerifyWriteActionService
-from google_work_agent.domain import (
-    ActionStatus,
-    CalendarWorkHours,
-    ConnectorToolCatalog,
-    ExecutionAttemptStatus,
-    ResultCode,
-    RunStatus,
+from google_work_agent.application.write_run_completion import (
+    CompleteWriteRunCommand,
+    CompleteWriteRunService,
 )
+from google_work_agent.application.write_verification import VerifyWriteActionService
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports import (
     AttachmentDescriptorVerifier,
-    EvidenceOriginType,
-    ExecutionAttemptRecord,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
-    PlanRecord,
-    PlanReviewStatus,
     PromptReference,
-    ResourceRefRecord,
-    ResourceSource,
     UnitOfWork,
     WorkflowCancelRequest,
     WorkflowInvocationResult,
@@ -265,7 +268,6 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
-from google_work_agent.ports.repositories import ActionRecord
 
 JsonObject = dict[str, object]
 

@@ -33,7 +33,7 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.domain import calculate_canonical_json_hash
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,

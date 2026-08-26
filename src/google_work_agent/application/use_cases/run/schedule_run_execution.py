@@ -119,7 +119,7 @@ class ScheduleRunExecutionHandler:
             handoff = unit_of_work.workflow_handoffs.get(command.handoff_id)
             if handoff is None:
                 return _rejected("NOT_COMMITTED")
-            run = unit_of_work.runs.get_by_id(handoff.execution.run_id)
+            run = unit_of_work.runs.get(handoff.execution.run_id)
             existing = handoff.execution_admission
             if (
                 run is not None

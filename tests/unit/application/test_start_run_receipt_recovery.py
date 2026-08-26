@@ -12,18 +12,17 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunHandler,
     StartRunResult,
 )
-from google_work_agent.domain import ResultCode, RunStatus
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    ConversationRecord,
-    MessageRecord,
-    PersistedAuditEventRecord,
-    PersistedTraceEventRecord,
-    RunRecord,
-    TraceEventRecord,
-)
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
+from google_work_agent.domain.message.model import Message as MessageRecord
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
+from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,

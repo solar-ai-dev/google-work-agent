@@ -18,8 +18,18 @@ from google_work_agent.application.write_persistence import (
     upsert_resource_ref,
     write_action_version_conflict_response,
 )
-from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode, RunStatus
-from google_work_agent.ports import ResourceSnapshot, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.transitions.recover_existing_result import (
+    transition_recover_existing_result,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
+)
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import ResourceSnapshot, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,12 +108,20 @@ class RecoverExistingResultHandler:
             plan = require_plan(unit_of_work, action.plan_id)
             if action.version != command.expected_action_version:
                 return self._finish_version_conflict(
-                    unit_of_work, command, action, attempt.id, now_ms,
+                    unit_of_work,
+                    command,
+                    action,
+                    attempt.id,
+                    now_ms,
                     "expected_action_version does not match current_version",
                 )
             if attempt.version != command.expected_attempt_version:
                 return self._finish_version_conflict(
-                    unit_of_work, command, action, attempt.id, now_ms,
+                    unit_of_work,
+                    command,
+                    action,
+                    attempt.id,
+                    now_ms,
                     "expected_attempt_version does not match current_version",
                 )
             resource_ref = resource_ref_from_snapshot(
@@ -116,9 +134,10 @@ class RecoverExistingResultHandler:
                 unit_of_work=unit_of_work,
                 resource_ref=resource_ref,
             )
-            unit_of_work.execution_attempts.update_status(
+            unit_of_work.execution_attempts.update_if_version_and_status(
                 attempt.id,
                 expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
                 status=ExecutionAttemptStatus.SUCCEEDED,
                 error_code=command.safe_error_code,
                 error_detail_json=None,
@@ -129,18 +148,39 @@ class RecoverExistingResultHandler:
                 ),
                 finished_at_ms=now_ms,
             )
-            transition = unit_of_work.actions.recover_existing_result(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            transition = transition_recover_existing_result(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
             )
             if not transition.applied:
-                raise RuntimeError("recover_existing_result action transition failed")
-            run = unit_of_work.runs.get_by_id(plan.run_id)
+                raise RuntimeError(transition.conflict_detail or "RecoverExistingResult rejected")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=transition.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated RecoverExistingResult CAS failed")
+            run = unit_of_work.runs.get(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
             if run.status is not RunStatus.VERIFYING:
-                unit_of_work.runs.set_verifying(plan.run_id)
+                next_run_status = transition_begin_verification(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": next_run_status.value, "version": run.version + 1},
+                ):
+                    raise RuntimeError("validated BeginVerification CAS failed")
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -161,7 +201,10 @@ class RecoverExistingResultHandler:
                     action_id=action.id,
                     event_type="WRITE_RECOVERED",
                     outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},
+                    metadata={
+                        "attempt_id": attempt.id,
+                        "resource_ref_id": persisted_resource_ref.id,
+                    },
                     created_at_ms=now_ms,
                 )
             )
@@ -171,7 +214,9 @@ class RecoverExistingResultHandler:
                 action_id=action.id,
                 action_status=transition.current_status.value,
                 action_version=transition.current_version,
-                next_allowed_commands=tuple(item.value for item in transition.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value for item in transition.next_allowed_commands
+                ),
                 attempt_id=attempt.id,
             )
             finish_json_receipt(

@@ -7,31 +7,24 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-    ConnectorWriteRequest,
+from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
+    BeginExecutionAttemptCommand,
+    BeginExecutionAttemptHandler,
 )
 from google_work_agent.application.write_action_arguments import coerce_int
 from google_work_agent.application.write_execution_integrity import read_claim_token
-from google_work_agent.application.write_persistence import (
-    require_action,
-    require_approval,
-    require_attempt,
-    require_plan,
-    require_run,
-)
-from google_work_agent.domain import (
-    ExecutionAttemptStatus,
-    ResultCode,
-    RunStatus,
-    calculate_canonical_json_hash,
-)
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     UnitOfWork,
+)
+from google_work_agent.ports.connector.connector_write_port import (
+    ConnectorWritePort,
+    ConnectorWriteRequest,
 )
 
 
@@ -65,6 +58,10 @@ class ExecuteActionHandler:
         self._now_ms = now_ms
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
+        self._begin_execution_attempt = BeginExecutionAttemptHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
         self._used_nonces: set[str] = set()
         self._nonce_lock = threading.Lock()
 
@@ -87,22 +84,11 @@ class ExecuteActionHandler:
             self._used_nonces.add(nonce)
 
         try:
-            with self._unit_of_work_factory() as unit_of_work:
-                action = require_action(unit_of_work, action_id)
-                plan = require_plan(unit_of_work, action.plan_id)
-                run = require_run(unit_of_work, plan.run_id)
-                approval = require_approval(unit_of_work, str(payload["approval_id"]))
-                attempt = require_attempt(unit_of_work, payload_attempt_id)
-                if run.status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED}:
-                    raise PermissionError("run cancellation forbids write dispatch")
-                if action.id != str(payload["action_id"]) or action.tool_name != str(payload["tool_name"]):
-                    raise PermissionError("claim token action/tool binding mismatch")
-                if action.arguments_hash != str(payload["arguments_hash"]):
-                    raise PermissionError("claim token arguments binding mismatch")
-                if approval.action_id != action.id or attempt.approval_id != approval.id:
-                    raise PermissionError("claim token persistence binding mismatch")
-                if attempt.status is not ExecutionAttemptStatus.CLAIMED:
-                    raise PermissionError("execution attempt is not CLAIMED")
+            begun = self._begin_execution_attempt(
+                BeginExecutionAttemptCommand(action_id=action_id, claim_payload=payload)
+            )
+            action = begun.action
+            approval = begun.approval
         except Exception:
             # No connector dispatch occurred. Releasing the reserved nonce keeps a
             # legitimate resume possible without weakening single-use after dispatch.

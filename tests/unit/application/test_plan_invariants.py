@@ -9,8 +9,9 @@ from google_work_agent.application.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.domain import PolicyViolationError, build_p0_tool_registry
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 
 
 @dataclass(frozen=True)

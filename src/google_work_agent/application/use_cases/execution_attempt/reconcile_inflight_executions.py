@@ -15,8 +15,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
-from google_work_agent.domain import ActionStatus, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import DeliveryCertainty, UUIDPort
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
@@ -29,13 +30,13 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 
 @dataclass(frozen=True, slots=True)
-class ReconcileInflightExecutionsCommandV1:
+class ReconcileInflightExecutionsCommand:
     schema_version: Literal[1]
     limit: int
 
 
 @dataclass(frozen=True, slots=True)
-class ReconcileInflightExecutionsResultV1:
+class ReconcileInflightExecutionsResult:
     schema_version: Literal[1]
     processed_count: int
     progressed_count: int
@@ -61,8 +62,8 @@ class ReconcileInflightExecutionsHandler:
         self._id_generator = id_generator
 
     def __call__(
-        self, command: ReconcileInflightExecutionsCommandV1
-    ) -> ReconcileInflightExecutionsResultV1:
+        self, command: ReconcileInflightExecutionsCommand
+    ) -> ReconcileInflightExecutionsResult:
         if command.schema_version != 1 or not 1 <= command.limit <= 256:
             raise ValueError("reconciliation limit must be between 1 and 256")
         with self._unit_of_work_factory() as unit_of_work:
@@ -70,7 +71,7 @@ class ReconcileInflightExecutionsHandler:
                 command.limit
             )
         progressed = sum(self._reconcile(candidate) for candidate in candidates)
-        return ReconcileInflightExecutionsResultV1(
+        return ReconcileInflightExecutionsResult(
             schema_version=1,
             processed_count=len(candidates),
             progressed_count=progressed,
@@ -107,7 +108,7 @@ class ReconcileInflightExecutionsHandler:
             return int(self._stage_continuation(candidate, "VERIFICATION", ":verification"))
         if candidate.kind == "FAILED_AWAITING_CONTINUATION":
             with self._unit_of_work_factory() as unit_of_work:
-                run = unit_of_work.runs.get_by_id(candidate.run_id)
+                run = unit_of_work.runs.get(candidate.run_id)
                 plans = unit_of_work.plans.list_by_run(candidate.run_id)
                 plan = max(
                     plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None
@@ -129,7 +130,7 @@ class ReconcileInflightExecutionsHandler:
 
     def _require_unknown_recovery(self, candidate: ExecutionReconciliationCandidateV1) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(candidate.run_id)
+            run = unit_of_work.runs.get(candidate.run_id)
         if run is None or run.status is RunStatus.RECOVERY_REQUIRED:
             return False
         command_id = (
@@ -214,15 +215,21 @@ def drain_inflight_executions_to_quiescence(
     max_passes: int = 1000,
 ) -> int:
     for pass_index in range(1, max_passes + 1):
-        result = handler(ReconcileInflightExecutionsCommandV1(schema_version=1, limit=batch_limit))
+        result = handler(ReconcileInflightExecutionsCommand(schema_version=1, limit=batch_limit))
         if not result.has_more or result.progressed_count == 0:
             return pass_index
     raise RuntimeError("inflight execution startup drain did not reach quiescence")
 
 
+ReconcileInflightExecutionsCommandV1 = ReconcileInflightExecutionsCommand
+ReconcileInflightExecutionsResultV1 = ReconcileInflightExecutionsResult
+
+
 __all__ = [
+    "ReconcileInflightExecutionsCommand",
     "ReconcileInflightExecutionsCommandV1",
     "ReconcileInflightExecutionsHandler",
+    "ReconcileInflightExecutionsResult",
     "ReconcileInflightExecutionsResultV1",
     "drain_inflight_executions_to_quiescence",
 ]

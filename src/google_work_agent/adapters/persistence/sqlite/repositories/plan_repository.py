@@ -2,7 +2,8 @@
 
 import sqlite3
 
-from google_work_agent.ports.models import PlanRecord, PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
 
 
 class SQLitePlanRepository:
@@ -75,90 +76,47 @@ class SQLitePlanRepository:
             (plan.summary_text, plan.id),
         )
 
-    def require_review(self, plan_id: str) -> int:
+    def update_if_status(
+        self, plan_id: str, *, expected_status: PlanStatus, next_status: PlanStatus
+    ) -> PlanRecord | None:
         cursor = self._connection.execute(
-            """UPDATE plans
-               SET review_status='REQUIRED', review_disposition=NULL,
-                   review_version=review_version+1
-               WHERE id=? AND status IN ('WAITING_APPROVAL','ACTIVE');""",
-            (plan_id,),
+            "UPDATE plans SET status=? WHERE id=? AND status=?;",
+            (next_status.value, plan_id, expected_status.value),
         )
         if cursor.rowcount != 1:
-            raise sqlite3.IntegrityError(
-                "plan review invalidation affected an unexpected row count"
-            )
-        row = self._connection.execute(
-            "SELECT review_version FROM plans WHERE id=?;", (plan_id,)
-        ).fetchone()
-        return int(row["review_version"])
+            return None
+        return self.get_by_id(plan_id)
 
-    def store_review_result(
+    def update_review_if_version_and_status(
         self,
         plan_id: str,
         *,
         expected_review_version: int,
-        review_status: str,
-        review_disposition: str,
-    ) -> bool:
+        expected_review_statuses: frozenset[PlanReviewStatus],
+        values: dict[str, object],
+    ) -> PlanRecord | None:
+        if not values or not expected_review_statuses:
+            raise ValueError("Plan review CAS requires values and expected statuses")
+        allowed_columns = {"review_status", "review_version", "review_disposition"}
+        if not set(values).issubset(allowed_columns):
+            raise ValueError("Plan review CAS contains an unsupported column")
+        normalized = {
+            key: value.value if isinstance(value, PlanReviewStatus) else value
+            for key, value in values.items()
+        }
+        set_clause = ", ".join(f"{column}=?" for column in normalized)
+        placeholders = ", ".join("?" for _ in expected_review_statuses)
         cursor = self._connection.execute(
-            """UPDATE plans SET review_status=?, review_disposition=?
-               WHERE id=? AND review_version=? AND review_status = 'REQUIRED';""",
-            (review_status, review_disposition, plan_id, expected_review_version),
+            f"UPDATE plans SET {set_clause} WHERE id=? AND review_version=? "
+            f"AND review_status IN ({placeholders});",
+            [
+                *normalized.values(),
+                plan_id,
+                expected_review_version,
+                *(status.value for status in expected_review_statuses),
+            ],
         )
-        if cursor.rowcount > 1:
-            raise sqlite3.IntegrityError("plan review result affected an unexpected row count")
-        return cursor.rowcount == 1
-
-    def _status(self, plan_id: str, sql: str, message: str) -> None:
-        cursor = self._connection.execute(sql, (plan_id,))
-        if cursor.rowcount != 1:
-            raise sqlite3.IntegrityError(message)
-
-    def activate(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            "UPDATE plans SET status='ACTIVE' WHERE id=? AND status='DRAFT';",
-            "plan activation affected an unexpected row count",
-        )
-
-    def wait_for_approval(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            "UPDATE plans SET status='WAITING_APPROVAL' WHERE id=? AND status='DRAFT';",
-            "plan wait-for-approval affected an unexpected row count",
-        )
-
-    def activate_waiting(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            """UPDATE plans SET status='ACTIVE'
-               WHERE id=? AND status='WAITING_APPROVAL';""",
-            "waiting-approval plan activation affected an unexpected row count",
-        )
-
-    def complete(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            """UPDATE plans SET status='COMPLETED'
-               WHERE id=? AND status IN ('WAITING_APPROVAL','ACTIVE');""",
-            "plan completion affected an unexpected row count",
-        )
-
-    def cancel(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            """UPDATE plans SET status='CANCELLED'
-               WHERE id=? AND status IN ('WAITING_APPROVAL','ACTIVE');""",
-            "plan cancellation affected an unexpected row count",
-        )
-
-    def supersede(self, plan_id: str) -> None:
-        self._status(
-            plan_id,
-            """UPDATE plans SET status='SUPERSEDED'
-               WHERE id=? AND status IN ('WAITING_APPROVAL','ACTIVE');""",
-            "plan supersede affected an unexpected row count",
-        )
+        return None if cursor.rowcount != 1 else self.get_by_id(plan_id)
 
     def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         rows = self._connection.execute(

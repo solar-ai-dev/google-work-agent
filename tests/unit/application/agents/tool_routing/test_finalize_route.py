@@ -1,7 +1,12 @@
-from google_work_agent.application.agents.tool_routing.bind_registry_candidates import bind_registry_candidates
-from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import SemanticRouteCandidate
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    bind_registry_candidates,
+)
+from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
+    SemanticRouteCandidate,
+)
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
-from google_work_agent.domain import ConnectorToolCatalog, EffectType, build_p0_tool_registry
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
 
 
 def _catalog() -> ConnectorToolCatalog:
@@ -14,11 +19,23 @@ def test_finalize_route__task_create__adds_policy_precondition_and_freezes_v2_pl
     catalog = _catalog()
     ids = iter(f"id-{index}" for index in range(30))
     binding = bind_registry_candidates(
-        candidate=SemanticRouteCandidate(("TASK",), (("TASK", EffectType.CREATE),), "ACTION", "REQUIRED"),
+        candidate=SemanticRouteCandidate(
+            ("TASK",), (("TASK", EffectType.CREATE),), "ACTION", "REQUIRED"
+        ),
         tool_catalog=catalog,
         id_factory=lambda: next(ids),
     )
-    intent = {"schema_version": 2, "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []}, "goal": "task create", "completion_conditions": ["created"], "constraints": [], "requested_effect_hints": ["CREATE"], "requested_resource_hints": ["TASK"], "analysis_requirement": "REQUIRED", "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}}
+    intent = {
+        "schema_version": 2,
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "task create",
+        "completion_conditions": ["created"],
+        "constraints": [],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["TASK"],
+        "analysis_requirement": "REQUIRED",
+        "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []},
+    }
     result = finalize_route(
         request_intent=intent,
         binding=binding,
@@ -29,7 +46,10 @@ def test_finalize_route__task_create__adds_policy_precondition_and_freezes_v2_pl
     assert result["disposition"] == "ROUTE_READY"
     plan = result["tool_route_plan"]
     assert plan is not None and plan["schema_version"] == 2
-    assert {route["resource_type"] for route in plan["input_plan"]["input_routes"]} == {"TASK", "TASK_LIST"}
+    assert {route["resource_type"] for route in plan["input_plan"]["input_routes"]} == {
+        "TASK",
+        "TASK_LIST",
+    }
 
 
 def test_finalize_route__selection_outside_bound_set__blocks() -> None:
@@ -40,7 +60,17 @@ def test_finalize_route__selection_outside_bound_set__blocks() -> None:
         tool_catalog=catalog,
         id_factory=lambda: next(ids),
     )
-    intent = {"schema_version": 2, "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []}, "goal": "task create", "completion_conditions": ["created"], "constraints": [], "requested_effect_hints": ["CREATE"], "requested_resource_hints": ["TASK"], "analysis_requirement": "NONE", "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}}
+    intent = {
+        "schema_version": 2,
+        "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
+        "goal": "task create",
+        "completion_conditions": ["created"],
+        "constraints": [],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["TASK"],
+        "analysis_requirement": "NONE",
+        "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []},
+    }
     result = finalize_route(
         request_intent=intent,
         binding=binding,

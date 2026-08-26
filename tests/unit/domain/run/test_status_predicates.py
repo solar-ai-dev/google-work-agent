@@ -1,7 +1,7 @@
 import pytest
 
-from google_work_agent.domain.enums import RunStatus
 from google_work_agent.domain.run.model import (
+    RunStatus,
     is_preempting_run_status,
     is_terminal_run_status,
 )

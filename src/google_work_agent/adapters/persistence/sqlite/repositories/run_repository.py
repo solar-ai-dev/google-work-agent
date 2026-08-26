@@ -1,20 +1,8 @@
-"""SQLite run repository with canonical lifecycle persistence."""
+"""SQLite Run persistence/query/CAS adapter."""
 
 import sqlite3
 
-from google_work_agent.domain import (
-    CommandResult,
-    ResultCode,
-    RunCommand,
-    RunStatus,
-    next_allowed_run_commands,
-    transition_run,
-)
-from google_work_agent.domain.run.model import RunTransitionRejected
-from google_work_agent.domain.run.transitions.resume_after_reauth import (
-    transition_resume_after_reauth,
-)
-from google_work_agent.ports.models import RunCreateRecord, RunRecord
+from google_work_agent.domain.run.model import Run, RunCreate, RunStatus
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
@@ -22,86 +10,61 @@ class SQLiteRunRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
-    # --- STR-149 canonical surface (run.start_run / CAP-APP-005) ---
-    def get(self, run_id: str) -> RunRecord | None:
-        r = self._connection.execute(
+    def get(self, run_id: str) -> Run | None:
+        row = self._connection.execute(
             "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
             "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms "
             "FROM runs WHERE id=?;",
             (run_id,),
         ).fetchone()
-        return (
-            None
-            if r is None
-            else RunRecord(
-                id=str(r["id"]),
-                conversation_id=str(r["conversation_id"]),
-                status=RunStatus(str(r["status"])),
-                version=int(r["version"]),
-                started_at_ms=int(r["started_at_ms"]),
-                finished_at_ms=None if r["finished_at_ms"] is None else int(r["finished_at_ms"]),
-                entry_mode=str(r["entry_mode"]),
-                langgraph_thread_id=str(r["langgraph_thread_id"]),
-                requested_mode=str(r["requested_mode"]),
-                actual_runtime=None if r["actual_runtime"] is None else str(r["actual_runtime"]),
-            )
+        if row is None:
+            return None
+        return Run(
+            id=str(row["id"]),
+            conversation_id=str(row["conversation_id"]),
+            status=RunStatus(str(row["status"])),
+            version=int(row["version"]),
+            started_at_ms=int(row["started_at_ms"]),
+            finished_at_ms=(None if row["finished_at_ms"] is None else int(row["finished_at_ms"])),
+            entry_mode=str(row["entry_mode"]),
+            langgraph_thread_id=str(row["langgraph_thread_id"]),
+            requested_mode=str(row["requested_mode"]),
+            actual_runtime=(None if row["actual_runtime"] is None else str(row["actual_runtime"])),
         )
 
-    def get_snapshot(self, run_id: str) -> RunRecord | None:
+    def get_snapshot(self, run_id: str) -> Run | None:
         return self.get(run_id)
 
-    def find_open_by_conversation(self, conversation_id: str) -> RunRecord | None:
-        r = self._connection.execute(
-            "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
-            "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms "
-            "FROM runs WHERE conversation_id=? "
-            "AND finished_at_ms IS NULL ORDER BY started_at_ms DESC LIMIT 1;",
+    def find_open_by_conversation(self, conversation_id: str) -> Run | None:
+        row = self._connection.execute(
+            "SELECT id FROM runs WHERE conversation_id=? AND finished_at_ms IS NULL "
+            "ORDER BY started_at_ms DESC LIMIT 1;",
             (conversation_id,),
         ).fetchone()
-        return (
-            None
-            if r is None
-            else RunRecord(
-                id=str(r["id"]),
-                conversation_id=str(r["conversation_id"]),
-                status=RunStatus(str(r["status"])),
-                version=int(r["version"]),
-                started_at_ms=int(r["started_at_ms"]),
-                finished_at_ms=None,
-                entry_mode=str(r["entry_mode"]),
-                langgraph_thread_id=str(r["langgraph_thread_id"]),
-                requested_mode=str(r["requested_mode"]),
-                actual_runtime=None if r["actual_runtime"] is None else str(r["actual_runtime"]),
-            )
-        )
+        return None if row is None else self.get(str(row["id"]))
 
-    def get_latest_by_conversation(self, conversation_id: str) -> RunRecord | None:
+    def get_latest_by_conversation(self, conversation_id: str) -> Run | None:
         row = self._connection.execute(
-            "SELECT id FROM runs WHERE conversation_id = ? "
+            "SELECT id FROM runs WHERE conversation_id=? "
             "ORDER BY started_at_ms DESC, id DESC LIMIT 1;",
             (conversation_id,),
         ).fetchone()
         return None if row is None else self.get(str(row["id"]))
 
-    def list_by_conversation_bounded(
-        self, conversation_id: str, *, limit: int
-    ) -> tuple[RunRecord, ...]:
+    def list_by_conversation_bounded(self, conversation_id: str, *, limit: int) -> tuple[Run, ...]:
         rows = self._connection.execute(
-            "SELECT id FROM runs WHERE conversation_id = ? "
+            "SELECT id FROM runs WHERE conversation_id=? "
             "ORDER BY started_at_ms DESC, id DESC LIMIT ?;",
             (conversation_id, limit),
         ).fetchall()
-        return tuple(
-            run for row in rows if (run := self.get(str(row["id"]))) is not None
-        )
+        return tuple(run for row in rows if (run := self.get(str(row["id"]))) is not None)
 
-    def create(self, run: RunCreateRecord) -> None:
+    def create(self, run: RunCreate) -> None:
         try:
             self._connection.execute(
                 "INSERT INTO runs (id, conversation_id, entry_mode, status, "
                 "langgraph_thread_id, requested_mode, actual_runtime, budget_json, "
-                "version, started_at_ms, finished_at_ms) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                "version, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 (
                     run.id,
                     run.conversation_id,
@@ -128,353 +91,21 @@ class SQLiteRunRepository:
         expected_statuses: frozenset[RunStatus],
         values: dict[str, object],
     ) -> bool:
-        if not values:
-            raise ValueError("update_if_version_and_status requires at least one value")
-        if not expected_statuses:
-            raise ValueError("update_if_version_and_status requires at least one expected status")
+        if not values or not expected_statuses:
+            raise ValueError("Run CAS requires values and expected statuses")
+        allowed_columns = {"status", "version", "finished_at_ms", "actual_runtime"}
+        if not set(values).issubset(allowed_columns):
+            raise ValueError("Run CAS contains an unsupported column")
         set_clause = ", ".join(f"{column} = ?" for column in values)
-        status_placeholders = ", ".join("?" for _ in expected_statuses)
-        params = [
-            *values.values(),
-            run_id,
-            expected_version,
-            *(status.value for status in expected_statuses),
-        ]
+        placeholders = ", ".join("?" for _ in expected_statuses)
         cursor = self._connection.execute(
-            f"UPDATE runs SET {set_clause} WHERE id = ? AND version = ? "
-            f"AND status IN ({status_placeholders});",
-            params,
+            f"UPDATE runs SET {set_clause} WHERE id=? AND version=? "
+            f"AND status IN ({placeholders});",
+            [
+                *values.values(),
+                run_id,
+                expected_version,
+                *(status.value for status in expected_statuses),
+            ],
         )
         return cursor.rowcount == 1
-
-    # --- pre-existing shim kept for non-StartRun Run lifecycle capabilities.
-    # `get_by_id` is the same read surface under a legacy name; the ~20
-    # domain-transition methods below own deciding the next status/version via
-    # `transition_run` and friends, then delegate the actual row write to
-    # `update_if_version_and_status` above through `_apply`. See
-    # ports/persistence/run_repository.py for the canonical-vs-shim boundary
-    # this file implements. `add`/`get_open_by_conversation` had zero
-    # remaining callers (#72 final cleanup) and were removed.
-    def get_by_id(self, run_id: str) -> RunRecord | None:
-        return self.get(run_id)
-
-    def _apply(
-        self,
-        *,
-        run_id: str,
-        previous_status: RunStatus,
-        previous_version: int,
-        result: CommandResult[RunStatus, RunCommand],
-        finished_at_ms: int | None,
-        error_message: str,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        if not result.applied:
-            return result
-        applied = self.update_if_version_and_status(
-            run_id,
-            previous_version,
-            frozenset({previous_status}),
-            {
-                "status": result.current_status.value,
-                "version": result.current_version,
-                "finished_at_ms": finished_at_ms,
-            },
-        )
-        if not applied:
-            raise sqlite3.IntegrityError(error_message)
-        return result
-
-    def _transition(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        command: RunCommand,
-        finished_at_ms: int | None = None,
-        plan_requires_approval: bool | None = None,
-        recovery_next_status: RunStatus | None = None,
-        validated_recovery_target: bool = False,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        kwargs = {}
-        if plan_requires_approval is not None:
-            kwargs["plan_requires_approval"] = plan_requires_approval
-        if recovery_next_status is not None:
-            kwargs["recovery_next_status"] = recovery_next_status
-        if validated_recovery_target:
-            kwargs["validated_recovery_target"] = True
-        result = transition_run(
-            cur.status,
-            command=command,
-            current_version=cur.version,
-            expected_version=expected_version,
-            **kwargs,
-        )
-        return self._apply(
-            run_id=run_id,
-            previous_status=cur.status,
-            previous_version=cur.version,
-            result=result,
-            finished_at_ms=finished_at_ms,
-            error_message=f"run {command.value} affected an unexpected row count",
-        )
-
-    def resume_after_reauth(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        resume_status: RunStatus,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        if cur.version != expected_version:
-            result = CommandResult(
-                False,
-                ResultCode.VERSION_CONFLICT,
-                cur.status,
-                cur.version,
-                next_allowed_run_commands(cur.status),
-                "expected_version does not match current_version",
-            )
-        else:
-            try:
-                next_status = transition_resume_after_reauth(
-                    cur.status, resume_status=resume_status
-                )
-            except RunTransitionRejected as error:
-                result = CommandResult(
-                    False,
-                    ResultCode.STATE_CONFLICT,
-                    cur.status,
-                    cur.version,
-                    next_allowed_run_commands(cur.status),
-                    str(error),
-                )
-            else:
-                result = CommandResult(
-                    True,
-                    ResultCode.TRANSITION_APPLIED,
-                    next_status,
-                    cur.version + 1,
-                    next_allowed_run_commands(next_status),
-                    None,
-                )
-        return self._apply(
-            run_id=run_id,
-            previous_status=cur.status,
-            previous_version=cur.version,
-            result=result,
-            finished_at_ms=finished_at_ms,
-            error_message="run resume-after-reauth affected an unexpected row count",
-        )
-
-    def complete_answer_only_run(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.COMPLETE_ANSWER_ONLY_RUN,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def complete_write_run(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.COMPLETE_WRITE_RUN,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def finalize_action_outcomes(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.FINALIZE_ACTION_OUTCOMES,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def block_run(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.BLOCK_RUN,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def fail_run(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.FAIL_RUN,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def publish_read_only_plan(
-        self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None
-    ):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.PUBLISH_PLAN,
-            finished_at_ms=finished_at_ms,
-            plan_requires_approval=False,
-        )
-
-    def publish_write_plan(
-        self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None
-    ):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.PUBLISH_PLAN,
-            finished_at_ms=finished_at_ms,
-            plan_requires_approval=True,
-        )
-
-    def request_cancel(self, run_id: str, *, expected_version: int):
-        return self._transition(
-            run_id, expected_version=expected_version, command=RunCommand.REQUEST_CANCEL
-        )
-
-    def finalize_cancel(self, run_id: str, *, expected_version: int, finished_at_ms: int):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.FINALIZE_CANCEL,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def require_reauth(
-        self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None
-    ):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.REQUIRE_REAUTH,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def require_recovery(
-        self, run_id: str, *, expected_version: int, finished_at_ms: int | None = None
-    ):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.REQUIRE_RECOVERY,
-            finished_at_ms=finished_at_ms,
-        )
-
-    def resolve_recovery(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        recovery_next_status: RunStatus,
-        finished_at_ms: int | None = None,
-        validated_recovery_target: bool = False,
-    ):
-        return self._transition(
-            run_id,
-            expected_version=expected_version,
-            command=RunCommand.RESOLVE_RECOVERY,
-            finished_at_ms=finished_at_ms,
-            recovery_next_status=recovery_next_status,
-            validated_recovery_target=validated_recovery_target,
-        )
-
-    def complete_read_only_run(
-        self, run_id: str, *, expected_version: int, finished_at_ms: int
-    ) -> CommandResult[RunStatus, RunCommand]:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        applied = cur.version == expected_version and cur.status is RunStatus.EXECUTING
-        result = CommandResult(
-            applied=applied,
-            result_code=ResultCode.TRANSITION_APPLIED
-            if applied
-            else (
-                ResultCode.VERSION_CONFLICT
-                if cur.version != expected_version
-                else ResultCode.STATE_CONFLICT
-            ),
-            current_status=RunStatus.COMPLETED if applied else cur.status,
-            current_version=cur.version + 1 if applied else cur.version,
-            next_allowed_commands=(),
-            conflict_detail=None
-            if applied
-            else (
-                "expected_version does not match current_version"
-                if cur.version != expected_version
-                else "read-only run completion requires EXECUTING status"
-            ),
-        )
-        return self._apply(
-            run_id=run_id,
-            previous_status=cur.status,
-            previous_version=cur.version,
-            result=result,
-            finished_at_ms=finished_at_ms,
-            error_message="read-only run completion affected an unexpected row count",
-        )
-
-    def set_recovery_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        if cur.status is not RunStatus.RECOVERY_REQUIRED:
-            result = self.require_recovery(
-                run_id, expected_version=cur.version, finished_at_ms=finished_at_ms
-            )
-            if not result.applied:
-                raise sqlite3.IntegrityError(
-                    f"run require-recovery failed: {result.conflict_detail}"
-                )
-        updated = self.get_by_id(run_id)
-        if updated is None:
-            raise LookupError(f"run not found after recovery update: {run_id}")
-        return updated
-
-    def set_reauth_required(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        result = self.require_reauth(
-            run_id, expected_version=cur.version, finished_at_ms=finished_at_ms
-        )
-        if not result.applied:
-            raise sqlite3.IntegrityError(f"run require-reauth failed: {result.conflict_detail}")
-        updated = self.get_by_id(run_id)
-        if updated is None:
-            raise LookupError(f"run not found after reauth update: {run_id}")
-        return updated
-
-    def set_verifying(self, run_id: str, *, finished_at_ms: int | None = None) -> RunRecord:
-        cur = self.get_by_id(run_id)
-        if cur is None:
-            raise LookupError(f"run not found: {run_id}")
-        result = (
-            self.resolve_recovery(
-                run_id,
-                expected_version=cur.version,
-                recovery_next_status=RunStatus.VERIFYING,
-                finished_at_ms=finished_at_ms,
-            )
-            if cur.status is RunStatus.RECOVERY_REQUIRED
-            else self._transition(
-                run_id,
-                expected_version=cur.version,
-                command=RunCommand.BEGIN_VERIFICATION,
-                finished_at_ms=finished_at_ms,
-            )
-        )
-        if not result.applied:
-            raise sqlite3.IntegrityError(f"run set-verifying failed: {result.conflict_detail}")
-        updated = self.get_by_id(run_id)
-        if updated is None:
-            raise LookupError(f"run not found after verification transition: {run_id}")
-        return updated

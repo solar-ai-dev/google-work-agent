@@ -5,16 +5,46 @@ from types import SimpleNamespace
 
 import pytest
 
-from google_work_agent.application.use_cases.execution_attempt.execute_action import ExecuteActionCommand, ExecuteActionHandler
-from google_work_agent.application.use_cases.recovery.recover_create import RecoverCreateCommand, RecoverCreateHandler
-from google_work_agent.application.use_cases.recovery.recover_delete import RecoverDeleteCommand, RecoverDeleteHandler
-from google_work_agent.application.use_cases.recovery.recover_send import RecoverSendCommand, RecoverSendHandler
-from google_work_agent.application.use_cases.recovery.recover_update import RecoverUpdateCommand, RecoverUpdateHandler
-from google_work_agent.application.use_cases.verification.verify_action import VerifyActionCommand, VerifyActionHandler
+from google_work_agent.application.use_cases.execution_attempt.execute_action import (
+    ExecuteActionCommand,
+    ExecuteActionHandler,
+)
+from google_work_agent.application.use_cases.recovery.recover_create import (
+    RecoverCreateCommand,
+    RecoverCreateHandler,
+)
+from google_work_agent.application.use_cases.recovery.recover_delete import (
+    RecoverDeleteCommand,
+    RecoverDeleteHandler,
+)
+from google_work_agent.application.use_cases.recovery.recover_send import (
+    RecoverSendCommand,
+    RecoverSendHandler,
+)
+from google_work_agent.application.use_cases.recovery.recover_update import (
+    RecoverUpdateCommand,
+    RecoverUpdateHandler,
+)
+from google_work_agent.application.use_cases.verification.verify_action import (
+    VerifyActionCommand,
+    VerifyActionHandler,
+)
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_execution_integrity import CLAIM_TOKEN_VERSION, issue_claim_token
-from google_work_agent.application.write_verification_projection import calculate_verification_subset_diff, normalize_actual_verification_projection
-from google_work_agent.domain import ActionStatus, ExecutionAttemptStatus, ResultCode, RunStatus, calculate_canonical_json_hash
+from google_work_agent.application.write_execution_integrity import (
+    CLAIM_TOKEN_VERSION,
+    issue_claim_token,
+)
+from google_work_agent.application.write_verification_projection import (
+    calculate_verification_subset_diff,
+    normalize_actual_verification_projection,
+)
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 _SIGNING_SECRET = "c3-signing-secret"
@@ -27,6 +57,27 @@ class _ByIdRepo:
 
     def get_by_id(self, value_id: str) -> object | None:
         return self.values.get(value_id)
+
+    def get(self, value_id: str) -> object | None:
+        return self.values.get(value_id)
+
+    def list_by_run(self, run_id: str) -> list[object]:
+        return [item for item in self.values.values() if getattr(item, "run_id", None) == run_id]
+
+    def update_if_version_and_status(
+        self, value_id: str, *args: object, **kwargs: object
+    ) -> object | None:
+        item = self.values.get(value_id)
+        if item is None:
+            return None
+        if args and isinstance(args[-1], dict):
+            kwargs = {**args[-1], **kwargs}
+        next_status = kwargs.get("next_status", kwargs.get("status"))
+        if next_status is not None:
+            item.status = next_status
+        if hasattr(item, "version"):
+            item.version += 1
+        return item
 
 
 class _CommandReceipts:
@@ -42,6 +93,9 @@ class _CommandReceipts:
 
     def finish_json(self, *, command_id: str, **_kwargs: object) -> None:
         self.finished.append(command_id)
+
+    def has_applied_request_cancel(self, _run_id: str) -> bool:
+        return False
 
 
 class _Sink:
@@ -69,17 +123,19 @@ class _Dependencies:
 
 
 class _Actions(_ByIdRepo):
-    def __init__(self, values: dict[str, object], verification_status: ActionStatus | None = None) -> None:
+    def __init__(
+        self, values: dict[str, object], verification_status: ActionStatus | None = None
+    ) -> None:
         super().__init__(values)
         self.verification_status = verification_status
 
-    def store_verification(self, _action_id: str, **_kwargs: object) -> object:
-        return SimpleNamespace(
-            applied=True,
-            current_status=self.verification_status or ActionStatus.VERIFIED,
-            current_version=2,
-            next_allowed_commands=(),
-        )
+    def update_if_version_and_status(self, value_id: str, **kwargs: object) -> object | None:
+        item = self.values.get(value_id)
+        if item is None:
+            return None
+        item.status = (self.verification_status or kwargs["next_status"]).value
+        item.version += 1
+        return item
 
 
 class _Runs(_ByIdRepo):
@@ -89,6 +145,14 @@ class _Runs(_ByIdRepo):
 
     def set_recovery_required(self, _run_id: str) -> None:
         self.recovery_required += 1
+
+    def update_if_version_and_status(
+        self, value_id: str, *args: object, **kwargs: object
+    ) -> object | None:
+        updated = super().update_if_version_and_status(value_id, *args, **kwargs)
+        if updated is not None and RunStatus(updated.status) is RunStatus.RECOVERY_REQUIRED:
+            self.recovery_required += 1
+        return updated
 
 
 class _Uow:
@@ -102,11 +166,11 @@ class _Uow:
         run: object | None = None,
         verification_status: ActionStatus | None = None,
     ) -> None:
-        self.actions = _Actions({getattr(action, "id"): action}, verification_status)
-        self.execution_attempts = _ByIdRepo({getattr(attempt, "id"): attempt})
-        self.approvals = _ByIdRepo({} if approval is None else {getattr(approval, "id"): approval})
-        self.plans = _ByIdRepo({} if plan is None else {getattr(plan, "id"): plan})
-        self.runs = _Runs({} if run is None else {getattr(run, "id"): run})
+        self.actions = _Actions({action.id: action}, verification_status)
+        self.execution_attempts = _ByIdRepo({attempt.id: attempt})
+        self.approvals = _ByIdRepo({} if approval is None else {approval.id: approval})
+        self.plans = _ByIdRepo({} if plan is None else {plan.id: plan})
+        self.runs = _Runs({} if run is None else {run.id: run})
         self.resource_refs = _ByIdRepo({})
         self.command_receipts = _CommandReceipts()
         self.verifications = _VerificationRepo()
@@ -126,22 +190,31 @@ class _Uow:
 
 
 class _ExecutionConnector:
-    def __init__(self, snapshot: ResourceSnapshot) -> None:
+    def __init__(self, snapshot: ResourceSnapshot, unit_of_work: _Uow) -> None:
         self.snapshot = snapshot
+        self.unit_of_work = unit_of_work
         self.prepare_calls = 0
         self.execute_calls = 0
 
     def prepare_write(self, *, arguments: dict[str, object], **_kwargs: object) -> object:
+        assert self.unit_of_work.commits == 1
         self.prepare_calls += 1
         return SimpleNamespace(arguments=arguments)
 
     def execute_write(self, _request: object) -> ResourceSnapshot:
+        assert self.unit_of_work.commits == 1
         self.execute_calls += 1
         return self.snapshot
 
 
 class _RecoveryConnector:
-    def __init__(self, *, candidates: list[ResourceSnapshot] | None = None, snapshot: ResourceSnapshot | None = None, absent: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        candidates: list[ResourceSnapshot] | None = None,
+        snapshot: ResourceSnapshot | None = None,
+        absent: bool = False,
+    ) -> None:
         self.candidates = candidates or []
         self.snapshot = snapshot
         self.absent = absent
@@ -170,7 +243,13 @@ class _VerificationConnector(_RecoveryConnector):
     last_request_id = "mcp-c3"
 
 
-def _task_snapshot(*, title: str, resource_id: str = "task-1", version: str = "1", extra: dict[str, object] | None = None) -> ResourceSnapshot:
+def _task_snapshot(
+    *,
+    title: str,
+    resource_id: str = "task-1",
+    version: str = "1",
+    extra: dict[str, object] | None = None,
+) -> ResourceSnapshot:
     payload: dict[str, object] = {"title": title, **(extra or {})}
     return ResourceSnapshot(
         fixture_snapshot_id="fixture-c3",
@@ -184,16 +263,37 @@ def _task_snapshot(*, title: str, resource_id: str = "task-1", version: str = "1
     )
 
 
-def _execution_fixture(*, attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CLAIMED, run_status: RunStatus = RunStatus.WAITING_APPROVAL) -> tuple[_Uow, str, _ExecutionConnector]:
+def _execution_fixture(
+    *,
+    attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CLAIMED,
+    run_status: RunStatus = RunStatus.WAITING_APPROVAL,
+) -> tuple[_Uow, str, _ExecutionConnector]:
     arguments = {"task_list_id": "list-1", "payload": {"title": "C3"}}
     arguments_hash = calculate_canonical_json_hash(arguments)
-    action = SimpleNamespace(id="action-1", plan_id="plan-1", tool_name="tasks_create_task", arguments_json=dumps(arguments), arguments_hash=arguments_hash)
-    approval = SimpleNamespace(id="approval-1", action_id="action-1", recovery_fingerprint="fp-1")
-    attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=attempt_status)
-    plan = SimpleNamespace(id="plan-1", run_id="run-1")
-    run = SimpleNamespace(id="run-1", status=run_status)
+    action = SimpleNamespace(
+        id="action-1",
+        plan_id="plan-1",
+        tool_name="tasks_create_task",
+        arguments_json=dumps(arguments),
+        arguments_hash=arguments_hash,
+        status=ActionStatus.EXECUTING.value,
+        version=1,
+    )
+    approval = SimpleNamespace(
+        id="approval-1",
+        action_id="action-1",
+        status=ApprovalStatus.CONSUMED,
+        recovery_fingerprint="fp-1",
+    )
+    attempt = SimpleNamespace(
+        id="attempt-1", approval_id="approval-1", status=attempt_status, version=1
+    )
+    plan = SimpleNamespace(
+        id="plan-1", run_id="run-1", status=PlanStatus.WAITING_APPROVAL, revision_no=1
+    )
+    run = SimpleNamespace(id="run-1", status=run_status, version=1)
     uow = _Uow(action=action, attempt=attempt, approval=approval, plan=plan, run=run)
-    connector = _ExecutionConnector(_task_snapshot(title="C3"))
+    connector = _ExecutionConnector(_task_snapshot(title="C3"), uow)
     token = issue_claim_token(
         {
             "version": CLAIM_TOKEN_VERSION,
@@ -212,7 +312,9 @@ def _execution_fixture(*, attempt_status: ExecutionAttemptStatus = ExecutionAtte
     return uow, token, connector
 
 
-def _execute_handler(uow: _Uow, connector: _ExecutionConnector, now_ms: int = 2_000) -> ExecuteActionHandler:
+def _execute_handler(
+    uow: _Uow, connector: _ExecutionConnector, now_ms: int = 2_000
+) -> ExecuteActionHandler:
     return ExecuteActionHandler(
         unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
         connector_execution=connector,  # type: ignore[arg-type]
@@ -254,7 +356,9 @@ def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> No
         _execute_handler(cancelled_uow, connector)(ExecuteActionCommand("action-1", token))
     assert connector.execute_calls == 0
 
-    nonclaimed_uow, token2, connector2 = _execution_fixture(attempt_status=ExecutionAttemptStatus.SUCCEEDED)
+    nonclaimed_uow, token2, connector2 = _execution_fixture(
+        attempt_status=ExecutionAttemptStatus.SUCCEEDED
+    )
     with pytest.raises(PermissionError, match="CLAIMED"):
         _execute_handler(nonclaimed_uow, connector2)(ExecuteActionCommand("action-1", token2))
     assert connector2.execute_calls == 0
@@ -276,19 +380,39 @@ def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> No
     assert connector4.execute_calls == 0
 
 
-def _recovery_uow(*, tool_name: str, expected: dict[str, object] | None = None, source: dict[str, object] | None = None, arguments: dict[str, object] | None = None) -> _Uow:
+def _recovery_uow(
+    *,
+    tool_name: str,
+    expected: dict[str, object] | None = None,
+    source: dict[str, object] | None = None,
+    arguments: dict[str, object] | None = None,
+) -> _Uow:
     action = SimpleNamespace(
-        id="action-1", plan_id="plan-1", tool_name=tool_name,
-        arguments_json=dumps(arguments or {}), expected_json=dumps(expected or {}),
-        target_resource_ref_id=None, status=ActionStatus.UNKNOWN_RESULT.value, version=3,
+        id="action-1",
+        plan_id="plan-1",
+        tool_name=tool_name,
+        arguments_json=dumps(arguments or {}),
+        expected_json=dumps(expected or {}),
+        target_resource_ref_id=None,
+        status=ActionStatus.UNKNOWN_RESULT.value,
+        version=3,
     )
-    attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=ExecutionAttemptStatus.UNKNOWN_RESULT)
-    approval = SimpleNamespace(id="approval-1", action_id="action-1", recovery_fingerprint="fp-1", source_snapshot_json=dumps(source or {}))
+    attempt = SimpleNamespace(
+        id="attempt-1", approval_id="approval-1", status=ExecutionAttemptStatus.UNKNOWN_RESULT
+    )
+    approval = SimpleNamespace(
+        id="approval-1",
+        action_id="action-1",
+        recovery_fingerprint="fp-1",
+        source_snapshot_json=dumps(source or {}),
+    )
     return _Uow(action=action, attempt=attempt, approval=approval)
 
 
 def _applied_response(status: str = ActionStatus.EXECUTED.value) -> WriteActionResponse:
-    return WriteActionResponse(True, ResultCode.TRANSITION_APPLIED.value, "action-1", status, 4, (), attempt_id="attempt-1")
+    return WriteActionResponse(
+        True, ResultCode.TRANSITION_APPLIED.value, "action-1", status, 4, (), attempt_id="attempt-1"
+    )
 
 
 def test_create_send_and_delete_recovery_never_blind_write() -> None:
@@ -297,7 +421,9 @@ def test_create_send_and_delete_recovery_never_blind_write() -> None:
         (RecoverSendHandler, RecoverSendCommand, "gmail_send"),
     ):
         uow = _recovery_uow(tool_name=tool_name)
-        connector = _RecoveryConnector(candidates=[_task_snapshot(title="a"), _task_snapshot(title="b", resource_id="task-2")])
+        connector = _RecoveryConnector(
+            candidates=[_task_snapshot(title="a"), _task_snapshot(title="b", resource_id="task-2")]
+        )
         result = handler_type(
             unit_of_work_factory=lambda uow=uow: uow,  # type: ignore[arg-type]
             connector_execution=connector,  # type: ignore[arg-type]
@@ -306,7 +432,9 @@ def test_create_send_and_delete_recovery_never_blind_write() -> None:
         assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
         assert connector.write_calls == 0
 
-    delete_uow = _recovery_uow(tool_name="tasks_delete_task", arguments={"task_id": "task-1", "task_list_id": "list-1"})
+    delete_uow = _recovery_uow(
+        tool_name="tasks_delete_task", arguments={"task_id": "task-1", "task_list_id": "list-1"}
+    )
     present_connector = _RecoveryConnector(snapshot=_task_snapshot(title="present"))
     present = RecoverDeleteHandler(
         unit_of_work_factory=lambda: delete_uow,  # type: ignore[arg-type]
@@ -334,48 +462,87 @@ def test_update_recovery_uses_canonical_subset_projection_for_all_three_states()
     failed: list[object] = []
 
     def run(snapshot: ResourceSnapshot, command_id: str) -> object:
-        uow = _recovery_uow(tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments)
+        uow = _recovery_uow(
+            tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments
+        )
         return RecoverUpdateHandler(
             unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
             connector_execution=_RecoveryConnector(snapshot=snapshot),  # type: ignore[arg-type]
-            recover_existing_result=lambda command: recovered.append(command) or _applied_response(),
-            resolve_as_failed=lambda command: failed.append(command) or _applied_response(ActionStatus.FAILED.value),
+            recover_existing_result=lambda command: (
+                recovered.append(command) or _applied_response()
+            ),
+            resolve_as_failed=lambda command: (
+                failed.append(command) or _applied_response(ActionStatus.FAILED.value)
+            ),
         )(RecoverUpdateCommand(command_id, "hash", "action-1", "attempt-1", 3, 1))
 
-    expected_result = run(_task_snapshot(title="after", version="2", extra={"notes": "provider-extra"}), "cmd-e")
+    expected_result = run(
+        _task_snapshot(title="after", version="2", extra={"notes": "provider-extra"}), "cmd-e"
+    )
     assert expected_result.action_status == ActionStatus.EXECUTED.value
     assert len(recovered) == 1 and failed == []
 
-    source_result = run(_task_snapshot(title="before", version="1", extra={"notes": "irrelevant-extra"}), "cmd-s")
+    source_result = run(
+        _task_snapshot(title="before", version="1", extra={"notes": "irrelevant-extra"}), "cmd-s"
+    )
     assert source_result.action_status == ActionStatus.FAILED.value
     assert len(failed) == 1
 
-    third_result = run(_task_snapshot(title="someone-else", version="3", extra={"notes": "extra"}), "cmd-t")
+    third_result = run(
+        _task_snapshot(title="someone-else", version="3", extra={"notes": "extra"}), "cmd-t"
+    )
     assert third_result.applied is False
     assert third_result.result_code == ResultCode.RECOVERY_REQUIRED.value
 
 
-def _verification_uow(*, expected_title: str = "C3", verification_status: ActionStatus = ActionStatus.VERIFIED, attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED, approval_action_id: str = "action-1") -> _Uow:
+def _verification_uow(
+    *,
+    expected_title: str = "C3",
+    verification_status: ActionStatus = ActionStatus.VERIFIED,
+    attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED,
+    approval_action_id: str = "action-1",
+) -> _Uow:
     action = SimpleNamespace(
-        id="action-1", plan_id="plan-1", tool_name="tasks_update_task",
-        arguments_json=dumps({"task_id": "task-1", "task_list_id": "list-1", "payload": {"title": expected_title}}),
-        expected_json=dumps({"payload": {"title": expected_title}}), target_resource_ref_id=None,
-        status=ActionStatus.EXECUTED.value, effect_type="UPDATE", version=1,
+        id="action-1",
+        plan_id="plan-1",
+        tool_name="tasks_update_task",
+        arguments_json=dumps(
+            {"task_id": "task-1", "task_list_id": "list-1", "payload": {"title": expected_title}}
+        ),
+        expected_json=dumps({"payload": {"title": expected_title}}),
+        target_resource_ref_id=None,
+        status=ActionStatus.EXECUTED.value,
+        effect_type="UPDATE",
+        version=1,
     )
-    attempt = SimpleNamespace(id="attempt-1", approval_id="approval-1", status=attempt_status, result_resource_ref_id=None)
+    attempt = SimpleNamespace(
+        id="attempt-1", approval_id="approval-1", status=attempt_status, result_resource_ref_id=None
+    )
     approval = SimpleNamespace(id="approval-1", action_id=approval_action_id)
     plan = SimpleNamespace(id="plan-1", run_id="run-1")
-    run = SimpleNamespace(id="run-1", status=RunStatus.VERIFYING)
-    return _Uow(action=action, attempt=attempt, approval=approval, plan=plan, run=run, verification_status=verification_status)
+    run = SimpleNamespace(id="run-1", status=RunStatus.VERIFYING, version=1)
+    return _Uow(
+        action=action,
+        attempt=attempt,
+        approval=approval,
+        plan=plan,
+        run=run,
+        verification_status=verification_status,
+    )
 
 
 def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None:
-    normalized = normalize_actual_verification_projection(tool_name="tasks_update_task", actual={"payload": {"title": "C3", "due": "2026-08-22T00:00:00Z"}})
+    normalized = normalize_actual_verification_projection(
+        tool_name="tasks_update_task",
+        actual={"payload": {"title": "C3", "due": "2026-08-22T00:00:00Z"}},
+    )
     assert normalized["payload"]["due"] == "2026-08-22"  # type: ignore[index]
     assert calculate_verification_subset_diff({"payload": {"title": "C3"}}, normalized) == []
 
     valid_uow = _verification_uow()
-    valid_connector = _VerificationConnector(snapshot=_task_snapshot(title="C3", extra={"notes": "extra"}))
+    valid_connector = _VerificationConnector(
+        snapshot=_task_snapshot(title="C3", extra={"notes": "extra"})
+    )
     valid = VerifyActionHandler(
         unit_of_work_factory=lambda: valid_uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,
@@ -385,7 +552,9 @@ def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None
     assert valid.action_status == ActionStatus.VERIFIED.value
     assert valid_connector.read_calls == 1
 
-    mismatch_uow = _verification_uow(expected_title="expected", verification_status=ActionStatus.MISMATCH)
+    mismatch_uow = _verification_uow(
+        expected_title="expected", verification_status=ActionStatus.MISMATCH
+    )
     mismatch = VerifyActionHandler(
         unit_of_work_factory=lambda: mismatch_uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,

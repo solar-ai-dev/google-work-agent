@@ -6,7 +6,7 @@ from json import JSONDecodeError, dumps, loads
 from math import isfinite
 from typing import cast
 
-from google_work_agent.domain.exceptions import InvariantViolationError
+from google_work_agent.domain.results import InvariantViolationError
 
 MAX_ACTION_RISK_JSON_BYTES = 16 * 1024
 

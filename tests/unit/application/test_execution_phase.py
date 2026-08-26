@@ -26,7 +26,9 @@ from google_work_agent.application.write_actions import (
     WriteActionResponse,
     WriteRunResponse,
 )
-from google_work_agent.domain import ActionStatus, CommandResult, ResultCode, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,

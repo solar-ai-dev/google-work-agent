@@ -49,7 +49,8 @@ from google_work_agent.application.write_plan_contracts import (
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports import EvidenceOriginType, ResourceSnapshot, ResourceType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.ports import ResourceSnapshot, ResourceType
 from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
 )

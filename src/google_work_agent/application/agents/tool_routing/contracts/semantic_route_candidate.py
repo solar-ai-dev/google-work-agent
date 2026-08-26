@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from google_work_agent.domain import EffectType
+from google_work_agent.domain.action.model import EffectType
+
 
 @dataclass(frozen=True, slots=True)
 class SemanticRouteCandidate:

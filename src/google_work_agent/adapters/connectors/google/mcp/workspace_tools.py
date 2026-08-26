@@ -30,15 +30,19 @@ from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    MANIFEST_MESSAGE_LIMIT_BYTES,
+    PROTOCOL_VERSION,
+)
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MANIFEST_MESSAGE_LIMIT_BYTES, PROTOCOL_VERSION
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
     AttachmentDescriptor,
     AttachmentStagingError,
     FilesystemAttachmentStagingAdapter,
 )
-from google_work_agent.domain import build_p0_tool_registry, calculate_canonical_json_hash
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStorePort, TimeRange
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"

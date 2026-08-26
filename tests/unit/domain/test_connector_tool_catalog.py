@@ -1,7 +1,6 @@
 import pytest
 
-from google_work_agent.domain import ConnectorToolCatalog, SignedToolRegistry, ToolRegistryEntry
-from google_work_agent.domain.enums import (
+from google_work_agent.domain.action.model import (
     ApprovalRequirement,
     EffectType,
     RecoveryPolicy,
@@ -9,6 +8,11 @@ from google_work_agent.domain.enums import (
 )
 from google_work_agent.domain.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
+)
+from google_work_agent.domain.tool_registry import (
+    ConnectorToolCatalog,
+    SignedToolRegistry,
+    ToolRegistryEntry,
 )
 
 

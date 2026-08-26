@@ -9,7 +9,7 @@ from google_work_agent.application.task_duplicates import (
     TaskDuplicateValidator,
     evidence_duplicate_risk,
 )
-from google_work_agent.domain import PolicyViolationError
+from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,

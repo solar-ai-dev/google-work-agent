@@ -11,8 +11,14 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_persistence import audit_event, cancel_pending_actions
-from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import CommandReceiptStatus, TraceEventRecord, UUIDPort
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
+from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -80,7 +86,7 @@ class RequestCancelHandler:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
                 return self._replay(unit_of_work, command, existing)
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             plans = unit_of_work.plans.list_by_run(run.id)
@@ -94,25 +100,33 @@ class RequestCancelHandler:
                 aggregate_id=command.run_id,
                 created_at_ms=now_ms,
             )
-            decision = unit_of_work.runs.request_cancel(
-                command.run_id, expected_version=command.expected_version
-            )
-            if not decision.applied:
+            if run.version != command.expected_version:
                 result = RequestCancelResult(
                     False,
-                    decision.result_code.value,
-                    decision.current_status.value,
-                    decision.current_version,
-                    tuple(item.value for item in decision.next_allowed_commands),
-                    decision.conflict_detail,
+                    ResultCode.VERSION_CONFLICT.value,
+                    run.status.value,
+                    run.version,
+                    (),
+                    "expected_version does not match current_version",
                 )
+            else:
+                requested_status = transition_request_cancel(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": requested_status.value, "version": run.version + 1},
+                ):
+                    raise RuntimeError("validated RequestCancel CAS failed")
+            if run.version != command.expected_version:
+                pass
             elif self._has_started_action(actions):
                 result = RequestCancelResult(
                     True,
                     ResultCode.TRANSITION_APPLIED.value,
-                    decision.current_status.value,
-                    decision.current_version,
-                    tuple(item.value for item in decision.next_allowed_commands),
+                    requested_status.value,
+                    run.version + 1,
+                    (),
                     result_kind="CANCEL_REQUESTED",
                 )
                 self._stage_cancel_handoff(unit_of_work, command)
@@ -124,18 +138,33 @@ class RequestCancelHandler:
                         plan_id=plan.id,
                         updated_at_ms=now_ms,
                     )
-                    unit_of_work.plans.cancel(plan.id)
-                final = unit_of_work.runs.finalize_cancel(
+                    if (
+                        unit_of_work.plans.update_if_status(
+                            plan.id,
+                            expected_status=plan.status,
+                            next_status=PlanStatus.CANCELLED,
+                        )
+                        is None
+                    ):
+                        raise RuntimeError(f"validated Plan cancellation CAS failed: {plan.id}")
+                final_status = transition_finalize_cancel(requested_status)
+                if not unit_of_work.runs.update_if_version_and_status(
                     run.id,
-                    expected_version=decision.current_version,
-                    finished_at_ms=now_ms,
-                )
+                    run.version + 1,
+                    frozenset({requested_status}),
+                    {
+                        "status": final_status.value,
+                        "version": run.version + 2,
+                        "finished_at_ms": now_ms,
+                    },
+                ):
+                    raise RuntimeError("validated FinalizeCancel CAS failed")
                 result = RequestCancelResult(
                     True,
                     ResultCode.TRANSITION_APPLIED.value,
-                    final.current_status.value,
-                    final.current_version,
-                    tuple(item.value for item in final.next_allowed_commands),
+                    final_status.value,
+                    run.version + 2,
+                    (),
                     result_kind="CANCELLED",
                 )
             if result.applied:
@@ -224,7 +253,7 @@ class RequestCancelHandler:
         unit_of_work: UnitOfWork, command: RequestCancelCommand, receipt: object
     ) -> RequestCancelResult:
         if receipt.request_hash != command.request_hash:
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             return RequestCancelResult(
                 False,
                 ResultCode.DUPLICATE_COMMAND.value,

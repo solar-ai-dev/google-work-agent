@@ -14,12 +14,11 @@ from collections.abc import Callable
 from typing import cast
 
 from google_work_agent.adapters.connectors.google.mcp import workspace_tools
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import PROTOCOL_VERSION
 from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import PROTOCOL_VERSION
-from google_work_agent.domain import build_p0_tool_registry
 from google_work_agent.domain.claim_contract import CLAIM_CONTEXT_MAX_TTL_MS
 from google_work_agent.domain.google_workspace_tool_contracts import (
     ToolContractViolation,
@@ -27,6 +26,7 @@ from google_work_agent.domain.google_workspace_tool_contracts import (
     validate_tool_input,
     validate_tool_output,
 )
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import DeliveryCertainty
 
 # Production ClaimContext validation consumes the Domain TTL authority. The
@@ -201,9 +201,7 @@ def _dispatch(
         if method == "mcp.list_internal_capabilities":
             _validate_declared_surface()
             return {
-                "internal_capability_registry_version": (
-                    INTERNAL_CAPABILITY_REGISTRY_VERSION
-                ),
+                "internal_capability_registry_version": (INTERNAL_CAPABILITY_REGISTRY_VERSION),
                 "internal_capability_names": list(_declared_internal_capability_names()),
             }
         if method == "mcp.list_capability_contracts":
@@ -263,8 +261,7 @@ def _declared_public_tool_names() -> tuple[str, ...]:
 def _declared_internal_capability_names() -> tuple[str, ...]:
     return tuple(
         sorted(
-            capability.tool_name
-            for capability in build_google_workspace_internal_capabilities()
+            capability.tool_name for capability in build_google_workspace_internal_capabilities()
         )
     )
 

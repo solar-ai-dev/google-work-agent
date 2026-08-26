@@ -10,10 +10,20 @@ from google_work_agent.application.plan_invariants import validate_plan_structur
 from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, duplicate_authority
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
+)
+from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch as _emit_command_rejected_hash_mismatch,
+)
+from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
+)
+from google_work_agent.application.write_persistence import (
     require_run as _require_run,
+)
+from google_work_agent.application.write_persistence import (
     resolve_json_receipt as _resolve_json_receipt,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -22,27 +32,24 @@ from google_work_agent.application.write_plan_contracts import (
     SaveWritePlanCommand,
     SaveWritePlanResponse,
 )
-from google_work_agent.domain import (
-    ActionStatus,
-    EffectType,
-    EvidencePolicyInput,
-    ResultCode,
-    RunStatus,
-    SignedToolRegistry,
-    build_p0_tool_registry,
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.action_risk import canonicalize_action_risk, normalize_action_risk
+from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
-    canonicalize_action_risk,
     canonicalize_json_value,
-    normalize_action_risk,
-    validate_evidence_policy,
 )
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.transitions.publish_plan import transition_publish_plan
+from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    CommandReceiptRecord,
-    EvidenceRecord,
-    PlanRecord,
-    PlanStatus,
-    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -299,26 +306,42 @@ class PublishWritePlanService:
                 unit_of_work.commit()
                 return response
 
-            run_result = unit_of_work.runs.publish_write_plan(
-                command.run_id, expected_version=command.expected_run_version
-            )
-            if not run_result.applied:
+            if run.version != command.expected_run_version:
                 response = PublishWritePlanResponse(
                     applied=False,
-                    result_code=run_result.result_code.value,
-                    run_status=run_result.current_status.value,
-                    run_version=run_result.current_version,
+                    result_code=ResultCode.VERSION_CONFLICT.value,
+                    run_status=run.status.value,
+                    run_version=run.version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
-                    conflict_detail=run_result.conflict_detail,
+                    conflict_detail="expected_version does not match current_version",
                 )
                 _finish_json_receipt(
-                    unit_of_work, command.command_id, response, run_result.current_version, now_ms
+                    unit_of_work, command.command_id, response, run.version, now_ms
                 )
                 unit_of_work.commit()
                 return response
-
-            unit_of_work.plans.wait_for_approval(plan.id)
+            next_run_status, next_plan_status = transition_publish_plan(
+                run.status,
+                plan.status,
+                review_status=plan.review_status,
+            )
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": next_run_status.value, "version": run.version + 1},
+            ):
+                raise RuntimeError("validated PublishPlan Run CAS failed")
+            if (
+                unit_of_work.plans.update_if_status(
+                    plan.id,
+                    expected_status=plan.status,
+                    next_status=next_plan_status,
+                )
+                is None
+            ):
+                raise RuntimeError("validated PublishPlan Plan CAS failed")
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=command.run_id,
@@ -345,20 +368,22 @@ class PublishWritePlanService:
             response = PublishWritePlanResponse(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
-                run_status=run_result.current_status.value,
-                run_version=run_result.current_version,
+                run_status=next_run_status.value,
+                run_version=run.version + 1,
                 plan_id=plan.id,
                 plan_status=PlanStatus.WAITING_APPROVAL.value,
             )
             _finish_json_receipt(
-                unit_of_work, command.command_id, response, run_result.current_version, now_ms
+                unit_of_work, command.command_id, response, run.version + 1, now_ms
             )
             unit_of_work.commit()
             return response
 
 
 def validate_write_plan(command: SaveWritePlanCommand, registry: SignedToolRegistry) -> None:
-    validate_plan_structure(actions=command.actions, evidence=command.evidence, plan_label="write plan")
+    validate_plan_structure(
+        actions=command.actions, evidence=command.evidence, plan_label="write plan"
+    )
     for action in command.actions:
         if not action.connector_id:
             raise ValueError("write action connector_id is required")
@@ -369,7 +394,8 @@ def validate_write_plan(command: SaveWritePlanCommand, registry: SignedToolRegis
         validate_evidence_policy(
             policy_input=EvidencePolicyInput(
                 evidence_count=len(action.evidence_ids),
-                requires_existing_resource=entry.effect_type in {EffectType.UPDATE, EffectType.DELETE},
+                requires_existing_resource=entry.effect_type
+                in {EffectType.UPDATE, EffectType.DELETE},
                 has_user_selected_resource=action.target_resource_ref_id is not None,
                 has_explicit_resource_relation=action.target_resource_ref_id is not None,
             )

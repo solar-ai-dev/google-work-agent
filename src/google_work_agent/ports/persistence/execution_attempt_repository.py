@@ -3,8 +3,10 @@
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from google_work_agent.domain import ExecutionAttemptStatus
-from google_work_agent.ports.models import ExecutionAttemptRecord
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
 
 type ExecutionReconciliationCandidateKindV1 = Literal[
     "POST_BEGIN_ORPHAN",
@@ -27,38 +29,12 @@ class ExecutionAttemptRepository(Protocol):
     def get_by_id(self, attempt_id: str) -> ExecutionAttemptRecord | None: ...
     def get_active_by_approval(self, approval_id: str) -> ExecutionAttemptRecord | None: ...
     def insert_claimed(self, record: ExecutionAttemptRecord) -> None: ...
-    def mark_succeeded(
+    def update_if_version_and_status(
         self,
         attempt_id: str,
         *,
         expected_version: int,
-        result_resource_ref_id: str | None,
-        response_metadata_json: str | None,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord: ...
-    def mark_failed(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
-        error_code: str,
-        error_detail_json: str,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord: ...
-    def mark_unknown_result(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
-        error_code: str,
-        error_detail_json: str,
-        finished_at_ms: int,
-    ) -> ExecutionAttemptRecord: ...
-    def update_status(
-        self,
-        attempt_id: str,
-        *,
-        expected_version: int,
+        expected_status: ExecutionAttemptStatus,
         status: ExecutionAttemptStatus,
         error_code: str | None,
         error_detail_json: str | None,

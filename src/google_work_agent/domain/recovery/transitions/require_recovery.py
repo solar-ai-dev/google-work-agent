@@ -1,7 +1,7 @@
 """Canonical transition for requiring Recovery."""
 
-from google_work_agent.domain.enums import RunStatus
 from google_work_agent.domain.recovery.guards.require_recovery import guard_require_recovery
+from google_work_agent.domain.run.model import RunStatus
 
 
 def transition_require_recovery(current_status: RunStatus) -> RunStatus:

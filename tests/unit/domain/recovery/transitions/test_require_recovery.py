@@ -1,10 +1,9 @@
 import pytest
 
-from google_work_agent.domain.enums import RunStatus
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 
 
 def test_require_recovery_applies_from_a_nonterminal_status() -> None:

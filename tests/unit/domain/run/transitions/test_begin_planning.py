@@ -1,7 +1,7 @@
 import pytest
 
-from google_work_agent.domain.enums import ActionStatus, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
 from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
 
 

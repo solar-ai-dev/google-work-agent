@@ -28,34 +28,37 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     merge_duplicate_risk,
 )
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_persistence import (
     audit_event,
     emit_command_rejected_hash_mismatch,
+    require_plan_review,
+    revoke_active_approvals,
 )
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
     ActionCommand,
     ActionStatus,
-    CalendarWorkHours,
     EffectType,
-    EvidencePolicyInput,
-    ResultCode,
-    build_p0_tool_registry,
-    calculate_canonical_json_hash,
-    canonicalize_json_value,
     next_allowed_action_commands,
-    validate_evidence_policy,
 )
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.canonical import (
+    calculate_canonical_json_hash,
+    canonicalize_json_value,
+)
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    PlanStatus,
-    TraceEventRecord,
     UUIDPort,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -108,7 +111,7 @@ class ModifyActionHandler:
         now_ms: Callable[[], int],
         gateway: TaskListGateway | CalendarConflictGateway,
         id_generator: UUIDPort,
-        resume_target_registry: ResumeTargetValidator,
+        resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
@@ -211,6 +214,11 @@ class ModifyActionHandler:
             plan = unit_of_work.plans.get_by_id(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
             if plan.status is PlanStatus.SUPERSEDED:
                 return self._finish(
                     unit_of_work,
@@ -305,19 +313,29 @@ class ModifyActionHandler:
                 action.version,
                 command.expected_version,
                 effect_type=effect_type,
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
             )
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
-                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
+                revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
 
-            mutation = unit_of_work.actions.modify_write(
-                action.id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
-                arguments_json=canonicalize_json_value(new_arguments),
-                arguments_hash=new_arguments_hash,
-                risk=updated_risk,
-            )
+            if (
+                preview.applied
+                and unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=preview.current_status,
+                    updated_at_ms=now_ms,
+                    arguments_json=canonicalize_json_value(new_arguments),
+                    arguments_hash=new_arguments_hash,
+                    risk=updated_risk,
+                )
+                is None
+            ):
+                raise RuntimeError("validated ModifyAction CAS failed")
+            mutation = preview
             if not mutation.applied:
                 return self._finish(
                     unit_of_work,
@@ -337,7 +355,7 @@ class ModifyActionHandler:
                 )
 
             run_id = self._run_id_for_action(unit_of_work, action.id)
-            review_version = unit_of_work.plans.require_review(action.plan_id)
+            review_version = require_plan_review(unit_of_work, action.plan_id)
             self._revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
                 modified_action_id=action.id,
@@ -574,7 +592,7 @@ class ModifyActionHandler:
             dependent = unit_of_work.actions.get_by_id(dependent_id)
             if dependent is None or dependent.status != ActionStatus.APPROVED.value:
                 continue
-            revoked_ids = unit_of_work.approvals.revoke_active_by_action(dependent_id)
+            revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
             if not revoked_ids:
                 continue
             unit_of_work.traces.add(

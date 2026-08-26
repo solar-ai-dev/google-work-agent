@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from google_work_agent.ports.models import ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 
 
 class ResourceRefRepository(Protocol):

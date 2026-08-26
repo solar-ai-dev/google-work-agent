@@ -57,30 +57,28 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
 )
-from google_work_agent.domain import (
-    ActionCommand,
-    ActionStatus,
-    ApprovalIntegrityInput,
-    EffectType,
-    ExecutionAttemptStatus,
-    PolicyViolationError,
-    ResultCode,
-    RunStatus,
-    build_p0_tool_registry,
-    calculate_canonical_json_hash,
-    transition_action,
-    validate_approval_integrity,
-)
+from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.claim.transitions.claim_execution import transition_claim_execution
 from google_work_agent.domain.claim_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
 )
+from google_work_agent.domain.execution_attempt.model import (
+    ExecutionAttempt as ExecutionAttemptRecord,
+)
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.policy import ApprovalIntegrityInput, validate_approval_integrity
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     AttachmentDescriptor,
     AttachmentDescriptorVerifier,
     AttachmentStagingError,
-    ExecutionAttemptRecord,
-    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -144,6 +142,12 @@ class ClaimWriteActionService:
                 return response
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
+            plans = tuple(unit_of_work.plans.list_by_run(run.id))
+            current_plan = max(
+                plans,
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
             cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
             if has_durable_cancel_intent(cancel_reader, run.id):
                 response = WriteActionResponse(
@@ -161,11 +165,12 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            if run.status in {
-                RunStatus.CANCEL_REQUESTED,
-                RunStatus.CANCELLED,
-                RunStatus.RECOVERY_REQUIRED,
-            }:
+            if (
+                run.status not in {RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING}
+                or plan.status is not PlanStatus.WAITING_APPROVAL
+                or current_plan is None
+                or current_plan.id != plan.id
+            ):
                 response = WriteActionResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
@@ -173,7 +178,9 @@ class ClaimWriteActionService:
                     action_status=action.status,
                     action_version=action.version,
                     next_allowed_commands=(),
-                    conflict_detail="run status forbids a new write claim",
+                    conflict_detail=(
+                        "claim requires the current published Plan and legal parent Run"
+                    ),
                 )
                 _finish_json_receipt(
                     unit_of_work, command.command_id, response, action.version, now_ms
@@ -317,11 +324,10 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            preview = transition_action(
+            preview = transition_claim_execution(
                 ActionStatus(action.status),
-                command=ActionCommand.CLAIM_EXECUTION,
-                current_version=action.version,
-                expected_version=command.expected_version,
+                action.version,
+                command.expected_version,
                 effect_type=EffectType(action.effect_type),
             )
             if not preview.applied:
@@ -332,14 +338,25 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            unit_of_work.approvals.mark_consumed(approval.id, consumed_at_ms=now_ms)
-            result = unit_of_work.actions.claim_execution(
-                action.id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
-            )
-            if not result.applied:
-                raise RuntimeError("validated write claim transition was not applied")
+            if not unit_of_work.approvals.update_if_status(
+                approval.id,
+                expected_status=approval.status,
+                next_status=ApprovalStatus.CONSUMED,
+                consumed_at_ms=now_ms,
+            ):
+                raise RuntimeError("validated ConsumeApproval CAS failed")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=preview.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated ClaimExecution CAS failed")
+            result = preview
 
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,

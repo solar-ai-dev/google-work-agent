@@ -4,7 +4,8 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
     SqliteResourceRefRepository,
 )
-from google_work_agent.ports.models import ResourceRefRecord, ResourceSource, StoredResourceType
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 def test_upsert_uses_connector_aware_identity_and_returns_existing_server_id(
@@ -50,7 +51,7 @@ def _record(record_id: str, *, title: str) -> ResourceRefRecord:
         run_id="run-1",
         connector_id="google_workspace",
         source=ResourceSource.TASKS,
-        resource_type=StoredResourceType.TASK,
+        resource_type="TASK",
         resource_id="task-1",
         parent_resource_id="list-1",
         canonical_url=None,

@@ -19,17 +19,18 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_claim import ClaimWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     MarkWriteActionFailedCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_result_persistence import (
-    MarkWriteActionFailedService,
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
@@ -37,11 +38,10 @@ from google_work_agent.application.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
-    SaveWritePlanService,
+from google_work_agent.application.write_result_persistence import (
+    MarkWriteActionFailedService,
 )
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import FakeClockPort
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}

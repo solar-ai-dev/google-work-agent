@@ -63,7 +63,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ScopeExpansionRequiredV1,
     ToolRouteCoordinator,
 )
-from google_work_agent.domain import ConnectorToolCatalog
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[

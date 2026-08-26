@@ -7,9 +7,11 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import Literal
 
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.enums import ResultCode
-from google_work_agent.ports.models import AuditEventRecord, CommandReceiptStatus, PlanReviewStatus
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 ReviewDispositionV1 = Literal[
@@ -57,7 +59,7 @@ class RecordReviewResultHandler:
             plan = unit_of_work.plans.get_by_id(command.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {command.plan_id}")
-            if unit_of_work.runs.get_by_id(plan.run_id) is None:
+            if unit_of_work.runs.get(plan.run_id) is None:
                 raise LookupError(f"plan owner Run not found: {plan.run_id}")
             conflict = _freshness_conflict(unit_of_work, plan.id, command)
             if conflict is not None:
@@ -80,13 +82,16 @@ class RecordReviewResultHandler:
                 created_at_ms=now_ms,
             )
             review_status = _review_status(command.disposition)
-            applied = unit_of_work.plans.store_review_result(
+            updated = unit_of_work.plans.update_review_if_version_and_status(
                 plan.id,
                 expected_review_version=command.expected_review_version,
-                review_status=review_status.value,
-                review_disposition=command.disposition,
+                expected_review_statuses=frozenset({PlanReviewStatus.REQUIRED}),
+                values={
+                    "review_status": review_status,
+                    "review_disposition": command.disposition,
+                },
             )
-            if not applied:
+            if updated is None:
                 result = RecordReviewResultResultV1(
                     applied=False,
                     result_code=ResultCode.VERSION_CONFLICT.value,

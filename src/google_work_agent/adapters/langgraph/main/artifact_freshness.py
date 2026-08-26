@@ -36,13 +36,12 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.application.run_terminal import (
-    CompleteWriteRunCommand,
-    RunTransitionResponse,
-)
-from google_work_agent.domain import ActionStatus, RunStatus
+from google_work_agent.application.run_terminal import RunTransitionResponse
+from google_work_agent.application.write_run_completion import CompleteWriteRunCommand
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import (
-    PlanStatus,
     WorkflowInvocationResult,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
@@ -116,10 +115,7 @@ class ArtifactFreshnessMixin:
             return self._resume_corrective_plan(request)
         except CorrectivePlanContinuationRequired as continuation:
             plan_id = request.resume_payload.get("plan_id")
-            if (
-                continuation.run_id != request.run_id
-                or continuation.plan_id != plan_id
-            ):
+            if continuation.run_id != request.run_id or continuation.plan_id != plan_id:
                 raise
             # No new workflow/domain status is invented. The Run remains
             # PLANNING and the failed LangGraph task + marker remain
@@ -165,7 +161,7 @@ class ArtifactFreshnessMixin:
             )
 
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(request.run_id)
+            run = unit_of_work.runs.get(request.run_id)
             plan = unit_of_work.plans.get_by_id(plan_id)
             plans = unit_of_work.plans.list_by_run(request.run_id)
         latest_plan = max(plans, key=lambda item: item.revision_no) if plans else None
@@ -185,10 +181,7 @@ class ArtifactFreshnessMixin:
         # Run/Plan pair is authoritative; no Planning node and no persistence
         # service is invoked again. If a stale checkpoint still carries the
         # one-shot destination marker, reconcile it to WAITING_APPROVAL.
-        if (
-            run.status is RunStatus.WAITING_APPROVAL
-            and plan.status is PlanStatus.WAITING_APPROVAL
-        ):
+        if run.status is RunStatus.WAITING_APPROVAL and plan.status is PlanStatus.WAITING_APPROVAL:
             if state.get("__reserved_corrective_plan_id__") == plan.id:
                 translation = self._route_translator.translate(
                     SupervisorTarget.WAITING_APPROVAL.value

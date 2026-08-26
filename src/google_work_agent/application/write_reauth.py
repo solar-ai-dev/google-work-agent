@@ -8,14 +8,25 @@ from json import dumps
 from google_work_agent.application.write_execution_contracts import WriteRunResponse
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
+)
+from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.write_persistence import (
     require_latest_plan_for_run as _require_latest_plan_for_run,
+)
+from google_work_agent.application.write_persistence import (
     require_run as _require_run,
+)
+from google_work_agent.application.write_persistence import (
     resolve_existing_run_receipt as _resolve_existing_run_receipt,
 )
 from google_work_agent.application.write_recovery_contracts import RequireWriteReauthCommand
-from google_work_agent.domain import ResultCode
-from google_work_agent.ports import TraceEventRecord, UnitOfWork
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunTransitionRejected
+from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import UnitOfWork
 
 
 class RequireWriteReauthService:
@@ -49,23 +60,43 @@ class RequireWriteReauthService:
             )
             run = _require_run(unit_of_work, command.run_id)
             plan = _require_latest_plan_for_run(unit_of_work, command.run_id)
-            result = unit_of_work.runs.require_reauth(
-                command.run_id,
-                expected_version=run.version,
-                finished_at_ms=None,
-            )
+            try:
+                next_status = transition_require_reauth(run.status)
+            except RunTransitionRejected as error:
+                response = WriteRunResponse(
+                    False,
+                    ResultCode.STATE_CONFLICT.value,
+                    run.id,
+                    run.status.value,
+                    run.version,
+                    plan.id,
+                    plan.status.value,
+                    conflict_detail=str(error),
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
+            if not unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": next_status.value, "version": run.version + 1},
+            ):
+                raise RuntimeError("validated RequireReauth CAS failed")
             response = WriteRunResponse(
-                applied=bool(result.applied),
-                result_code=result.result_code.value,
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED.value,
                 run_id=command.run_id,
-                run_status=result.current_status.value,
-                run_version=result.current_version,
+                run_status=next_status.value,
+                run_version=run.version + 1,
                 plan_id=plan.id,
                 plan_status=plan.status.value,
-                result_kind="REAUTH_REQUIRED" if result.applied else None,
-                conflict_detail=result.conflict_detail,
+                result_kind="REAUTH_REQUIRED",
+                conflict_detail=None,
             )
-            if result.applied:
+            if response.applied:
                 trace_payload: dict[str, object] = {"safe_error_code": command.safe_error_code}
                 audit_metadata: dict[str, object] = {"safe_error_code": command.safe_error_code}
                 if command.mcp_request_id is not None:
@@ -76,7 +107,7 @@ class RequireWriteReauthService:
                         run_id=command.run_id,
                         action_id=command.action_id,
                         event_type="RUN_REAUTH_REQUIRED",
-                        status=result.current_status.value,
+                        status=next_status.value,
                         duration_ms=None,
                         payload_json=dumps(trace_payload, sort_keys=True),
                         created_at_ms=now_ms,

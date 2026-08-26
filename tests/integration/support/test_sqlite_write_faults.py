@@ -34,7 +34,7 @@ from google_work_agent.application.write_plan_contracts import (
 from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
-from google_work_agent.ports import EvidenceOriginType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import (
     FakeClockPort,
     FakeGoogleGateway,

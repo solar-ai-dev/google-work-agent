@@ -3,14 +3,10 @@ from __future__ import annotations
 import pytest
 
 from google_work_agent.application.write_preflight import validate_preflight_target
-from google_work_agent.domain import PolicyViolationError
-from google_work_agent.ports import (
-    ResourceRefRecord,
-    ResourceSnapshot,
-    ResourceSource,
-    ResourceType,
-    StoredResourceType,
-)
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 
 def _snapshot(
@@ -43,7 +39,7 @@ def _ref(
         run_id="run-1",
         connector_id="google_workspace",
         source=ResourceSource.TASKS,
-        resource_type=StoredResourceType.TASK,
+        resource_type="TASK",
         resource_id=resource_id,
         parent_resource_id=parent_id,
         canonical_url=None,

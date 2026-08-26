@@ -8,7 +8,6 @@ from typing import Final, Literal, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -48,7 +47,7 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
-from google_work_agent.domain import SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -57,6 +56,7 @@ from google_work_agent.ports import (
     ToolDefinition,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 JsonObject = dict[str, object]
 PLAN_REVIEW_SCHEMA_VERSION: Final = 2

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.ports import EvidenceOriginType, ResourceSource, StoredResourceType
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +78,7 @@ class CompletedResourceRef:
 
     id: str
     source: ResourceSource
-    resource_type: StoredResourceType
+    resource_type: str
     resource_id: str
     parent_resource_id: str | None
     canonical_url: str | None

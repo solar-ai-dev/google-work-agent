@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from json import dumps
 
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
-    ResourceRefRecord,
     ResourceSnapshot,
-    ResourceSource,
     ResourceType,
-    StoredResourceType,
 )
 
 
@@ -62,19 +61,20 @@ def resource_ref_from_snapshot(
     if not connector_id:
         raise ValueError("ResourceRef projection requires connector_id")
     source_map = {
-        ResourceType.GMAIL_DRAFT: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        ResourceType.GMAIL_MESSAGE: (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        ResourceType.GMAIL_THREAD: (ResourceSource.GMAIL, StoredResourceType.THREAD),
-        ResourceType.TASK_LIST: (ResourceSource.TASKS, StoredResourceType.TASK_LIST),
-        ResourceType.TASK: (ResourceSource.TASKS, StoredResourceType.TASK),
-        ResourceType.CALENDAR: (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
-        ResourceType.CALENDAR_EVENT: (ResourceSource.CALENDAR, StoredResourceType.EVENT),
+        ResourceType.GMAIL_DRAFT: ResourceSource.GMAIL,
+        ResourceType.GMAIL_MESSAGE: ResourceSource.GMAIL,
+        ResourceType.GMAIL_THREAD: ResourceSource.GMAIL,
+        ResourceType.TASK_LIST: ResourceSource.TASKS,
+        ResourceType.TASK: ResourceSource.TASKS,
+        ResourceType.CALENDAR: ResourceSource.CALENDAR,
+        ResourceType.CALENDAR_EVENT: ResourceSource.CALENDAR,
     }
     if snapshot.resource_type not in source_map:
         raise ValueError(
             f"resource type is not durable ResourceRef material: {snapshot.resource_type.value}"
         )
-    source, stored_resource_type = source_map[snapshot.resource_type]
+    source = source_map[snapshot.resource_type]
+    registry_resource_type = snapshot.resource_type.name
     title = snapshot_title(snapshot) or snapshot.resource_id
     return ResourceRefRecord(
         id=(
@@ -84,7 +84,7 @@ def resource_ref_from_snapshot(
         run_id=run_id,
         connector_id=connector_id,
         source=source,
-        resource_type=stored_resource_type,
+        resource_type=registry_resource_type,
         resource_id=snapshot.resource_id,
         parent_resource_id=snapshot.parent_id,
         canonical_url=None,

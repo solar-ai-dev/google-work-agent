@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
-from google_work_agent.domain.enums import ActionStatus, RunStatus
-from google_work_agent.domain.run.model import RunTransitionRejected, require_status
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected, require_status
 
 _PRE_PUBLISH = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING})
 _PUBLISHED_REVIEW = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})

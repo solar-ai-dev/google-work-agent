@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
-from google_work_agent.domain.enums import ActionStatus, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
 from google_work_agent.domain.run.guards.begin_planning import guard_begin_planning
+from google_work_agent.domain.run.model import RunStatus
 
 
 def transition_begin_planning(

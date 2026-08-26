@@ -20,7 +20,9 @@ from google_work_agent.application.orchestration.tool_routing import ToolRoutePl
 from google_work_agent.application.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports import ResourceRefRecord, ResourceSource, StoredResourceType
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.ports import ResourceType
 
 
 class V2PersistenceProjectionError(ValueError):
@@ -29,21 +31,21 @@ class V2PersistenceProjectionError(ValueError):
 
 _TARGET_SPECS: dict[
     str,
-    tuple[ResourceSource, StoredResourceType, str, str | None],
+    tuple[ResourceSource, str, str, str | None],
 ] = {
-    "gmail_update_draft": (ResourceSource.GMAIL, StoredResourceType.MESSAGE, "draft_id", None),
-    "gmail_send": (ResourceSource.GMAIL, StoredResourceType.MESSAGE, "draft_id", None),
-    "tasks_update_task": (ResourceSource.TASKS, StoredResourceType.TASK, "task_id", "task_list_id"),
-    "tasks_delete_task": (ResourceSource.TASKS, StoredResourceType.TASK, "task_id", "task_list_id"),
+    "gmail_update_draft": (ResourceSource.GMAIL, ResourceType.GMAIL_DRAFT.name, "draft_id", None),
+    "gmail_send": (ResourceSource.GMAIL, ResourceType.GMAIL_DRAFT.name, "draft_id", None),
+    "tasks_update_task": (ResourceSource.TASKS, ResourceType.TASK.name, "task_id", "task_list_id"),
+    "tasks_delete_task": (ResourceSource.TASKS, ResourceType.TASK.name, "task_id", "task_list_id"),
     "calendar_update_event": (
         ResourceSource.CALENDAR,
-        StoredResourceType.EVENT,
+        ResourceType.CALENDAR_EVENT.name,
         "event_id",
         "calendar_id",
     ),
     "calendar_delete_event": (
         ResourceSource.CALENDAR,
-        StoredResourceType.EVENT,
+        ResourceType.CALENDAR_EVENT.name,
         "event_id",
         "calendar_id",
     ),
@@ -108,15 +110,21 @@ def project_action_plan_v2_for_persistence(
         if action.get("route_id") != route_id:
             raise V2PersistenceProjectionError(f"V2 action route mismatch at position {position}")
         if action.get("tool_id") != tool_id or action.get("effect") != effect:
-            raise V2PersistenceProjectionError(f"V2 action tool/effect mismatch at position {position}")
+            raise V2PersistenceProjectionError(
+                f"V2 action tool/effect mismatch at position {position}"
+            )
         arguments = action.get("arguments")
         if not isinstance(arguments, Mapping):
-            raise V2PersistenceProjectionError(f"V2 action arguments are invalid at position {position}")
+            raise V2PersistenceProjectionError(
+                f"V2 action arguments are invalid at position {position}"
+            )
         raw_evidence_refs = action.get("evidence_refs")
         if not isinstance(raw_evidence_refs, list) or any(
             not isinstance(item, str) or not item for item in raw_evidence_refs
         ):
-            raise V2PersistenceProjectionError(f"V2 action evidence is invalid at position {position}")
+            raise V2PersistenceProjectionError(
+                f"V2 action evidence is invalid at position {position}"
+            )
         evidence_refs = cast(list[str], raw_evidence_refs)
         evidence_handles = _evidence_handles(evidence_refs, evidence_by_id)
         for evidence_id in evidence_refs:
@@ -260,9 +268,7 @@ def _evidence_handles(
     return result
 
 
-def _require_current_run_resource(
-    *, run_id: str, handle: str, resource: ResourceRefRecord
-) -> None:
+def _require_current_run_resource(*, run_id: str, handle: str, resource: ResourceRefRecord) -> None:
     if resource.run_id != run_id:
         raise V2PersistenceProjectionError(f"cross-run ResourceRef is forbidden: {handle}")
     if not resource.connector_id:
@@ -276,8 +282,10 @@ def _frozen_output_routes(tool_route_plan: ToolRoutePlanV2) -> list[Mapping[str,
     if not isinstance(output_plan, Mapping) or output_plan.get("output_mode") != "ACTION":
         raise V2PersistenceProjectionError("persistence requires frozen ACTION output plan")
     routes = output_plan.get("output_routes")
-    if not isinstance(routes, list) or not routes or any(
-        not isinstance(route, Mapping) for route in routes
+    if (
+        not isinstance(routes, list)
+        or not routes
+        or any(not isinstance(route, Mapping) for route in routes)
     ):
         raise V2PersistenceProjectionError("frozen output routes are invalid")
     return cast(list[Mapping[str, object]], routes)

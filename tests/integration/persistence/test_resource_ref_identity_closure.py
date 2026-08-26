@@ -8,7 +8,8 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
     SqliteResourceRefRepository,
 )
-from google_work_agent.ports import ResourceRefRecord, ResourceSource, StoredResourceType
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
 
@@ -89,8 +90,8 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
             """
         ).fetchall()
         assert [tuple(row) for row in rows] == [
-            ("connector-a", "CALENDAR", "EVENT", "external-X", "A"),
-            ("connector-b", "CALENDAR", "EVENT", "external-X", "B"),
+            ("connector-a", "CALENDAR", "CALENDAR_EVENT", "external-X", "A"),
+            ("connector-b", "CALENDAR", "CALENDAR_EVENT", "external-X", "B"),
         ]
 
         repository.upsert_bound_ref(_event_ref("replacement-id", "connector-a", title="A2"))
@@ -112,7 +113,7 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
                 INSERT INTO resource_refs (
                     id, run_id, connector_id, source, resource_type, resource_id,
                     metadata_json, captured_at_ms
-                ) VALUES ('duplicate', 'run-1', 'connector-a', 'CALENDAR', 'EVENT',
+                ) VALUES ('duplicate', 'run-1', 'connector-a', 'CALENDAR', 'CALENDAR_EVENT',
                           'external-X', '{}', 2);
                 """
             )
@@ -126,7 +127,7 @@ def _event_ref(record_id: str, connector_id: str, *, title: str) -> ResourceRefR
         run_id="run-1",
         connector_id=connector_id,
         source=ResourceSource.CALENDAR,
-        resource_type=StoredResourceType.EVENT,
+        resource_type="CALENDAR_EVENT",
         resource_id="external-X",
         parent_resource_id=None,
         canonical_url=None,

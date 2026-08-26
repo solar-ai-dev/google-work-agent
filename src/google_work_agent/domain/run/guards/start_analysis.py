@@ -1,7 +1,6 @@
 """Canonical guard for starting Run analysis."""
 
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import require_status
+from google_work_agent.domain.run.model import RunStatus, require_status
 
 _ALLOWED = frozenset({RunStatus.CREATED})
 

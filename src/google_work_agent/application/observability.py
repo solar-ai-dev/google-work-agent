@@ -6,13 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    AuditEventRecord,
     MaintenanceGate,
     MaintenanceWindow,
     OperationalLogRecord,
     OperationalLogSink,
-    TraceEventRecord,
     UnitOfWork,
 )
 from google_work_agent.ports.observability_events import (

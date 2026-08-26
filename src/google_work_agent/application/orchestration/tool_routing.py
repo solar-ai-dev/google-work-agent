@@ -20,7 +20,8 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactRefV1,
 )
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
-from google_work_agent.domain import ConnectorToolCatalog, EffectType
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 
 if TYPE_CHECKING:
     from google_work_agent.application.orchestration.contracts import (
@@ -354,9 +355,7 @@ class ToolRouteCoordinator:
         ):
             if resource_type in existing:
                 continue
-            input_routes.extend(
-                self._bind_input_routes((resource_type,), reason_code=reason_code)
-            )
+            input_routes.extend(self._bind_input_routes((resource_type,), reason_code=reason_code))
             existing.add(resource_type)
         return input_routes
 
@@ -392,9 +391,7 @@ class ToolRouteCoordinator:
         input_routes: list[InputToolRouteV1],
         output_routes: list[OutputToolRouteV1],
     ) -> list[InputToolRouteV1]:
-        by_key = {
-            (route["connector_id"], route["resource_type"]): route for route in input_routes
-        }
+        by_key = {(route["connector_id"], route["resource_type"]): route for route in input_routes}
         for connector_id, resource_type, reason_code in self._policy_preconditions.required_reads(
             output_routes
         ):
@@ -682,8 +679,7 @@ def validate_tool_route_plan_v2(
 
 def allowed_input_sources(plan: ToolRoutePlanV2) -> frozenset[str]:
     return frozenset(
-        _resource_source(route["resource_type"])
-        for route in plan["input_plan"]["input_routes"]
+        _resource_source(route["resource_type"]) for route in plan["input_plan"]["input_routes"]
     )
 
 

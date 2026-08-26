@@ -12,7 +12,8 @@ from google_work_agent.application.answer_only import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
 )
-from google_work_agent.domain import ResultCode, RunStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 
 
 @pytest.fixture()

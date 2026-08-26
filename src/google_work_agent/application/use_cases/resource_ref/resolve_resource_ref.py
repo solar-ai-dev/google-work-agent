@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.ports.models import ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

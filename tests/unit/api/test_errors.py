@@ -2,7 +2,7 @@ from google_work_agent.api.errors.result_code_http_mapping import (
     error_code_for_result_code,
     http_status_for_result_code,
 )
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.results import ResultCode
 
 
 def test_result_codes_map_to_the_documented_http_status() -> None:

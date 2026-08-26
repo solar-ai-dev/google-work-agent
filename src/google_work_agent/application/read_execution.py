@@ -19,15 +19,14 @@ from google_work_agent.application.resource_ref_projection import (
     minimal_resource_metadata,
     snapshot_title,
 )
-from google_work_agent.domain import ActionStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
-    EvidenceOriginType,
     FreeBusyCalendar,
     GoogleWorkspaceGateway,
     ResourcePage,
     ResourceSnapshot,
-    ResourceSource,
-    StoredResourceType,
     TimeRange,
     UnitOfWork,
 )
@@ -229,7 +228,7 @@ def _executed_from_freebusy(
             CompletedResourceRef(
                 id=f"resource-ref-{run_id}-{calendar_id}",
                 source=ResourceSource.CALENDAR,
-                resource_type=StoredResourceType.CALENDAR,
+                resource_type="CALENDAR_FREEBUSY",
                 resource_id=calendar_id,
                 parent_resource_id=None,
                 canonical_url=None,
@@ -293,16 +292,16 @@ def _projection_from_snapshot(
     )
 
 
-def _map_snapshot_identity(snapshot: ResourceSnapshot) -> tuple[ResourceSource, StoredResourceType]:
+def _map_snapshot_identity(snapshot: ResourceSnapshot) -> tuple[ResourceSource, str]:
     mapping = {
-        "gmail_thread": (ResourceSource.GMAIL, StoredResourceType.THREAD),
-        "gmail_message": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        "gmail_draft": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
-        "task_list": (ResourceSource.TASKS, StoredResourceType.TASK_LIST),
-        "task": (ResourceSource.TASKS, StoredResourceType.TASK),
-        "calendar": (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
-        "calendar_event": (ResourceSource.CALENDAR, StoredResourceType.EVENT),
-        "calendar_freebusy": (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
+        "gmail_thread": (ResourceSource.GMAIL, "GMAIL_THREAD"),
+        "gmail_message": (ResourceSource.GMAIL, "GMAIL_MESSAGE"),
+        "gmail_draft": (ResourceSource.GMAIL, "GMAIL_DRAFT"),
+        "task_list": (ResourceSource.TASKS, "TASK_LIST"),
+        "task": (ResourceSource.TASKS, "TASK"),
+        "calendar": (ResourceSource.CALENDAR, "CALENDAR"),
+        "calendar_event": (ResourceSource.CALENDAR, "CALENDAR_EVENT"),
+        "calendar_freebusy": (ResourceSource.CALENDAR, "CALENDAR_FREEBUSY"),
     }
     return mapping[snapshot.resource_type.value]
 

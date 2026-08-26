@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from google_work_agent.domain import ActionStatus, RunStatus
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.run.model import RunStatus
 
 
 class ReconcileAggregate(StrEnum):

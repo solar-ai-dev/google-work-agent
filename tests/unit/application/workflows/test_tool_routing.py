@@ -7,7 +7,10 @@ from google_work_agent.application.orchestration.api_acquisition import (
     validate_source_fetch_plans_for_route,
 )
 from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
-from google_work_agent.application.orchestration.handoff_contracts import ConstraintV1, RequestIntentV2
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ConstraintV1,
+    RequestIntentV2,
+)
 from google_work_agent.application.orchestration.scope_expansion import (
     build_policy_confirmation_receipt,
 )
@@ -18,7 +21,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     output_routes,
     validate_tool_route_plan_v2,
 )
-from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
 
 
 def _catalog() -> ConnectorToolCatalog:
@@ -78,14 +81,10 @@ def test_calendar_create_adds_event_calendar_and_freebusy_reads() -> None:
 
 def test_answer_route_freezes_read_dependencies_and_revision() -> None:
     coordinator = _coordinator()
-    first = coordinator.route(
-        request_intent=_intent(resource="GMAIL_THREAD", effect="READ")
-    )
+    first = coordinator.route(request_intent=_intent(resource="GMAIL_THREAD", effect="READ"))
     first_plan = first["tool_route_plan"]
     assert first_plan is not None
-    resources = {
-        route["resource_type"] for route in first_plan["input_plan"]["input_routes"]
-    }
+    resources = {route["resource_type"] for route in first_plan["input_plan"]["input_routes"]}
     assert resources == {"GMAIL_THREAD", "GMAIL_MESSAGE"}
 
     second = coordinator.route(
@@ -122,9 +121,7 @@ def test_validator_rejects_unknown_schema_version() -> None:
 
 
 def test_source_planning_cannot_escape_frozen_input_route() -> None:
-    result = _coordinator().route(
-        request_intent=_intent(resource="TASK", effect="READ")
-    )
+    result = _coordinator().route(request_intent=_intent(resource="TASK", effect="READ"))
     plan = result["tool_route_plan"]
     assert plan is not None
     calendar_plan = {

@@ -9,7 +9,8 @@ from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
     planning_write_tool_ids,
 )
-from google_work_agent.domain import EffectType, build_p0_tool_registry
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
 
 
 def test_planning_schema_catalog_matches_registered_write_tools() -> None:

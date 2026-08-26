@@ -14,7 +14,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
-from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.application.orchestration.contracts import (
     DomainValidationOutputV1,
     DomainValidationResult,
@@ -26,6 +25,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactMetaV1,
     StateArtifactRefV1,
 )
+from google_work_agent.application.orchestration.inspect_plan_output import (
+    validate_plan_review_candidate_v2,
+)
 from google_work_agent.application.orchestration.planning_plan_assembler import (
     ActionPlanDraftV2,
     PlannedActionV2,
@@ -33,12 +35,13 @@ from google_work_agent.application.orchestration.planning_plan_assembler import 
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.orchestration.inspect_plan_output import validate_plan_review_candidate_v2
 from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.domain import EffectType, SignedToolRegistry
+from google_work_agent.application.schema_validation import validate_output_schema
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import SignedToolRegistry
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {
@@ -301,10 +304,7 @@ def _fail_closed_on_unproven_policy_override(
     invent a DomainValidationOutput reason code for that missing provenance.
     """
 
-    if (
-        work_analysis_result["action_necessity"] == "NOT_REQUIRED"
-        and planning_result["actions"]
-    ):
+    if work_analysis_result["action_necessity"] == "NOT_REQUIRED" and planning_result["actions"]:
         raise PolicyOverrideProvenanceDependency(
             "POLICY_OVERRIDE_PROVENANCE_DEPENDENCY: "
             "NOT_REQUIRED Work Analysis cannot authorize non-empty Planning actions "
@@ -515,8 +515,7 @@ def _validate_meta(value: object, *, path: str) -> StateArtifactMetaV1:
     if not isinstance(based_on, list):
         raise CanonicalDomainValidationError(f"{path}.based_on is invalid")
     refs = [
-        _artifact_ref(raw, path=f"{path}.based_on[{index}]")
-        for index, raw in enumerate(based_on)
+        _artifact_ref(raw, path=f"{path}.based_on[{index}]") for index, raw in enumerate(based_on)
     ]
     return {"artifact_id": artifact_id, "revision": revision, "based_on": refs}
 

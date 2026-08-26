@@ -14,7 +14,6 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_runtime_active_manifest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 from google_work_agent.application.orchestration.tool_route_semantic import (
@@ -27,7 +26,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteValidationError,
     output_routes,
 )
-from google_work_agent.domain import (
+from google_work_agent.domain.tool_registry import (
     ConnectorToolCatalog,
     SignedToolRegistry,
     build_p0_tool_registry,
@@ -41,6 +40,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 
 @dataclass
@@ -306,7 +306,7 @@ def test_semantic_candidate_is_used_instead_of_deterministic_fallback() -> None:
     sequence = iter(f"route-{index}" for index in range(30))
     coordinator = ToolRouteCoordinator(tool_catalog=_catalog(), id_factory=lambda: next(sequence))
     from google_work_agent.application.orchestration.tool_routing import SemanticRouteCandidate
-    from google_work_agent.domain import EffectType
+    from google_work_agent.domain.action.model import EffectType
 
     candidate = SemanticRouteCandidate(
         input_resource_types=(),
@@ -388,17 +388,13 @@ def test_select_tool_if_needed_rejects_a_tool_outside_the_registry_candidates() 
         )
     )
     runtime.queued.append(
-        _llm_result(
-            {"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"}
-        )
+        _llm_result({"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"})
     )
     # select_tool_if_needed gets one bounded SEMANTIC_REVISION retry before
     # failing closed -- the revision attempt must also be queued (and also
     # invalid) for this test to observe the final Registry-authority error.
     runtime.queued.append(
-        _llm_result(
-            {"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"}
-        )
+        _llm_result({"schema_version": 1, "route_id": "route-0", "selected_tool_id": "gmail_send"})
     )
     agent = _agent(runtime, tool_catalog=catalog)
     request_intent = _intent()

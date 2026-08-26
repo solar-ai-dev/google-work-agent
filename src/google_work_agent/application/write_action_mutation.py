@@ -42,26 +42,37 @@ from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
 )
-from google_work_agent.domain import (
+from google_work_agent.application.write_persistence import (
+    require_plan_review,
+    revoke_active_approvals,
+)
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
     ActionCommand,
     ActionStatus,
-    CalendarWorkHours,
-    CommandResult,
     EffectType,
-    EvidencePolicyInput,
-    ResultCode,
-    build_p0_tool_registry,
+    next_allowed_action_commands,
+)
+from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
+from google_work_agent.domain.action.transitions.reject_action import transition_reject_action
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
-    next_allowed_action_commands,
-    transition_action,
-    validate_evidence_policy,
 )
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
+)
+from google_work_agent.domain.run.transitions.complete_write_run import (
+    transition_complete_write_run,
+)
+from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    ActionRecord,
-    AuditEventRecord,
-    PlanStatus,
-    TraceEventRecord,
     UnitOfWork,
 )
 
@@ -217,6 +228,14 @@ class ModifyWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
+            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {action.plan_id}")
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
 
             if effect_type is EffectType.READ or action.status not in _MODIFIABLE_ACTION_STATUSES:
                 return self._finish(
@@ -326,24 +345,32 @@ class ModifyWriteActionService:
                     updated_risk = merge_calendar_conflict_risk(updated_risk, fresh_calendar_risk)
             if fresh_feasibility_risk is not None:
                 updated_risk = merge_feasibility_risk(updated_risk, fresh_feasibility_risk)
-            preview = transition_action(
+            preview = transition_modify_action(
                 ActionStatus(action.status),
-                command=ActionCommand.MODIFY_ACTION,
-                current_version=action.version,
-                expected_version=command.expected_version,
+                action.version,
+                command.expected_version,
                 effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
             )
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
-                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
-            result = unit_of_work.actions.modify_write(
-                action.id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
-                arguments_json=canonicalize_json_value(new_arguments),
-                arguments_hash=calculate_canonical_json_hash(new_arguments),
-                risk=updated_risk,
-            )
+                revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
+                if (
+                    unit_of_work.actions.update_if_version_and_status(
+                        action.id,
+                        expected_version=action.version,
+                        expected_status=ActionStatus(action.status),
+                        next_status=preview.current_status,
+                        updated_at_ms=now_ms,
+                        arguments_json=canonicalize_json_value(new_arguments),
+                        arguments_hash=calculate_canonical_json_hash(new_arguments),
+                        risk=updated_risk,
+                    )
+                    is None
+                ):
+                    raise RuntimeError("validated ModifyAction CAS failed")
+            result = preview
             if not result.applied:
                 return self._finish(
                     unit_of_work,
@@ -366,7 +393,7 @@ class ModifyWriteActionService:
             # arguments it was not issued for. Revoking is a no-op when the
             # action was PROPOSED and had no Approval yet.
             run_id = _run_id_for_action(unit_of_work, action.id)
-            review_version = unit_of_work.plans.require_review(action.plan_id)
+            review_version = require_plan_review(unit_of_work, action.plan_id)
             _revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
                 modified_action_id=action.id,
@@ -582,7 +609,7 @@ def _revoke_stale_dependent_approvals(
         dependent = unit_of_work.actions.get_by_id(dependent_id)
         if dependent is None or dependent.status != ActionStatus.APPROVED.value:
             continue
-        revoked_ids = unit_of_work.approvals.revoke_active_by_action(dependent_id)
+        revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
         if not revoked_ids:
             continue
         unit_of_work.traces.add(
@@ -668,10 +695,16 @@ def _block_rejected_action_dependents(
             ActionStatus.APPROVED.value,
         }:
             continue
-        revoked_ids = unit_of_work.approvals.revoke_active_by_action(dependent_id)
-        if not unit_of_work.actions.mark_dependency_blocked(
-            dependent_id,
-            updated_at_ms=now_ms,
+        revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
+        if (
+            unit_of_work.actions.update_if_version_and_status(
+                dependent_id,
+                expected_version=dependent.version,
+                expected_status=ActionStatus(dependent.status),
+                next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                updated_at_ms=now_ms,
+            )
+            is None
         ):
             raise RuntimeError(f"dependency block transition failed: {dependent_id}")
         blocked_action_ids.append(dependent_id)
@@ -764,24 +797,37 @@ class RejectWriteActionService:
             plan = unit_of_work.plans.get_by_id(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
-            run = unit_of_work.runs.get_by_id(plan.run_id)
+            run = unit_of_work.runs.get(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
-            preview = transition_action(
+            current_plan = max(
+                unit_of_work.plans.list_by_run(plan.run_id),
+                key=lambda candidate: getattr(candidate, "revision_no", 0),
+                default=None,
+            )
+            preview = transition_reject_action(
                 ActionStatus(action.status),
-                command=ActionCommand.REJECT_ACTION,
-                current_version=action.version,
-                expected_version=command.expected_version,
+                action.version,
+                command.expected_version,
                 effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=current_plan is not None and current_plan.id == plan.id,
             )
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
-                revoked_approval_ids = unit_of_work.approvals.revoke_active_by_action(action.id)
-            result = unit_of_work.actions.reject_write(
-                action.id,
-                expected_version=command.expected_version,
-                updated_at_ms=now_ms,
-            )
+                revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
+                if (
+                    unit_of_work.actions.update_if_version_and_status(
+                        action.id,
+                        expected_version=action.version,
+                        expected_status=ActionStatus(action.status),
+                        next_status=preview.current_status,
+                        updated_at_ms=now_ms,
+                    )
+                    is None
+                ):
+                    raise RuntimeError("validated RejectAction CAS failed")
+            result = preview
             response = _ActionMutationResponse(
                 applied=result.applied,
                 result_code=result.result_code.value,
@@ -852,17 +898,38 @@ class RejectWriteActionService:
                 if current_actions and all(
                     item.status in terminal_statuses for item in current_actions
                 ):
-                    if plan.status in {PlanStatus.WAITING_APPROVAL, PlanStatus.ACTIVE}:
-                        unit_of_work.plans.complete(plan.id)
-                    completed = unit_of_work.runs.finalize_action_outcomes(
+                    verifying_status = transition_begin_verification(run.status)
+                    if not unit_of_work.runs.update_if_version_and_status(
                         run.id,
-                        expected_version=run.version,
-                        finished_at_ms=now_ms,
-                    )
-                    if not completed.applied:
-                        raise RuntimeError(
-                            f"reject terminal finalization failed: {completed.result_code.value}"
+                        run.version,
+                        frozenset({run.status}),
+                        {"status": verifying_status.value, "version": run.version + 1},
+                    ):
+                        raise RuntimeError("validated BeginVerification CAS failed")
+                    completed_status = transition_complete_write_run(verifying_status)
+                    if not unit_of_work.runs.update_if_version_and_status(
+                        run.id,
+                        run.version + 1,
+                        frozenset({verifying_status}),
+                        {
+                            "status": completed_status.value,
+                            "version": run.version + 2,
+                            "finished_at_ms": now_ms,
+                        },
+                    ):
+                        raise RuntimeError("validated CompleteWriteRun CAS failed")
+                    if plan.status in {
+                        PlanStatus.WAITING_APPROVAL,
+                        PlanStatus.ACTIVE,
+                    } and (
+                        unit_of_work.plans.update_if_status(
+                            plan.id,
+                            expected_status=plan.status,
+                            next_status=PlanStatus.COMPLETED,
                         )
+                        is None
+                    ):
+                        raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             _finish_json_receipt(
                 unit_of_work,
                 command.command_id,

@@ -10,25 +10,15 @@ from google_work_agent.ports.artifact_verifier import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
 )
-from google_work_agent.ports.system.attachment_staging_port import (
-    AttachmentDescriptor,
-    AttachmentDescriptorVerifier,
-    AttachmentStagingPort,
-    AttachmentStagingError,
-    GmailAttachmentBytes,
-    GmailAttachmentGateway,
+from google_work_agent.ports.connector.mcp_client_port import (
+    MCPClientPort,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
+    MCPControlResponse,
+    MCPRuntimeMetadata,
+    MCPToolResponse,
 )
-from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.connectors.connector_runtime import ConnectorRuntimeHandle
-from google_work_agent.ports.system.sse_event_buffer_port import (
-    BufferStatus,
-    InvalidReplayCursorError,
-    PendingProjectionEvent,
-    ProjectionEvent,
-    SseEventBufferPort,
-    RunEventSubscription,
-    SnapshotRequiredReplayError,
-)
 from google_work_agent.ports.google_oauth import (
     CredentialState,
     DisconnectResult,
@@ -52,7 +42,7 @@ from google_work_agent.ports.google_workspace import (
     ResourceType,
     TimeRange,
 )
-from google_work_agent.ports.system.uuid_port import UUIDPort
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.launcher_probe import (
     LauncherProbeCheckFactory,
     LauncherProbeDecision,
@@ -91,46 +81,31 @@ from google_work_agent.ports.llm import (
     ToolCallSchemaRepairer,
     ToolDefinition,
 )
-from google_work_agent.ports.connector.mcp_client_port import (
-    MCPControlResponse,
-    MCPRuntimeMetadata,
-    MCPToolResponse,
-    MCPClientPort,
-    MCPClientPortError,
-    MCPClientPortErrorCode,
-)
-from google_work_agent.ports.models import (
-    ActionRecord,
-    AnswerOnlyResponse,
-    ApprovalRecord,
-    AttemptOutcome,
-    AuditEventRecord,
-    CommandReceiptRecord,
-    CommandReceiptStatus,
-    ConversationRecord,
-    EvidenceOriginType,
-    EvidenceRecord,
-    ExecutionAttemptRecord,
-    MessageRecord,
-    PersistedAuditEventRecord,
-    PersistedTraceEventRecord,
-    PlanRecord,
-    PlanReviewStatus,
-    PlanStatus,
-    ResourceRefRecord,
-    ResourceSource,
-    RunCreateRecord,
-    RunRecord,
-    StoredResourceType,
-    TraceEventRecord,
-    VerificationRecord,
-)
 from google_work_agent.ports.observability import (
     MaintenanceGate,
     MaintenanceWindow,
     OperationalLogRecord,
     OperationalLogSink,
 )
+from google_work_agent.ports.persistence.action_dependency_repository import (
+    ActionDependencyRepository,
+)
+from google_work_agent.ports.persistence.action_repository import ActionRepository
+from google_work_agent.ports.persistence.approval_repository import ApprovalRepository
+from google_work_agent.ports.persistence.audit_repository import AuditRepository
+from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
+from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
+from google_work_agent.ports.persistence.evidence_repository import EvidenceRepository
+from google_work_agent.ports.persistence.execution_attempt_repository import (
+    ExecutionAttemptRepository,
+)
+from google_work_agent.ports.persistence.message_repository import MessageRepository
+from google_work_agent.ports.persistence.plan_repository import PlanRepository
+from google_work_agent.ports.persistence.resource_ref_repository import ResourceRefRepository
+from google_work_agent.ports.persistence.run_repository import RunRepository
+from google_work_agent.ports.persistence.trace_repository import TraceRepository
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.persistence.verification_repository import VerificationRepository
 from google_work_agent.ports.query import QueryConnectionFactory
 from google_work_agent.ports.readiness import (
     ReadinessAggregator,
@@ -139,23 +114,6 @@ from google_work_agent.ports.readiness import (
     ReadinessState,
     RuntimeStatusProvider,
     RuntimeSummary,
-)
-from google_work_agent.ports.repositories import (
-    ActionDependencyRepository,
-    ActionRepository,
-    ApprovalRepository,
-    AuditRepository,
-    CommandReceiptRepository,
-    ConversationRepository,
-    EvidenceRepository,
-    ExecutionAttemptRepository,
-    MessageRepository,
-    PlanRepository,
-    ResourceRefRepository,
-    RunRepository,
-    TraceRepository,
-    UnitOfWork,
-    VerificationRepository,
 )
 from google_work_agent.ports.runtime_contracts import (
     AppSettings,
@@ -167,7 +125,25 @@ from google_work_agent.ports.runtime_contracts import (
     ShutdownReport,
     WorkHours,
 )
-from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
+from google_work_agent.ports.system.attachment_staging_port import (
+    AttachmentDescriptor,
+    AttachmentDescriptorVerifier,
+    AttachmentStagingError,
+    AttachmentStagingPort,
+    GmailAttachmentBytes,
+    GmailAttachmentGateway,
+)
+from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    BufferStatus,
+    InvalidReplayCursorError,
+    PendingProjectionEvent,
+    ProjectionEvent,
+    RunEventSubscription,
+    SnapshotRequiredReplayError,
+    SseEventBufferPort,
+)
+from google_work_agent.ports.system.uuid_port import UUIDPort
 from google_work_agent.ports.workflow_runtime import (
     SelectedResourceRef,
     WorkflowCancelRequest,
@@ -183,37 +159,26 @@ from google_work_agent.ports.workflow_runtime import (
 __all__ = [
     "AccessDecision",
     "ActionDependencyRepository",
-    "ActionRecord",
     "ActionRepository",
-    "ApprovalRecord",
     "ApprovalRepository",
     "ApiAccessGuard",
     "ApiRequestContext",
-    "AnswerOnlyResponse",
     "ArtifactSignatureDecision",
     "ArtifactSignatureVerifier",
     "AttachmentDescriptor",
     "AttachmentDescriptorVerifier",
     "AttachmentStagingPort",
     "AttachmentStagingError",
-    "AttemptOutcome",
-    "AuditEventRecord",
     "AuditRepository",
     "BufferStatus",
     "ClockPort",
-    "CommandReceiptRecord",
     "CommandReceiptRepository",
-    "CommandReceiptStatus",
-    "ConversationRecord",
     "ConversationRepository",
     "ConnectorRuntimeHandle",
     "CredentialState",
     "DisconnectResult",
     "EndpointPolicy",
-    "EvidenceOriginType",
-    "EvidenceRecord",
     "EvidenceRepository",
-    "ExecutionAttemptRecord",
     "ExecutionAttemptRepository",
     "FreeBusyCalendar",
     "FreeBusyInterval",
@@ -249,7 +214,6 @@ __all__ = [
     "MCPClientPortErrorCode",
     "MaintenanceGate",
     "MaintenanceWindow",
-    "MessageRecord",
     "MessageRepository",
     "OAuthEnvironment",
     "OllamaRuntimeProbe",
@@ -258,12 +222,7 @@ __all__ = [
     "OperationalLogSink",
     "OutputSchemaDefinition",
     "PendingProjectionEvent",
-    "PersistedAuditEventRecord",
-    "PersistedTraceEventRecord",
-    "PlanRecord",
-    "PlanReviewStatus",
     "PlanRepository",
-    "PlanStatus",
     "ProjectionEvent",
     "ReadinessAggregator",
     "ReadinessCheckResult",
@@ -271,18 +230,14 @@ __all__ = [
     "ReadinessState",
     "RequestedRuntimeMode",
     "ResourcePage",
-    "ResourceRefRecord",
     "ResourceRefRepository",
     "ResourceSnapshot",
-    "ResourceSource",
     "ResourceType",
     "TimeRange",
     "RouteDecision",
     "RouteDecisionInput",
-    "RunCreateRecord",
     "SseEventBufferPort",
     "RunEventSubscription",
-    "RunRecord",
     "RunRepository",
     "RuntimeStatusProvider",
     "RuntimeSummary",
@@ -295,7 +250,6 @@ __all__ = [
     "RuntimeOperation",
     "SchemaRepairer",
     "SnapshotRequiredReplayError",
-    "StoredResourceType",
     "StructuredLLMProvider",
     "StructuredLLMResult",
     "ToolCallingLLMProvider",
@@ -303,10 +257,8 @@ __all__ = [
     "ToolCallSchemaRepairer",
     "ToolDefinition",
     "LLMToolCall",
-    "TraceEventRecord",
     "TraceRepository",
     "UnitOfWork",
-    "VerificationRecord",
     "VerificationRepository",
     "WorkflowCancelRequest",
     "WorkflowCorrelationContext",

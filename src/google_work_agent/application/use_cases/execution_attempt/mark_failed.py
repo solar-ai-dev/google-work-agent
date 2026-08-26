@@ -16,8 +16,14 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
 )
-from google_work_agent.domain import ActionStatus, ResultCode
-from google_work_agent.ports import DeliveryCertainty, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.transitions.mark_failed import (
+    transition_mark_failed,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import DeliveryCertainty, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,20 +103,39 @@ class MarkFailedHandler:
             action = require_action(unit_of_work, command.action_id)
             attempt = require_attempt(unit_of_work, command.attempt_id)
             plan = require_plan(unit_of_work, action.plan_id)
-            unit_of_work.execution_attempts.mark_failed(
-                attempt.id,
-                expected_version=command.expected_attempt_version,
-                error_code=command.error_code,
-                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
-                finished_at_ms=now_ms,
-            )
-            transition = unit_of_work.actions.mark_failed(
-                action.id,
-                expected_version=command.expected_action_version,
-                updated_at_ms=now_ms,
+            transition = transition_mark_failed(
+                ActionStatus(action.status),
+                action_version=action.version,
+                expected_action_version=command.expected_action_version,
+                attempt_status=attempt.status,
+                attempt_version=attempt.version,
+                expected_attempt_version=command.expected_attempt_version,
+                delivery_certainty=command.delivery_certainty.value,
             )
             if not transition.applied:
-                raise RuntimeError("mark_failed action transition failed after attempt failure")
+                raise RuntimeError(transition.conflict_detail or "MarkFailed rejected")
+            unit_of_work.execution_attempts.update_if_version_and_status(
+                attempt.id,
+                expected_version=command.expected_attempt_version,
+                expected_status=attempt.status,
+                status=ExecutionAttemptStatus.FAILED,
+                error_code=command.error_code,
+                error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
+                result_resource_ref_id=None,
+                response_metadata_json=None,
+                finished_at_ms=now_ms,
+            )
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=transition.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError("validated MarkFailed CAS failed")
             propagate_dependency_blocked(
                 unit_of_work=unit_of_work,
                 action_id=action.id,
@@ -147,7 +172,9 @@ class MarkFailedHandler:
                 action_id=action.id,
                 action_status=transition.current_status.value,
                 action_version=transition.current_version,
-                next_allowed_commands=tuple(item.value for item in transition.next_allowed_commands),
+                next_allowed_commands=tuple(
+                    item.value for item in transition.next_allowed_commands
+                ),
                 attempt_id=attempt.id,
                 safe_error_code=command.error_code,
             )

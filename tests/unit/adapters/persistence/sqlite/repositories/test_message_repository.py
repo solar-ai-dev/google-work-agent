@@ -7,7 +7,7 @@ import pytest
 from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
     SqliteMessageRepository,
 )
-from google_work_agent.ports.models import MessageRecord
+from google_work_agent.domain.message.model import Message as MessageRecord
 
 
 def _repository() -> SqliteMessageRepository:

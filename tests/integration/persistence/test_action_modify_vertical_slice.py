@@ -16,41 +16,39 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.write_approval_contracts import (
-    ApproveWriteActionCommand,
-)
-from google_work_agent.application.write_approval import ApproveWriteActionService
-from google_work_agent.application.write_execution_contracts import (
-    ClaimWriteActionCommand,
-)
-from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_action_mutation import ModifyWriteActionService
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
 )
-from google_work_agent.application.write_action_mutation import ModifyWriteActionService
+from google_work_agent.application.write_approval import ApproveWriteActionService
+from google_work_agent.application.write_approval_contracts import (
+    ApproveWriteActionCommand,
+)
+from google_work_agent.application.write_claim import ClaimWriteActionService
+from google_work_agent.application.write_execution_contracts import (
+    ClaimWriteActionCommand,
+)
+from google_work_agent.application.write_plan import (
+    PublishWritePlanService,
+    SaveWritePlanService,
+)
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
-    SaveWritePlanService,
-)
-from google_work_agent.domain import (
-    ApprovalStatus,
-    ResultCode,
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.ports import (
-    EvidenceOriginType,
-    PlanReviewStatus,
-    ResourcePage,
-    ResourceSnapshot,
-    ResourceType,
-)
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
 from tests.support.fakes import FakeClockPort
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}
@@ -254,12 +252,15 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
     assert blocked.conflict_detail == ("plan review must pass after the latest action modification")
 
     with unit_of_work_factory() as unit_of_work:
-        assert unit_of_work.plans.store_review_result(
+        assert unit_of_work.plans.update_review_if_version_and_status(
             "plan-1",
             expected_review_version=1,
-            review_status=PlanReviewStatus.PASSED.value,
-            review_disposition="PASS",
-        )
+            expected_review_statuses=frozenset(PlanReviewStatus),
+            values={
+                "review_status": PlanReviewStatus.PASSED,
+                "review_disposition": "PASS",
+            },
+        ) is not None
         unit_of_work.commit()
 
     approved = approve_service(
@@ -311,14 +312,17 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
     assert second["applied"] is True
 
     with unit_of_work_factory() as unit_of_work:
-        stale_applied = unit_of_work.plans.store_review_result(
+        stale_applied = unit_of_work.plans.update_review_if_version_and_status(
             "plan-1",
             expected_review_version=1,
-            review_status=PlanReviewStatus.PASSED.value,
-            review_disposition="PASS",
+            expected_review_statuses=frozenset(PlanReviewStatus),
+            values={
+                "review_status": PlanReviewStatus.PASSED,
+                "review_disposition": "PASS",
+            },
         )
         plan = unit_of_work.plans.get_by_id("plan-1")
-    assert stale_applied is False
+    assert stale_applied is None
     assert plan is not None
     assert plan.review_status is PlanReviewStatus.REQUIRED
     assert plan.review_version == 2
@@ -738,15 +742,23 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
     )
     assert claimed.applied is True
     with unit_of_work_factory() as unit_of_work:
-        unit_of_work.execution_attempts.mark_failed(
+        unit_of_work.execution_attempts.update_if_version_and_status(
             "attempt-failed-modify",
             expected_version=0,
+            expected_status=ExecutionAttemptStatus.CLAIMED,
+            status=ExecutionAttemptStatus.FAILED,
             error_code="NOT_SENT",
             error_detail_json="{}",
+            result_resource_ref_id=None,
+            response_metadata_json=None,
             finished_at_ms=clock.now_ms(),
         )
-        unit_of_work.actions.mark_failed(
-            "action-1", expected_version=2, updated_at_ms=clock.now_ms()
+        unit_of_work.actions.update_if_version_and_status(
+            "action-1",
+            expected_version=2,
+            expected_status=ActionStatus.EXECUTING,
+            next_status=ActionStatus.FAILED,
+            updated_at_ms=clock.now_ms(),
         )
         unit_of_work.commit()
 

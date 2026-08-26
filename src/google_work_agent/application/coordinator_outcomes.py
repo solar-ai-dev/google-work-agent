@@ -6,7 +6,10 @@ from collections.abc import Callable
 
 from google_work_agent.application.projections import build_projection_event
 from google_work_agent.application.write_actions import WriteRunResponse
-from google_work_agent.domain import RunStatus
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports import (
     PendingProjectionEvent,
     SseEventBufferPort,
@@ -63,7 +66,17 @@ class RunOutcomeHandler:
             WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
         }:
             with self._unit_of_work_factory() as unit_of_work:
-                unit_of_work.runs.set_recovery_required(run_id, finished_at_ms=None)
+                run = unit_of_work.runs.get(run_id)
+                if run is None:
+                    raise LookupError(f"run not found: {run_id}")
+                next_status = transition_require_recovery(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": next_status.value, "version": run.version + 1},
+                ):
+                    raise RuntimeError("validated RequireRecovery CAS failed")
                 unit_of_work.commit()
             self.publish(
                 build_projection_event(
@@ -76,11 +89,19 @@ class RunOutcomeHandler:
             return
         if outcome is WorkflowOutcome.FAILED:
             with self._unit_of_work_factory() as unit_of_work:
-                unit_of_work.runs.fail_run(
-                    run_id,
-                    expected_version=expected_version,
-                    finished_at_ms=self._now_ms(),
-                )
+                run = unit_of_work.runs.get(run_id)
+                if run is None:
+                    raise LookupError(f"run not found: {run_id}")
+                if run.version != expected_version:
+                    raise RuntimeError("workflow outcome Run version conflict")
+                next_status = transition_require_recovery(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": next_status.value, "version": run.version + 1},
+                ):
+                    raise RuntimeError("validated failed-outcome RequireRecovery CAS failed")
                 unit_of_work.commit()
         event_type = {
             WorkflowOutcome.ACCEPTED: accepted_event_type(payload),

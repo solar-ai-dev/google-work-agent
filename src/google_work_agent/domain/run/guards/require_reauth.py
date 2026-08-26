@@ -1,8 +1,20 @@
 """Guard for require reauth."""
-from google_work_agent.domain.enums import RunStatus
-from google_work_agent.domain.run.model import require_status
 
-_ALLOWED = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING, RunStatus.PLANNING, RunStatus.WAITING_APPROVAL, RunStatus.EXECUTING, RunStatus.VERIFYING, RunStatus.RECOVERY_REQUIRED})
+from google_work_agent.domain.run.model import RunStatus, require_status
+
+_ALLOWED = frozenset(
+    {
+        RunStatus.ANALYZING,
+        RunStatus.RETRIEVING,
+        RunStatus.PLANNING,
+        RunStatus.WAITING_APPROVAL,
+        RunStatus.EXECUTING,
+        RunStatus.VERIFYING,
+        RunStatus.RECOVERY_REQUIRED,
+        RunStatus.CANCEL_REQUESTED,
+    }
+)
+
 
 def guard_require_reauth(current_status: RunStatus) -> None:
     """Reject a require reauth request from an invalid Run status."""

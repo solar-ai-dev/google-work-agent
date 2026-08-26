@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.application.run_terminal import CompleteWriteRunCommand
-from google_work_agent.application.write_run_completion import CompleteWriteRunService
-from google_work_agent.domain import ActionStatus, RunStatus
-from google_work_agent.ports import (
-    ActionRecord,
-    ConversationRecord,
-    PlanRecord,
-    PlanStatus,
-    RunRecord,
-    UnitOfWork,
+from google_work_agent.application.write_run_completion import (
+    CompleteWriteRunCommand,
+    CompleteWriteRunService,
 )
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.ports import UnitOfWork
 
 
 class _Receipts:
@@ -37,10 +38,10 @@ class _Runs:
         self.run = run
         self.complete_calls = 0
 
-    def get_by_id(self, _run_id: str) -> RunRecord:
+    def get(self, _run_id: str) -> RunRecord:
         return self.run
 
-    def complete_write_run(self, *_args: object, **_kwargs: object):
+    def update_if_version_and_status(self, *_args: object, **_kwargs: object):
         self.complete_calls += 1
         raise AssertionError("Run completion must not execute when aggregate guard fails")
 

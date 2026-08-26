@@ -7,22 +7,22 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 
 from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.domain.enums import (
-    ActionStatus,
-    RecoveryResolution,
-    ResultCode,
-    RunStatus,
+from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.action.transitions.cancel_pending_action import (
+    transition_cancel_pending_action,
 )
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
     transition_resolve_recovery,
 )
-from google_work_agent.ports.models import (
-    AuditEventRecord,
-    CommandReceiptStatus,
-    PlanRecord,
-    PlanStatus,
-    TraceEventRecord,
-)
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -73,7 +73,7 @@ class ResolveRecoveryHandler:
             if existing is not None:
                 return self._replay_or_reject_duplicate(unit_of_work, command, existing)
 
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             context = unit_of_work.recovery_contexts.load_current_context(command.run_id)
@@ -122,17 +122,33 @@ class ResolveRecoveryHandler:
                 aggregate_id=command.run_id,
                 created_at_ms=now_ms,
             )
-            persisted = unit_of_work.runs.resolve_recovery(
-                command.run_id,
-                expected_version=command.expected_version,
-                recovery_next_status=target,
-                finished_at_ms=(
-                    now_ms
-                    if target in {RunStatus.COMPLETED, RunStatus.CANCELLED, RunStatus.FAILED}
-                    else None
-                ),
-                validated_recovery_target=True,
-            )
+            if run.version != command.expected_version:
+                persisted = CommandResult(
+                    False,
+                    ResultCode.VERSION_CONFLICT,
+                    run.status,
+                    run.version,
+                    next_allowed_run_commands(run.status),
+                    "expected_version does not match current_version",
+                )
+            else:
+                values: dict[str, object] = {
+                    "status": target.value,
+                    "version": run.version + 1,
+                }
+                if target in {RunStatus.COMPLETED, RunStatus.CANCELLED, RunStatus.FAILED}:
+                    values["finished_at_ms"] = now_ms
+                applied = unit_of_work.runs.update_if_version_and_status(
+                    run.id, run.version, frozenset({run.status}), values
+                )
+                persisted = CommandResult(
+                    applied,
+                    ResultCode.TRANSITION_APPLIED if applied else ResultCode.VERSION_CONFLICT,
+                    target if applied else run.status,
+                    run.version + 1 if applied else run.version,
+                    next_allowed_run_commands(target if applied else run.status),
+                    None if applied else "validated Run CAS failed",
+                )
             result = ResolveRecoveryResult(
                 applied=persisted.applied,
                 result_code=persisted.result_code.value,
@@ -207,7 +223,7 @@ class ResolveRecoveryHandler:
         It deliberately requires the durable RecoveryContext rather than
         allowing ResumeRun to invent a recovery target.
         """
-        run = unit_of_work.runs.get_by_id(run_id)
+        run = unit_of_work.runs.get(run_id)
         context = unit_of_work.recovery_contexts.load_current_context(run_id)
         if run is None or context is None:
             raise RuntimeError("RECOVERY_RECHECK requires a durable RecoveryContextV1")
@@ -236,11 +252,22 @@ class ResolveRecoveryHandler:
         )
         if not decision.applied:
             return decision
-        persisted = unit_of_work.runs.resolve_recovery(
-            run_id,
-            expected_version=expected_version,
-            recovery_next_status=decision.current_status,
-            validated_recovery_target=True,
+        applied = (
+            run.version == expected_version
+            and unit_of_work.runs.update_if_version_and_status(
+                run.id,
+                run.version,
+                frozenset({run.status}),
+                {"status": decision.current_status.value, "version": run.version + 1},
+            )
+        )
+        persisted = CommandResult(
+            applied,
+            ResultCode.TRANSITION_APPLIED if applied else ResultCode.VERSION_CONFLICT,
+            decision.current_status if applied else run.status,
+            run.version + 1 if applied else run.version,
+            next_allowed_run_commands(decision.current_status if applied else run.status),
+            None if applied else "validated Run CAS failed",
         )
         if persisted.applied:
             unit_of_work.recovery_contexts.clear_context(run_id, int(context["version"]))
@@ -290,12 +317,24 @@ class ResolveRecoveryHandler:
             raise RuntimeError("mismatch recovery is forbidden while cancel intent is active")
         if command.resolution is RecoveryResolution.ACCEPT_PARTIAL:
             self._cancel_pending_actions(unit_of_work, plan=plan, now_ms=now_ms)
-            unit_of_work.plans.complete(plan.id)
+            if (
+                unit_of_work.plans.update_if_status(
+                    plan.id, expected_status=plan.status, next_status=PlanStatus.COMPLETED
+                )
+                is None
+            ):
+                raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             return plan, "PARTIAL"
 
         for candidate in unit_of_work.actions.list_by_plan(plan.id):
-            unit_of_work.approvals.revoke_active_by_action(candidate.id)
-        unit_of_work.plans.supersede(plan.id)
+            revoke_active_approvals(unit_of_work, candidate.id)
+        if (
+            unit_of_work.plans.update_if_status(
+                plan.id, expected_status=plan.status, next_status=PlanStatus.SUPERSEDED
+            )
+            is None
+        ):
+            raise RuntimeError(f"validated Plan supersession CAS failed: {plan.id}")
         if self._next_id is None:
             raise RuntimeError("CREATE_CORRECTIVE_PLAN requires an id generator")
         corrective = PlanRecord(
@@ -320,12 +359,28 @@ class ResolveRecoveryHandler:
         for action in unit_of_work.actions.list_by_plan(plan.id):
             if action.status not in pending:
                 continue
-            unit_of_work.approvals.revoke_active_by_action(action.id)
-            result = unit_of_work.actions.cancel_pending(
-                action.id, expected_version=action.version, updated_at_ms=now_ms
+            revoke_active_approvals(unit_of_work, action.id)
+            result = transition_cancel_pending_action(
+                ActionStatus(action.status),
+                action.version,
+                action.version,
+                effect_type=EffectType(action.effect_type),
+                plan_status=plan.status,
+                plan_is_current=True,
             )
             if not result.applied:
                 raise RuntimeError(f"pending action cancellation failed: {action.id}")
+            if (
+                unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatus(action.status),
+                    next_status=result.current_status,
+                    updated_at_ms=now_ms,
+                )
+                is None
+            ):
+                raise RuntimeError(f"pending action cancellation CAS failed: {action.id}")
 
     @staticmethod
     def _replay_or_reject_duplicate(
@@ -334,7 +389,7 @@ class ResolveRecoveryHandler:
         receipt: object,
     ) -> ResolveRecoveryResult:
         if receipt.request_hash != command.request_hash:
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             return ResolveRecoveryResult(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND.value,

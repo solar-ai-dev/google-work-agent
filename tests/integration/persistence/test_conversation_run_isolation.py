@@ -21,7 +21,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.results import ResultCode
 
 
 class _UnusedRuntimeStatusProvider:

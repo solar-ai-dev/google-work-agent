@@ -9,10 +9,10 @@ from typing import cast
 from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch,
 )
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import (
-    CommandReceiptRecord,
-    CommandReceiptStatus,
     UnitOfWork,
 )
 

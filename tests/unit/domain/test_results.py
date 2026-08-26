@@ -2,7 +2,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from google_work_agent.domain import CommandResult, ResultCode, RunCommand, RunStatus
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import RunCommand, RunStatus
 
 
 def test_command_result_is_frozen() -> None:

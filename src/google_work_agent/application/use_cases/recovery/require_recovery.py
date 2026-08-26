@@ -7,9 +7,14 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import Literal, cast
 
-from google_work_agent.domain.enums import ResultCode
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.recovery.model import RecoveryReasonV1
-from google_work_agent.ports.models import AuditEventRecord, CommandReceiptStatus
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunTransitionRejected, next_allowed_run_commands
 from google_work_agent.ports.persistence.recovery_repository import RecoveryContextV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import RegisteredResumeTargetRefV2
@@ -69,7 +74,7 @@ class RequireRecoveryHandler:
         existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
         if existing:
             if existing.request_hash != command.request_hash:
-                run = unit_of_work.runs.get_by_id(command.run_id)
+                run = unit_of_work.runs.get(command.run_id)
                 return RequireRecoveryResult(
                     False,
                     ResultCode.DUPLICATE_COMMAND.value,
@@ -84,7 +89,7 @@ class RequireRecoveryHandler:
             payload["next_allowed_commands"] = tuple(payload.get("next_allowed_commands", ()))
             return RequireRecoveryResult(**payload)
 
-        run = unit_of_work.runs.get_by_id(command.run_id)
+        run = unit_of_work.runs.get(command.run_id)
         pre_recovery_status = run.status.value if run else "UNKNOWN"
         unit_of_work.command_receipts.add_received(
             command_id=command.command_id,
@@ -94,16 +99,41 @@ class RequireRecoveryHandler:
             aggregate_id=command.run_id,
             created_at_ms=now_ms,
         )
-        decision = unit_of_work.runs.require_recovery(
-            command.run_id, expected_version=command.expected_version
-        )
+        if run is None:
+            raise LookupError(f"run not found: {command.run_id}")
+        if run.version != command.expected_version:
+            applied = False
+            result_code = ResultCode.VERSION_CONFLICT
+            next_status = run.status
+            next_version = run.version
+            conflict_detail = "expected_version does not match current_version"
+        else:
+            try:
+                next_status = transition_require_recovery(run.status)
+                applied = unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {"status": next_status.value, "version": run.version + 1},
+                )
+                result_code = (
+                    ResultCode.TRANSITION_APPLIED if applied else ResultCode.VERSION_CONFLICT
+                )
+                next_version = run.version + 1 if applied else run.version
+                conflict_detail = None if applied else "validated Run CAS failed"
+            except RunTransitionRejected as error:
+                applied = False
+                result_code = ResultCode.STATE_CONFLICT
+                next_status = run.status
+                next_version = run.version
+                conflict_detail = str(error)
         result = RequireRecoveryResult(
-            decision.applied,
-            decision.result_code.value,
-            decision.current_status.value,
-            decision.current_version,
-            tuple(item.value for item in decision.next_allowed_commands),
-            decision.conflict_detail,
+            applied,
+            result_code.value,
+            next_status.value,
+            next_version,
+            tuple(item.value for item in next_allowed_run_commands(next_status)),
+            conflict_detail,
         )
         if result.applied:
             current = unit_of_work.recovery_contexts.load_current_context(command.run_id)
@@ -120,7 +150,7 @@ class RequireRecoveryHandler:
         unit_of_work.command_receipts.finish_json(
             command_id=command.command_id,
             applied=result.applied,
-            result_code=decision.result_code,
+            result_code=result_code,
             result_version=result.current_version,
             response_json=dumps(asdict(result), sort_keys=True),
             completed_at_ms=now_ms,

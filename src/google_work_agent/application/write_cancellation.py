@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from json import dumps
+from types import SimpleNamespace
 from typing import cast
 
 from google_work_agent.application.cancel_intent import (
     CancelIntentReceiptReader,
+)
+from google_work_agent.application.cancel_intent import (
     has_durable_cancel_intent as _receipt_has_durable_cancel_intent,
 )
 from google_work_agent.application.write_cancellation_contracts import (
@@ -27,8 +31,62 @@ from google_work_agent.application.write_persistence import (
     require_latest_plan_for_run as _require_latest_plan_for_run,
 )
 from google_work_agent.application.write_persistence import require_run as _require_run
-from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
-from google_work_agent.ports import PlanStatus, TraceEventRecord, UnitOfWork
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.recovery.transitions.require_recovery import (
+    transition_require_recovery,
+)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.transitions.begin_verification import (
+    transition_begin_verification,
+)
+from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
+from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import UnitOfWork
+
+
+@dataclass(frozen=True, slots=True)
+class _RunMutationResult:
+    applied: bool
+    result_code: ResultCode
+    current_status: RunStatus
+    current_version: int
+    next_allowed_commands: tuple[object, ...] = ()
+    conflict_detail: str | None = None
+
+
+def _apply_run_transition(
+    unit_of_work: UnitOfWork,
+    run: object,
+    expected_version: int,
+    transition: Callable[[RunStatus], RunStatus],
+    *,
+    finished_at_ms: int | None = None,
+) -> _RunMutationResult:
+    if run.version != expected_version:
+        return _RunMutationResult(
+            False,
+            ResultCode.VERSION_CONFLICT,
+            run.status,
+            run.version,
+            conflict_detail="expected_version does not match current_version",
+        )
+    try:
+        next_status = transition(run.status)
+    except RunTransitionRejected as error:
+        return _RunMutationResult(
+            False, ResultCode.STATE_CONFLICT, run.status, run.version, conflict_detail=str(error)
+        )
+    values: dict[str, object] = {"status": next_status.value, "version": run.version + 1}
+    if finished_at_ms is not None:
+        values["finished_at_ms"] = finished_at_ms
+    if not unit_of_work.runs.update_if_version_and_status(
+        run.id, run.version, frozenset({run.status}), values
+    ):
+        raise RuntimeError("validated Run transition CAS failed")
+    return _RunMutationResult(True, ResultCode.TRANSITION_APPLIED, next_status, run.version + 1)
 
 
 class RequestRunCancellationService:
@@ -62,9 +120,8 @@ class RequestRunCancellationService:
             plans = unit_of_work.plans.list_by_run(run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
             actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
-            cancel_result = unit_of_work.runs.request_cancel(
-                run.id,
-                expected_version=command.expected_run_version,
+            cancel_result = _apply_run_transition(
+                unit_of_work, run, command.expected_run_version, transition_request_cancel
             )
             if not cancel_result.applied:
                 response = WriteRunResponse(
@@ -101,10 +158,22 @@ class RequestRunCancellationService:
                         updated_at_ms=now_ms,
                     )
                 if plan is not None:
-                    unit_of_work.plans.cancel(plan.id)
-                final_result = unit_of_work.runs.finalize_cancel(
-                    run.id,
-                    expected_version=cancel_result.current_version,
+                    if (
+                        unit_of_work.plans.update_if_status(
+                            plan.id, expected_status=plan.status, next_status=PlanStatus.CANCELLED
+                        )
+                        is None
+                    ):
+                        raise RuntimeError(f"validated Plan cancellation CAS failed: {plan.id}")
+                final_result = _apply_run_transition(
+                    unit_of_work,
+                    SimpleNamespace(
+                        id=run.id,
+                        status=cancel_result.current_status,
+                        version=cancel_result.current_version,
+                    ),
+                    cancel_result.current_version,
+                    transition_finalize_cancel,
                     finished_at_ms=now_ms,
                 )
                 response = WriteRunResponse(
@@ -229,9 +298,8 @@ class FinalizeRunCancellationService:
                     )
                     unit_of_work.commit()
                     return response
-                continued_cancel = unit_of_work.runs.request_cancel(
-                    run.id,
-                    expected_version=run.version,
+                continued_cancel = _apply_run_transition(
+                    unit_of_work, run, run.version, transition_request_cancel
                 )
                 if not continued_cancel.applied:
                     response = WriteRunResponse(
@@ -272,13 +340,15 @@ class FinalizeRunCancellationService:
                 unit_of_work.commit()
                 return response
             if any(action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions):
-                recovery_run = unit_of_work.runs.set_recovery_required(run.id)
+                recovery_run = _apply_run_transition(
+                    unit_of_work, run, run.version, transition_require_recovery
+                )
                 response = WriteRunResponse(
                     applied=False,
                     result_code=ResultCode.RECOVERY_REQUIRED.value,
                     run_id=run.id,
-                    run_status=recovery_run.status.value,
-                    run_version=recovery_run.version,
+                    run_status=recovery_run.current_status.value,
+                    run_version=recovery_run.current_version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
                     result_kind="RECOVERY_REQUIRED",
@@ -296,13 +366,15 @@ class FinalizeRunCancellationService:
                     conflict_detail="cannot finalize cancellation while write is executing",
                 )
             elif any(action.status == ActionStatus.EXECUTED.value for action in actions):
-                updated_run = unit_of_work.runs.set_verifying(run.id)
+                updated_run = _apply_run_transition(
+                    unit_of_work, run, run.version, transition_begin_verification
+                )
                 response = WriteRunResponse(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED.value,
                     run_id=run.id,
-                    run_status=updated_run.status.value,
-                    run_version=updated_run.version,
+                    run_status=updated_run.current_status.value,
+                    run_version=updated_run.current_version,
                     plan_id=plan.id,
                     plan_status=plan.status.value,
                 )
@@ -313,14 +385,24 @@ class FinalizeRunCancellationService:
                     plan_id=plan.id,
                     updated_at_ms=now_ms,
                 )
-                final_result = unit_of_work.runs.finalize_cancel(
-                    run.id,
-                    expected_version=finalize_expected_version,
+                final_result = _apply_run_transition(
+                    unit_of_work,
+                    SimpleNamespace(
+                        id=run.id, status=run.status, version=finalize_expected_version
+                    ),
+                    finalize_expected_version,
+                    transition_finalize_cancel,
                     finished_at_ms=now_ms,
                 )
                 if not final_result.applied:
                     raise RuntimeError("validated cancellation finalization was not applied")
-                unit_of_work.plans.cancel(plan.id)
+                if (
+                    unit_of_work.plans.update_if_status(
+                        plan.id, expected_status=plan.status, next_status=PlanStatus.CANCELLED
+                    )
+                    is None
+                ):
+                    raise RuntimeError(f"validated Plan cancellation CAS failed: {plan.id}")
                 response = WriteRunResponse(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED.value,

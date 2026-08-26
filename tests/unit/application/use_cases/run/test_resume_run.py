@@ -9,8 +9,11 @@ from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand,
     ResumeRunHandler,
 )
-from google_work_agent.domain import CommandResult, ResultCode, RunStatus
-from google_work_agent.ports import CommandReceiptRecord, CommandReceiptStatus, RunRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -77,8 +80,35 @@ class _Runs:
         self.record = RunRecord("run-1", "conv-1", status, version, 1, None)
         self.calls = []
 
-    def get_by_id(self, run_id):
+    def get(self, run_id):
         return self.record if run_id == self.record.id else None
+
+    def update_if_version_and_status(self, run_id, expected_version, expected_statuses, values):
+        if (
+            run_id != self.record.id
+            or expected_version != self.record.version
+            or self.record.status not in expected_statuses
+        ):
+            return None
+        target = RunStatus(values["status"])
+        if self.record.status is RunStatus.REAUTH_REQUIRED:
+            name = "resume_after_reauth"
+        elif target is RunStatus.RECOVERY_REQUIRED:
+            name = "require_recovery"
+        elif self.record.status is RunStatus.RECOVERY_REQUIRED:
+            name = "resolve_recovery"
+        else:
+            name = "resume_confirmation"
+        self.calls.append(name)
+        self.record = RunRecord(
+            self.record.id,
+            self.record.conversation_id,
+            target,
+            int(values["version"]),
+            self.record.started_at_ms,
+            values.get("finished_at_ms"),
+        )
+        return self.record
 
     def _move(self, name, target):
         self.calls.append(name)

@@ -16,13 +16,12 @@ from google_work_agent.application.execution_phase import (
 )
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.application.run_terminal import RunTransitionResponse
-from google_work_agent.domain import (
-    ActionStatus,
-    CommandResult,
-    RunCommand,
-    RunStatus,
-)
-from google_work_agent.ports import ActionRecord, PlanRecord, PlanStatus
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.results import CommandResult
+from google_work_agent.domain.run.model import RunCommand, RunStatus
 
 
 class WriteRecoveryCoordinator:
@@ -41,9 +40,7 @@ class WriteRecoveryCoordinator:
         complete_write_run_if_verified: Callable[[str, str], RunTransitionResponse | None],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
-        begin_verification: Callable[
-            [str], CommandResult[RunStatus, RunCommand] | None
-        ],
+        begin_verification: Callable[[str], CommandResult[RunStatus, RunCommand] | None],
         latest_attempt_id: Callable[[str], str],
     ) -> None:
         self._latest_unknown_action = latest_unknown_action
@@ -209,9 +206,9 @@ class WriteRecoveryCoordinator:
         outcome: str,
         verification_statuses: list[str] | None = None,
     ) -> GraphState:
-        action_status = str(getattr(response, "action_status"))
-        action_version = int(getattr(response, "action_version"))
-        next_allowed = tuple(str(item) for item in getattr(response, "next_allowed_commands"))
+        action_status = str(response.action_status)
+        action_version = int(response.action_version)
+        next_allowed = tuple(str(item) for item in response.next_allowed_commands)
         decision = reconcile_write_conflict(
             aggregate=ReconcileAggregate.ACTION,
             current_status=action_status,
@@ -310,9 +307,7 @@ class WriteRecoveryCoordinator:
                 "reconcile_destination": decision.target,
                 "reconcile_outcome": decision.outcome,
             },
-            "verification_summary": {
-                "action_statuses": verification_statuses or []
-            },
+            "verification_summary": {"action_statuses": verification_statuses or []},
         }
 
     @staticmethod
@@ -328,7 +323,5 @@ class WriteRecoveryCoordinator:
             "__target__": "end",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
             "execution_summary": {"result": outcome, **facts},
-            "verification_summary": {
-                "action_statuses": verification_statuses or []
-            },
+            "verification_summary": {"action_statuses": verification_statuses or []},
         }

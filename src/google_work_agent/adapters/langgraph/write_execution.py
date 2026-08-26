@@ -18,13 +18,14 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseRequest,
 )
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
-from google_work_agent.application.run_terminal import (
+from google_work_agent.application.run_terminal import RunTransitionResponse
+from google_work_agent.application.write_run_completion import (
     CompleteWriteRunCommand,
-    RunTransitionResponse,
+    CompleteWriteRunService,
 )
-from google_work_agent.application.write_run_completion import CompleteWriteRunService
-from google_work_agent.domain import ActionStatus, RunStatus, next_allowed_run_commands
-from google_work_agent.ports import ActionRecord
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
 
 
 class WriteExecutionNode:
@@ -243,7 +244,9 @@ class WriteExecutionNode:
         next_allowed = tuple(
             str(item) for item in getattr(phase_result, "next_allowed_commands", ())
         )
-        aggregate = ReconcileAggregate.ACTION if action_status is not None else ReconcileAggregate.RUN
+        aggregate = (
+            ReconcileAggregate.ACTION if action_status is not None else ReconcileAggregate.RUN
+        )
         if aggregate is ReconcileAggregate.RUN and current_status is not None and not next_allowed:
             try:
                 next_allowed = tuple(

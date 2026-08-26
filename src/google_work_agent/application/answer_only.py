@@ -4,17 +4,21 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.domain import DuplicateCommandError, ResultCode, RunStatus
-from google_work_agent.domain.run.transitions.run import next_allowed_run_commands
-from google_work_agent.ports import (
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import (
     AnswerOnlyResponse,
-    AuditEventRecord,
-    CommandReceiptRecord,
     CommandReceiptStatus,
-    MessageRecord,
-    TraceEventRecord,
-    UnitOfWork,
+    DuplicateCommandError,
 )
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.message.model import Message as MessageRecord
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.run.transitions.complete_answer_only_run import (
+    transition_complete_answer_only_run,
+)
+from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +68,7 @@ class CompleteAnswerOnlyRunService:
             if conversation is None:
                 raise LookupError(f"conversation not found: {command.conversation_id}")
 
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             if run.conversation_id != conversation.id:
@@ -74,22 +78,45 @@ class CompleteAnswerOnlyRunService:
                     f"{command.conversation_id}"
                 )
 
-            result = unit_of_work.runs.complete_answer_only_run(
-                command.run_id,
-                expected_version=command.expected_version,
-                finished_at_ms=now_ms,
-            )
+            if run.version != command.expected_version:
+                response = AnswerOnlyResponse(
+                    False,
+                    ResultCode.VERSION_CONFLICT,
+                    run.status,
+                    run.version,
+                    (),
+                    "expected_version does not match current_version",
+                )
+            else:
+                plans = unit_of_work.plans.list_by_run(run.id)
+                has_action = any(
+                    unit_of_work.actions.list_by_plan(plan.id) for plan in plans
+                )
+                next_status = transition_complete_answer_only_run(
+                    run.status,
+                    has_plan=bool(plans),
+                    has_action=has_action,
+                    has_open_write=False,
+                    has_executing_read=False,
+                    has_unresolved_recovery=False,
+                )
+                applied = unit_of_work.runs.update_if_version_and_status(
+                    run.id,
+                    run.version,
+                    frozenset({run.status}),
+                    {
+                        "status": next_status.value,
+                        "version": run.version + 1,
+                        "finished_at_ms": now_ms,
+                    },
+                )
+                if not applied:
+                    raise RuntimeError("validated CompleteAnswerOnlyRun CAS failed")
+                response = AnswerOnlyResponse(
+                    True, ResultCode.TRANSITION_APPLIED, next_status, run.version + 1, ()
+                )
 
-            response = AnswerOnlyResponse(
-                applied=result.applied,
-                result_code=result.result_code,
-                current_status=result.current_status,
-                current_version=result.current_version,
-                next_allowed_commands=result.next_allowed_commands,
-                conflict_detail=result.conflict_detail,
-            )
-
-            if result.applied:
+            if response.applied:
                 assistant_message_id = self._message_id_factory()
                 unit_of_work.messages.append_terminal_assistant_message(
                     MessageRecord(
@@ -106,7 +133,7 @@ class CompleteAnswerOnlyRunService:
                         run_id=command.run_id,
                         action_id=None,
                         event_type="COMMAND_APPLIED",
-                        status=result.current_status.value,
+                        status=response.current_status.value,
                         duration_ms=None,
                         payload_json=dumps(
                             {
@@ -130,7 +157,7 @@ class CompleteAnswerOnlyRunService:
                         actor_id="complete_answer_only_run",
                         actor_display="AnswerOnlyService",
                         event_type="RUN_COMPLETED",
-                        outcome=result.result_code.value,
+                        outcome=response.result_code.value,
                         metadata_json=dumps(
                             {
                                 "command_id": command.command_id,
@@ -144,11 +171,11 @@ class CompleteAnswerOnlyRunService:
                 )
                 response = AnswerOnlyResponse(
                     applied=True,
-                    result_code=result.result_code,
-                    current_status=result.current_status,
-                    current_version=result.current_version,
-                    next_allowed_commands=result.next_allowed_commands,
-                    conflict_detail=result.conflict_detail,
+                    result_code=response.result_code,
+                    current_status=response.current_status,
+                    current_version=response.current_version,
+                    next_allowed_commands=response.next_allowed_commands,
+                    conflict_detail=response.conflict_detail,
                     assistant_message_id=assistant_message_id,
                 )
 
@@ -167,7 +194,7 @@ class CompleteAnswerOnlyRunService:
         existing_receipt: CommandReceiptRecord,
     ) -> AnswerOnlyResponse:
         if existing_receipt.request_hash != command.request_hash:
-            run = unit_of_work.runs.get_by_id(command.run_id)
+            run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise DuplicateCommandError(command.command_id)
             return AnswerOnlyResponse(
@@ -192,7 +219,7 @@ class CompleteAnswerOnlyRunService:
         unit_of_work: UnitOfWork,
         command: CompleteAnswerOnlyRunCommand,
     ) -> AnswerOnlyResponse:
-        run = unit_of_work.runs.get_by_id(command.run_id)
+        run = unit_of_work.runs.get(command.run_id)
         if run is None:
             raise LookupError(f"run not found during receipt recovery: {command.run_id}")
 

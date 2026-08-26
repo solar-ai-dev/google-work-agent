@@ -11,8 +11,9 @@ from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.domain import RunStatus
-from google_work_agent.ports import PlanRecord, PlanStatus
+from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.run.model import RunStatus
 
 
 class CorrectivePlanContinuationRequired(RuntimeError):

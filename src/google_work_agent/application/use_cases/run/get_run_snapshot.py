@@ -5,16 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.domain import (
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.action.model import (
     ActionCommand,
     ActionStatus,
     EffectType,
-    RunStatus,
-    VerificationStatus,
     next_allowed_action_commands,
-    next_allowed_run_commands,
 )
-from google_work_agent.ports.models import ActionRecord, PlanReviewStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

@@ -13,9 +13,9 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
-from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
-from google_work_agent.domain.enums import EffectType
+from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
+from google_work_agent.domain.action.model import EffectType
 from google_work_agent.domain.google_workspace_tool_contracts import (
     ToolContractViolation,
     validate_tool_input,
@@ -23,11 +23,11 @@ from google_work_agent.domain.google_workspace_tool_contracts import (
 )
 from google_work_agent.ports import (
     DeliveryCertainty,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPClientPortError,
-    MCPClientPortErrorCode,
 )
 
 

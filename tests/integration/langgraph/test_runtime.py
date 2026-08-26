@@ -77,7 +77,7 @@ from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.domain import ConnectorToolCatalog, build_p0_tool_registry
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     RequestedRuntimeMode,

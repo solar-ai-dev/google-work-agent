@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Literal, cast
 
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     ConfirmationResponseProjectionV1,
@@ -43,12 +42,14 @@ from google_work_agent.application.orchestration.tool_routing import (
     coarse_resource_category,
     normalize_resource_type,
 )
-from google_work_agent.domain import ConnectorToolCatalog, EffectType
+from google_work_agent.domain.action.model import EffectType
+from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 
 def load_tool_route_determine_io_resources_prompt_reference(
@@ -160,8 +161,8 @@ class ToolRouteAgent:
     ) -> None:
         self._llm_runtime = llm_runtime
         self._tool_catalog = tool_catalog
-        self._prompt_ref = (
-            prompt_ref or load_tool_route_determine_io_resources_prompt_reference(manifest_path)
+        self._prompt_ref = prompt_ref or load_tool_route_determine_io_resources_prompt_reference(
+            manifest_path
         )
         self._select_tool_prompt_ref = (
             select_tool_prompt_ref
@@ -261,8 +262,7 @@ class ToolRouteAgent:
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
             raise ToolRouteValidationError(
-                "tool route semantic candidate revision denied: "
-                "same failure signature already used"
+                "tool route semantic candidate revision denied: same failure signature already used"
             )
         mutable_fields = [
             "$.input_resource_types",
@@ -381,9 +381,7 @@ class ToolRouteAgent:
                     runtime_disposition="RETRYABLE",
                     experiment_disposition="RUN_REVISION",
                     affected_field_paths=mutable_fields,
-                    failure_context_ids=[
-                        "selected_tool_id is not a Registry-eligible candidate"
-                    ],
+                    failure_context_ids=["selected_tool_id is not a Registry-eligible candidate"],
                 ),
             },
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
@@ -512,9 +510,7 @@ def _semantic_candidate_from_llm_candidate(
         elif len(output_effects) == len(raw_output_resource_types):
             output_pairs = tuple(
                 (_normalize_output_resource_type(resource, effect), effect)
-                for resource, effect in zip(
-                    raw_output_resource_types, output_effects, strict=True
-                )
+                for resource, effect in zip(raw_output_resource_types, output_effects, strict=True)
             )
         else:
             raise ToolRouteValidationError("resource/effect candidate cardinality is ambiguous")

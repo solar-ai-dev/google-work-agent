@@ -1,6 +1,6 @@
 """Map Application result codes to Local API HTTP outcomes."""
 
-from google_work_agent.domain import ResultCode
+from google_work_agent.domain.results import ResultCode
 
 
 def http_status_for_result_code(result_code: str, *, default_success: int = 200) -> int:

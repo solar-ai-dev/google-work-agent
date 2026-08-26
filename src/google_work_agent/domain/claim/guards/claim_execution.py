@@ -2,8 +2,10 @@
 
 from dataclasses import dataclass
 
-from google_work_agent.domain.enums import ActionStatus, ApprovalStatus, EffectType, RunStatus
-from google_work_agent.domain.exceptions import PolicyViolationError
+from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.run.model import RunStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,8 +26,9 @@ class ClaimExecutionGuardInput:
     expires_at_ms: int
     now_ms: int
     run_status: RunStatus
+    plan_status: PlanStatus
+    plan_is_current: bool
     durable_cancel_intent: bool
-    plan_superseded: bool
     predecessor_verified: bool
     active_attempt_exists: bool
 
@@ -49,10 +52,12 @@ def guard_claim_execution(value: ClaimExecutionGuardInput) -> None:
         raise PolicyViolationError("approval tool schema version is stale")
     if value.now_ms >= value.expires_at_ms:
         raise PolicyViolationError("approval expired")
-    if value.durable_cancel_intent or value.run_status in {RunStatus.CANCEL_REQUESTED, RunStatus.CANCELLED, RunStatus.RECOVERY_REQUIRED}:
+    if value.durable_cancel_intent:
         raise PolicyViolationError("run state forbids a new write claim")
-    if value.plan_superseded:
-        raise PolicyViolationError("superseded plan cannot issue a write claim")
+    if value.run_status not in {RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING}:
+        raise PolicyViolationError("parent Run status forbids a new write claim")
+    if value.plan_status is not PlanStatus.WAITING_APPROVAL or not value.plan_is_current:
+        raise PolicyViolationError("claim requires the current published Plan")
     if not value.predecessor_verified:
         raise PolicyViolationError("action dependency is not VERIFIED")
     if value.active_attempt_exists:

@@ -10,12 +10,9 @@ from google_work_agent.application.read_contracts import (
     CompleteReadActionCommand,
 )
 from google_work_agent.application.read_lifecycle import CompleteReadActionService
-from google_work_agent.ports import (
-    ActionRecord,
-    ResourceRefRecord,
-    ResourceSource,
-    StoredResourceType,
-)
+from google_work_agent.domain.action.model import Action as ActionRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
+from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 def _seed_plan(database_path: Path) -> None:
@@ -78,7 +75,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         run_id="run-1",
         connector_id="github",
         source=ResourceSource.TASKS,
-        resource_type=StoredResourceType.TASK,
+        resource_type="TASK",
         resource_id="issue-1",
         parent_resource_id=None,
         canonical_url=None,
@@ -156,7 +153,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
                 CompletedResourceRef(
                     id="read-resource-1",
                     source=ResourceSource.TASKS,
-                    resource_type=StoredResourceType.TASK,
+                    resource_type="TASK",
                     resource_id="issue-2",
                     parent_resource_id="list-1",
                     canonical_url=None,

@@ -326,10 +326,9 @@ def test_conversation_message_slice_has_one_production_authority() -> None:
     assert not (ROOT / "src/google_work_agent/application/conversation_lifecycle.py").exists()
     assert not (USE_CASE_ROOT / "message/list_messages.py").exists()
     assert (USE_CASE_ROOT / "message/list_conversation_messages.py").exists()
-    broad_ports = (ROOT / "src/google_work_agent/ports/repositories.py").read_text(encoding="utf-8")
+    broad_ports = ROOT / "src/google_work_agent/ports/repositories.py"
     assert not (ROOT / "src/google_work_agent/adapters/persistence/repositories.py").exists()
-    assert "class ConversationRepository" not in broad_ports
-    assert "class MessageRepository" not in broad_ports
+    assert not broad_ports.exists()
 
 
 def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
@@ -337,7 +336,7 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     calls = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
     assert not any(name.endswith("runs.resume_confirmation") for name in calls)
-    assert any(name.endswith("runs.resume_after_reauth") for name in calls)
+    assert any(name.endswith("transition_resume_after_reauth") for name in calls)
     assert any(name.endswith("RequireRecoveryHandler.apply_in_unit_of_work") for name in calls)
     assert not any(name.endswith("runs.require_recovery") for name in calls)
     assert any(name.endswith("ResolveRecoveryHandler.recheck_in_unit_of_work") for name in calls)

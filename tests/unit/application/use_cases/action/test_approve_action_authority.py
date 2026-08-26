@@ -9,14 +9,11 @@ from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
     ApproveActionHandler,
 )
-from google_work_agent.domain import (
-    ActionCommand,
-    ActionStatus,
-    EffectType,
-    ResultCode,
-    calculate_canonical_json_hash,
-)
-from google_work_agent.ports import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatus
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
@@ -25,8 +22,10 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 def _handoff_dependencies(unit_of_work, id_generator):
     unit_of_work.checkpoints.load_workflow_binding.return_value = SimpleNamespace(
-        langgraph_thread_id="thread-1", graph_profile="SIX_ROLE_BASELINE",
-        graph_version="v1", requested_mode="AUTO"
+        langgraph_thread_id="thread-1",
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="v1",
+        requested_mode="AUTO",
     )
     unit_of_work.checkpoints.load_same_run_checkpoint.return_value = SimpleNamespace(
         checkpoint_id="checkpoint-1", checkpoint_generation=1
@@ -41,9 +40,7 @@ def _handoff_dependencies(unit_of_work, id_generator):
                 "MAIN_CONTROL", stage, profile, version
             )
         ),
-        "schedule_run_execution": lambda command: RunExecutionAcceptedV1(
-            1, True, "ACCEPTED"
-        ),
+        "schedule_run_execution": lambda command: RunExecutionAcceptedV1(1, True, "ACCEPTED"),
     }
 
 
@@ -75,19 +72,13 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.plans.get_by_id.return_value = plan
-    unit_of_work.runs.get_by_id.return_value = SimpleNamespace(
-        id="run-1", conversation_id="conversation-1"
+    unit_of_work.plans.list_by_run.return_value = [plan]
+    unit_of_work.runs.get.return_value = SimpleNamespace(
+        id="run-1", conversation_id="conversation-1", status=RunStatus.WAITING_APPROVAL
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.resource_refs.get.return_value = resource_ref
-    unit_of_work.actions.approve_write.return_value = SimpleNamespace(
-        applied=True,
-        result_code=ResultCode.TRANSITION_APPLIED,
-        current_status=ActionStatus.APPROVED,
-        current_version=2,
-        next_allowed_commands=(ActionCommand.REJECT_ACTION,),
-        conflict_detail=None,
-    )
+    unit_of_work.actions.update_if_version_and_status.return_value = action
     unit_of_work.approvals.list_by_action.return_value = []
     id_generator = MagicMock()
     id_generator.next_id.side_effect = ["approval-1", "handoff-1"]
@@ -116,8 +107,12 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
         plan_run_id="run-1",
         resource_ref=resource_ref,
     )
-    unit_of_work.actions.approve_write.assert_called_once_with(
-        "action-1", expected_version=1, updated_at_ms=1000
+    unit_of_work.actions.update_if_version_and_status.assert_called_once_with(
+        "action-1",
+        expected_version=1,
+        expected_status=ActionStatus.PROPOSED,
+        next_status=ActionStatus.APPROVED,
+        updated_at_ms=1000,
     )
     approval = unit_of_work.approvals.insert.call_args.args[0]
     assert approval.id == "approval-1"
@@ -126,7 +121,6 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     assert approval.source_snapshot_hash == calculate_canonical_json_hash(snapshot)
     assert approval.canonical_arguments_hash == action.arguments_hash
     assert approval.recovery_fingerprint
-    unit_of_work.plans.activate_waiting.assert_called_once_with("plan-1")
     unit_of_work.command_receipts.add_received.assert_called_once()
     unit_of_work.command_receipts.finish_json.assert_called_once()
     unit_of_work.traces.add.assert_called_once()
@@ -149,14 +143,17 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
     )
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    plan = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
         status=PlanStatus.SUPERSEDED,
     )
-    unit_of_work.runs.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.plans.get_by_id.return_value = plan
+    unit_of_work.plans.list_by_run.return_value = [plan]
+    unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1",
         conversation_id="conversation-1",
+        status=RunStatus.WAITING_APPROVAL,
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
 
@@ -178,6 +175,5 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
     assert result.applied is False
     assert result.result_code == ResultCode.STATE_CONFLICT.value
     assert result.conflict_detail == "superseded Plan children are history-only"
-    unit_of_work.actions.approve_write.assert_not_called()
+    unit_of_work.actions.update_if_version_and_status.assert_not_called()
     unit_of_work.approvals.insert.assert_not_called()
-    unit_of_work.plans.activate_waiting.assert_not_called()
