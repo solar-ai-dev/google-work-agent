@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeWorkflowRuntime
+from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
@@ -18,7 +19,7 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
+from google_work_agent.application.coordinator import LocalRunCoordinator
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
@@ -103,20 +104,21 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     )
     id_generator = DeterministicUUID(prefix="req")
 
-    def _execute_admission(admission: object) -> None:
-        try:
-            coordinator.enqueue_start(
-                run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
-                request_id=admission.admission_id,  # type: ignore[attr-defined]
-                command_id=admission.handoff_id,  # type: ignore[attr-defined]
-            )
-        except QueueBusyError:
-            pass
+    checkpoint, materialize, invoke = build_test_admission_callbacks(
+        checkpoint_path=tmp_path / "checkpoints.db",
+        query_service=query_service,
+        unit_of_work_factory=unit_of_work_factory,
+        workflow_runtime=runtime,
+        event_publisher=publisher,
+        now_ms=clock.now_ms,
+    )
 
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
-        execute_admission=_execute_admission,
+        checkpoint=checkpoint,
+        materialize_admission_checkpoint=materialize,
+        invoke_semantic_owner=invoke,
     )
     bind_host = "127.0.0.1"
     bind_port = 8765
@@ -249,7 +251,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
                 "conversation_id": "conversation-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
-                "selected_resource_ids": [],
+                "selected_resource_handles": [],
                 "requested_mode": "AUTO",
                 "api_contract_version": "1",
             },
@@ -268,7 +270,9 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         )
 
         deadline = time.time() + 2
-        while time.time() < deadline and not runtime.call_log:
+        while time.time() < deadline and not publisher.replay(
+            run_id=run_id, after_event_id=None
+        ):
             time.sleep(0.01)
 
         assert runtime.call_log

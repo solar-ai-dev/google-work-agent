@@ -6,6 +6,7 @@ import { CalendarMonthView, calendarMonthRange } from "./CalendarMonthView";
 
 function event(overrides: Partial<ResourceItem> = {}): ResourceItem {
   return {
+    selection_handle: "handle-event-1",
     source: "calendar",
     resource_type: "calendar_event",
     resource_id: "event-1",

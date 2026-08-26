@@ -28,7 +28,6 @@ fail-closed invalid resume.
 
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
@@ -41,9 +40,7 @@ from tests.integration.langgraph.test_runtime import (
     LangGraphWorkflowRuntime,
     Path,
     ProductFixtureSnapshotLoader,
-    WorkflowCorrelationContext,
     WorkflowOutcome,
-    WorkflowResumeRequest,
     _action_required_intent,
     _analysis_output,
     _answer_output,
@@ -61,12 +58,11 @@ from tests.integration.langgraph.test_runtime import (
     _tool_catalog,
     _write_plan_output,
     connect_sqlite,
-    pytest,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
+from tests.support.canonical_workflow_runtime import (
+    resume_confirmation_with_handoff,
+    start_with_admission,
 )
 
 
@@ -86,7 +82,7 @@ def _build_runtime(
     manifest_path: Path,
     id_prefix: str,
 ) -> LangGraphWorkflowRuntime:
-    return LangGraphWorkflowRuntime(
+    runtime = LangGraphWorkflowRuntime(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         llm_runtime=llm_runtime,
         gateway=gateway,
@@ -96,11 +92,22 @@ def _build_runtime(
         id_factory=DeterministicUUID(prefix=id_prefix).next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
     )
+    initial_state = runtime._invocation._initial_state  # noqa: SLF001
+
+    def retrieval_heavy_initial_state(request: object) -> dict[str, object]:
+        state = initial_state(request)  # type: ignore[arg-type]
+        budget = dict(state["retry_budget"])
+        budget["profile"] = "RETRIEVAL_HEAVY"
+        state["retry_budget"] = budget  # type: ignore[typeddict-item]
+        return state
+
+    runtime._invocation._initial_state = retrieval_heavy_initial_state  # noqa: SLF001
+    return runtime
 
 
 def _queue_more(llm_runtime: _QueuedLLMRuntime, payloads: list[object]) -> None:
@@ -120,56 +127,20 @@ def _attempt_confirmation(
     resume_payload: dict[str, object],
     command_id: str,
 ) -> tuple[object, object | None]:
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
-        assert run is not None
-        expected_version = run.version
-    runtime_results: list[object] = []
-
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
-                    workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
-                )
-            )
-        )
-
-    application_result = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=FakeClock(2000).now_ms,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
-        ),
-    )(
-        ResumeRunCommand(
-            command_id=command_id,
-            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version="1",
-        ),
-        request_id=f"request-{command_id}",
+    return resume_confirmation_with_handoff(
+        runtime,
+        database_path,
         resume_payload=resume_payload,
+        command_id=command_id,
     )
-    return application_result, runtime_results[0] if runtime_results else None
 
 
 def _resume_confirmation(
-    *, runtime: LangGraphWorkflowRuntime, database_path: Path,
-    resume_payload: dict[str, object], command_id: str,
+    *,
+    runtime: LangGraphWorkflowRuntime,
+    database_path: Path,
+    resume_payload: dict[str, object],
+    command_id: str,
 ) -> object | None:
     application_result, runtime_result = _attempt_confirmation(
         runtime=runtime,
@@ -195,17 +166,9 @@ def _nested_review_task(runtime: LangGraphWorkflowRuntime) -> Any:
 
 
 def _grant_extra_budget(runtime: LangGraphWorkflowRuntime) -> None:
-    """Bump the paused nested checkpoint's retry_budget.profile to
-    RETRIEVAL_HEAVY (cap 14) so a resolving review.inspect call has room to
-    actually execute -- Review's own first call already lands on
-    NORMAL_MAX_LLM_CALLS (8), leaving zero slack under NORMAL. Pure test
-    state injection (mirrors C2-B's own forged-receipt technique), no
-    production code touched."""
+    """Assert that the test runtime entered with the heavy budget fixture."""
     outer_task = _nested_review_task(runtime)
-    nested_config = outer_task.state.config
-    current_budget = dict(outer_task.state.values["retry_budget"])
-    current_budget["profile"] = "RETRIEVAL_HEAVY"
-    runtime._graph.update_state(nested_config, {"retry_budget": current_budget})  # noqa: SLF001
+    assert outer_task.state.values["retry_budget"]["profile"] == "RETRIEVAL_HEAVY"
 
 
 def _review_calls(llm_runtime: _QueuedLLMRuntime, prompt_id: str) -> list[dict[str, object]]:
@@ -243,7 +206,7 @@ def _start_to_first_confirmation(
         manifest_path=manifest_path,
         id_prefix="run",
     )
-    first = runtime.start(_start_write_request())
+    first = start_with_admission(runtime, database_path, _start_write_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     return runtime, llm_runtime, first.payload
 
@@ -346,7 +309,8 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
     reads_before_resume = len(gateway.call_log)
 
     state_before = runtime._graph.get_state(  # noqa: SLF001
-        runtime._invocation.config_for_thread("thread-1"), subgraphs=True  # noqa: SLF001
+        runtime._invocation.config_for_thread("thread-1"),
+        subgraphs=True,  # noqa: SLF001
     )
     invocation_id_before = state_before.tasks[0].state.values["__review_agent_local__"][
         "invocation_id"
@@ -363,7 +327,7 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "Use the primary recipient.",
             },
             command_id="command-2",
@@ -377,10 +341,9 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
         # T4: zero provider reads happened on resume.
         assert len(gateway.call_log) == reads_before_resume
         calls_during_resume = llm_runtime.calls[calls_before_resume:]
-        assert _upstream_calls(llm_runtime) == _upstream_calls(llm_runtime)[: calls_before_resume]
+        assert _upstream_calls(llm_runtime) == _upstream_calls(llm_runtime)[:calls_before_resume]
         resume_prompt_ids = [
-            getattr(call["prompt_ref"], "prompt_id", None)
-            for call in calls_during_resume
+            getattr(call["prompt_ref"], "prompt_id", None) for call in calls_during_resume
         ]
         assert resume_prompt_ids == ["review.inspect"]
 
@@ -393,9 +356,7 @@ def test_review_resume_does_not_re_execute_upstream(tmp_path: Path) -> None:
         init_entries = [entry for entry in review_entries if entry["node_name"] == "init"]
         assert len(init_entries) == 1
         assert init_entries[0]["agent_invocation_id"] == invocation_id_before
-        assert all(
-            entry["agent_invocation_id"] == invocation_id_before for entry in review_entries
-        )
+        assert all(entry["agent_invocation_id"] == invocation_id_before for entry in review_entries)
     finally:
         runtime.close()
 
@@ -436,7 +397,7 @@ def test_review_resume_applies_confirmation_response_within_prompt_boundary(
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "Use the primary recipient.",
             },
             command_id="command-2",
@@ -506,7 +467,7 @@ def test_review_resumes_second_consecutive_confirmation_round_via_same_nested_ch
                 "schema_version": 1,
                 "interrupt_id": round1_interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "round-1 answer, still ambiguous apparently.",
             },
             command_id="command-2",
@@ -530,7 +491,7 @@ def test_review_resumes_second_consecutive_confirmation_round_via_same_nested_ch
                 "schema_version": 1,
                 "interrupt_id": round2_interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "round-2 answer, resolves it.",
             },
             command_id="command-3",
@@ -574,7 +535,7 @@ def test_review_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
                 "schema_version": 1,
                 "interrupt_id": "definitely-the-wrong-interrupt-id",
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "irrelevant",
             },
             command_id="command-2",
@@ -613,8 +574,8 @@ def test_review_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path) -
             resume_payload={
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "response_kind": "OPTION_SELECTION",
-                "selected_option_ids": ["option-not-offered"],
+                "response_kind": "OPTION",
+                "selected_option": "option-not-offered",
                 "free_text": None,
             },
             command_id="command-2",
@@ -637,17 +598,15 @@ def test_review_pass_answer_target_completes(tmp_path: Path) -> None:
         database_path=database_path,
         llm_payloads=[*_ANSWER_QUEUE_TO_REVIEW, _review_output("PASS")],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-review-pass-answer.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
     try:
-        result = runtime.start(_start_request())
+        result = start_with_admission(runtime, database_path, _start_request())
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
             assert run_row[0] == "COMPLETED"
         finally:
             connection.close()
@@ -682,17 +641,15 @@ def test_review_block_finalizes_blocked(tmp_path: Path) -> None:
             _review_output("BLOCK", blockers=["The requested operation is prohibited."]),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-review-block.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
     try:
-        result = runtime.start(_start_write_request())
+        result = start_with_admission(runtime, database_path, _start_write_request())
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
             assert run_row[0] == "BLOCKED"
         finally:
             connection.close()

@@ -28,7 +28,6 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowRuntime,
-    WorkflowStartRequest,
 )
 
 
@@ -79,7 +78,6 @@ class LocalRunCoordinator:
         self._id_factory = id_factory
         self._queue: Queue[_QueueItem | None] = Queue(maxsize=capacity)
         self._queued_or_running: set[str] = set()
-        self._reserved: set[str] = set()
         self._pending_items: dict[str, _QueueItem] = {}
         self._lock = Lock()
         self._stop_event = Event()
@@ -96,22 +94,6 @@ class LocalRunCoordinator:
         self._stop_event.clear()
         self._thread = Thread(target=self._worker_loop, name="local-run-coordinator", daemon=True)
         self._thread.start()
-        for run in self._query_service.list_open_runs():
-            if run.status in {
-                RunStatus.REAUTH_REQUIRED.value,
-                RunStatus.COMPLETED.value,
-                RunStatus.CANCELLED.value,
-                RunStatus.FAILED.value,
-            }:
-                continue
-            self._enqueue(
-                _QueueItem(
-                    kind="recover",
-                    run_id=run.run_id,
-                    request_id="startup-recovery",
-                    command_id=None,
-                )
-            )
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -121,66 +103,6 @@ class LocalRunCoordinator:
         self._queue.put(None)
         thread.join(timeout=5)
         self._thread = None
-        self._workflow_runtime.close()
-
-    def enqueue_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
-        self._enqueue(
-            _QueueItem(
-                kind="start",
-                run_id=run_id,
-                request_id=request_id,
-                command_id=command_id,
-            )
-        )
-
-    def reserve_start(self, *, run_id: str) -> bool:
-        """Atomically claim admission for run_id before its Domain CREATED
-        row commits, so a full/stopped queue can never leave that row
-        behind with nothing to pick it up.
-
-        The admission check and the reservation record are one atomic
-        operation under the shared lock, and every other producer
-        (_enqueue, request_cancel) checks the same
-        ``qsize() + len(_reserved) < capacity`` invariant before claiming a
-        slot for itself -- so a reservation held here can never be starved
-        by another producer enqueuing in the window before confirm_start
-        runs. Pair a True result with confirm_start on success, or
-        release_reservation if the paired attempt does not end up
-        creating/enqueuing the run after all.
-        """
-        if self._stop_event.is_set():
-            return False
-        with self._lock:
-            if run_id in self._queued_or_running:
-                return False
-            if self._queue.qsize() + len(self._reserved) >= self._queue.maxsize:
-                return False
-            self._queued_or_running.add(run_id)
-            self._reserved.add(run_id)
-            return True
-
-    def confirm_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
-        """Atomically convert a reserve_start() admission into a real queue item.
-
-        Releasing the reservation and performing the actual put happen
-        under the same lock acquisition, so no other producer can observe
-        an intermediate state where the slot is neither reserved nor
-        occupied.
-        """
-        item = _QueueItem(kind="start", run_id=run_id, request_id=request_id, command_id=command_id)
-        with self._lock:
-            self._reserved.discard(run_id)
-            try:
-                self._queue.put_nowait(item)
-            except Full as error:
-                self._queued_or_running.discard(run_id)
-                raise QueueBusyError() from error
-
-    def release_reservation(self, *, run_id: str) -> None:
-        """Release a reserve_start() admission that never reached confirm_start()."""
-        with self._lock:
-            self._reserved.discard(run_id)
-            self._queued_or_running.discard(run_id)
 
     def enqueue_resume(
         self,
@@ -252,13 +174,10 @@ class LocalRunCoordinator:
         holding self._lock, with item.run_id confirmed absent from
         _queued_or_running by the caller.
 
-        This is the single shared capacity gate for every producer
-        (_enqueue and request_cancel): admission is checked against actual
-        queue occupancy plus any outstanding reserve_start() reservations,
-        and the put happens in the same lock acquisition, so no other
-        thread can observe or race the capacity decision in between.
+        This is the single shared capacity gate for the deferred resume and
+        cancellation producers that remain on this legacy coordinator.
         """
-        if self._queue.qsize() + len(self._reserved) >= self._queue.maxsize:
+        if self._queue.qsize() >= self._queue.maxsize:
             raise QueueBusyError()
         self._queued_or_running.add(item.run_id)
         try:
@@ -316,26 +235,8 @@ class LocalRunCoordinator:
             api_contract_version=self._api_contract_version,
         )
         expected_version = context.version
-        if item.kind == "start" and context.status == RunStatus.RECOVERY_REQUIRED.value:
-            return
-        if item.kind == "start":
-            expected_version = self._ensure_analysis_started(context.run_id)
         try:
-            if item.kind == "start":
-                result = self._workflow_runtime.start(
-                    WorkflowStartRequest(
-                        run_id=context.run_id,
-                        conversation_id=context.conversation_id,
-                        workflow_key=context.workflow_key,
-                        entry_mode=context.entry_mode,
-                        requested_mode=context.requested_mode,
-                        request_text=context.request_text,
-                        selected_resource_ids=context.selected_resource_ids,
-                        correlation=correlation,
-                        selected_resources=context.selected_resources,
-                    )
-                )
-            elif item.kind == "resume":
+            if item.kind == "resume":
                 result = self._workflow_runtime.resume(
                     WorkflowResumeRequest(
                         run_id=context.run_id,
@@ -346,15 +247,7 @@ class LocalRunCoordinator:
                     )
                 )
             else:
-                result = self._workflow_runtime.recover_open_run(
-                    WorkflowRecoveryRequest(
-                        run_id=context.run_id,
-                        workflow_key=context.workflow_key,
-                        domain_status=context.status,
-                        domain_version=context.version,
-                        correlation=correlation,
-                    )
-                )
+                raise ValueError(f"unsupported coordinator item: {item.kind}")
         except Exception as error:
             # A raising workflow_runtime call (e.g. LLMInvocationError from
             # an unrepaired schema-invalid structured output) must still
@@ -386,8 +279,6 @@ class LocalRunCoordinator:
             )
             return
         self._handle_result(context.run_id, result.outcome, result.payload, expected_version)
-        if item.kind == "recover" and self._has_cancel_intent(context.run_id):
-            self._continue_cancellation(item=item, recover_if_needed=False)
 
     def _continue_cancellation(self, *, item: _QueueItem, recover_if_needed: bool) -> None:
         if self._finalize_cancel_service is None or self._id_factory is None:
@@ -466,34 +357,6 @@ class LocalRunCoordinator:
 
     def _publish_cancel_response(self, response: WriteRunResponse) -> None:
         self._outcomes.publish_cancel_response(response)
-
-    def _ensure_analysis_started(self, run_id: str) -> int:
-        """Guarantee a run has left CREATED before any outcome is recorded against it.
-
-        CREATED only ever transitions via START_ANALYSIS
-        (domain/transitions.py); FAIL_RUN is valid only from
-        ANALYZING/RETRIEVING/PLANNING. Every real graph node already performs
-        this exact guarded transition as its own first action (see
-        adapters/langgraph/runtime.py::_transition_run); placeholder runtimes
-        such as ``_PromptInactiveWorkflowRuntime`` never touch the domain
-        store at all, which is what let a FAILED outcome try -- and silently
-        fail -- to persist against a run still sitting in CREATED.
-        """
-        with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
-            if run is None:
-                raise LookupError(f"run not found: {run_id}")
-            if run.status is not RunStatus.CREATED:
-                return run.version
-            result = unit_of_work.runs.start_analysis(
-                run_id,
-                expected_version=run.version,
-                finished_at_ms=None,
-            )
-            if result.applied:
-                unit_of_work.commit()
-                return result.current_version
-            return run.version
 
     def _handle_result(
         self,

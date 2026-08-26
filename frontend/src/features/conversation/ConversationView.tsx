@@ -29,7 +29,7 @@ export type ConversationViewModel = {
     handleAttachFiles: (action: RunAction, files: FileList) => Promise<void>;
     handleCancelRun: () => Promise<void>;
     handleResumeRun: () => Promise<void>;
-    handleConfirmation: () => Promise<void>;
+    handleConfirmation: (selectedOption?: string) => Promise<void>;
     handleResolveRecovery: (action: RunAction, resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN") => Promise<void>;
   };
   resourceContext: { selectedResourceIds: string[]; selectedResourceLabels: string[]; composerPrompt: string };
@@ -119,25 +119,43 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                   <p>
                     {pendingConfirmation?.question ?? "확인 요청 정보를 동기화하고 있습니다."}
                   </p>
-                  <textarea
-                    aria-label="확인 응답"
-                    className="composer"
-                    disabled={!pendingConfirmation}
-                    value={confirmationText}
-                    onChange={(event) => setConfirmationText(event.target.value)}
-                  />
-                  <button
-                    className="button-primary"
-                    type="button"
-                    disabled={
-                      !pendingConfirmation ||
-                      !confirmationText.trim() ||
-                      busyCommand === "confirm-run"
-                    }
-                    onClick={() => void handleConfirmation()}
-                  >
-                    응답 보내기
-                  </button>
+                  {pendingConfirmation?.responseMode === "OPTION" ? (
+                    <div className="button-row">
+                      {pendingConfirmation.options.map((option) => (
+                        <button
+                          className="button-primary"
+                          type="button"
+                          key={option}
+                          disabled={busyCommand === "confirm-run"}
+                          onClick={() => void handleConfirmation(option)}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <textarea
+                        aria-label="확인 응답"
+                        className="composer"
+                        disabled={!pendingConfirmation}
+                        value={confirmationText}
+                        onChange={(event) => setConfirmationText(event.target.value)}
+                      />
+                      <button
+                        className="button-primary"
+                        type="button"
+                        disabled={
+                          !pendingConfirmation ||
+                          !confirmationText.trim() ||
+                          busyCommand === "confirm-run"
+                        }
+                        onClick={() => void handleConfirmation()}
+                      >
+                        응답 보내기
+                      </button>
+                    </>
+                  )}
                 </article>
               ) : null}
 

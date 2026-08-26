@@ -265,6 +265,8 @@ def test_build_policy_confirmation_receipt_has_required_minimum_fields() -> None
     assert receipt["schema_version"] == 1
     assert receipt["confirmation_kind"] == "SCOPE_EXPANSION"
     assert receipt["decision"] == "APPROVED"
+    assert receipt["semantic_owner_id"] == "TOOL_ROUTE"
+    assert receipt["meta"]["artifact_id"] == "receipt-artifact-1"
     assert receipt["interrupt_id"] == "interrupt-1"
     assert receipt["affected_route_ids"] == ["TASK:CREATE"]
     assert receipt["affected_resource_refs"] == ["TASK", "TASK_LIST"]

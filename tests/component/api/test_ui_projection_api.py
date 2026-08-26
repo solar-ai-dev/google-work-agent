@@ -1,8 +1,11 @@
+import base64
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway, FakeWorkflowRuntime
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
@@ -17,7 +20,11 @@ from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
-from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.sessions import (
+    InMemoryLocalSessionManager,
+    calculate_session_digest,
+)
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.start_run import (
@@ -31,6 +38,13 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
+)
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+    IssueSelectionHandleCommand,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
@@ -46,6 +60,18 @@ from google_work_agent.ports import (
     ResourceType,
     RuntimeSummary,
 )
+
+
+def _tamper_handle_payload(handle: str, *, field: str, value: str) -> str:
+    version, encoded_payload, signature = handle.split(".")
+    payload = json.loads(
+        base64.urlsafe_b64decode(encoded_payload + "=" * (-len(encoded_payload) % 4))
+    )
+    payload[field] = value
+    tampered = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).rstrip(b"=").decode("ascii")
+    return f"{version}.{tampered}.{signature}"
 
 
 def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path: Path) -> None:
@@ -115,18 +141,34 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         },
     )()
     id_generator = DeterministicUUID(prefix="req")
+    selection_secret = b"s" * 32
+    selection_issuer = IssueSelectionHandle(
+        signing_secret=selection_secret,
+        service_instance_id="svc-ui",
+        now_ms=clock.now_ms,
+        ttl_ms=5 * 60 * 1000,
+    )
+    selection_resolver = ResolveSelectionHandle(
+        signing_secret=selection_secret,
+        service_instance_id="svc-ui",
+        now_ms=clock.now_ms,
+    )
 
-    def _execute_admission(admission: object) -> None:
-        coordinator_stub.enqueue_start(
-            run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
-            request_id=admission.admission_id,  # type: ignore[attr-defined]
-            command_id=admission.handoff_id,  # type: ignore[attr-defined]
-        )
+    checkpoint, materialize, invoke = build_test_admission_callbacks(
+        checkpoint_path=tmp_path / "admission-checkpoints.db",
+        query_service=query_service,
+        unit_of_work_factory=unit_of_work_factory,
+        workflow_runtime=runtime,
+        event_publisher=publisher,
+        now_ms=clock.now_ms,
+    )
 
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
-        execute_admission=_execute_admission,
+        checkpoint=checkpoint,
+        materialize_admission_checkpoint=materialize,
+        invoke_semantic_owner=invoke,
     )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
@@ -209,6 +251,8 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             gmail_detail_gateway=gateway,
             default_calendar_id_provider=lambda: "calendar-primary",
         ),
+        issue_selection_handle=selection_issuer,
+        resolve_selection_handle=selection_resolver,
     )
 
     headers = {
@@ -326,6 +370,157 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         )
         assert created.status_code == 201
 
+        task_handle = tasks.json()["items"][0]["selection_handle"]
+        session_token = client.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+        assert session_token is not None
+        session_digest = calculate_session_digest(session_token)
+        invalid_handles = (
+            task_handle + "x",
+            IssueSelectionHandle(
+                signing_secret=selection_secret,
+                service_instance_id="svc-ui",
+                now_ms=lambda: 1,
+                ttl_ms=1,
+            )(
+                IssueSelectionHandleCommand(
+                    session_digest=session_digest,
+                    account_id="account-1",
+                    connector_id="google_workspace",
+                    resource_type="task",
+                    resource_id="task-invoice",
+                    parent_resource_id="task-list-default",
+                    version_token="1",
+                )
+            ),
+            IssueSelectionHandle(
+                signing_secret=selection_secret,
+                service_instance_id="other-service",
+                now_ms=clock.now_ms,
+                ttl_ms=5 * 60 * 1000,
+            )(
+                IssueSelectionHandleCommand(
+                    session_digest=session_digest,
+                    account_id="account-1",
+                    connector_id="google_workspace",
+                    resource_type="task",
+                    resource_id="task-invoice",
+                    parent_resource_id="task-list-default",
+                    version_token="1",
+                )
+            ),
+            selection_issuer(
+                IssueSelectionHandleCommand(
+                    session_digest="b" * 64,
+                    account_id="account-1",
+                    connector_id="google_workspace",
+                    resource_type="task",
+                    resource_id="task-invoice",
+                    parent_resource_id="task-list-default",
+                    version_token="1",
+                )
+            ),
+            selection_issuer(
+                IssueSelectionHandleCommand(
+                    session_digest=session_digest,
+                    account_id="account-2",
+                    connector_id="google_workspace",
+                    resource_type="task",
+                    resource_id="task-invoice",
+                    parent_resource_id="task-list-default",
+                    version_token="1",
+                )
+            ),
+            selection_issuer(
+                IssueSelectionHandleCommand(
+                    session_digest=session_digest,
+                    account_id="account-1",
+                    connector_id="other_connector",
+                    resource_type="task",
+                    resource_id="task-invoice",
+                    parent_resource_id="task-list-default",
+                    version_token="1",
+                )
+            ),
+            _tamper_handle_payload(task_handle, field="resource_id", value="other-task"),
+            _tamper_handle_payload(task_handle, field="parent_resource_id", value="other-list"),
+        )
+        provider_calls_before_invalid = len(gateway.call_log)
+        for index, invalid_handle in enumerate(invalid_handles):
+            rejected = client.post(
+                "/api/v1/runs",
+                json={
+                    "command_id": f"invalid-run-{index}",
+                    "conversation_id": "conversation-1",
+                    "request_text": "invalid selection",
+                    "entry_mode": "RESOURCE_SELECTED",
+                    "selected_resource_handles": [invalid_handle],
+                    "requested_mode": "AUTO",
+                    "api_contract_version": "1",
+                },
+                headers=headers,
+            )
+            assert rejected.status_code == 422
+            assert len(gateway.call_log) == provider_calls_before_invalid
+
+        raw_bypass = client.post(
+            "/api/v1/runs",
+            json={
+                "command_id": "raw-resource-bypass",
+                "conversation_id": "conversation-1",
+                "request_text": "raw selection",
+                "entry_mode": "RESOURCE_SELECTED",
+                "selected_resource_handles": [task_handle],
+                "selected_resource_ids": ["task-invoice"],
+                "selected_resources": [{"resource_id": "task-invoice"}],
+                "requested_mode": "AUTO",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert raw_bypass.status_code == 422
+        assert len(gateway.call_log) == provider_calls_before_invalid
+
+        selected_conversation = client.post(
+            "/api/v1/conversations",
+            json={
+                "command_id": "conversation-cmd-selected",
+                "conversation_id": "conversation-selected",
+                "account_id": "account-1",
+                "title": "Selected",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert selected_conversation.status_code == 201
+        selected_start = client.post(
+            "/api/v1/runs",
+            json={
+                "command_id": "run-cmd-selected",
+                "conversation_id": "conversation-selected",
+                "request_text": "selected task",
+                "entry_mode": "RESOURCE_SELECTED",
+                "selected_resource_handles": [task_handle],
+                "requested_mode": "AUTO",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        assert selected_start.status_code == 202
+        selected_run_id = selected_start.json()["run_id"]
+        selected_context = client.get(
+            f"/api/v1/runs/{selected_run_id}/context", headers=headers
+        ).json()["context"]
+        assert selected_context["selected_resource_ids"] == [
+            tasks.json()["items"][0]["resource_id"]
+        ]
+        with connect_sqlite(database_path) as connection:
+            assert connection.execute(
+                "SELECT COUNT(*) FROM workflow_bindings WHERE run_id=?", (selected_run_id,)
+            ).fetchone()[0] == 1
+            assert connection.execute(
+                "SELECT COUNT(*) FROM resource_refs WHERE run_id=?", (selected_run_id,)
+            ).fetchone()[0] == 1
+
         started = client.post(
             "/api/v1/runs",
             json={
@@ -333,7 +528,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 "conversation_id": "conversation-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
-                "selected_resource_ids": [],
+                "selected_resource_handles": [],
                 "requested_mode": "AUTO",
                 "api_contract_version": "1",
             },

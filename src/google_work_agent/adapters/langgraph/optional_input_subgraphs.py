@@ -47,7 +47,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow impor
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     WorkflowPhase,
 )
@@ -113,13 +113,11 @@ class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
         self,
         state: WorkAnalysisLocalState,
         *,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[WorkAnalysisResultV1, StructuredLLMResult]:
         retrieval_result = state.get("retrieval_result")
         if retrieval_result is not None:
-            return super()._run_analyze_attempt(
-                state, confirmation_response=confirmation_response
-            )
+            return super()._run_analyze_attempt(state, confirmation_response=confirmation_response)
         if not isinstance(self._agent, CanonicalOptionalInputWorkAnalysisAgent):
             raise TypeError("optional Work Analysis requires canonical optional-input agent")
 
@@ -127,7 +125,8 @@ class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
         for receipt in state.get("policy_confirmation_receipts", []):
             if not isinstance(receipt, Mapping):
                 continue
-            receipt_id = receipt.get("confirmation_receipt_id")
+            meta = receipt.get("meta")
+            receipt_id = meta.get("artifact_id") if isinstance(meta, Mapping) else None
             if isinstance(receipt_id, str) and receipt_id:
                 receipt_refs.append(receipt_id)
 
@@ -204,7 +203,7 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
         state: PlanningLocalState,
         *,
         mode: str,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, list[StructuredLLMResult]]:
         analysis_result = state.get("analysis_result")
         if not isinstance(self._agent, CanonicalOptionalInputPlanningAgent):
@@ -243,9 +242,7 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
                 "ANSWER_ONLY bypasses Review; optional-input revise_answer is unreachable"
             )
 
-        frozen_routes = _require_state_value(
-            _frozen_output_routes(state), "frozen_output_routes"
-        )
+        frozen_routes = _require_state_value(_frozen_output_routes(state), "frozen_output_routes")
         ensure_llm_call_budget(state, provider_calls_requested=len(frozen_routes))
         if mode == "draft_plan":
             route_results = self._argument_orchestrator.compose(

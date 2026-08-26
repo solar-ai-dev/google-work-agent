@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable, Hashable
 from copy import deepcopy
 from hashlib import sha256
@@ -11,7 +10,6 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, cast
 
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import interrupt
 
 from google_work_agent.adapters.connectors.google_workspace_reader import (
@@ -23,9 +21,9 @@ from google_work_agent.adapters.langgraph.main.graph import (
     WorkflowGraphComposition,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
     GraphRouteTranslator,
     UnroutableSupervisorTargetError,
-    build_resume_target_registry,
 )
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
@@ -40,6 +38,10 @@ from google_work_agent.adapters.langgraph.pre_analysis_composition import (
     build_pre_analysis_subgraphs,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
     planning_mode_from_request_intent,
@@ -60,6 +62,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow impor
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.answer_only import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunService,
@@ -82,11 +85,10 @@ from google_work_agent.application.orchestration.context_retrieval import (
 )
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     DomainValidationResult,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    PolicyConfirmationReceiptV1,
     ReviewResult,
     WorkflowPhase,
     approve_planning_revision,
@@ -180,6 +182,21 @@ from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.use_cases.run.begin_planning import (
+    BeginPlanningCommand,
+    BeginPlanningHandler,
+)
+from google_work_agent.application.use_cases.run.begin_retrieval import (
+    BeginRetrievalCommand,
+    BeginRetrievalHandler,
+)
+from google_work_agent.application.use_cases.run.request_confirmation import (
+    RequestConfirmationHandler,
+)
+from google_work_agent.application.use_cases.run.start_analysis import (
+    StartAnalysisCommand,
+    StartAnalysisHandler,
+)
 from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
@@ -243,6 +260,7 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connectors.execution import (
     ConnectorExecutionPort,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 from google_work_agent.ports.repositories import ActionRecord
 
 JsonObject = dict[str, object]
@@ -277,7 +295,8 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         id_factory: Callable[[], str],
         signing_secret: str,
         service_instance_id: str,
-        checkpoint_database_path: Path,
+        checkpoint_port: SqliteCheckpointAdapter | None = None,
+        checkpoint_database_path: Path | None = None,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
@@ -285,6 +304,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
         attachment_verifier: AttachmentDescriptorVerifier | None = None,
+        resume_target_registry: ResumeTargetRegistry | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._llm_runtime = llm_runtime
@@ -293,10 +313,19 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         self._id_factory = id_factory
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
-        self._checkpoint_database_path = checkpoint_database_path
+        if (checkpoint_port is None) == (checkpoint_database_path is None):
+            raise ValueError("provide exactly one canonical checkpoint adapter or database path")
+        self._checkpoint_port = (
+            checkpoint_port
+            if checkpoint_port is not None
+            else SqliteCheckpointAdapter(cast(Path, checkpoint_database_path), now_ms=now_ms)
+        )
         self._graph_profile = graph_profile
         self._route_translator = GraphRouteTranslator(graph_profile)
-        self._resume_target_registry = build_resume_target_registry(graph_profile)
+        self._resume_target_registry = resume_target_registry or ResumeTargetRegistry(
+            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+            graph_version=RESUME_CONTRACT_VERSION,
+        )
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
@@ -304,12 +333,26 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         self._default_calendar_id_provider = default_calendar_id_provider
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
-        self._checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._checkpoint_connection = sqlite3.connect(
-            self._checkpoint_database_path,
-            check_same_thread=False,
+        self._checkpointer = self._checkpoint_port
+        canonical_uow_factory = cast(Callable[[], CanonicalUnitOfWork], unit_of_work_factory)
+        self._start_analysis_handler = StartAnalysisHandler(
+            unit_of_work_factory=canonical_uow_factory,
+            now_ms=now_ms,
         )
-        self._checkpointer = SqliteSaver(self._checkpoint_connection)
+        self._begin_retrieval_handler = BeginRetrievalHandler(
+            unit_of_work_factory=canonical_uow_factory,
+            now_ms=now_ms,
+        )
+        self._begin_planning_handler = BeginPlanningHandler(
+            unit_of_work_factory=canonical_uow_factory,
+            now_ms=now_ms,
+            id_factory=id_factory,
+        )
+        self._request_confirmation_handler = RequestConfirmationHandler(
+            unit_of_work_factory=canonical_uow_factory,
+            now_ms=now_ms,
+            resume_target_registry=self._resume_target_registry,
+        )
         self._request_understanding = RequestUnderstandingAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
@@ -579,7 +622,6 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             confirm_request_understanding_inline=self._confirm_request_understanding_inline,
             confirm_tool_route_inline=self._confirm_tool_route_inline,
             confirm_context_retrieval_inline=self._confirm_context_retrieval_inline,
-            record_policy_confirmation_receipt=self._record_policy_confirmation_receipt,
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
             retrieval_read_executor=self._retrieval_read_executor,
@@ -633,6 +675,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 graph_profile=self._graph_profile,
                 transition_run=self._transition_run,
                 merge_decision=self._merge_decision,
+                confirm_inline=self._confirm_context_retrieval_inline,
             ).build()
             self._three_stage_two_subgraph = ThreeStageTwoSubgraph(
                 request_understanding_agent=self._request_understanding,
@@ -671,6 +714,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 graph_profile=self._graph_profile,
                 transition_run=self._transition_run,
                 merge_decision=self._merge_decision,
+                confirm_inline=self._confirm_context_retrieval_inline,
             ).build()
         self._topology = self._topology_for_profile()
         self._graph_composition = WorkflowGraphComposition(
@@ -686,7 +730,6 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 domain_validation=self._domain_validation_node,
-                waiting_confirmation=self._waiting_confirmation_node,
                 waiting_approval=self._waiting_approval_node,
                 modify_review=self._modify_review_node,
                 action_execution=self._write_execution_node,
@@ -704,6 +747,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         self._invocation = WorkflowInvocationCoordinator(
             graph=self._graph,
             graph_profile=self._graph_profile,
+            start_node=self._topology[0],
             initial_state=self._initial_state,
             current_run_status=self._current_run_status,
             latest_unknown_action=self._latest_unknown_action,
@@ -717,6 +761,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
         return self._invocation.start(request)
+
+    def prepare_start(self, request: WorkflowStartRequest) -> None:
+        self._invocation.prepare_start(request)
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         return self._invocation.resume(request)
@@ -735,7 +782,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         return self._invocation.recover_open_run(request)
 
     def close(self) -> None:
-        self._checkpoint_connection.close()
+        self._checkpoint_port.close()
 
     def _build_graph(self) -> Any:
         return self._graph_composition.build()
@@ -783,7 +830,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value
                 else PlanReviewStatus.BLOCKED
             )
-            if not self._store_modify_review_result(state, review_status):
+            if not self._store_modify_review_result(
+                state,
+                review_status,
+                "PASS" if review_status is PlanReviewStatus.PASSED else "BLOCK",
+            ):
                 return {
                     **state,
                     "__target__": "end",
@@ -814,40 +865,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             state, {"workflow_phase": WorkflowPhase.DOMAIN_VALIDATION.value}, decision
         )
 
-    def _waiting_confirmation_node(self, state: GraphState) -> GraphState:
-        interrupt_payload = cast(dict[str, object], state["user_interrupt"])
-        request = self._request_from_state(state)
-        if (
-            RunStatus(self._current_run_status(request.run_id))
-            is not RunStatus.WAITING_CONFIRMATION
-        ):
-            self._transition_run(request.run_id, "request_confirmation")
-        resume_payload = interrupt(
-            {
-                "interrupt_kind": "CONFIRMATION",
-                "run_id": request.run_id,
-                **interrupt_payload,
-            }
-        )
-        augmented_request = self._request_with_confirmation(
-            request,
-            cast(dict[str, object], resume_payload),
-        )
-        return {
-            **state,
-            "__request__": augmented_request,
-            "__target__": self._confirmation_resume_target(interrupt_payload),
-            "user_interrupt": None,
-            "workflow_phase": WorkflowPhase.SOURCE_PLANNING.value,
-            "prompt_context": {
-                **cast(dict[str, object], state.get("prompt_context", {})),
-                "confirmation_response": cast(dict[str, object], resume_payload),
-            },
-        }
-
     def _confirm_request_understanding_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime``, the
         only subclass production ever constructs. This legacy base has no
         nested-subgraph interrupt/ResumeConfirmation implementation of its
@@ -863,7 +883,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _confirm_tool_route_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
         ``_confirm_request_understanding_inline`` above for the rationale."""
         raise NotImplementedError(
@@ -873,7 +893,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _confirm_context_retrieval_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
         ``_confirm_request_understanding_inline`` above for the rationale."""
         raise NotImplementedError(
@@ -883,7 +903,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _confirm_work_analysis_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
         ``_confirm_request_understanding_inline`` above for the rationale."""
         raise NotImplementedError(
@@ -893,7 +913,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _confirm_planning_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
         ``_confirm_request_understanding_inline`` above for the rationale."""
         raise NotImplementedError(
@@ -903,21 +923,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _confirm_review_inline(
         self, state: GraphState
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
+    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
         """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
         ``_confirm_request_understanding_inline`` above for the rationale."""
         raise NotImplementedError(
             "Review nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _record_policy_confirmation_receipt(
-        self, run_id: str, receipt: PolicyConfirmationReceiptV1
-    ) -> None:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "POLICY_CONFIRMATION_RECORDED audit requires "
             "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
         )
 
@@ -1058,34 +1068,17 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             and isinstance(route_reconsideration_signal, dict)
             and route_reconsideration_signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
         ):
-            # Pre-Prompt LangGraph Code Completion: the re-invoked Review's
-            # own ROUTE_RECONSIDERATION disposition was already intercepted
-            # by supervisor._route_reconsideration (plan_review cleared,
-            # __target__ pointed at Tool Route, workflow_signal populated)
-            # before this node ever saw a PlanReviewResultV1 -- there is no
-            # `review["status"]` to read here. Canonical (04 SS25.5, 08
-            # SS Modify sequence) never specifies this edge for the
-            # post-approval modify-review gate; it only defines REVISE/
-            # RETRIEVE_MORE -> supersede + REPLAN-to-PLANNING. Per this
-            # task's explicit "no unconditional DB enum/migration" rule and
-            # since `plans.review_status` has a SQL CHECK enumerating only
-            # PASSED/REQUIRED/REVISE/RETRIEVE_MORE/BLOCKED (migration 0004,
-            # not modified here), a route-level defect discovered post-
-            # approval is folded into the existing RETRIEVE_MORE bucket and
-            # resolved through the same supersede+replan-to-PLANNING path
-            # already used for REVISE/RETRIEVE_MORE -- a documented,
-            # reported downgrade from the primary flow's Tool-Route
-            # redirect, not a silent one. Trusting the supervisor's own
-            # __target__ (Tool Route) here instead would durably strand
-            # `plans.review_status='REQUIRED'` and `Run.status=
-            # WAITING_APPROVAL`, since nothing else ever resolves that claim.
-            if not self._store_modify_review_result(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+            if not self._store_modify_review_result(
+                reviewed,
+                PlanReviewStatus.REQUIRED,
+                ReviewResult.ROUTE_RECONSIDERATION.value,
+            ):
                 return {
                     **reviewed,
                     "__target__": "end",
                     "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
                 }
-            if not self._begin_modify_replan(reviewed, PlanReviewStatus.RETRIEVE_MORE):
+            if not self._begin_modify_replan(reviewed):
                 return {
                     **reviewed,
                     "__target__": "end",
@@ -1103,7 +1096,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         review = _require_state_value(reviewed["plan_review"], "plan_review")
         if review["status"] == ReviewResult.PASS.value:
             return reviewed
-        if not self._store_modify_review_result(reviewed, self._review_status(review)):
+        if not self._store_modify_review_result(
+            reviewed,
+            self._review_status(review),
+            review["status"],
+        ):
             return {
                 **reviewed,
                 "__target__": "end",
@@ -1113,7 +1110,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             ReviewResult.REVISE.value,
             ReviewResult.RETRIEVE_MORE.value,
         }:
-            if not self._begin_modify_replan(reviewed, self._review_status(review)):
+            if not self._begin_modify_replan(reviewed):
                 return {
                     **reviewed,
                     "__target__": "end",
@@ -1143,7 +1140,10 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         }[review["status"]]
 
     def _store_modify_review_result(
-        self, state: GraphState, review_status: PlanReviewStatus
+        self,
+        state: GraphState,
+        review_status: PlanReviewStatus,
+        review_disposition: str,
     ) -> bool:
         plan_id = state.get("__modify_review_plan_id__")
         review_version = state.get("__modify_review_version__")
@@ -1154,36 +1154,44 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 plan_id,
                 expected_review_version=review_version,
                 review_status=review_status.value,
+                review_disposition=review_disposition,
             )
             if applied:
                 unit_of_work.commit()
             return applied
 
-    def _begin_modify_replan(self, state: GraphState, review_status: PlanReviewStatus) -> bool:
+    def _begin_modify_replan(self, state: GraphState) -> bool:
         plan_id = state.get("__modify_review_plan_id__")
         review_version = state.get("__modify_review_version__")
         if plan_id is None or review_version is None:
             return False
         with self._unit_of_work_factory() as unit_of_work:
+            canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
             plan = unit_of_work.plans.get_by_id(plan_id)
-            if (
-                plan is None
-                or plan.review_version != review_version
-                or plan.review_status is not review_status
-            ):
+            if plan is None or plan.review_version != review_version:
                 return False
-            run = unit_of_work.runs.get_by_id(plan.run_id)
+            run = canonical_uow.runs.get(plan.run_id)
             if run is None:
                 return False
-            transitioned = unit_of_work.runs.replan(
-                run.id,
+        result = self._begin_planning_handler(
+            BeginPlanningCommand(
+                run_id=plan.run_id,
                 expected_version=run.version,
+                command_id=self._phase_command_id(
+                    plan.run_id, "published_review_begin_planning", run.version
+                ),
+                request_hash=self._request_hash(
+                    {
+                        "kind": "published_review_begin_planning",
+                        "plan_id": plan.id,
+                        "review_version": review_version,
+                    }
+                ),
+                plan_id=plan.id,
+                expected_review_version=review_version,
             )
-            if not transitioned.applied:
-                return False
-            unit_of_work.plans.supersede(plan.id)
-            unit_of_work.commit()
-            return True
+        )
+        return result.applied
 
     def _finalize_node(self, state: GraphState) -> GraphState:
         finalize_intent = derive_finalize_intent(state=cast(MultiAgentGraphState, state))
@@ -1273,9 +1281,6 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         merged["__logical_target__"] = translation.logical_target
         merged["__target__"] = translation.node
         return merged
-
-    def _confirmation_resume_target(self, interrupt_payload: dict[str, object]) -> str:
-        return self._route_translator.confirmation_resume_target(interrupt_payload)
 
     def _request_from_state(self, state: GraphState) -> WorkflowStartRequest:
         return request_from_state(state)
@@ -1648,43 +1653,86 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _transition_run(self, run_id: str, transition_name: str) -> None:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
+            run = canonical_uow.runs.get(run_id)
             if run is None:
                 raise LookupError(f"run not found: {run_id}")
-            if transition_name == "start_analysis" and run.status is not RunStatus.CREATED:
-                return
-            if transition_name == "begin_retrieval" and run.status in {
+        result: Any
+        if transition_name == "start_analysis":
+            if run.status in {
+                RunStatus.ANALYZING,
                 RunStatus.RETRIEVING,
                 RunStatus.PLANNING,
-                RunStatus.WAITING_APPROVAL,
             }:
                 return
-            if transition_name == "begin_planning" and run.status is not RunStatus.RETRIEVING:
-                return
-            if (
-                transition_name == "request_confirmation"
-                and run.status is RunStatus.WAITING_CONFIRMATION
-            ):
-                return
-            repository_method = getattr(unit_of_work.runs, transition_name)
-            result = repository_method(
-                run_id,
-                expected_version=run.version,
-                finished_at_ms=None,
+            result = self._start_analysis_handler(
+                StartAnalysisCommand(
+                    run_id=run_id,
+                    expected_version=run.version,
+                    command_id=self._phase_command_id(run_id, transition_name, run.version),
+                    request_hash=self._request_hash(
+                        {"kind": "start_analysis", "run_id": run_id, "version": run.version}
+                    ),
+                )
             )
-            if result.applied:
-                unit_of_work.commit()
+        elif transition_name == "begin_retrieval":
+            if run.status is RunStatus.RETRIEVING:
+                return
+            result = self._begin_retrieval_handler(
+                BeginRetrievalCommand(
+                    run_id=run_id,
+                    expected_version=run.version,
+                    command_id=self._phase_command_id(run_id, transition_name, run.version),
+                    request_hash=self._request_hash(
+                        {"kind": "begin_retrieval", "run_id": run_id, "version": run.version}
+                    ),
+                )
+            )
+        elif transition_name == "begin_planning":
+            if run.status is RunStatus.PLANNING:
+                return
+            result = self._begin_planning_handler(
+                BeginPlanningCommand(
+                    run_id=run_id,
+                    expected_version=run.version,
+                    command_id=self._phase_command_id(run_id, transition_name, run.version),
+                    request_hash=self._request_hash(
+                        {"kind": "begin_planning", "run_id": run_id, "version": run.version}
+                    ),
+                )
+            )
+        else:
+            raise ValueError(f"unsupported Run transition callback: {transition_name}")
+        if not result.applied:
+            raise RuntimeError(
+                f"{transition_name} rejected for Run {run_id}: {result.conflict_detail}"
+            )
+
+    @staticmethod
+    def _phase_command_id(run_id: str, operation: str, expected_version: int) -> str:
+        identity = dumps(
+            {
+                "expected_version": expected_version,
+                "operation": operation,
+                "run_id": run_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return f"run-phase-{sha256(identity.encode('utf-8')).hexdigest()}"
 
     def _current_run_status(self, run_id: str) -> str:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
+            run = canonical_uow.runs.get(run_id)
             if run is None:
                 raise LookupError(f"run not found: {run_id}")
             return run.status.value
 
     def _current_run_version(self, run_id: str) -> int:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
+            run = canonical_uow.runs.get(run_id)
             if run is None:
                 raise LookupError(f"run not found: {run_id}")
             return run.version

@@ -52,6 +52,7 @@ from google_work_agent.ports import (
     CommandReceiptRecord,
     CommandReceiptStatus,
     PlanReviewStatus,
+    PlanStatus,
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -140,8 +141,13 @@ class ModifyActionHandler:
             if existing is not None:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
             snapshot = self._require_action(unit_of_work, command.action_id)
+            snapshot_plan = unit_of_work.plans.get_by_id(snapshot.plan_id)
+            if snapshot_plan is None:
+                raise LookupError(f"plan not found: {snapshot.plan_id}")
+            plan_superseded = snapshot_plan.status is PlanStatus.SUPERSEDED
             if (
-                snapshot.tool_name == TASK_CREATE_TOOL
+                not plan_superseded
+                and snapshot.tool_name == TASK_CREATE_TOOL
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
@@ -153,7 +159,8 @@ class ModifyActionHandler:
                     if calculate_canonical_json_hash(proposed) != snapshot.arguments_hash:
                         duplicate_arguments = proposed
             if (
-                snapshot.tool_name in CALENDAR_CONFLICT_TOOLS
+                not plan_superseded
+                and snapshot.tool_name in CALENDAR_CONFLICT_TOOLS
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
@@ -196,6 +203,21 @@ class ModifyActionHandler:
             )
             action = self._require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
+            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {action.plan_id}")
+            if plan.status is PlanStatus.SUPERSEDED:
+                return self._finish(
+                    unit_of_work,
+                    command,
+                    self._result(
+                        action=action,
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT,
+                        conflict_detail="superseded Plan children are history-only",
+                    ),
+                    now_ms,
+                )
 
             if effect_type is EffectType.READ or action.status not in _MODIFIABLE_ACTION_STATUSES:
                 return self._finish(
@@ -240,7 +262,9 @@ class ModifyActionHandler:
                         action=action,
                         applied=False,
                         result_code=ResultCode.STATE_CONFLICT,
-                        conflict_detail="arguments_patch does not change any canonical argument value",
+                        conflict_detail=(
+                            "arguments_patch does not change any canonical argument value"
+                        ),
                     ),
                     now_ms,
                 )
@@ -248,7 +272,8 @@ class ModifyActionHandler:
             validate_evidence_policy(
                 EvidencePolicyInput(
                     evidence_count=len(unit_of_work.evidence.list_by_action(action.id)),
-                    requires_existing_resource=effect_type in {EffectType.UPDATE, EffectType.DELETE},
+                    requires_existing_resource=effect_type
+                    in {EffectType.UPDATE, EffectType.DELETE},
                     has_user_selected_resource=action.target_resource_ref_id is not None,
                     has_explicit_resource_relation=action.target_resource_ref_id is not None,
                 )
@@ -583,7 +608,9 @@ class ModifyActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-        calendar_authority = calendar_conflict_authority(updated_risk) if fresh_calendar_risk is not None else None
+        calendar_authority = (
+            calendar_conflict_authority(updated_risk) if fresh_calendar_risk is not None else None
+        )
         if calendar_authority is not None:
             risk_value = updated_risk.get("calendar_conflict")
             unit_of_work.audits.add(
@@ -596,13 +623,17 @@ class ModifyActionHandler:
                         "action_id": action.id,
                         "decision": calendar_authority[0],
                         "matched_resource_ids": list(calendar_authority[1]),
-                        "reason_codes": risk_value.get("reason_codes", []) if isinstance(risk_value, dict) else [],
+                        "reason_codes": risk_value.get("reason_codes", [])
+                        if isinstance(risk_value, dict)
+                        else [],
                         "freshness": "FRESH_GOOGLE_GET",
                     },
                     created_at_ms=now_ms,
                 )
             )
-        feasibility = feasibility_authority(updated_risk) if fresh_feasibility_risk is not None else None
+        feasibility = (
+            feasibility_authority(updated_risk) if fresh_feasibility_risk is not None else None
+        )
         if feasibility is not None:
             value = updated_risk.get("feasibility")
             unit_of_work.audits.add(
@@ -613,8 +644,12 @@ class ModifyActionHandler:
                     outcome="FRESH_GOOGLE_GET",
                     metadata={
                         "decision": feasibility[0],
-                        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
-                        "required_duration": value.get("required_duration_minutes") if isinstance(value, dict) else None,
+                        "reason_codes": value.get("reason_codes", [])
+                        if isinstance(value, dict)
+                        else [],
+                        "required_duration": value.get("required_duration_minutes")
+                        if isinstance(value, dict)
+                        else None,
                         "freshness": "FRESH_GOOGLE_GET",
                     },
                     created_at_ms=now_ms,

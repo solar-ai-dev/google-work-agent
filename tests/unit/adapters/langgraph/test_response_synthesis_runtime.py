@@ -149,7 +149,6 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
         review=object(),
         single_workflow=object(),
         domain_validation=object(),
-        waiting_confirmation=object(),
         waiting_approval=object(),
         modify_review=object(),
         action_execution=object(),

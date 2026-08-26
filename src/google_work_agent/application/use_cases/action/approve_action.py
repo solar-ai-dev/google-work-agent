@@ -148,6 +148,26 @@ class ApproveActionHandler:
                     raise LookupError(f"conversation not found: {run.conversation_id}")
                 entry = self._registry.require(action.tool_name)
 
+                if plan.status is PlanStatus.SUPERSEDED:
+                    result = ApproveActionResult(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail="superseded Plan children are history-only",
+                    )
+                    finish_json_receipt(
+                        unit_of_work,
+                        command.command_id,
+                        result,
+                        action.version,
+                        now_ms,
+                    )
+                    unit_of_work.commit()
+                    return result
+
                 if plan.review_status is not PlanReviewStatus.PASSED:
                     result = ApproveActionResult(
                         applied=False,
@@ -162,7 +182,9 @@ class ApproveActionHandler:
                                 effect_type=EffectType(action.effect_type),
                             )
                         ),
-                        conflict_detail="plan review must pass after the latest action modification",
+                        conflict_detail=(
+                            "plan review must pass after the latest action modification"
+                        ),
                     )
                     unit_of_work.audits.add(
                         audit_event(
@@ -201,7 +223,10 @@ class ApproveActionHandler:
                 duplicate_decision = None
                 calendar_decision = None
 
-                if action.tool_name == TASK_CREATE_TOOL and action.version == command.expected_version:
+                if (
+                    action.tool_name == TASK_CREATE_TOOL
+                    and action.version == command.expected_version
+                ):
                     try:
                         duplicate_decision = require_duplicate_acknowledgement(
                             risk=action.risk,
@@ -217,7 +242,9 @@ class ApproveActionHandler:
                                 outcome=ResultCode.STATE_CONFLICT.value,
                                 metadata={
                                     "command_id": command.command_id,
-                                    "decision": (duplicate_authority(action.risk) or ("UNKNOWN", ()))[0],
+                                    "decision": (
+                                        duplicate_authority(action.risk) or ("UNKNOWN", ())
+                                    )[0],
                                 },
                                 created_at_ms=now_ms,
                             )
@@ -235,7 +262,10 @@ class ApproveActionHandler:
                         ),
                     }
 
-                if action.tool_name in CALENDAR_CONFLICT_TOOLS and action.version == command.expected_version:
+                if (
+                    action.tool_name in CALENDAR_CONFLICT_TOOLS
+                    and action.version == command.expected_version
+                ):
                     try:
                         require_feasibility_approval(action.risk)
                     except PolicyViolationError as error:
@@ -490,7 +520,9 @@ class ApproveActionHandler:
             "decision": authority[0],
             "matched_resource_ids": list(authority[1]),
             "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
-            "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+            "freshness": value.get("freshness", "UNKNOWN")
+            if isinstance(value, dict)
+            else "UNKNOWN",
         }
 
     @staticmethod
@@ -503,5 +535,7 @@ class ApproveActionHandler:
             "required_duration": (
                 value.get("required_duration_minutes") if isinstance(value, dict) else None
             ),
-            "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
+            "freshness": value.get("freshness", "UNKNOWN")
+            if isinstance(value, dict)
+            else "UNKNOWN",
         }

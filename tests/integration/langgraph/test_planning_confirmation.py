@@ -23,7 +23,6 @@ removed as no-longer-reachable production scenarios; see
 
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
@@ -36,9 +35,7 @@ from tests.integration.langgraph.test_runtime import (
     LangGraphWorkflowRuntime,
     Path,
     ProductFixtureSnapshotLoader,
-    WorkflowCorrelationContext,
     WorkflowOutcome,
-    WorkflowResumeRequest,
     _analysis_output,
     _clear_intent,
     _llm_result,
@@ -55,14 +52,13 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
-
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
-    ResumeRunResult,
+from tests.support.canonical_workflow_runtime import (
+    resume_confirmation_with_handoff,
+    start_with_admission,
 )
+
 from google_work_agent.domain import ResultCode
+from google_work_agent.ports import LLMErrorCode, LLMInvocationError
 
 
 def _answer_output(
@@ -127,7 +123,7 @@ def _build_runtime(
         id_factory=DeterministicUUID(prefix=id_prefix).next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
@@ -150,56 +146,13 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[ResumeRunResult, object | None]:
-    """Exercise the canonical Application-owned Domain transition before runtime resume."""
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
-        assert run is not None
-        expected_version = run.version
-
-    runtime_results: list[object] = []
-
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
-                    workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
-                )
-            )
-        )
-
-    handler = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=FakeClock(2000).now_ms,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
-        ),
-    )
-    application_result = handler(
-        ResumeRunCommand(
-            command_id=command_id,
-            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version="1",
-        ),
-        request_id=f"request-{command_id}",
+) -> tuple[object, object | None]:
+    return resume_confirmation_with_handoff(
+        runtime,
+        database_path,
         resume_payload=resume_payload,
+        command_id=command_id,
     )
-    runtime_result = runtime_results[0] if runtime_results else None
-    return application_result, runtime_result
 
 
 def _nested_planning_task(runtime: LangGraphWorkflowRuntime) -> Any:
@@ -250,7 +203,7 @@ def _start_to_first_confirmation(
         manifest_path=manifest_path,
         id_prefix="run",
     )
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     return runtime, llm_runtime, first.payload
 
@@ -349,7 +302,8 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
     reads_before_resume = len(gateway.call_log)
 
     state_before = runtime._graph.get_state(  # noqa: SLF001
-        runtime._invocation.config_for_thread("thread-1"), subgraphs=True  # noqa: SLF001
+        runtime._invocation.config_for_thread("thread-1"),
+        subgraphs=True,  # noqa: SLF001
     )
     invocation_id_before = state_before.tasks[0].state.values["__planning_agent_local__"][
         "invocation_id"
@@ -376,7 +330,7 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "Use tomorrow as the due date.",
             },
         )
@@ -400,8 +354,7 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
                 [
                     call
                     for call in calls_during_resume
-                    if getattr(call["prompt_ref"], "prompt_id", None)
-                    == "planning.compose_answer"
+                    if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_answer"
                 ]
             )
             == 1
@@ -412,9 +365,7 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
             runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values
         node_log = state["trace_context"]["agent_node_log"]
-        planning_entries = [
-            entry for entry in node_log if entry["agent_subgraph_id"] == "planning"
-        ]
+        planning_entries = [entry for entry in node_log if entry["agent_subgraph_id"] == "planning"]
         init_entries = [entry for entry in planning_entries if entry["node_name"] == "init"]
         assert len(init_entries) == 1
         assert init_entries[0]["agent_invocation_id"] == invocation_id_before
@@ -478,7 +429,7 @@ def test_planning_resume_applies_confirmation_response_within_prompt_boundary(
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "Use tomorrow as the due date.",
             },
         )
@@ -554,7 +505,7 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
                 "schema_version": 1,
                 "interrupt_id": round1_interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "round-1 answer, still ambiguous apparently.",
             },
         )
@@ -584,7 +535,7 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
                     "schema_version": 1,
                     "interrupt_id": round2_interrupt_id,
                     "response_kind": "FREE_TEXT",
-                    "selected_option_ids": [],
+                    "selected_option": None,
                     "free_text": "round-2 answer, resolves it.",
                 },
             )
@@ -630,7 +581,7 @@ def test_planning_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
                 "schema_version": 1,
                 "interrupt_id": "definitely-the-wrong-interrupt-id",
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "irrelevant",
             },
         )
@@ -673,8 +624,8 @@ def test_planning_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path)
             resume_payload={
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "response_kind": "OPTION_SELECTION",
-                "selected_option_ids": ["option-not-offered"],
+                "response_kind": "OPTION",
+                "selected_option": "option-not-offered",
                 "free_text": None,
             },
         )
@@ -703,17 +654,15 @@ def test_planning_answer_only_happy_path_completes(tmp_path: Path) -> None:
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-planning-answer-happy.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
     try:
-        result = runtime.start(_start_request())
+        result = start_with_admission(runtime, database_path, _start_request())
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
-            run_row = connection.execute(
-                "SELECT status FROM runs WHERE id = 'run-1';"
-            ).fetchone()
+            run_row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
             assert run_row[0] == "COMPLETED"
         finally:
             connection.close()

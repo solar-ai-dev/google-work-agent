@@ -18,6 +18,7 @@ from google_work_agent.ports import (
     ActionRecord,
     CommandReceiptRecord,
     CommandReceiptStatus,
+    PlanStatus,
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -78,6 +79,17 @@ class PrepareWriteRetryHandler:
             plan = unit_of_work.plans.get_by_id(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
+            if plan.status is PlanStatus.SUPERSEDED:
+                return self._finish(
+                    unit_of_work,
+                    command,
+                    self._result(
+                        action=action,
+                        result_code=ResultCode.STATE_CONFLICT,
+                        conflict_detail="superseded Plan children are history-only",
+                    ),
+                    now_ms,
+                )
 
             preview = transition_prepare_write_retry(
                 ActionStatus(action.status),

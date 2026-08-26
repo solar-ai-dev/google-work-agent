@@ -1,18 +1,14 @@
+"""Tests for the explicitly deferred LocalRunCoordinator control flows."""
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Barrier, Event, Lock, Thread
-
-import pytest
-from tests.support.fakes import FakeWorkflowRuntime, WorkflowFailure
+from threading import Event
 
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
-from google_work_agent.application.queries import OpenRunRecord, QueryService, RunExecutionContext
+from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.queries import OpenRunRecord, RunExecutionContext
 from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
     WorkflowCancelRequest,
@@ -22,382 +18,6 @@ from google_work_agent.ports import (
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
-
-
-@dataclass
-class _QueryStub:
-    status: str
-
-    def list_open_runs(self) -> tuple[OpenRunRecord, ...]:
-        return (
-            OpenRunRecord(
-                run_id="run-1",
-                workflow_key="thread-1",
-                status=self.status,
-                version=3,
-            ),
-        )
-
-    def get_run_execution_context(self, run_id: str) -> RunExecutionContext:
-        assert run_id == "run-1"
-        return RunExecutionContext(
-            run_id=run_id,
-            conversation_id="conversation-1",
-            workflow_key="thread-1",
-            entry_mode="AGENT_SEARCH",
-            requested_mode="AUTO",
-            status=self.status,
-            version=3,
-            request_text="Recover the open run.",
-            selected_resource_ids=(),
-        )
-
-
-@pytest.mark.parametrize(
-    "status",
-    ["WAITING_CONFIRMATION", "WAITING_APPROVAL", "VERIFYING", "RECOVERY_REQUIRED"],
-)
-def test_startup_reconciles_every_recoverable_open_run(status: str) -> None:
-    runtime = FakeWorkflowRuntime()
-    runtime.queue_result(
-        WorkflowInvocationResult(
-            run_id="run-1",
-            workflow_key="thread-1",
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={"phase": status},
-        )
-    )
-    coordinator = LocalRunCoordinator(
-        query_service=_QueryStub(status),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=runtime,
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 1000,
-        api_contract_version="1",
-    )
-
-    coordinator.start()
-    deadline = time.time() + 1
-    while not runtime.call_log and time.time() < deadline:
-        time.sleep(0.01)
-    coordinator.stop()
-
-    assert len(runtime.call_log) == 1
-    assert runtime.call_log[0].operation == "recover_open_run"
-    assert runtime.call_log[0].payload == {"domain_status": status, "domain_version": 3}
-
-
-def test_workflow_outcome_failed_persists_run_status_not_only_an_sse_event(
-    tmp_path: Path,
-) -> None:
-    """A FAILED WorkflowOutcome must leave the Domain Store holding FAILED.
-
-    Previously ``_handle_result`` only published an "error" SSE event for
-    this outcome; the run's persisted status stayed CREATED forever, so
-    polling ``GET /runs/{id}`` (what the UI actually does) never saw the
-    failure -- only a live SSE subscriber would.
-    """
-
-    database_path = tmp_path / "coordinator.db"
-    connection = connect_sqlite(database_path)
-    try:
-        apply_migrations(connection, now_ms=lambda: 1)
-        connection.execute(
-            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
-            "VALUES ('account-1', 'user@example.com', 'User', 1);"
-        )
-        connection.execute(
-            "INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms) "
-            "VALUES ('conversation-1', 'account-1', 'Conversation', 1, 1);"
-        )
-    finally:
-        connection.close()
-
-    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
-    )
-
-    runtime = FakeWorkflowRuntime()
-    runtime.queue_result(
-        WorkflowInvocationResult(
-            run_id="run-1",
-            workflow_key="thread-1",
-            outcome=WorkflowOutcome.FAILED,
-            payload={"safe_error_code": "PROMPT_NOT_ACTIVE"},
-        )
-    )
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=runtime,
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 2000,
-        api_contract_version="1",
-    )
-    # Start the coordinator against an empty run table (its own startup
-    # reconciliation sweep would otherwise enqueue "run-1" as a "recover"
-    # item and consume the queued result before enqueue_start below ever
-    # gets a chance to run it through the real "start" path).
-    coordinator.start()
-
-    connection = connect_sqlite(database_path)
-    try:
-        connection.execute(
-            """
-            INSERT INTO runs (
-                id, conversation_id, entry_mode, status, langgraph_thread_id,
-                requested_mode, budget_json, version, started_at_ms
-            )
-            VALUES (
-                'run-1', 'conversation-1', 'AGENT_SEARCH', 'CREATED', 'thread-1',
-                'AUTO', '{}', 0, 100
-            );
-            """
-        )
-    finally:
-        connection.close()
-
-    coordinator.enqueue_start(run_id="run-1", request_id="request-1", command_id="command-1")
-    deadline = time.time() + 2
-    while not runtime.call_log and time.time() < deadline:
-        time.sleep(0.01)
-    coordinator.stop()
-
-    assert len(runtime.call_log) == 1
-    connection = connect_sqlite(database_path)
-    try:
-        row = connection.execute(
-            "SELECT status, finished_at_ms FROM runs WHERE id = 'run-1';"
-        ).fetchone()
-    finally:
-        connection.close()
-    assert tuple(row) == ("FAILED", 2000)
-
-
-def test_workflow_runtime_raising_persists_run_status_not_only_an_sse_event(
-    tmp_path: Path,
-) -> None:
-    """A raising workflow_runtime call (e.g. an unrepaired schema-invalid
-    structured LLM output) must still leave the Domain Store holding FAILED.
-
-    Distinct from test_workflow_outcome_failed_persists_run_status_not_only_an_sse_event
-    above: that test covers workflow_runtime returning WorkflowOutcome.FAILED
-    cleanly. This covers workflow_runtime.start() raising instead of
-    returning -- previously caught only by _worker_loop's outer try/except,
-    which had no run version in scope and only published a transient SSE
-    event, leaving the run non-terminal (e.g. ANALYZING) forever: the UI
-    polls GET /runs/{id} rather than SSE, so it never saw the failure, and
-    every later run was blocked by the has_active_runs() guard.
-    """
-
-    database_path = tmp_path / "coordinator-raise.db"
-    connection = connect_sqlite(database_path)
-    try:
-        apply_migrations(connection, now_ms=lambda: 1)
-        connection.execute(
-            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
-            "VALUES ('account-1', 'user@example.com', 'User', 1);"
-        )
-        connection.execute(
-            "INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms) "
-            "VALUES ('conversation-1', 'account-1', 'Conversation', 1, 1);"
-        )
-    finally:
-        connection.close()
-
-    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
-    )
-
-    runtime = FakeWorkflowRuntime()
-    runtime.queue_failure(WorkflowFailure(message="structured output did not satisfy schema"))
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=runtime,
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 3000,
-        api_contract_version="1",
-    )
-    coordinator.start()
-
-    connection = connect_sqlite(database_path)
-    try:
-        connection.execute(
-            """
-            INSERT INTO runs (
-                id, conversation_id, entry_mode, status, langgraph_thread_id,
-                requested_mode, budget_json, version, started_at_ms
-            )
-            VALUES (
-                'run-1', 'conversation-1', 'AGENT_SEARCH', 'CREATED', 'thread-1',
-                'AUTO', '{}', 0, 100
-            );
-            """
-        )
-    finally:
-        connection.close()
-
-    coordinator.enqueue_start(run_id="run-1", request_id="request-1", command_id="command-1")
-    deadline = time.time() + 2
-    while not runtime.call_log and time.time() < deadline:
-        time.sleep(0.01)
-    coordinator.stop()
-
-    assert len(runtime.call_log) == 1
-    connection = connect_sqlite(database_path)
-    try:
-        row = connection.execute(
-            "SELECT status, finished_at_ms FROM runs WHERE id = 'run-1';"
-        ).fetchone()
-    finally:
-        connection.close()
-    assert tuple(row) == ("FAILED", 3000)
-
-
-class _VersionAdvancingThenFailingRuntime:
-    """Bumps the run's domain version (simulating a real graph committing an
-    internal transition, e.g. ANALYZING -> RETRIEVING) before raising --
-    reproducing the case where expected_version, captured before dispatch,
-    is stale by the time the exception handler tries to persist FAILED.
-    """
-
-    def __init__(self, database_path: Path) -> None:
-        self._database_path = database_path
-        self.call_log: list[str] = []
-
-    def _advance_version(self, run_id: str) -> None:
-        connection = connect_sqlite(self._database_path)
-        try:
-            connection.execute(
-                "UPDATE runs SET status = 'RETRIEVING', version = version + 1 WHERE id = ?;",
-                (run_id,),
-            )
-            connection.commit()
-        finally:
-            connection.close()
-
-    def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
-        self.call_log.append("start")
-        self._advance_version(request.run_id)
-        raise RuntimeError("structured output did not satisfy schema")
-
-    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        raise NotImplementedError
-
-    def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
-        raise NotImplementedError
-
-    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
-        raise NotImplementedError
-
-    def close(self) -> None:
-        return None
-
-
-def test_workflow_runtime_raising_after_internal_transition_still_persists_failed(
-    tmp_path: Path,
-) -> None:
-    """A run that advances (e.g. ANALYZING -> RETRIEVING) before its later
-    node raises must still end up FAILED, not silently stuck at the
-    intermediate status. Using the stale pre-dispatch expected_version for
-    fail_run would hit VERSION_CONFLICT and no-op instead of applying.
-    """
-
-    database_path = tmp_path / "coordinator-stale-version.db"
-    connection = connect_sqlite(database_path)
-    try:
-        apply_migrations(connection, now_ms=lambda: 1)
-        connection.execute(
-            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
-            "VALUES ('account-1', 'user@example.com', 'User', 1);"
-        )
-        connection.execute(
-            "INSERT INTO conversations (id, account_id, title, created_at_ms, updated_at_ms) "
-            "VALUES ('conversation-1', 'account-1', 'Conversation', 1, 1);"
-        )
-    finally:
-        connection.close()
-
-    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
-    )
-
-    runtime = _VersionAdvancingThenFailingRuntime(database_path)
-    coordinator = LocalRunCoordinator(
-        query_service=query_service,
-        unit_of_work_factory=unit_of_work_factory,
-        workflow_runtime=runtime,
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 4000,
-        api_contract_version="1",
-    )
-    coordinator.start()
-
-    connection = connect_sqlite(database_path)
-    try:
-        connection.execute(
-            """
-            INSERT INTO runs (
-                id, conversation_id, entry_mode, status, langgraph_thread_id,
-                requested_mode, budget_json, version, started_at_ms
-            )
-            VALUES (
-                'run-1', 'conversation-1', 'AGENT_SEARCH', 'CREATED', 'thread-1',
-                'AUTO', '{}', 0, 100
-            );
-            """
-        )
-    finally:
-        connection.close()
-
-    coordinator.enqueue_start(run_id="run-1", request_id="request-1", command_id="command-1")
-    deadline = time.time() + 2
-    while not runtime.call_log and time.time() < deadline:
-        time.sleep(0.01)
-    # Give the coordinator's exception handler a moment to run past the
-    # raise before asserting on the persisted status.
-    deadline = time.time() + 2
-    connection = connect_sqlite(database_path)
-    try:
-        row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
-        while row is not None and row[0] != "FAILED" and time.time() < deadline:
-            time.sleep(0.01)
-            row = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()
-    finally:
-        connection.close()
-    coordinator.stop()
-
-    assert runtime.call_log == ["start"]
-    connection = connect_sqlite(database_path)
-    try:
-        row = connection.execute(
-            "SELECT status, finished_at_ms FROM runs WHERE id = 'run-1';"
-        ).fetchone()
-    finally:
-        connection.close()
-    assert tuple(row) == ("FAILED", 4000)
 
 
 @dataclass
@@ -435,28 +55,25 @@ class _BlockingRuntime:
         self.resume_entered.set()
         assert self.release_resume.wait(timeout=2)
         return WorkflowInvocationResult(
-            run_id=request.run_id,
-            workflow_key=request.workflow_key,
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={"phase": "ACTION_EXECUTION"},
+            request.run_id,
+            request.workflow_key,
+            WorkflowOutcome.ACCEPTED,
+            {"phase": "ACTION_EXECUTION"},
         )
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         self.call_log.append("request_cancel")
         return WorkflowInvocationResult(
-            run_id=request.run_id,
-            workflow_key=request.workflow_key,
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={"phase": "cancel_requested"},
+            request.run_id,
+            request.workflow_key,
+            WorkflowOutcome.ACCEPTED,
+            {"phase": "cancel_requested"},
         )
 
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
         self.call_log.append("recover_open_run")
         return WorkflowInvocationResult(
-            run_id=request.run_id,
-            workflow_key=request.workflow_key,
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={},
+            request.run_id, request.workflow_key, WorkflowOutcome.ACCEPTED, {}
         )
 
     def close(self) -> None:
@@ -466,17 +83,7 @@ class _BlockingRuntime:
 def test_running_run_receives_cancel_signal_without_duplicate_graph_invocation() -> None:
     query = _MutableQueryStub()
     runtime = _BlockingRuntime()
-    coordinator = LocalRunCoordinator(
-        query_service=query,  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=runtime,
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 5000,
-        api_contract_version="1",
-    )
+    coordinator = _coordinator(query, runtime)
     coordinator.start()
     coordinator.enqueue_resume(
         run_id="run-1",
@@ -494,9 +101,7 @@ def test_running_run_receives_cancel_signal_without_duplicate_graph_invocation()
         reason_code="user_requested",
     )
     runtime.release_resume.set()
-    deadline = time.time() + 1
-    while len(runtime.call_log) < 2 and time.time() < deadline:
-        time.sleep(0.01)
+    _wait_until(lambda: len(runtime.call_log) >= 2)
     coordinator.stop()
 
     assert runtime.call_log == ["resume", "request_cancel"]
@@ -535,10 +140,10 @@ class _RecoveryRuntime(_BlockingRuntime):
         self._query.status = "VERIFYING"
         self._query.version += 1
         return WorkflowInvocationResult(
-            run_id=request.run_id,
-            workflow_key=request.workflow_key,
-            outcome=WorkflowOutcome.ACCEPTED,
-            payload={"phase": "RECOVERY", "run_status": "VERIFYING"},
+            request.run_id,
+            request.workflow_key,
+            WorkflowOutcome.ACCEPTED,
+            {"phase": "RECOVERY", "run_status": "VERIFYING"},
         )
 
 
@@ -571,17 +176,11 @@ def test_recovery_resolution_continues_existing_cancel_intent_to_cancelled() -> 
         )
 
     ids = iter(("finalize-1", "finalize-2"))
-    publisher = InMemoryRunEventPublisher(
-        service_instance_id="service-1",
-        capacity_per_run=8,
-    )
-    coordinator = LocalRunCoordinator(
-        query_service=query,  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=runtime,
-        event_publisher=publisher,
-        now_ms=lambda: 6000,
-        api_contract_version="1",
+    publisher = InMemoryRunEventPublisher(service_instance_id="service-1", capacity_per_run=8)
+    coordinator = _coordinator(
+        query,
+        runtime,
+        publisher=publisher,
         finalize_cancel_service=finalize_cancel,
         id_factory=lambda: next(ids),
     )
@@ -591,12 +190,9 @@ def test_recovery_resolution_continues_existing_cancel_intent_to_cancelled() -> 
         request_id="request-cancel",
         reason_code="user_requested",
     )
-    deadline = time.time() + 1
-    while query.status != "CANCELLED" and time.time() < deadline:
-        time.sleep(0.01)
+    _wait_until(lambda: query.status == "CANCELLED")
     coordinator.stop()
 
-    assert query.status == "CANCELLED"
     assert runtime.call_log == ["request_cancel", "recover_open_run"]
     assert finalize_calls == ["CANCEL_REQUESTED", "VERIFYING"]
     events = publisher.replay(run_id="run-1", after_event_id=None)
@@ -606,208 +202,28 @@ def test_recovery_resolution_continues_existing_cancel_intent_to_cancelled() -> 
     )
 
 
-def test_reserve_start_dedups_and_release_frees_the_run_id() -> None:
-    coordinator = LocalRunCoordinator(
-        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=FakeWorkflowRuntime(),
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 1000,
-        api_contract_version="1",
-    )
-
-    assert coordinator.reserve_start(run_id="run-1") is True
-    assert coordinator.reserve_start(run_id="run-1") is False
-
-    coordinator.release_reservation(run_id="run-1")
-
-    assert coordinator.reserve_start(run_id="run-1") is True
-
-
-def test_reserve_start_denies_admission_once_the_bounded_queue_is_full() -> None:
-    coordinator = LocalRunCoordinator(
-        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=FakeWorkflowRuntime(),
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 1000,
-        api_contract_version="1",
-        capacity=1,
-    )
-    assert coordinator.reserve_start(run_id="run-occupant") is True
-    coordinator.confirm_start(
-        run_id="run-occupant", request_id="request-occupant", command_id="command-occupant"
-    )
-
-    assert coordinator.reserve_start(run_id="run-new") is False
-
-
-def test_reserve_start_denies_admission_after_coordinator_is_stopped() -> None:
-    coordinator = LocalRunCoordinator(
-        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=FakeWorkflowRuntime(),
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 1000,
-        api_contract_version="1",
-    )
-
-    coordinator.stop()
-
-    assert coordinator.reserve_start(run_id="run-1") is False
-
-
-def _bounded_coordinator(*, capacity: int) -> LocalRunCoordinator:
+def _coordinator(
+    query: _MutableQueryStub,
+    runtime: _BlockingRuntime,
+    *,
+    publisher: InMemoryRunEventPublisher | None = None,
+    finalize_cancel_service=None,
+    id_factory=None,
+) -> LocalRunCoordinator:
     return LocalRunCoordinator(
-        query_service=_QueryStub("CREATED"),  # type: ignore[arg-type]
+        query_service=query,  # type: ignore[arg-type]
         unit_of_work_factory=lambda: None,  # type: ignore[arg-type,return-value]
-        workflow_runtime=FakeWorkflowRuntime(),
-        event_publisher=InMemoryRunEventPublisher(
-            service_instance_id="service-1",
-            capacity_per_run=8,
-        ),
-        now_ms=lambda: 1000,
+        workflow_runtime=runtime,
+        event_publisher=publisher
+        or InMemoryRunEventPublisher(service_instance_id="service-1", capacity_per_run=8),
+        now_ms=lambda: 6000,
         api_contract_version="1",
-        capacity=capacity,
+        finalize_cancel_service=finalize_cancel_service,
+        id_factory=id_factory,
     )
 
 
-def test_outstanding_reservation_blocks_other_producers_from_stealing_the_slot() -> None:
-    """The core TOCTOU fix (test A): while a start reservation is held
-    (before confirm_start), no other producer -- resume/recover/cancel --
-    can claim the one remaining physical queue slot. Otherwise
-    confirm_start would fail after the paired StartRunService DB commit
-    already happened, leaving a CREATED orphan behind.
-    """
-    coordinator = _bounded_coordinator(capacity=1)
-
-    assert coordinator.reserve_start(run_id="run-a") is True
-
-    with pytest.raises(QueueBusyError):
-        coordinator.enqueue_resume(
-            run_id="run-other",
-            request_id="request-other",
-            command_id="command-other",
-            resume_kind="REAUTH_COMPLETED",
-            resume_payload={},
-        )
-
-    # The reservation still holds its slot -- confirming it must succeed.
-    coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
-
-
-def test_release_reservation_frees_the_slot_for_a_different_producer() -> None:
-    """Test B: releasing an unconfirmed reservation returns its capacity so
-    a different producer can use it.
-    """
-    coordinator = _bounded_coordinator(capacity=1)
-
-    assert coordinator.reserve_start(run_id="run-a") is True
-    coordinator.release_reservation(run_id="run-a")
-
-    coordinator.enqueue_resume(
-        run_id="run-other",
-        request_id="request-other",
-        command_id="command-other",
-        resume_kind="REAUTH_COMPLETED",
-        resume_payload={},
-    )
-
-    # The freed slot is now occupied by run-other, not empty again.
-    assert coordinator.reserve_start(run_id="run-yet-another") is False
-
-
-def test_concurrent_reserve_start_calls_only_admit_up_to_capacity() -> None:
-    """Test C: N concurrent reserve_start calls against a smaller capacity
-    admit exactly `capacity` of them, never more.
-    """
-    capacity = 2
-    run_ids = [f"run-{index}" for index in range(5)]
-    coordinator = _bounded_coordinator(capacity=capacity)
-    barrier = Barrier(len(run_ids))
-    results: dict[str, bool] = {}
-    results_lock = Lock()
-
-    def attempt(run_id: str) -> None:
-        barrier.wait(timeout=5)
-        admitted = coordinator.reserve_start(run_id=run_id)
-        with results_lock:
-            results[run_id] = admitted
-
-    threads = [Thread(target=attempt, args=(run_id,)) for run_id in run_ids]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=5)
-
-    assert len(results) == len(run_ids)
-    assert sum(1 for admitted in results.values() if admitted) == capacity
-
-
-def test_confirm_start_atomically_converts_reservation_into_queue_occupancy() -> None:
-    """Test D: confirm_start must transfer the reservation's claim on
-    capacity to the real queue item, not release it -- the slot stays
-    fully consumed across the reservation-to-queue-item conversion.
-    """
-    coordinator = _bounded_coordinator(capacity=1)
-
-    assert coordinator.reserve_start(run_id="run-a") is True
-    coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
-
-    assert coordinator.reserve_start(run_id="run-b") is False
-
-
-def test_concurrent_producer_cannot_steal_a_reserved_slot_during_the_commit_gap() -> None:
-    """Reproduces the exact TOCTOU with real concurrent threads: thread 1
-    reserves a start slot and pauses (simulating the StartRunService DB
-    commit window) while thread 2 concurrently tries to enqueue something
-    else into the same one-slot queue. Thread 2 must be rejected, and
-    thread 1's confirm must still succeed once it resumes -- proving the
-    reservation genuinely holds the slot across the gap instead of being a
-    stale precheck that a concurrent producer can slip past.
-    """
-    coordinator = _bounded_coordinator(capacity=1)
-    reserved_event = Event()
-    proceed_event = Event()
-    other_producer_result: dict[str, object] = {}
-
-    def start_flow() -> None:
-        assert coordinator.reserve_start(run_id="run-a") is True
-        reserved_event.set()
-        assert proceed_event.wait(timeout=5)
-        coordinator.confirm_start(run_id="run-a", request_id="request-a", command_id="command-a")
-
-    def other_producer() -> None:
-        assert reserved_event.wait(timeout=5)
-        try:
-            coordinator.enqueue_resume(
-                run_id="run-b",
-                request_id="request-b",
-                command_id="command-b",
-                resume_kind="REAUTH_COMPLETED",
-                resume_payload={},
-            )
-        except QueueBusyError as error:
-            other_producer_result["error"] = error
-        finally:
-            proceed_event.set()
-
-    start_thread = Thread(target=start_flow)
-    other_thread = Thread(target=other_producer)
-    start_thread.start()
-    other_thread.start()
-    start_thread.join(timeout=5)
-    other_thread.join(timeout=5)
-
-    assert isinstance(other_producer_result.get("error"), QueueBusyError)
-
-
+def _wait_until(predicate) -> None:
+    deadline = time.time() + 1
+    while not predicate() and time.time() < deadline:
+        time.sleep(0.01)

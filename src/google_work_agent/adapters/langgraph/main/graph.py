@@ -26,7 +26,6 @@ class GraphNodeBindings:
     review: Any
     single_workflow: Any
     domain_validation: Any
-    waiting_confirmation: Any
     waiting_approval: Any
     modify_review: Any
     action_execution: Any
@@ -47,7 +46,6 @@ class GraphNodeBindings:
             "review": self.review,
             "single_workflow": self.single_workflow,
             "domain_validation": self.domain_validation,
-            "waiting_confirmation": self.waiting_confirmation,
             "waiting_approval": self.waiting_approval,
             "modify_review": self.modify_review,
             "action_execution": self.action_execution,
@@ -110,7 +108,6 @@ class WorkflowGraphComposition:
         for name in (
             "tool_route",
             "domain_validation",
-            "waiting_confirmation",
             "waiting_approval",
             "modify_review",
             "action_execution",
@@ -125,7 +122,6 @@ class WorkflowGraphComposition:
             *self._topology,
             "tool_route",
             "domain_validation",
-            "waiting_confirmation",
             "waiting_approval",
             "modify_review",
             "action_execution",
@@ -140,7 +136,6 @@ class WorkflowGraphComposition:
         edges: dict[Hashable, str] = {
             "tool_route": "tool_route",
             "domain_validation": "domain_validation",
-            "waiting_confirmation": "waiting_confirmation",
             "waiting_approval": "waiting_approval",
             "modify_review": "modify_review",
             "action_execution": "action_execution",

@@ -120,7 +120,7 @@ def test_confirmation_response_is_typed_and_mutually_exclusive() -> None:
             "expected_version": 2,
             "interrupt_id": "interrupt-1",
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "  Use the default task list.  ",
             "api_contract_version": VERSION,
         }
@@ -131,7 +131,7 @@ def test_confirmation_response_is_typed_and_mutually_exclusive() -> None:
         ConfirmationResponseV1.model_validate(
             {
                 **response.model_dump(),
-                "selected_option_ids": ["default"],
+                "selected_option": "default",
             }
         )
 

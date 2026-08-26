@@ -12,7 +12,7 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 MIGRATIONS = Path("src/google_work_agent/adapters/persistence/migrations")
 
 
-def test_0008_database_upgrades_to_0009_without_changing_applied_receipts(
+def test_0008_database_upgrades_through_latest_without_changing_applied_receipts(
     tmp_path: Path,
 ) -> None:
     first_eight = tmp_path / "first-eight"
@@ -31,9 +31,10 @@ def test_0008_database_upgrades_to_0009_without_changing_applied_receipts(
             "SELECT version, name, checksum FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert [result.applied for result in results] == [False] * 8 + [True]
+        assert [result.applied for result in results] == [False] * 8 + [True, True]
         assert [tuple(row) for row in after[:8]] == [tuple(row) for row in before]
         assert tuple(after[8])[:2] == (9, "workflow_handoff_outbox")
+        assert tuple(after[9])[:2] == (10, "plan_review_disposition")
     finally:
         connection.close()
 

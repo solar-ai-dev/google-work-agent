@@ -17,10 +17,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     PLANNING_AGENT_LOCAL_KEY,
     PLANNING_MODE_KEY,
@@ -35,7 +31,7 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     WorkflowPhase,
 )
@@ -52,7 +48,7 @@ from google_work_agent.ports import StructuredLLMResult
 MergeDecision = Callable[[Any, GraphStateUpdateV1, object], Any]
 ConfirmInline = Callable[
     [PlanningLocalState],
-    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 PlanningResult = AnswerDraftV1 | ActionPlanDraftV1
 
@@ -112,7 +108,7 @@ class RuntimeActivePlanningSubgraph:
         state: PlanningLocalState,
         *,
         mode: str,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[PlanningResult, list[StructuredLLMResult]]:
         raise NotImplementedError
 
@@ -201,14 +197,8 @@ class RuntimeActivePlanningSubgraph:
             {
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "owner_subgraph": "PLANNING",
+                "semantic_owner_id": "PLANNING",
                 "origin_target": question["origin_target"],
-                "resume_target": {
-                    "subgraph_id": "PLANNING",
-                    "node_id": "finalize",
-                    "graph_version": RESUME_CONTRACT_VERSION,
-                },
-                "resume_status": confirmation_resume_status("PLANNING").value,
             },
         )
 
@@ -253,15 +243,11 @@ class RuntimeActivePlanningSubgraph:
                     state["request_intent"],
                     "request_intent",
                 )
-                user_interrupt, confirmation_interrupt = (
-                    self._materialize_confirmation_interrupt(
-                        result=result,
-                        request_intent=request_intent,
-                    )
+                user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
+                    result=result,
+                    request_intent=request_intent,
                 )
-                prompt_context = dict(
-                    cast(dict[str, object], state.get("prompt_context", {}))
-                )
+                prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
                 prompt_context["confirmation_interrupt"] = confirmation_interrupt
                 return cast(
                     PlanningLocalState,

@@ -20,7 +20,7 @@ from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     RunBudgetV1,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
@@ -186,7 +186,7 @@ class ToolRouteAgent:
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         retry_budget: RunBudgetV1,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         with provider_dispatch_budget_scope(retry_budget):
             return self._determine_semantic_candidate_scoped(
@@ -202,7 +202,7 @@ class ToolRouteAgent:
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         retry_budget: RunBudgetV1,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
         eligible_route_capabilities = _eligible_route_capabilities(self._tool_catalog)
         base_projection: dict[str, object] = {

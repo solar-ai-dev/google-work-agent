@@ -1,15 +1,19 @@
 import pytest
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
     GraphRouteTranslator,
     UnroutableSupervisorTargetError,
-    build_resume_target_registry,
-    confirmation_owner,
-    confirmation_resume_status,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.registry.node_registry import (
+    RUNTIME_NODE_OWNERS,
+    NodeRegistry,
+)
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
-from google_work_agent.domain import RunStatus
 
 
 @pytest.mark.parametrize(
@@ -133,80 +137,43 @@ def test_translate_fails_closed_for_unmapped_target(target: str) -> None:
         GraphRouteTranslator(GraphProfile.SIX_ROLE_BASELINE).translate(target)
 
 
-@pytest.mark.parametrize(
-    ("profile", "origin_target", "expected"),
-    [
-        (GraphProfile.SINGLE_BASELINE, "review.inspect", "single_workflow"),
-        (GraphProfile.THREE_STAGE, "request_understanding.classify", "stage_one"),
-        (GraphProfile.THREE_STAGE, "analysis.analyze", "stage_two"),
-        (GraphProfile.THREE_STAGE, "review.inspect", "stage_three"),
-        (GraphProfile.SIX_ROLE_BASELINE, "request_understanding.classify", "request_understanding"),
-        (GraphProfile.SIX_ROLE_BASELINE, "tool_route.finalize", "tool_route"),
-        (GraphProfile.SIX_ROLE_BASELINE, "context.assess_sufficiency", "context_retriever"),
-        (GraphProfile.SIX_ROLE_BASELINE, "analysis.analyze", "work_analysis"),
-        (GraphProfile.SIX_ROLE_BASELINE, "planning.draft_plan", "planning"),
-        (GraphProfile.SIX_ROLE_BASELINE, "review.inspect", "review"),
-    ],
-)
-def test_confirmation_resume_target_returns_originating_owner(
-    profile: GraphProfile,
-    origin_target: str,
-    expected: str,
-) -> None:
-    assert (
-        GraphRouteTranslator(profile).confirmation_resume_target({"origin_target": origin_target})
-        == expected
+def _resume_registry() -> ResumeTargetRegistry:
+    return ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
     )
 
 
-def test_confirmation_resume_target_rejects_unknown_origin() -> None:
-    with pytest.raises(ValueError, match="no registered owner"):
-        GraphRouteTranslator(GraphProfile.SIX_ROLE_BASELINE).confirmation_resume_target(
-            {"origin_target": "unknown"}
-        )
+def test_node_registry_contains_exact_canonical_runtime_nodes() -> None:
+    assert len(RUNTIME_NODE_OWNERS) == 35
 
 
-@pytest.mark.parametrize(
-    ("origin_target", "owner", "status"),
-    [
-        ("request_understanding.classify", "REQUEST_UNDERSTANDING", RunStatus.ANALYZING),
-        ("tool_route.finalize", "TOOL_ROUTE", RunStatus.ANALYZING),
-        ("retrieval.plan_query", "RETRIEVAL", RunStatus.RETRIEVING),
-        ("context.assess_sufficiency", "RETRIEVAL", RunStatus.RETRIEVING),
-        ("analysis.analyze", "WORK_ANALYSIS", RunStatus.PLANNING),
-        ("planning.draft_plan", "PLANNING", RunStatus.PLANNING),
-        ("review.inspect", "REVIEW", RunStatus.PLANNING),
-    ],
-)
-def test_confirmation_owner_and_domain_resume_status_are_canonical(
-    origin_target: str,
-    owner: str,
-    status: RunStatus,
-) -> None:
-    assert confirmation_owner(origin_target) == owner
-    assert confirmation_resume_status(owner) is status
+def test_resume_target_registry_issues_profile_bound_same_owner_target() -> None:
+    registry = _resume_registry()
+    target = registry.issue_agent_node(
+        "SIX_ROLE_BASELINE",
+        "RETRIEVAL",
+        "retrieval.finalize",
+        RESUME_CONTRACT_VERSION,
+    )
 
-
-def test_resume_target_registry_issues_and_resolves_only_registered_target() -> None:
-    registry = build_resume_target_registry(GraphProfile.SIX_ROLE_BASELINE)
-
-    target = registry.issue(subgraph_id="RETRIEVAL", node_id="finalize")
-
-    assert registry.resolve(target) == "context_retriever"
+    assert target.semantic_owner_id == "RETRIEVAL"
+    assert target.compiled_subgraph_id == "SIX_RETRIEVAL"
+    registry.validate(target)
 
 
 @pytest.mark.parametrize(
     "target",
     [
-        {"subgraph_id": "RETRIEVAL", "node_id": "unknown", "graph_version": "resume-contract-v1"},
-        {"subgraph_id": "RETRIEVAL", "node_id": "finalize", "graph_version": "wrong"},
-        {"subgraph_id": "UNKNOWN", "node_id": "finalize", "graph_version": "resume-contract-v1"},
+        ("SIX_ROLE_BASELINE", "RETRIEVAL", "unknown", RESUME_CONTRACT_VERSION),
+        ("SIX_ROLE_BASELINE", "RETRIEVAL", "retrieval.finalize", "wrong"),
+        ("SIX_ROLE_BASELINE", "PLANNING", "retrieval.finalize", RESUME_CONTRACT_VERSION),
     ],
 )
 def test_resume_target_registry_rejects_unregistered_or_wrong_version(
-    target: dict[str, str],
+    target: tuple[str, str, str, str],
 ) -> None:
-    registry = build_resume_target_registry(GraphProfile.SIX_ROLE_BASELINE)
+    registry = _resume_registry()
 
     with pytest.raises(ValueError):
-        registry.resolve(target)  # type: ignore[arg-type]
+        registry.issue_agent_node(*target)  # type: ignore[arg-type]

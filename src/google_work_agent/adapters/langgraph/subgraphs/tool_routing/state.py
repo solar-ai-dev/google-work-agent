@@ -21,7 +21,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRouteResultV1,
 )
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     FinalizeIntentV1,
     PolicyConfirmationReceiptV1,
     RunBudgetV1,
@@ -53,7 +53,7 @@ class ToolRoutingState(ToolRoutingLocalState, total=False):
     tr_selected_tools: NotRequired[dict[tuple[str, str], str]]
     tr_binding: NotRequired[RouteBindingCandidateV1]
     tr_result: NotRequired[ToolRouteResultV1 | None]
-    tr_confirmation_response: NotRequired[ConfirmationResponseV1 | None]
+    tr_confirmation_response: NotRequired[ConfirmationResponseProjectionV1 | None]
     tr_retry_budget: NotRequired[RunBudgetV1]
     tr_confirmation_origin: NotRequired[str]
     tr_current_interrupt_id: NotRequired[str | None]

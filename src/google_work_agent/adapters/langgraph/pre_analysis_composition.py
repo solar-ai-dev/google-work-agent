@@ -21,8 +21,7 @@ from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
 )
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
-    PolicyConfirmationReceiptV1,
+    ConfirmationResponseProjectionV1,
 )
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextRetrievalAgent,
@@ -76,15 +75,14 @@ def build_pre_analysis_subgraphs(
     transition_run: Callable[[str, str], None],
     merge_decision: Callable[..., Any],
     confirm_request_understanding_inline: Callable[
-        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+        [Any], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
     ],
     confirm_tool_route_inline: Callable[
-        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+        [Any], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
     ],
     confirm_context_retrieval_inline: Callable[
-        [Any], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+        [Any], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
     ],
-    record_policy_confirmation_receipt: Callable[[str, PolicyConfirmationReceiptV1], None],
     evidence_store: RunScopedEvidenceStore,
     read_result_cache: RunScopedReadResultCache,
     retrieval_read_executor: RetrievalReadExecutor,
@@ -112,7 +110,6 @@ def build_pre_analysis_subgraphs(
             semantic_agent=tool_route_agent,
             graph_profile=graph_profile,
             confirm_inline=confirm_tool_route_inline,
-            record_policy_confirmation_receipt=record_policy_confirmation_receipt,
         ),
         # Legacy standalone acquisition is intentionally left as an isolated
         # compatibility object: no production profile topology routes here.

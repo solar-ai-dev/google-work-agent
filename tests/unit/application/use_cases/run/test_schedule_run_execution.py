@@ -5,14 +5,18 @@ from pathlib import Path
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffStageV1,
+    WorkflowHandoffV1,
 )
 
 
@@ -85,6 +89,44 @@ def test_non_accepted_submit_releases_equal_epoch_admission(tmp_path: Path) -> N
     assert persisted.last_submit_reason == "ALREADY_RUNNING"
 
 
+def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
+    target = MainControlResumeTargetV2(
+        "MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1"
+    )
+    checkpoint = GraphCheckpointEnvelopeV1(
+        1,
+        "cp-latest",
+        4,
+        "r-1",
+        "t-1",
+        "SIX_ROLE_BASELINE",
+        "v1",
+        "MAIN_CONTROL",
+        target,
+        "h-1",
+        None,
+        "h-1",
+        1,
+        (),
+        10,
+        b"opaque",
+    )
+
+    class _CheckpointPort:
+        def load_same_run_checkpoint(self, run_id: str, thread_id: str):
+            assert (run_id, thread_id) == ("r-1", "t-1")
+            return checkpoint
+
+    resolver = CheckpointEffectiveBindingResolver(_CheckpointPort())  # type: ignore[arg-type]
+    binding = resolver(_consumed_handoff(), "CONSUMED_CONTINUATION_RECOVERY")
+
+    assert binding is not None
+    assert binding.execution_kind == "RESUME"
+    assert binding.checkpoint_id == "cp-latest"
+    assert binding.checkpoint_generation == 4
+    assert binding.resume_target == target
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "schedule.db"
     with connect_sqlite(path) as connection:
@@ -119,4 +161,27 @@ def _stage() -> WorkflowHandoffStageV1:
         control_kind="NONE",
         control=None,
         control_payload_hash=None,
+    )
+
+
+def _consumed_handoff() -> WorkflowHandoffV1:
+    return WorkflowHandoffV1(
+        1,
+        "h-1",
+        "cmd-1",
+        RunExecutionRefV1(
+            1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None
+        ),
+        None,
+        0,
+        1,
+        "NONE",
+        None,
+        None,
+        "CONSUMED",
+        None,
+        None,
+        "cp-initial",
+        1,
+        2,
     )

@@ -36,7 +36,7 @@ from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     BudgetDecision,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     ContextResult,
     GraphStateUpdateV1,
     RunBudgetV1,
@@ -389,7 +389,7 @@ class ContextRetrievalAgent:
         acquisition_result: AcquisitionResultV1,
         evidence_drafts: list[EvidenceDraftV1],
         retry_budget: RunBudgetV1,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> tuple[SufficiencyResultV2, dict[str, object]]:
         """retrieval.assess_sufficiency (docs/05-context-retrieval.md SS5.7):
         request_intent + top rag candidates' materialized evidence. Never

@@ -383,7 +383,7 @@ def test_static_settings_backup_and_safe_mode_flow(tmp_path: Path) -> None:
                 "conversation_id": "conversation-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
-                "selected_resource_ids": [],
+                "selected_resource_handles": [],
                 "requested_mode": "API_LLM",
                 "api_contract_version": "1",
             },

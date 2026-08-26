@@ -12,6 +12,7 @@ from google_work_agent.application.orchestration.planning_invocation import (
     PlanningV2RuntimeError,
 )
 from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class _AnswerProvider:
@@ -266,16 +267,19 @@ def test_action_confirmation_carries_no_partial_planning_artifact() -> None:
         work_analysis_result=_analysis(),
         evidence_drafts=_evidence(),
         interrupt_id="interrupt-1",
-        resume_target={
-            "subgraph_id": "PLANNING",
-            "node_id": "compose_prepared",
-            "graph_version": "runtime-v2",
-        },
+        resume_target=AgentNodeResumeTargetV2(
+            kind="AGENT_NODE",
+            semantic_owner_id="PLANNING",
+            compiled_subgraph_id="SIX_PLANNING",
+            node_id="planning.compose_arguments_per_output_route",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="runtime-v2",
+        ),
     )
     assert result["disposition"] == "NEEDS_CONFIRMATION"
     assert result["typed_result"] is None
     assert result["workflow_signal"]["kind"] == "CONFIRMATION_REQUIRED"
-    assert result["workflow_signal"]["owner_subgraph"] == "PLANNING"
+    assert result["workflow_signal"]["semantic_owner_id"] == "PLANNING"
 
 
 def test_semantic_route_reconsideration_carries_no_partial_artifact() -> None:

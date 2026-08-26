@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import NoReturn, cast
 
 import pytest
@@ -111,13 +113,10 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
         )
 
 
-def test_start_run_reaches_the_real_coordinator_once_core_initialization_completes(
+def test_start_run_reaches_the_durable_execution_runtime_after_core_initialization(
     tmp_path: Path,
 ) -> None:
-    """Regression test: POST /api/v1/runs used to return 503 SERVICE_BUSY with
-    detail_code=AttributeError even after core initialization finished,
-    because `local_run_coordinator` never delegated enqueue_start to the
-    real, now-bound LocalRunCoordinator (see _DeferredCoordinator)."""
+    """POST /runs commits and schedules through the bound durable runtime."""
 
     runtime_root = tmp_path / "runtime"
     runtime_root.mkdir(parents=True)
@@ -157,8 +156,7 @@ def test_start_run_reaches_the_real_coordinator_once_core_initialization_complet
                 "conversation_id": "conversation-1",
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
-                "selected_resource_ids": [],
-                "selected_resources": [],
+                "selected_resource_handles": [],
                 "requested_mode": "AUTO",
             },
         )
@@ -197,6 +195,40 @@ def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: 
 
     assert container._closed is True
     assert container._core is None
+
+
+def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_once() -> None:
+    lifecycle: list[str] = []
+
+    class _Coordinator:
+        def start(self) -> None:
+            lifecycle.append("coordinator-start")
+
+        def stop(self) -> None:
+            lifecycle.append("coordinator-stop")
+
+    async def startup() -> None:
+        lifecycle.append("initial-drain-and-live-start")
+
+    core = SimpleNamespace(
+        local_run_coordinator=_Coordinator(),
+        readiness_aggregator=SimpleNamespace(),
+        runtime_status_provider=SimpleNamespace(),
+        query_service=SimpleNamespace(),
+        startup_callbacks=(startup,),
+        shutdown_callbacks=(lambda: lifecycle.append("runtime-stop"),),
+    )
+    container = _shell(core_builder=lambda **_: cast(ApiContainer, core))
+
+    asyncio.run(container._initialize())
+    container.close()
+    container.close()
+
+    assert lifecycle == [
+        "initial-drain-and-live-start",
+        "coordinator-stop",
+        "runtime-stop",
+    ]
 
 
 def _shell(*, core_builder: Callable[..., ApiContainer]) -> _DeferredApiContainer:

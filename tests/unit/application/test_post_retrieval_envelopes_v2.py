@@ -8,6 +8,7 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
     validate_review_return_v2,
     validate_work_analysis_return_v2,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 def _meta(name: str):
@@ -41,12 +42,15 @@ def test_analysis_needs_confirmation_cannot_promote_candidate() -> None:
                 "workflow_signal": {
                     "kind": "CONFIRMATION_REQUIRED",
                     "interrupt_id": "i1",
-                    "owner_subgraph": "WORK_ANALYSIS",
-                    "resume_target": {
-                        "subgraph_id": "WORK_ANALYSIS",
-                        "node_id": "finalize",
-                        "graph_version": "v1",
-                    },
+                    "semantic_owner_id": "WORK_ANALYSIS",
+                    "resume_target": AgentNodeResumeTargetV2(
+                        kind="AGENT_NODE",
+                        semantic_owner_id="WORK_ANALYSIS",
+                        compiled_subgraph_id="SIX_WORK_ANALYSIS",
+                        node_id="analysis.finalize",
+                        graph_profile="SIX_ROLE_BASELINE",
+                        graph_version="v1",
+                    ),
                     "question": "which?",
                     "options": [],
                 },

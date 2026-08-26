@@ -7,9 +7,6 @@ from json import dumps
 from typing import cast
 
 from google_work_agent.application.run_command_receipts import finish_json_receipt, resolve_existing_receipt
-from google_work_agent.application.orchestration.contracts import (
-    validate_confirmation_response_v1,
-)
 from google_work_agent.domain import ActionStatus, ResultCode, RunStatus
 from google_work_agent.ports import AuditEventRecord, TraceEventRecord, UnitOfWork
 
@@ -87,7 +84,7 @@ class ResumeRunHandler:
     def __call__(self, command: ResumeRunCommand, *, request_id: str, resume_payload: dict[str, object] | None = None) -> ResumeRunResult:
         payload = {} if resume_payload is None else dict(resume_payload)
         authority = None
-        if command.resume_kind in {"CONFIRMATION", "REAUTH_COMPLETED"}:
+        if command.resume_kind == "REAUTH_COMPLETED":
             authority = self._resolve_resume_authority(run_id=command.run_id, resume_kind=command.resume_kind)
         result = self._persist(command, authority=authority, resume_payload=payload)
         if result.applied and result.should_enqueue:
@@ -192,7 +189,6 @@ class ResumeRunHandler:
         if command.expected_run_version != version:
             return ResumeRunResult(False, ResultCode.VERSION_CONFLICT.value, command.run_id, status.value, version, False, False, "expected_run_version does not match current version")
         allowed = {
-            "CONFIRMATION": RunStatus.WAITING_CONFIRMATION,
             "REAUTH_COMPLETED": RunStatus.REAUTH_REQUIRED,
             "RECOVERY_RECHECK": RunStatus.RECOVERY_REQUIRED,
         }
@@ -200,32 +196,9 @@ class ResumeRunHandler:
             return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "run status does not allow manual resume")
         if unknown_result_exists and command.resume_kind not in {"RECOVERY_RECHECK", "REAUTH_COMPLETED"}:
             return ResumeRunResult(False, ResultCode.RECOVERY_REQUIRED.value, command.run_id, status.value, version, False, False, "unknown write results must be resolved before resume")
-        if command.resume_kind in {"CONFIRMATION", "REAUTH_COMPLETED"}:
+        if command.resume_kind == "REAUTH_COMPLETED":
             if authority is None or not isinstance(authority.get("resume_status"), str):
                 return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "persisted resume authority is unavailable")
-        if command.resume_kind == "CONFIRMATION":
-            expected_interrupt = authority.get("interrupt_id") if authority is not None else None
-            if not isinstance(expected_interrupt, str) or resume_payload.get("interrupt_id") != expected_interrupt:
-                return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "confirmation interrupt does not match persisted checkpoint authority")
-            allowed_option_ids = authority.get("allowed_option_ids") if authority is not None else None
-            if allowed_option_ids is not None:
-                if not isinstance(allowed_option_ids, list) or not all(
-                    isinstance(item, str) and item for item in allowed_option_ids
-                ):
-                    return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "persisted confirmation option authority is invalid")
-                try:
-                    confirmation = validate_confirmation_response_v1(
-                        {
-                            "schema_version": resume_payload.get("schema_version"),
-                            "response_kind": resume_payload.get("response_kind"),
-                            "selected_option_ids": resume_payload.get("selected_option_ids"),
-                            "free_text": resume_payload.get("free_text"),
-                        }
-                    )
-                except ValueError as error:
-                    return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, str(error))
-                if not set(confirmation["selected_option_ids"]).issubset(allowed_option_ids):
-                    return ResumeRunResult(False, ResultCode.STATE_CONFLICT.value, command.run_id, status.value, version, False, False, "confirmation option is outside persisted checkpoint authority")
         if command.resume_kind == "REAUTH_COMPLETED":
             assert authority is not None
             try:
@@ -245,13 +218,6 @@ class ResumeRunHandler:
         *,
         reauth_dispatch_uncertain: bool,
     ):
-        if command.resume_kind == "CONFIRMATION":
-            decision = unit_of_work.runs.resume_confirmation(
-                command.run_id,
-                expected_version=current_version,
-                resume_status=RunStatus(cast(str, authority["resume_status"])),
-            )
-            return decision, decision.applied
         if command.resume_kind == "REAUTH_COMPLETED":
             restored = unit_of_work.runs.resume_after_reauth(
                 command.run_id,

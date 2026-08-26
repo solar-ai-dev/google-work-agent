@@ -24,6 +24,7 @@ from google_work_agent.ports.models import (
     RunRecord,
     TraceEventRecord,
 )
+from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
@@ -176,7 +177,11 @@ class _ReceiptRepo:
         self.finish_count = 0
 
     def get_by_command_id(self, command_id: str) -> CommandReceiptRecord | None:
-        return self.record if self.record is not None and self.record.command_id == command_id else None
+        return (
+            self.record
+            if self.record is not None and self.record.command_id == command_id
+            else None
+        )
 
     def add_received(self, **kwargs: object) -> None:
         self.add_received_count += 1
@@ -200,7 +205,9 @@ class _ReceiptRepo:
         self.finish_count += 1
         self.record = replace(
             self.record,
-            status=CommandReceiptStatus.APPLIED if kwargs["applied"] else CommandReceiptStatus.REJECTED,
+            status=CommandReceiptStatus.APPLIED
+            if kwargs["applied"]
+            else CommandReceiptStatus.REJECTED,
             result_code=kwargs["result_code"],
             result_version=int(kwargs["result_version"]),
             response_json=str(kwargs["response_json"]),
@@ -241,9 +248,36 @@ class _WorkflowHandoffRepo:
 
     def get_by_trigger_command_id(self, trigger_command_id: str) -> WorkflowHandoffV1 | None:
         return next(
-            (item for item in self.records.values() if item.trigger_command_id == trigger_command_id),
+            (
+                item
+                for item in self.records.values()
+                if item.trigger_command_id == trigger_command_id
+            ),
             None,
         )
+
+
+class _ResourceRefRepo:
+    def __init__(self) -> None:
+        self.records: dict[str, object] = {}
+
+    def upsert_bound_ref(self, record: object) -> object:
+        self.records[record.id] = record  # type: ignore[attr-defined]
+        return record
+
+
+class _CheckpointPort:
+    def __init__(self) -> None:
+        self.bindings: dict[str, WorkflowBindingV1] = {}
+
+    def create_workflow_binding(self, binding: WorkflowBindingV1) -> None:
+        existing = self.bindings.get(binding.run_id)
+        if existing is not None and existing != binding:
+            raise RuntimeError("conflicting binding")
+        self.bindings[binding.run_id] = binding
+
+    def load_workflow_binding(self, run_id: str) -> WorkflowBindingV1 | None:
+        return self.bindings.get(run_id)
 
 
 class _UnitOfWork:
@@ -255,9 +289,11 @@ class _UnitOfWork:
         self.traces = _TraceCollector()
         self.audits = _AuditCollector()
         self.workflow_handoffs = _WorkflowHandoffRepo()
+        self.resource_refs = _ResourceRefRepo()
+        self.checkpoints = _CheckpointPort()
         self.commit_count = 0
 
-    def __enter__(self) -> "_UnitOfWork":
+    def __enter__(self) -> _UnitOfWork:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -281,8 +317,7 @@ def _command(*, request_hash: str = "hash-1") -> StartRunCommand:
         request_hash=request_hash,
         conversation_id="conversation-1",
         request_text="hello",
-        entry_mode="CHAT",
-        selected_resource_ids=(),
+        entry_mode="AGENT_SEARCH",
         requested_mode="AUTO",
         api_contract_version="v1",
     )
@@ -371,8 +406,10 @@ def _run_created_trace(
         payload_json=dumps(
             {
                 "command_id": command.command_id if command_id is None else command_id,
-                "selected_resource_ids": list(command.selected_resource_ids),
-                "selected_resources": [asdict(resource) for resource in command.selected_resources],
+                "selected_resource_ids": [
+                    item.resource_id for item in command.resolved_resource_selections
+                ],
+                "selected_resources": [],
                 "workflow_key": workflow_key,
                 "requested_mode": command.requested_mode,
             },
@@ -478,6 +515,18 @@ def _seed_complete_aggregate(
         applied_checkpoint_generation=None,
         version=0,
     )
+    uow.checkpoints.create_workflow_binding(
+        WorkflowBindingV1(
+            schema_version=1,
+            workflow_key=workflow_key,
+            run_id=run_id,
+            langgraph_thread_id=workflow_key,
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+            requested_mode="AUTO",
+            created_at_ms=10,
+        )
+    )
 
 
 def _handler(uow: _UnitOfWork) -> StartRunHandler:
@@ -500,6 +549,7 @@ def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None
     assert uow.runs.add_count == 1
     assert uow.messages.add_count == 1
     assert uow.workflow_handoffs.stage_count == 1
+    assert len(uow.checkpoints.bindings) == 1
     assert len(uow.traces.items) == 1
     assert len(uow.audits.items) == 1
     assert uow.command_receipts.add_received_count == 1
@@ -651,7 +701,9 @@ def test_received_receipt_without_aggregate_with_prior_command_applied_fails_clo
     uow.command_receipts.record = _received(command)
     uow.audits.add(_command_applied_audit(command))
 
-    with pytest.raises(RuntimeError, match="prior COMMAND_APPLIED Audit evidence without aggregate"):
+    with pytest.raises(
+        RuntimeError, match="prior COMMAND_APPLIED Audit evidence without aggregate"
+    ):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
@@ -679,7 +731,9 @@ def test_received_receipt_without_aggregate_with_prior_run_created_trace_fails_c
     assert len(uow.traces.items) == 1
 
 
-def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_fails_closed() -> None:
+def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_fails_closed() -> (
+    None
+):
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)

@@ -7,6 +7,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    ResourceSelectionHandlePayloadV1,
+)
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain import ResultCode, RunStatus
 from google_work_agent.domain.run.model import RunTransitionRejected
@@ -19,15 +22,38 @@ from google_work_agent.ports.models import (
     MessageRecord,
     PersistedAuditEventRecord,
     PersistedTraceEventRecord,
+    ResourceRefRecord,
+    ResourceSource,
     RunCreateRecord,
+    StoredResourceType,
     TraceEventRecord,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-from google_work_agent.ports.system.contracts.workflow_handoff import (
+from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
+    WorkflowBindingV1,
+)
+from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+
+_RESOURCE_STORAGE_IDENTITIES = {
+    "gmail_thread": (ResourceSource.GMAIL, StoredResourceType.THREAD),
+    "gmail_message": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
+    "gmail_draft": (ResourceSource.GMAIL, StoredResourceType.MESSAGE),
+    "task_list": (ResourceSource.TASKS, StoredResourceType.TASK_LIST),
+    "task": (ResourceSource.TASKS, StoredResourceType.TASK),
+    "calendar": (ResourceSource.CALENDAR, StoredResourceType.CALENDAR),
+    "calendar_event": (ResourceSource.CALENDAR, StoredResourceType.EVENT),
+}
+
+
+def _resource_storage_identity(resource_type: str) -> tuple[ResourceSource, StoredResourceType]:
+    try:
+        return _RESOURCE_STORAGE_IDENTITIES[resource_type]
+    except KeyError as error:
+        raise ValueError(f"unsupported selected resource type: {resource_type}") from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,10 +63,9 @@ class StartRunCommand:
     conversation_id: str
     request_text: str
     entry_mode: str
-    selected_resource_ids: tuple[str, ...]
     requested_mode: str
     api_contract_version: str
-    selected_resources: tuple[SelectedResourceRef, ...] = ()
+    resolved_resource_selections: tuple[ResourceSelectionHandlePayloadV1, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +227,26 @@ class StartRunHandler:
         )
         unit_of_work.conversations.touch_updated_at(command.conversation_id, updated_at_ms=now_ms)
 
+        selected_resources = self._materialize_selected_resources(
+            unit_of_work=unit_of_work,
+            command=command,
+            run_id=run_id,
+            account_id=conversation.account_id,
+            now_ms=now_ms,
+        )
+        unit_of_work.checkpoints.create_workflow_binding(
+            WorkflowBindingV1(
+                schema_version=1,
+                workflow_key=workflow_key,
+                run_id=run_id,
+                langgraph_thread_id=workflow_key,
+                graph_profile=self._graph_profile,
+                graph_version=self._graph_version,
+                requested_mode=command.requested_mode,  # type: ignore[arg-type]
+                created_at_ms=now_ms,
+            )
+        )
+
         unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
                 schema_version=1,
@@ -235,8 +280,10 @@ class StartRunHandler:
                 payload_json=dumps(
                     {
                         "command_id": command.command_id,
-                        "selected_resource_ids": list(command.selected_resource_ids),
-                        "selected_resources": [asdict(resource) for resource in command.selected_resources],
+                        "selected_resource_ids": [
+                            resource.resource_id for resource in selected_resources
+                        ],
+                        "selected_resources": [asdict(resource) for resource in selected_resources],
                         "workflow_key": workflow_key,
                         "requested_mode": command.requested_mode,
                     },
@@ -284,6 +331,62 @@ class StartRunHandler:
         unit_of_work.commit()
         return response
 
+    def _materialize_selected_resources(
+        self,
+        *,
+        unit_of_work: UnitOfWork,
+        command: StartRunCommand,
+        run_id: str,
+        account_id: str,
+        now_ms: int,
+    ) -> tuple[SelectedResourceRef, ...]:
+        if command.entry_mode == "AGENT_SEARCH":
+            if command.resolved_resource_selections:
+                raise ValueError("AGENT_SEARCH cannot include resolved resource selections")
+            return ()
+        if command.entry_mode != "RESOURCE_SELECTED" or not command.resolved_resource_selections:
+            raise ValueError("RESOURCE_SELECTED requires resolved resource selections")
+        if len(command.resolved_resource_selections) > 20:
+            raise ValueError("RESOURCE_SELECTED accepts at most 20 resource selections")
+
+        selected: list[SelectedResourceRef] = []
+        seen: set[tuple[str, str, str]] = set()
+        for identity in command.resolved_resource_selections:
+            if identity.account_id != account_id:
+                raise ValueError("resolved resource account does not own the conversation")
+            key = (identity.connector_id, identity.resource_type, identity.resource_id)
+            if key in seen:
+                raise ValueError("resolved resource selections must be unique")
+            seen.add(key)
+            source, stored_type = _resource_storage_identity(identity.resource_type)
+            resource_ref_id = self._id_factory()
+            persisted = unit_of_work.resource_refs.upsert_bound_ref(
+                ResourceRefRecord(
+                    id=resource_ref_id,
+                    run_id=run_id,
+                    connector_id=identity.connector_id,
+                    source=source,
+                    resource_type=stored_type,
+                    resource_id=identity.resource_id,
+                    parent_resource_id=identity.parent_resource_id,
+                    canonical_url=None,
+                    title=None,
+                    event_time_ms=None,
+                    version_token=identity.version_token,
+                    metadata_json="{}",
+                    captured_at_ms=now_ms,
+                )
+            )
+            selected.append(
+                SelectedResourceRef(
+                    source=persisted.source.value,
+                    resource_type=persisted.resource_type.value,
+                    resource_id=persisted.resource_id,
+                    parent_resource_id=persisted.parent_resource_id,
+                )
+            )
+        return tuple(selected)
+
     def _resolve_existing_receipt(
         self,
         *,
@@ -321,7 +424,9 @@ class StartRunHandler:
                 raise RuntimeError("completed StartRun receipt is missing replay response")
             response = StartRunResult(**loads(receipt.response_json))
             self._validate_replay_response(receipt=receipt, command=command, response=response)
-            return StartRunResult(**{**asdict(response), "enqueued": False, "request_replayed": True})
+            return StartRunResult(
+                **{**asdict(response), "enqueued": False, "request_replayed": True}
+            )
 
         run_id = receipt.aggregate_id
         run = None if run_id is None else unit_of_work.runs.get(run_id)
@@ -357,7 +462,9 @@ class StartRunHandler:
                 or message.conversation_id != command.conversation_id
                 or message.content != command.request_text
             ):
-                raise RuntimeError("StartRun receipt recovery found an incomplete aggregate mutation")
+                raise RuntimeError(
+                    "StartRun receipt recovery found an incomplete aggregate mutation"
+                )
 
             self._validate_complete_aggregate_evidence(
                 unit_of_work=unit_of_work,
@@ -428,6 +535,16 @@ class StartRunHandler:
         run_id: str,
         workflow_key: str,
     ) -> None:
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if (
+            binding is None
+            or binding.workflow_key != workflow_key
+            or binding.langgraph_thread_id != workflow_key
+            or binding.graph_profile != self._graph_profile
+            or binding.graph_version != self._graph_version
+            or binding.requested_mode != command.requested_mode
+        ):
+            raise RuntimeError("StartRun receipt recovery found an incomplete WorkflowBinding")
         audit_created = 0
         for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
             if event.event_type != "RUN_CREATED":
@@ -435,16 +552,22 @@ class StartRunHandler:
             audit_created += 1
             self._validate_run_created_audit(event=event, command=command)
         if audit_created > 1:
-            raise RuntimeError("StartRun receipt recovery found duplicate RUN_CREATED Audit evidence")
+            raise RuntimeError(
+                "StartRun receipt recovery found duplicate RUN_CREATED Audit evidence"
+            )
 
         trace_created = 0
         for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
             if event.event_type != "RUN_CREATED":
                 continue
             trace_created += 1
-            self._validate_run_created_trace(event=event, command=command, workflow_key=workflow_key)
+            self._validate_run_created_trace(
+                event=event, command=command, workflow_key=workflow_key
+            )
         if trace_created > 1:
-            raise RuntimeError("StartRun receipt recovery found duplicate RUN_CREATED Trace evidence")
+            raise RuntimeError(
+                "StartRun receipt recovery found duplicate RUN_CREATED Trace evidence"
+            )
 
     def _fail_closed_no_aggregate_recovery(
         self,
@@ -466,7 +589,8 @@ class StartRunHandler:
                 if event.event_type == "RUN_CREATED":
                     self._validate_run_created_audit(event=event, command=command)
                     raise RuntimeError(
-                        "StartRun receipt recovery found prior RUN_CREATED Audit evidence without aggregate"
+                        "StartRun receipt recovery found prior RUN_CREATED Audit evidence "
+                        "without aggregate"
                     )
                 if event.event_type == "COMMAND_APPLIED":
                     self._validate_command_event(
@@ -476,9 +600,12 @@ class StartRunHandler:
                         event_type="COMMAND_APPLIED",
                     )
                     raise RuntimeError(
-                        "StartRun receipt recovery found prior COMMAND_APPLIED Audit evidence without aggregate"
+                        "StartRun receipt recovery found prior COMMAND_APPLIED Audit evidence "
+                        "without aggregate"
                     )
-                raise RuntimeError("StartRun receipt recovery found contradictory durable Audit evidence")
+                raise RuntimeError(
+                    "StartRun receipt recovery found contradictory durable Audit evidence"
+                )
 
             for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
                 payload = self._event_payload(event.payload_json, evidence_kind="Trace")
@@ -494,7 +621,8 @@ class StartRunHandler:
                         event=event, command=command, workflow_key=None
                     )
                     raise RuntimeError(
-                        "StartRun receipt recovery found prior RUN_CREATED Trace evidence without aggregate"
+                        "StartRun receipt recovery found prior RUN_CREATED Trace evidence "
+                        "without aggregate"
                     )
                 if event.event_type == "COMMAND_APPLIED":
                     self._validate_command_event(
@@ -504,13 +632,14 @@ class StartRunHandler:
                         event_type="COMMAND_APPLIED",
                     )
                     raise RuntimeError(
-                        "StartRun receipt recovery found prior COMMAND_APPLIED Trace evidence without aggregate"
+                        "StartRun receipt recovery found prior COMMAND_APPLIED Trace evidence "
+                        "without aggregate"
                     )
-                raise RuntimeError("StartRun receipt recovery found contradictory durable Trace evidence")
+                raise RuntimeError(
+                    "StartRun receipt recovery found contradictory durable Trace evidence"
+                )
 
-        raise RuntimeError(
-            "StartRun RECEIVED receipt has no canonical proof of non-application"
-        )
+        raise RuntimeError("StartRun RECEIVED receipt has no canonical proof of non-application")
 
     def _list_all_audits(
         self,
@@ -578,7 +707,9 @@ class StartRunHandler:
             or cls._event_field(payload, "conversation_id") != command.conversation_id
             or cls._event_field(payload, "entry_mode") != command.entry_mode
         ):
-            raise RuntimeError("StartRun receipt recovery found conflicting RUN_CREATED Audit evidence")
+            raise RuntimeError(
+                "StartRun receipt recovery found conflicting RUN_CREATED Audit evidence"
+            )
 
     @classmethod
     def _validate_run_created_trace(
@@ -593,14 +724,17 @@ class StartRunHandler:
             event.action_id is not None
             or event.status != RunStatus.CREATED.value
             or cls._event_field(payload, "command_id") != command.command_id
-            or (workflow_key is not None and cls._event_field(payload, "workflow_key") != workflow_key)
+            or (
+                workflow_key is not None
+                and cls._event_field(payload, "workflow_key") != workflow_key
+            )
             or cls._event_field(payload, "requested_mode") != command.requested_mode
             or cls._event_field(payload, "selected_resource_ids")
-            != list(command.selected_resource_ids)
-            or cls._event_field(payload, "selected_resources")
-            != [asdict(resource) for resource in command.selected_resources]
+            != [item.resource_id for item in command.resolved_resource_selections]
         ):
-            raise RuntimeError("StartRun receipt recovery found conflicting RUN_CREATED Trace evidence")
+            raise RuntimeError(
+                "StartRun receipt recovery found conflicting RUN_CREATED Trace evidence"
+            )
 
     @classmethod
     def _validate_command_received_event(
@@ -627,9 +761,8 @@ class StartRunHandler:
         event_type: str,
     ) -> None:
         command_type = cls._event_field(payload, "command_type")
-        if (
-            cls._event_field(payload, "command_id") != command.command_id
-            or (command_type is not None and command_type != "StartRun")
+        if cls._event_field(payload, "command_id") != command.command_id or (
+            command_type is not None and command_type != "StartRun"
         ):
             raise RuntimeError(
                 f"StartRun receipt recovery found conflicting {event_type} {evidence_kind} evidence"
@@ -644,7 +777,9 @@ class StartRunHandler:
                 f"StartRun receipt recovery found malformed {evidence_kind} evidence"
             ) from error
         if not isinstance(payload, dict):
-            raise RuntimeError(f"StartRun receipt recovery found malformed {evidence_kind} evidence")
+            raise RuntimeError(
+                f"StartRun receipt recovery found malformed {evidence_kind} evidence"
+            )
         return payload
 
     @staticmethod

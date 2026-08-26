@@ -59,22 +59,39 @@ class RedriveWorkflowHandoffsHandler:
             if handoff.execution.run_id in seen_runs:
                 continue
             seen_runs.add(handoff.execution.run_id)
-            if handoff.status == "CONSUMED":
-                if handoff.applied_checkpoint_id is None:
-                    continue
-                submission_kind = "CONSUMED_CONTINUATION_RECOVERY"
-            else:
-                with self._unit_of_work_factory() as unit_of_work:
-                    head = unit_of_work.workflow_handoffs.get_dispatch_head(
-                        handoff.execution.run_id
+            run_handoffs = [
+                item
+                for item in redriveable
+                if item.execution.run_id == handoff.execution.run_id
+            ]
+            consumed = next(
+                (
+                    item
+                    for item in run_handoffs
+                    if item.status == "CONSUMED" and item.applied_checkpoint_id is not None
+                ),
+                None,
+            )
+            if consumed is not None:
+                result = self._schedule_run_execution(
+                    ScheduleRunExecutionCommand(
+                        handoff_id=consumed.handoff_id,
+                        submission_kind="CONSUMED_CONTINUATION_RECOVERY",
                     )
-                if head is None or head.handoff_id != handoff.handoff_id:
+                )
+                accepted += int(result.accepted)
+                if result.accepted or result.reason_code == "ALREADY_RUNNING":
                     continue
-                submission_kind = "NORMAL_HANDOFF"
+            with self._unit_of_work_factory() as unit_of_work:
+                head = unit_of_work.workflow_handoffs.get_dispatch_head(
+                    handoff.execution.run_id
+                )
+            if head is None or head.status == "BLOCKED_BINDING":
+                continue
             result = self._schedule_run_execution(
                 ScheduleRunExecutionCommand(
-                    handoff_id=handoff.handoff_id,
-                    submission_kind=submission_kind,
+                    handoff_id=head.handoff_id,
+                    submission_kind="NORMAL_HANDOFF",
                 )
             )
             accepted += int(result.accepted)

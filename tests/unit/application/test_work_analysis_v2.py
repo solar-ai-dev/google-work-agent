@@ -20,6 +20,7 @@ from google_work_agent.application.orchestration.assemble_work_analysis_output i
     validate_and_merge_work_analysis_risks,
     validate_work_analysis_local_aggregation,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 def _local(*, relation_type: str = "DEPENDS_ON", right_ref: str = "fact-2"):
@@ -261,16 +262,19 @@ def test_gap_confirmation_attaches_only_application_owned_resume_metadata() -> N
     signal = project_work_analysis_confirmation_required_v1(
         decision,
         interrupt_id="interrupt-1",
-        resume_target={
-            "subgraph_id": "WORK_ANALYSIS",
-            "node_id": "finalize",
-            "graph_version": "v1",
-        },
+        resume_target=AgentNodeResumeTargetV2(
+            kind="AGENT_NODE",
+            semantic_owner_id="WORK_ANALYSIS",
+            compiled_subgraph_id="SIX_WORK_ANALYSIS",
+            node_id="analysis.finalize",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="v1",
+        ),
     )
     assert signal["question"] == decision["question"]
     assert signal["options"] == decision["options"]
     assert signal["interrupt_id"] == "interrupt-1"
-    assert signal["owner_subgraph"] == "WORK_ANALYSIS"
+    assert signal["semantic_owner_id"] == "WORK_ANALYSIS"
     assert "reason_codes" not in signal
 
 
@@ -558,14 +562,17 @@ def test_override_without_receipt_stays_confirmation_and_application_owns_resume
     outcome = _run_chain(
         _node_chain(provider),
         interrupt_id="interrupt-override-1",
-        resume_target={
-            "subgraph_id": "WORK_ANALYSIS",
-            "node_id": "assess_analysis_gaps",
-            "graph_version": "v2",
-        },
+        resume_target=AgentNodeResumeTargetV2(
+            kind="AGENT_NODE",
+            semantic_owner_id="WORK_ANALYSIS",
+            compiled_subgraph_id="SIX_WORK_ANALYSIS",
+            node_id="analysis.assess_information_gaps",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="v2",
+        ),
     )
     assert outcome["kind"] == "CONFIRMATION_REQUIRED"
-    assert outcome["owner_subgraph"] == "WORK_ANALYSIS"
+    assert outcome["semantic_owner_id"] == "WORK_ANALYSIS"
     assert outcome["question"] == "Allow this duplicate override?"
     assert "schema_version" not in outcome
 

@@ -9,7 +9,7 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
 from google_work_agent.application.agents.tool_routing.validate_route import ToolRouteValidationError
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.contracts import BudgetDecision, ConfirmationResponseV1, RunBudgetV1, approve_semantic_revision, build_semantic_failure_signature_v1
+from google_work_agent.application.orchestration.contracts import BudgetDecision, ConfirmationResponseProjectionV1, RunBudgetV1, approve_semantic_revision, build_semantic_failure_signature_v1
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.prompt_registry import default_prompt_manifest_path, load_prompt_reference
 from google_work_agent.application.orchestration.provider_dispatch_budget import legacy_post_call_projection, provider_dispatch_budget_scope
@@ -17,7 +17,7 @@ from google_work_agent.domain import ConnectorToolCatalog, EffectType
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
 
 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA=OutputSchemaDefinition(schema_version="route-resource-candidate-v1",json_schema={"type":"object","additionalProperties":False,"required":["schema_version","input_resource_types","output_resource_types","output_effects","disposition"],"properties":{"schema_version":{"const":1},"input_resource_types":{"type":"array","items":{"enum":["EMAIL","TASK","CALENDAR"]},"uniqueItems":True},"output_resource_types":{"type":"array","items":{"enum":["EMAIL","TASK","CALENDAR"]},"uniqueItems":True},"output_effects":{"type":"array","items":{"enum":["CREATE","UPDATE","SEND","DELETE"]}},"disposition":{"enum":["ROUTE_READY","NO_TOOL_NEEDED","NEEDS_CONFIRMATION","BLOCKED"]}}})
-def determine_io_resources(*,llm_runtime:StructuredLLMRuntime,tool_catalog:ConnectorToolCatalog,request_intent:RequestIntentV2,request:WorkflowStartRequest,retry_budget:RunBudgetV1,prompt_ref:PromptReference|None=None,revision_prompt_ref:PromptReference|None=None,manifest_path:Path|None=None,confirmation_response:ConfirmationResponseV1|None=None)->tuple[SemanticRouteCandidate,RunBudgetV1]:
+def determine_io_resources(*,llm_runtime:StructuredLLMRuntime,tool_catalog:ConnectorToolCatalog,request_intent:RequestIntentV2,request:WorkflowStartRequest,retry_budget:RunBudgetV1,prompt_ref:PromptReference|None=None,revision_prompt_ref:PromptReference|None=None,manifest_path:Path|None=None,confirmation_response:ConfirmationResponseProjectionV1|None=None)->tuple[SemanticRouteCandidate,RunBudgetV1]:
     resolved_prompt_ref=prompt_ref or load_prompt_reference("tool_route.determine_io_resources",manifest_path or default_prompt_manifest_path()); resolved_revision_ref=revision_prompt_ref or load_prompt_reference("tool_route.determine_io_resources.revise",manifest_path or default_prompt_manifest_path())
     base_projection:dict[str,object]={"request_intent":request_intent,"eligible_route_capabilities":_eligible_route_capabilities(tool_catalog)}
     if confirmation_response is not None: base_projection["confirmation_response"]=dict(confirmation_response)

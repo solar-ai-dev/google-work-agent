@@ -53,7 +53,6 @@ def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: 
             conversation_id="conversation-1",
             request_text="새 메시지",
             entry_mode="AGENT_SEARCH",
-            selected_resource_ids=(),
             requested_mode="AUTO",
             api_contract_version="1",
         )

@@ -9,7 +9,9 @@ from google_work_agent.application.orchestration.planning_argument_orchestrator 
     PlanningArgumentOrchestrator,
     project_planning_action_confirmation_required_v1,
 )
-from google_work_agent.application.orchestration.planning_argument_writer import PlanningArgumentWriter
+from google_work_agent.application.orchestration.planning_argument_writer import (
+    PlanningArgumentWriter,
+)
 from google_work_agent.application.orchestration.planning_arguments import DefaultContainerResolver
 from google_work_agent.ports import (
     ActualRuntime,
@@ -19,6 +21,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 @dataclass
@@ -178,10 +181,17 @@ def test_missing_required_container_prepares_confirmation_without_writer_call() 
     signal = project_planning_action_confirmation_required_v1(
         preparation,
         interrupt_id="interrupt-1",
-        resume_target={"subgraph_id": "PLANNING", "node_id": "finalize", "graph_version": "v1"},
+        resume_target=AgentNodeResumeTargetV2(
+            kind="AGENT_NODE",
+            semantic_owner_id="PLANNING",
+            compiled_subgraph_id="SIX_PLANNING",
+            node_id="planning.assemble",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="v1",
+        ),
     )
     assert signal["kind"] == "CONFIRMATION_REQUIRED"
-    assert signal["owner_subgraph"] == "PLANNING"
+    assert signal["semantic_owner_id"] == "PLANNING"
     assert signal["question"] == preparation["question"]
 
 

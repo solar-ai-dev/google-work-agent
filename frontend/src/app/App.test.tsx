@@ -48,6 +48,14 @@ type SnapshotShape = {
   execution_status: { action_count: number; terminal_action_count: number };
   verification_summary: { verified_count: number; mismatch_count: number };
   recovery_summary: { unknown_result_action_count: number };
+  pending_interrupt?: {
+    schema_version: 1;
+    interrupt_id: string;
+    semantic_owner_id: "WORK_ANALYSIS";
+    question: string;
+    options: string[];
+    response_mode: "OPTION" | "FREE_TEXT";
+  } | null;
   result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
@@ -236,6 +244,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
         source: "gmail",
         items: [
           {
+            selection_handle: "handle-resource-1",
             source: "gmail",
             resource_type: "gmail_thread",
             resource_id: "thread-project",
@@ -312,10 +321,10 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   );
   const body = JSON.parse(String(startRunCall?.[1].body)) as {
     entry_mode: string;
-    selected_resource_ids: string[];
+    selected_resource_handles: string[];
   };
   expect(body.entry_mode).toBe("RESOURCE_SELECTED");
-  expect(body.selected_resource_ids).toEqual(["thread-project"]);
+  expect(body.selected_resource_handles).toEqual(["handle-resource-1"]);
   expect(await screen.findByText("실행 실패")).toBeInTheDocument();
   expect(screen.getByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
 });
@@ -865,6 +874,16 @@ test("confirms an interrupt and explicitly resolves a mismatch", async () => {
               }]
             : [],
           verification_summary: { verified_count: 0, mismatch_count: mismatch ? 1 : 0 },
+          pending_interrupt: stage === "confirmation"
+            ? {
+                schema_version: 1,
+                interrupt_id: "interrupt-1",
+                semantic_owner_id: "WORK_ANALYSIS",
+                question: "Which task should be updated?",
+                options: [],
+                response_mode: "FREE_TEXT",
+              }
+            : null,
         }),
       );
     }
@@ -910,13 +929,11 @@ test("confirms an interrupt and explicitly resolves a mismatch", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await screen.findByText("확인 요청 정보를 동기화하고 있습니다.");
-  expect(screen.getByLabelText("확인 응답")).toBeDisabled();
+  await screen.findByText("Which task should be updated?");
+  expect(screen.getByLabelText("확인 응답")).toBeEnabled();
   FakeEventSource.instances[0].emit("confirmation_required", {
     user_interrupt: { interrupt_id: "interrupt-1", question: "Which task should be updated?" },
   });
-  await screen.findByText("Which task should be updated?");
-  expect(screen.getByLabelText("확인 응답")).toBeEnabled();
   await user.type(screen.getByLabelText("확인 응답"), "Use the follow-up task");
   await user.click(screen.getByRole("button", { name: "응답 보내기" }));
   await user.click(await screen.findByRole("button", { name: "현재 결과 수용" }));
@@ -2607,7 +2624,7 @@ test("uses the Gmail subject instead of a generic resource fallback title", asyn
   expect(screen.queryByText("메일 자료")).not.toBeInTheDocument();
 });
 
-test("TST-UI-206 keeps focus separate from multiple selected resources and sends selected IDs", async () => {
+test("TST-UI-206 keeps focus separate and sends opaque selection handles", async () => {
   const user = userEvent.setup();
   const requests = installUiContractFetch({ twoItems: true });
   render(<App />);
@@ -2623,12 +2640,12 @@ test("TST-UI-206 keeps focus separate from multiple selected resources and sends
   await user.type(screen.getByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." }), "선택 자료 정리");
   await user.click(screen.getByRole("button", { name: "보내기" }));
   const start = requests.find((request) => request.path === "/api/v1/runs");
-  const body = JSON.parse(String(start?.init?.body)) as { entry_mode: string; selected_resource_ids: string[] };
+  const body = JSON.parse(String(start?.init?.body)) as { entry_mode: string; selected_resource_handles: string[] };
   expect(body).toMatchObject({
     entry_mode: "RESOURCE_SELECTED",
-    selected_resource_ids: ["resource-1", "resource-2"],
+    selected_resource_handles: ["handle-resource-1", "handle-resource-2"],
   });
-  expect(new Set(body.selected_resource_ids).size).toBe(2);
+  expect(new Set(body.selected_resource_handles).size).toBe(2);
 });
 
 test("TST-UI-207 uses AGENT_SEARCH without selection and quick action does not write directly", async () => {
@@ -3283,8 +3300,8 @@ function installUiContractFetch(options: {
       const items = options.empty ? [] : path.includes("page_token=page-2")
         ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }]
         : [
-            { ...gmailThread(), ...options.resource, resource_id: "resource-1", title: options.resource?.title ?? "첫 번째 자료" },
-            ...(options.twoItems ? [{ ...gmailThread(), resource_id: "resource-2", title: "두 번째 자료" }] : []),
+            { ...gmailThread(), ...options.resource, resource_id: "resource-1", selection_handle: "handle-resource-1", title: options.resource?.title ?? "첫 번째 자료" },
+            ...(options.twoItems ? [{ ...gmailThread(), resource_id: "resource-2", selection_handle: "handle-resource-2", title: "두 번째 자료" }] : []),
           ];
       return jsonFetchResponse({ source: "gmail", items, next_page_token: options.empty || options.twoItems || path.includes("page_token=page-2") ? null : "page-2", api_contract_version: "1" });
     }
@@ -3680,6 +3697,7 @@ function currentAccount() {
 
 function gmailThread() {
   return {
+    selection_handle: "handle-thread-project",
     source: "gmail",
     resource_type: "gmail_thread",
     resource_id: "thread-project",

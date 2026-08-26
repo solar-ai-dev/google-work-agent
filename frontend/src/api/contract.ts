@@ -175,6 +175,21 @@ export type ApprovalSnapshot = {
   expires_at_ms: number;
 };
 
+export type PendingInterrupt = {
+  schema_version: 1;
+  interrupt_id: string;
+  semantic_owner_id:
+    | "REQUEST_UNDERSTANDING"
+    | "TOOL_ROUTE"
+    | "RETRIEVAL"
+    | "WORK_ANALYSIS"
+    | "PLANNING"
+    | "REVIEW";
+  question: string;
+  options: string[];
+  response_mode: "OPTION" | "FREE_TEXT";
+};
+
 export type RunSnapshot = {
   run_id: string;
   conversation_id: string;
@@ -205,6 +220,7 @@ export type RunSnapshot = {
   recovery_summary: {
     unknown_result_action_count: number;
   };
+  pending_interrupt?: PendingInterrupt | null;
   result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
@@ -270,6 +286,7 @@ export type RunCommandResponse = {
 };
 
 export type ResourceItem = {
+  selection_handle: string;
   source: string;
   resource_type: string;
   resource_id: string;

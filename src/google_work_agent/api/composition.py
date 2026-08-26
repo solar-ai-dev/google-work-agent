@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
     BackgroundRunExecutorAdapter,
 )
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
@@ -15,15 +16,20 @@ from google_work_agent.application.use_cases.run.redrive_workflow_handoffs impor
     RedriveWorkflowHandoffsHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
-    EffectiveBindingResolver,
+    CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-from google_work_agent.ports.system.contracts.workflow_handoff import WorkflowExecutionAdmissionV1
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    WorkflowExecutionAdmissionV1,
+    WorkflowHandoffV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class ProductionRuntime:
+    checkpoint: SqliteCheckpointAdapter
     workflow_execution: BackgroundRunExecutorAdapter
     schedule_run_execution: ScheduleRunExecutionHandler
     redrive_workflow_handoffs: RedriveWorkflowHandoffsHandler
@@ -34,18 +40,36 @@ def build_production_runtime(
     *,
     unit_of_work_factory: Callable[[], UnitOfWork],
     id_factory: Callable[[], str],
-    execute_admission: Callable[[WorkflowExecutionAdmissionV1], None],
-    effective_binding_resolver: EffectiveBindingResolver | None = None,
+    checkpoint: SqliteCheckpointAdapter,
+    materialize_admission_checkpoint: Callable[
+        [WorkflowExecutionAdmissionV1], GraphCheckpointEnvelopeV1
+    ],
+    invoke_semantic_owner: Callable[
+        [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None
+    ],
     reconciliation_interval_seconds: float = 1.0,
     reconciliation_batch_limit: int = 32,
 ) -> ProductionRuntime:
     """Bind the durable handoff slice exactly once at the service boundary."""
-    workflow_execution = BackgroundRunExecutorAdapter(execute_admission=execute_admission)
+    workflow_execution = BackgroundRunExecutorAdapter(
+        unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        materialize_admission_checkpoint=materialize_admission_checkpoint,
+        invoke_semantic_owner=invoke_semantic_owner,
+        release_active_lineage=lambda run_id, thread_id, handoff_id, run_sequence: (
+            checkpoint.release_active_lineage(
+                run_id=run_id,
+                thread_id=thread_id,
+                handoff_id=handoff_id,
+                run_sequence=run_sequence,
+            )
+        ),
+    )
     schedule = ScheduleRunExecutionHandler(
         unit_of_work_factory=unit_of_work_factory,
         workflow_execution=workflow_execution,
         id_factory=id_factory,
-        effective_binding_resolver=effective_binding_resolver,
+        effective_binding_resolver=CheckpointEffectiveBindingResolver(checkpoint),
     )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -57,6 +81,7 @@ def build_production_runtime(
         batch_limit=reconciliation_batch_limit,
     )
     return ProductionRuntime(
+        checkpoint=checkpoint,
         workflow_execution=workflow_execution,
         schedule_run_execution=schedule,
         redrive_workflow_handoffs=redrive,

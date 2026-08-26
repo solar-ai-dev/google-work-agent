@@ -35,7 +35,7 @@ def test_waiting_confirmation_cannot_bypass_resume_confirmation() -> None:
     )
     assert result.applied is False
     assert result.result_code is ResultCode.STATE_CONFLICT
-    assert RunCommand.RESUME_CONFIRMATION in result.next_allowed_commands
+    assert RunCommand.RESUME_CONFIRMATION not in result.next_allowed_commands
 
 
 def test_block_run_parity_includes_created_and_waiting_confirmation() -> None:

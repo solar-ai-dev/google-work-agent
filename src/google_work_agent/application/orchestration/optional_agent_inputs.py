@@ -21,7 +21,7 @@ from typing import cast
 import google_work_agent.application.orchestration.solution_planning as _planning
 import google_work_agent.application.orchestration.work_analysis as _analysis
 from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
@@ -57,7 +57,7 @@ class CanonicalOptionalInputWorkAnalysisAgent(WorkAnalysisAgent):
         request_intent: RequestIntentV2,
         request: WorkflowStartRequest,
         policy_confirmation_receipt_refs: list[str],
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         prompt_input: dict[str, object] = {
             "user_request": request.request_text,
@@ -100,7 +100,7 @@ class CanonicalOptionalInputPlanningAgent(SolutionPlanningAgent):
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1 | None,
         request: WorkflowStartRequest,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         prompt_input: dict[str, object] = {
             "user_request": request.request_text,

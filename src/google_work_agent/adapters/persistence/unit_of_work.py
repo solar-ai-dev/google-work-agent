@@ -52,6 +52,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.verification_rep
 from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff_repository import (
     SqliteWorkflowHandoffRepository,
 )
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -83,6 +84,7 @@ class SQLiteUnitOfWork:
         self.audits = SQLiteAuditRepository(connection)
         self.traces = SQLiteTraceRepository(connection)
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
+        self.checkpoints = SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
         return self
 
     def commit(self) -> None:

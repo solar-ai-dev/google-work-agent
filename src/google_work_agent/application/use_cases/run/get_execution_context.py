@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from json import loads
 from pathlib import Path
+from sqlite3 import Row
 
 from google_work_agent.ports import QueryConnectionFactory, SelectedResourceRef
 
@@ -35,7 +35,9 @@ class GetExecutionContextHandler:
         self._connection_factory = connection_factory
 
     @classmethod
-    def from_legacy_query_supplier(cls, query_supplier: Callable[[], object]) -> "GetExecutionContextHandler":
+    def from_legacy_query_supplier(
+        cls, query_supplier: Callable[[], object]
+    ) -> GetExecutionContextHandler:
         query = query_supplier()
         return cls(
             database_path=query._database_path,  # type: ignore[attr-defined]
@@ -62,31 +64,17 @@ class GetExecutionContextHandler:
                 """,
                 (query.run_id,),
             ).fetchone()
-            trace_rows = connection.execute(
+            resource_rows = connection.execute(
                 """
-                SELECT payload_json FROM trace_events
-                WHERE run_id = ? ORDER BY id ASC;
+                SELECT source, resource_type, resource_id, parent_resource_id
+                FROM resource_refs
+                WHERE run_id = ?
+                ORDER BY connector_id, resource_type, resource_id;
                 """,
                 (query.run_id,),
             ).fetchall()
-        selected_resource_ids: tuple[str, ...] = ()
-        selected_resources: tuple[SelectedResourceRef, ...] = ()
-        for row in trace_rows:
-            try:
-                payload = loads(str(row["payload_json"]))
-                attributes = payload.get("attributes", payload)
-                original_ids = attributes.get("selected_resource_ids", [])
-                if isinstance(original_ids, list):
-                    selected_resource_ids = tuple(str(item) for item in original_ids)
-                original_refs = attributes.get("selected_resources", [])
-                if isinstance(original_refs, list):
-                    selected_resources = tuple(
-                        _selected_resource_ref(item)
-                        for item in original_refs
-                        if isinstance(item, dict)
-                    )
-            except (KeyError, TypeError, ValueError):
-                continue
+        selected_resource_ids = tuple(str(row["resource_id"]) for row in resource_rows)
+        selected_resources = tuple(_selected_resource_ref(row) for row in resource_rows)
         return GetExecutionContextResult(
             run_id=str(run_row["id"]),
             conversation_id=str(run_row["conversation_id"]),
@@ -101,10 +89,12 @@ class GetExecutionContextHandler:
         )
 
 
-def _selected_resource_ref(value: dict[object, object]) -> SelectedResourceRef:
+def _selected_resource_ref(value: Row) -> SelectedResourceRef:
     return SelectedResourceRef(
         source=str(value["source"]),
         resource_type=str(value["resource_type"]),
         resource_id=str(value["resource_id"]),
-        parent_resource_id=(None if value.get("parent_resource_id") is None else str(value["parent_resource_id"])),
+        parent_resource_id=(
+            None if value["parent_resource_id"] is None else str(value["parent_resource_id"])
+        ),
     )

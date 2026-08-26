@@ -20,16 +20,15 @@ from google_work_agent.application.orchestration.domain_output_validation import
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
-    RegisteredResumeTargetRefV1,
     RequestIntentV2,
     RetrievalResultV1,
     SubgraphReturnV2,
 )
-from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.orchestration.planning_invocation import (
     PlanningSemanticControlV1,
     PlanningV2Producer,
 )
+from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.orchestration.post_retrieval_envelopes import PlanningResultV2
 from google_work_agent.application.orchestration.review_invocation import ReviewV2Producer
 from google_work_agent.application.orchestration.state_artifacts import (
@@ -38,6 +37,7 @@ from google_work_agent.application.orchestration.state_artifacts import (
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class PostRetrievalRuntimeV2Boundary:
@@ -65,7 +65,7 @@ class PostRetrievalRuntimeV2Boundary:
         evidence_drafts: Sequence[EvidenceDraftV1],
         semantic_control: PlanningSemanticControlV1 | None = None,
         interrupt_id: str | None = None,
-        resume_target: RegisteredResumeTargetRefV1 | None = None,
+        resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> SubgraphReturnV2[PlanningResultV2]:
         return self._planning.run(
             request=request,
@@ -88,7 +88,7 @@ class PostRetrievalRuntimeV2Boundary:
         planning_result: PlanningResultV2,
         evidence_drafts: Sequence[EvidenceDraftV1],
         interrupt_id: str | None = None,
-        resume_target: RegisteredResumeTargetRefV1 | None = None,
+        resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> SubgraphReturnV2[PlanReviewResultV2]:
         return self._review.run(
             request_intent=request_intent,

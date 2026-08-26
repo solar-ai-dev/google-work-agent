@@ -172,6 +172,7 @@ class PlanRecord:
     created_at_ms: int
     review_status: PlanReviewStatus = PlanReviewStatus.PASSED
     review_version: int = 0
+    review_disposition: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

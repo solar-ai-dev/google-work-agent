@@ -13,13 +13,18 @@ from collections.abc import Mapping
 from threading import Lock
 from typing import Any
 
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1
-
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 
 _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "request_understanding.classify": frozenset({"request_understanding.classify"}),
     "tool_route.finalize": frozenset({"tool_route.determine_io_resources"}),
-    "acquisition.plan_sources": frozenset({"retrieval.plan_query"}),
+    "acquisition.plan_sources": frozenset(
+        {
+            "retrieval.plan_query",
+            "profile.single.request_source.initial",
+            "profile.three.stage1.initial",
+        }
+    ),
     "context.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
     "analysis.analyze": frozenset({"work_analysis.analyze"}),
     "planning.answer_only": frozenset({"planning.compose_answer"}),
@@ -34,14 +39,14 @@ class ConfirmationAwareLLMRuntime:
     def __init__(self, delegate: Any) -> None:
         self._delegate = delegate
         self._lock = Lock()
-        self._pending: dict[str, tuple[str, ConfirmationResponseV1]] = {}
+        self._pending: dict[str, tuple[str, ConfirmationResponseProjectionV1]] = {}
 
     def register(
         self,
         *,
         run_id: str,
         origin_target: str,
-        response: ConfirmationResponseV1,
+        response: ConfirmationResponseProjectionV1,
     ) -> None:
         if origin_target not in _ORIGIN_PROMPT_IDS:
             raise ValueError(f"unsupported confirmation origin target: {origin_target}")

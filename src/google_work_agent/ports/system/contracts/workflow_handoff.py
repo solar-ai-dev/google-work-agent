@@ -5,9 +5,35 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
+
 type JsonObject = dict[str, object]
-type GraphProfileIdV1 = Literal["SINGLE_BASELINE", "THREE_STAGE", "SIX_ROLE_BASELINE"]
 type RequestedModeV1 = Literal["AUTO", "LOCAL_GPU", "API_LLM"]
+type SemanticAgentOwnerIdV1 = Literal[
+    "REQUEST_UNDERSTANDING", "TOOL_ROUTE", "RETRIEVAL", "WORK_ANALYSIS", "PLANNING", "REVIEW"
+]
+type CompiledAgentSubgraphIdV1 = Literal[
+    "UNIFIED_AGENT",
+    "STAGE_REQUEST_ROUTE_RETRIEVAL",
+    "STAGE_ANALYSIS_PLANNING",
+    "STAGE_REVIEW",
+    "SIX_REQUEST_UNDERSTANDING",
+    "SIX_TOOL_ROUTE",
+    "SIX_RETRIEVAL",
+    "SIX_WORK_ANALYSIS",
+    "SIX_PLANNING",
+    "SIX_REVIEW",
+]
+type MainResumeStageIdV1 = Literal[
+    "RETRIEVAL_ENTRY",
+    "PLANNING_ENTRY",
+    "REVIEW_ENTRY",
+    "PREFLIGHT",
+    "READ_EXECUTION",
+    "VERIFICATION",
+    "RECOVERY",
+    "CANCEL_RESOLUTION",
+]
 type WorkflowHandoffStatusV1 = Literal[
     "PENDING", "DISPATCHED", "CONSUMED", "BLOCKED_BINDING", "SUPERSEDED"
 ]
@@ -26,8 +52,8 @@ type WorkflowExecutionReleaseReasonV1 = Literal[
 @dataclass(frozen=True, slots=True)
 class AgentNodeResumeTargetV2:
     kind: Literal["AGENT_NODE"]
-    semantic_owner_id: str
-    compiled_subgraph_id: str
+    semantic_owner_id: SemanticAgentOwnerIdV1
+    compiled_subgraph_id: CompiledAgentSubgraphIdV1
     node_id: str
     graph_profile: GraphProfileIdV1
     graph_version: str
@@ -36,7 +62,7 @@ class AgentNodeResumeTargetV2:
 @dataclass(frozen=True, slots=True)
 class MainControlResumeTargetV2:
     kind: Literal["MAIN_CONTROL"]
-    stage_id: str
+    stage_id: MainResumeStageIdV1
     graph_profile: GraphProfileIdV1
     graph_version: str
 

@@ -10,7 +10,7 @@ Owns exactly two small, deterministic responsibilities kept separate from
   already-APPROVED ``PolicyConfirmationReceiptV1`` covering the same content.
 * ``build_policy_confirmation_receipt`` is the sole Receipt construction
   point, called only by the Application/Confirmation Controller layer after
-  a real ``ConfirmationResponseV1`` has been validated -- never by an LLM or
+  a real ``ConfirmationResponseProjectionV1`` has been validated -- never by an LLM or
   Agent (01-a-functional-definition.md FN-102A, 09-security-auth-v2.5.md
   SS"Policy Confirmation Receipt 보안 경계").
 
@@ -132,7 +132,7 @@ def build_policy_confirmation_receipt(
 
     Called only by the Application/Confirmation Controller layer
     (``adapters/langgraph/subgraphs/tool_routing.py``'s scope-expansion
-    resolution), immediately after a real ``ConfirmationResponseV1`` for
+    resolution), immediately after a real ``ConfirmationResponseProjectionV1`` for
     ``interrupt_id`` has already been validated -- never speculatively, and
     never by an LLM/Agent. ``decision_context_hash`` binds this receipt to
     the exact request-intent revision and out-of-scope read set it answered,
@@ -151,17 +151,18 @@ def build_policy_confirmation_receipt(
             reason_codes=reason_codes,
         )
     )
+    receipt_id = id_factory()
     return {
         "schema_version": 1,
         "meta": {
-            "artifact_id": id_factory(),
+            "artifact_id": receipt_id,
             "revision": 1,
             "based_on": [{"artifact_id": artifact_id, "revision": revision}],
         },
-        "confirmation_receipt_id": id_factory(),
         "interrupt_id": interrupt_id,
         "confirmation_kind": "SCOPE_EXPANSION",
         "decision": decision,
+        "semantic_owner_id": "TOOL_ROUTE",
         "decision_context_hash": decision_context_hash,
         "affected_route_ids": affected_route_ids,
         "affected_resource_refs": list(required_resource_types),

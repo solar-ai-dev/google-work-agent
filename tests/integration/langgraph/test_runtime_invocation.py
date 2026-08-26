@@ -57,6 +57,10 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.canonical_workflow_runtime import (
+    resume_confirmation_with_handoff,
+    start_with_admission,
+)
 
 from google_work_agent.adapters.connectors.execution_router import bind_execution_connector_id
 from google_work_agent.application.use_cases.run.resume_run import (
@@ -130,11 +134,11 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         database_path=database_path,
         llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
 
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
 
     assert first.outcome is WorkflowOutcome.ACCEPTED
     connection = connect_sqlite(database_path)
@@ -194,7 +198,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         id_factory=DeterministicUUID(prefix="runtime").next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=tmp_path / "checkpoints-confirm.db",
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
@@ -219,57 +223,18 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         "schema_version": 1,
         "interrupt_id": interrupt_id,
         "response_kind": "FREE_TEXT",
-        "selected_option_ids": [],
+        "selected_option": None,
         "free_text": "I mean Kim from project alpha.",
     }
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
-        assert run is not None
-        expected_run_version = run.version
-    runtime_results: list[object] = []
-
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
-                    workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
-                )
-            )
-        )
-
-    resume_handler = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=FakeClock(2000).now_ms,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: resumed_runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
-        ),
-    )
-    application_result = resume_handler(
-        ResumeRunCommand(
-            command_id="command-2",
-            request_hash=sha256(b"command-2").hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_run_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version="1",
-        ),
-        request_id="request-2",
+    application_result, resumed = resume_confirmation_with_handoff(
+        resumed_runtime,
+        database_path,
         resume_payload=resume_payload,
+        command_id="command-2",
     )
     assert application_result.applied is True
-    assert len(runtime_results) == 1
-    result = cast(Any, runtime_results[0])
+    assert resumed is not None
+    result = cast(Any, resumed)
     assert result.outcome is WorkflowOutcome.COMPLETED
     assert len(resumed_llm_runtime.calls) == 7
 
@@ -287,14 +252,14 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     # Prompt resume boundary (15 SS10-11): only the bounded
     # ConfirmationResponseV1 crosses into the Product Prompt input -- no raw
     # resume payload, interrupt_id, checkpoint metadata, or
-    # RegisteredResumeTargetRefV1. classify's own input shape is exactly
+    # AgentNodeResumeTargetV2. classify's own input shape is exactly
     # {user_request, entry_mode, language, selected_resources,
     # confirmation_response} (_prompt_input_from_request) -- assert both the
     # bounded value is present and every disallowed field is absent.
     assert classify_prompt_input["confirmation_response"] == {
         "schema_version": 1,
         "response_kind": "FREE_TEXT",
-        "selected_option_ids": [],
+        "selected_option": None,
         "free_text": "I mean Kim from project alpha.",
     }
     for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
@@ -311,6 +276,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     finally:
         connection.close()
         resumed_runtime.close()
+
 
 def _nested_request_understanding_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested request_understanding
@@ -334,6 +300,13 @@ def _resume_through_application(
     resume_kind: str,
     command_id: str,
 ) -> tuple[object, object | None]:
+    if resume_kind == "CONFIRMATION":
+        return resume_confirmation_with_handoff(
+            runtime,
+            database_path,
+            resume_payload=resume_payload,
+            command_id=command_id,
+        )
     with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
         run = unit_of_work.runs.get_by_id("run-1")
         assert run is not None
@@ -399,17 +372,15 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    checkpoint_path = tmp_path / "checkpoints-two-round-confirm.db"
-
     # --- Round 1: start, pause on the first ambiguity. ---
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_task = _nested_request_understanding_task(runtime)
     assert round1_task.state.next == ("confirm",)
@@ -433,7 +404,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         id_factory=DeterministicUUID(prefix="round2").next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
@@ -445,7 +416,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
             "schema_version": 1,
             "interrupt_id": round1_interrupt_id,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "round-1 answer, still ambiguous apparently.",
         },
         resume_kind="CONFIRMATION",
@@ -502,7 +473,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         id_factory=DeterministicUUID(prefix="round3").next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
@@ -522,7 +493,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
                 "schema_version": 1,
                 "interrupt_id": round2_interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "round-2 answer, resolves it.",
             },
             resume_kind="CONFIRMATION",
@@ -1321,26 +1292,25 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         connection.close()
         runtime.close()
 
-
-# test_langgraph_runtime_executes_read_only_plan_to_terminal (superseded by
-# the Canonical Planning Production Migration): this scenario paired an
-# ACTION-mode intent (Tool Route always freezes a write output route for
-# ``_action_required_intent()``) with a legacy Planning LLM output that
-# unilaterally downgraded the plan to a single READ action with no writes
-# at all. Legacy ``_validate_frozen_output_routes`` allowed this (it only
-# checks non-READ actions against ``output_routes``, so an all-READ plan
-# skipped that check entirely) -- effectively letting Planning override
-# Tool Route's frozen write decision. Canonical Planning has no such
-# authority: ``PlanningArgumentOrchestrator``/``planning_plan_assembler``
-# always produce exactly one action per frozen output route
-# (``materialize_action_seeds`` requires an exact 1:1 route<->candidate
-# pairing), and ``determine_semantic_routes`` never freezes a READ output
-# route (ACTION mode is only entered when a write effect hint is present).
-# A "plan whose only action is READ reaches COMPLETED with zero
-# approvals/writes" is therefore only reachable when Tool Route itself
-# never freezes an output route in the first place -- i.e. genuinely
-# read-only requests belong to the ANSWER path, which is unaffected by
-# this migration and already covered elsewhere in this suite.
+        # test_langgraph_runtime_executes_read_only_plan_to_terminal (superseded by
+        # the Canonical Planning Production Migration): this scenario paired an
+        # ACTION-mode intent (Tool Route always freezes a write output route for
+        # ``_action_required_intent()``) with a legacy Planning LLM output that
+        # unilaterally downgraded the plan to a single READ action with no writes
+        # at all. Legacy ``_validate_frozen_output_routes`` allowed this (it only
+        # checks non-READ actions against ``output_routes``, so an all-READ plan
+        # skipped that check entirely) -- effectively letting Planning override
+        # Tool Route's frozen write decision. Canonical Planning has no such
+        # authority: ``PlanningArgumentOrchestrator``/``planning_plan_assembler``
+        # always produce exactly one action per frozen output route
+        # (``materialize_action_seeds`` requires an exact 1:1 route<->candidate
+        # pairing), and ``determine_semantic_routes`` never freezes a READ output
+        # route (ACTION mode is only entered when a write effect hint is present).
+        # A "plan whose only action is READ reaches COMPLETED with zero
+        # approvals/writes" is therefore only reachable when Tool Route itself
+        # never freezes an output route in the first place -- i.e. genuinely
+        # read-only requests belong to the ANSWER path, which is unaffected by
+        # this migration and already covered elsewhere in this suite.
         runtime.close()
 
 

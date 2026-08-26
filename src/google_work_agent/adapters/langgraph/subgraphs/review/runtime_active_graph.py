@@ -14,10 +14,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     REVIEW_AGENT_LOCAL_KEY,
     REVIEW_MODE_KEY,
@@ -32,7 +28,7 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     ReviewResult,
@@ -62,7 +58,7 @@ from google_work_agent.ports import StructuredLLMResult
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
     [ReviewLocalState],
-    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 
 
@@ -120,9 +116,7 @@ class RuntimeActiveReviewSubgraph:
             else "inspect"
         )
         prompt_ref = (
-            self._agent.recheck_prompt_ref
-            if mode == "recheck"
-            else self._agent.inspect_prompt_ref
+            self._agent.recheck_prompt_ref if mode == "recheck" else self._agent.inspect_prompt_ref
         )
         local_state = build_agent_local_state(
             agent_role="review",
@@ -161,7 +155,7 @@ class RuntimeActiveReviewSubgraph:
         state: ReviewLocalState,
         *,
         mode: str,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[PlanReviewResultV1, StructuredLLMResult]:
         request = request_from_state(state)
         retrieval_result = _require_state_value(
@@ -189,9 +183,7 @@ class RuntimeActiveReviewSubgraph:
                 analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
-                allowed_statuses=frozenset(
-                    {ReviewResult.PASS.value, ReviewResult.BLOCK.value}
-                ),
+                allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
             )
         else:
             llm_result = self._agent.invoke_inspect_llm_from_evidence(
@@ -278,14 +270,8 @@ class RuntimeActiveReviewSubgraph:
             {
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "owner_subgraph": "REVIEW",
+                "semantic_owner_id": "REVIEW",
                 "origin_target": question["origin_target"],
-                "resume_target": {
-                    "subgraph_id": "REVIEW",
-                    "node_id": "finalize",
-                    "graph_version": RESUME_CONTRACT_VERSION,
-                },
-                "resume_status": confirmation_resume_status("REVIEW").value,
             },
         )
 

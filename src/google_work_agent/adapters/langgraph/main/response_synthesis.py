@@ -289,7 +289,6 @@ class ResponseSynthesisMixin:
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 domain_validation=self._domain_validation_node,
-                waiting_confirmation=self._waiting_confirmation_node,
                 waiting_approval=self._waiting_approval_node,
                 modify_review=self._modify_review_node,
                 action_execution=self._write_execution_node,

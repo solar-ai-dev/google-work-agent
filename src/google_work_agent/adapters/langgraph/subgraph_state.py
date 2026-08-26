@@ -207,6 +207,7 @@ class ReviewLocalState(GraphState):
 class ProfileRequestSourceLocalState(GraphState):
     __profile_agent_local__: NotRequired[AgentLocalStateV1]
     __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
+    __profile_request_source_confirmation_resolved__: NotRequired[bool]
 
 
 class ProfileReasonPlanLocalState(GraphState):
@@ -220,6 +221,7 @@ class SingleWorkflowLocalState(GraphState):
     __profile_agent_local__: NotRequired[AgentLocalStateV1]
     __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
     __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
+    __profile_request_source_confirmation_resolved__: NotRequired[bool]
 
 
 __all__ = [

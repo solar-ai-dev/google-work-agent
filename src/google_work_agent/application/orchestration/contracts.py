@@ -297,8 +297,9 @@ class DomainValidationOutputV1(TypedDict):
 class ConfirmationResponseKind(StrEnum):
     """Typed confirmation response kinds carried through the resume boundary."""
 
-    OPTION_SELECTION = "OPTION_SELECTION"
+    OPTION = "OPTION"
     FREE_TEXT = "FREE_TEXT"
+    DECLINE = "DECLINE"
 
 
 class AdditionalAcquisitionOriginResult(StrEnum):
@@ -320,12 +321,12 @@ class AdditionalAcquisitionRequestV1(TypedDict):
     reason_codes: list[str]
 
 
-class ConfirmationResponseV1(TypedDict):
-    """Typed confirmation response payload sent through `/runs/{run_id}/resume`."""
+class ConfirmationResponseProjectionV1(TypedDict):
+    """Bounded response projected to the resumed semantic owner."""
 
     schema_version: Required[Literal[1]]
-    response_kind: Literal["OPTION_SELECTION", "FREE_TEXT"]
-    selected_option_ids: list[str]
+    response_kind: Literal["OPTION", "FREE_TEXT", "DECLINE"]
+    selected_option: str | None
     free_text: str | None
 
 
@@ -355,7 +356,7 @@ class PolicyConfirmationReceiptV1(TypedDict):
     SCOPE_EXPANSION/DUPLICATE_OVERRIDE/CONFLICT_OVERRIDE Confirmation
     (06-agent-workflow.md SS3.7 PolicyConfirmationReceiptV1). LLM/Agent code
     never constructs this -- only the Application/Confirmation Controller
-    layer does, from an already-validated ConfirmationResponseV1.
+    layer does, from an already-validated ConfirmationResponseProjectionV1.
     ``decision_context_hash`` binds the receipt to the exact scope-expansion
     request content it answered, so a stale or forged receipt fails closed
     when re-verified against different content.
@@ -363,10 +364,10 @@ class PolicyConfirmationReceiptV1(TypedDict):
 
     schema_version: Required[Literal[1]]
     meta: StateArtifactMetaV1
-    confirmation_receipt_id: str
     interrupt_id: str
     confirmation_kind: Literal["SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"]
     decision: Literal["APPROVED", "DECLINED"]
+    semantic_owner_id: Literal["TOOL_ROUTE", "WORK_ANALYSIS"]
     decision_context_hash: str
     affected_route_ids: list[str]
     affected_resource_refs: list[str]
@@ -847,10 +848,12 @@ def validate_confirmation_origin_target(value: object) -> str:
     return target
 
 
-def validate_confirmation_response_v1(value: object) -> ConfirmationResponseV1:
+def validate_confirmation_response_projection_v1(
+    value: object,
+) -> ConfirmationResponseProjectionV1:
     if not isinstance(value, dict):
         raise ValueError("confirmation response must be an object")
-    required = {"schema_version", "response_kind", "selected_option_ids", "free_text"}
+    required = {"schema_version", "response_kind", "selected_option", "free_text"}
     actual = set(value)
     missing = required - actual
     extra = actual - required
@@ -864,26 +867,34 @@ def validate_confirmation_response_v1(value: object) -> ConfirmationResponseV1:
     response_kind = _require_string(value["response_kind"], "response_kind")
     if response_kind not in CONFIRMATION_RESPONSE_ALLOWED_KINDS:
         raise ValueError("confirmation response response_kind is invalid")
-    selected_option_ids = _require_string_list(value["selected_option_ids"], "selected_option_ids")
+    selected_option = value["selected_option"]
+    if selected_option is not None and (
+        not isinstance(selected_option, str) or not selected_option
+    ):
+        raise ValueError("confirmation response selected_option must be non-empty or null")
     free_text = value["free_text"]
     if free_text is not None and not isinstance(free_text, str):
         raise ValueError("confirmation response free_text must be a string or null")
     normalized_free_text = None if free_text is None else free_text.strip()
-    if response_kind == ConfirmationResponseKind.OPTION_SELECTION.value:
-        if not selected_option_ids:
-            raise ValueError("OPTION_SELECTION requires at least one selected_option_ids entry")
+    if response_kind == ConfirmationResponseKind.OPTION.value:
+        if selected_option is None:
+            raise ValueError("OPTION requires selected_option")
         if normalized_free_text:
-            raise ValueError("OPTION_SELECTION must not include free_text")
+            raise ValueError("OPTION must not include free_text")
         normalized_free_text = None
-    else:
-        if selected_option_ids:
-            raise ValueError("FREE_TEXT must not include selected_option_ids")
+    elif response_kind == ConfirmationResponseKind.FREE_TEXT.value:
+        if selected_option is not None:
+            raise ValueError("FREE_TEXT must not include selected_option")
         if not normalized_free_text:
             raise ValueError("FREE_TEXT requires non-empty free_text")
+    else:
+        if selected_option is not None or normalized_free_text:
+            raise ValueError("DECLINE must not include response payload fields")
+        normalized_free_text = None
     return {
         "schema_version": 1,
-        "response_kind": cast(Literal["OPTION_SELECTION", "FREE_TEXT"], response_kind),
-        "selected_option_ids": selected_option_ids,
+        "response_kind": cast(Literal["OPTION", "FREE_TEXT", "DECLINE"], response_kind),
+        "selected_option": selected_option,
         "free_text": normalized_free_text,
     }
 
@@ -1130,7 +1141,7 @@ __all__ = [
     "BudgetProfile",
     "BudgetReasonCode",
     "ConfirmationResponseKind",
-    "ConfirmationResponseV1",
+    "ConfirmationResponseProjectionV1",
     "ContextResult",
     "DomainValidationResult",
     "DomainValidationOutputV1",
@@ -1172,7 +1183,7 @@ __all__ = [
     "validate_run_budget_v1",
     "validate_semantic_failure_signature_v1",
     "validate_confirmation_origin_target",
-    "validate_confirmation_response_v1",
+    "validate_confirmation_response_projection_v1",
     "validate_finalize_intent_v1",
     "validate_additional_acquisition_request_v1",
     "validate_domain_validation_output_v1",

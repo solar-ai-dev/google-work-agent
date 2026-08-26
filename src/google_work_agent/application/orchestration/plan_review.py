@@ -12,7 +12,7 @@ from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     ReviewResult,
     WorkflowPhase,
@@ -460,7 +460,7 @@ class PlanReviewAgent:
         request: WorkflowStartRequest,
         policy_review_context: PolicyReviewContextV1 | None = None,
         deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 

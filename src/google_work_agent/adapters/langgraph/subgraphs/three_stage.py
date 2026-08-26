@@ -15,7 +15,7 @@ subgraphs:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -54,10 +54,12 @@ from google_work_agent.adapters.langgraph.subgraphs.profile_shared import (
 )
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
+    build_source_planning_clarification_question,
     validate_acquisition_result_v1,
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     ReviewResult,
@@ -72,6 +74,7 @@ from google_work_agent.application.orchestration.profile_fused import (
 )
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
+    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -88,6 +91,10 @@ from google_work_agent.ports import PromptReference
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
+RequestSourceConfirmInline = Callable[
+    [ProfileRequestSourceLocalState],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
+]
 
 
 class ThreeStageOneSubgraph:
@@ -104,6 +111,7 @@ class ThreeStageOneSubgraph:
         graph_profile: GraphProfile,
         transition_run: TransitionRun,
         merge_decision: MergeDecision,
+        confirm_inline: RequestSourceConfirmInline,
     ) -> None:
         self._request_understanding_agent = request_understanding_agent
         self._acquisition_agent = acquisition_agent
@@ -113,6 +121,7 @@ class ThreeStageOneSubgraph:
         self._graph_profile = graph_profile
         self._transition_run = transition_run
         self._merge_decision = merge_decision
+        self._confirm_inline = confirm_inline
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -139,8 +148,18 @@ class ThreeStageOneSubgraph:
         )
         graph.add_edge("deterministic_read", "result_validate")
         graph.add_edge("result_validate", "finalize")
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges(
+            "finalize",
+            self._route_after_finalize,
+            {"plan_validate": "plan_validate", "end": END},
+        )
         return graph.compile(name="three_stage_one_subgraph")
+
+    @staticmethod
+    def _route_after_finalize(state: ProfileRequestSourceLocalState) -> str:
+        if state.get("__profile_request_source_confirmation_resolved__"):
+            return "plan_validate"
+        return "end"
 
     def _init_node(self, state: ProfileRequestSourceLocalState) -> ProfileRequestSourceLocalState:
         request = request_from_state(state)
@@ -226,6 +245,7 @@ class ThreeStageOneSubgraph:
             "tool_route_plan": tool_route_plan,
             "source_fetch_plans": source_plan["source_fetch_plans"],
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
+            "__profile_request_source_confirmation_resolved__": False,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -238,6 +258,29 @@ class ThreeStageOneSubgraph:
         }
         if source_plan["result"] == "NO_FETCH_NEEDED":
             next_state["acquisition_result"] = build_no_fetch_acquisition_result()
+        if source_plan["result"] == "NEEDS_CONFIRMATION":
+            question = build_source_planning_clarification_question(
+                output=source_plan,
+                request_intent=request_intent,
+            )
+            interrupt_id = self._id_factory()
+            next_state["workflow_phase"] = WorkflowPhase.WAITING_CONFIRMATION.value
+            next_state["user_interrupt"] = cast(
+                Any,
+                {
+                    **build_user_interrupt_v1(question),
+                    "interrupt_id": interrupt_id,
+                },
+            )
+            next_state["prompt_context"] = {
+                **cast(dict[str, object], state.get("prompt_context", {})),
+                "confirmation_interrupt": {
+                    "schema_version": 1,
+                    "interrupt_id": interrupt_id,
+                    "semantic_owner_id": "RETRIEVAL",
+                    "origin_target": question["origin_target"],
+                },
+            }
         return next_state
 
     def _route_plan_validate(self, state: ProfileRequestSourceLocalState) -> str:
@@ -301,6 +344,31 @@ class ThreeStageOneSubgraph:
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
         prompt_output = state[PROFILE_REQUEST_SOURCE_OUTPUT_KEY]
         source_plan = prompt_output["source_plan"]
+        if source_plan["result"] == "NEEDS_CONFIRMATION" and isinstance(
+            state.get("user_interrupt"), Mapping
+        ):
+            _response, early_return_patch = self._confirm_inline(state)
+            if early_return_patch is not None:
+                return cast(
+                    ProfileRequestSourceLocalState,
+                    {
+                        **state,
+                        **early_return_patch,
+                        "__profile_request_source_confirmation_resolved__": False,
+                    },
+                )
+            resolved = self._request_source_node(state)
+            prompt_context = dict(cast(dict[str, object], resolved.get("prompt_context", {})))
+            prompt_context.pop("confirmation_interrupt", None)
+            return cast(
+                ProfileRequestSourceLocalState,
+                {
+                    **resolved,
+                    "user_interrupt": None,
+                    "prompt_context": prompt_context,
+                    "__profile_request_source_confirmation_resolved__": True,
+                },
+            )
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         current: ProfileRequestSourceLocalState = {
             **state,

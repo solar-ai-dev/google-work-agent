@@ -8,10 +8,6 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import ParentGraphState, request_from_state
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.detect_ambiguity_node import (
@@ -34,7 +30,7 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
     RequestUnderstandingState,
 )
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     WorkflowPhase,
@@ -54,7 +50,8 @@ from google_work_agent.application.orchestration.supervisor import (
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 ConfirmInline = Callable[
-    [RequestUnderstandingState], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+    [RequestUnderstandingState],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 
 
@@ -184,14 +181,8 @@ class RequestUnderstandingSubgraph:
         prompt_context["confirmation_interrupt"] = {
             "schema_version": 1,
             "interrupt_id": interrupt_id,
-            "owner_subgraph": "REQUEST_UNDERSTANDING",
+            "semantic_owner_id": "REQUEST_UNDERSTANDING",
             "origin_target": question["origin_target"],
-            "resume_target": {
-                "subgraph_id": "REQUEST_UNDERSTANDING",
-                "node_id": "confirm",
-                "graph_version": RESUME_CONTRACT_VERSION,
-            },
-            "resume_status": confirmation_resume_status("REQUEST_UNDERSTANDING").value,
         }
         return {
             "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,

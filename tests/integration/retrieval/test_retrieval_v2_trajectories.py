@@ -179,9 +179,7 @@ def _search_plan(route_id: object, mode: str, term: str) -> dict[str, object]:
         spec["constraints"] = [{"kind": "KEYWORD", "terms": [term], "match_mode": "ANY"}]
     else:
         spec["constraint_delta"] = {
-            "upsert_constraints": [
-                {"kind": "KEYWORD", "terms": [term], "match_mode": "ANY"}
-            ],
+            "upsert_constraints": [{"kind": "KEYWORD", "terms": [term], "match_mode": "ANY"}],
             "remove_constraint_kinds": [],
         }
     return {
@@ -246,7 +244,9 @@ def test_ret_int_01_initial_search_reaches_evidence_and_retrieval_result(tmp_pat
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
     runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        unit_of_work_factory=sqlite_unit_of_work_factory(
+            _seed_runtime_database(tmp_path, status="ANALYZING")
+        ),
         llm_runtime=llm,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
@@ -280,7 +280,9 @@ def test_ret_int_02_changed_search_reaches_second_round_evidence(tmp_path: Any) 
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
     runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        unit_of_work_factory=sqlite_unit_of_work_factory(
+            _seed_runtime_database(tmp_path, status="ANALYZING")
+        ),
         llm_runtime=llm,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
@@ -315,7 +317,9 @@ def test_ret_int_03_next_page_reaches_second_page_evidence(tmp_path: Any) -> Non
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
     runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        unit_of_work_factory=sqlite_unit_of_work_factory(
+            _seed_runtime_database(tmp_path, status="ANALYZING")
+        ),
         llm_runtime=llm,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
@@ -361,7 +365,9 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
     runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(_seed_runtime_database(tmp_path)),
+        unit_of_work_factory=sqlite_unit_of_work_factory(
+            _seed_runtime_database(tmp_path, status="ANALYZING")
+        ),
         llm_runtime=llm,
         gateway=gateway,
         connector_execution=GoogleWorkspaceExecutionBackend(gateway=gateway),
@@ -404,9 +410,7 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
         assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 2
         assert llm.planner_calls == 2
         assert llm.followup_input is not None
-        issues = cast(
-            list[dict[str, object]], llm.followup_input["unresolved_sufficiency_issues"]
-        )
+        issues = cast(list[dict[str, object]], llm.followup_input["unresolved_sufficiency_issues"])
         assert issues == [
             {
                 "slot": "Need the invoice total.",

@@ -14,7 +14,7 @@ from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     AnalysisResult,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
@@ -288,7 +288,7 @@ class WorkAnalysisAgent:
         evidence_drafts: list[EvidenceDraftV1],
         request: WorkflowStartRequest,
         policy_confirmation_receipt_refs: list[str],
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 

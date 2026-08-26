@@ -20,7 +20,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     BlockedSignalV1,
     ConfirmationRequiredV1,
     EvidenceDraftV1,
-    RegisteredResumeTargetRefV1,
     RequestIntentV2,
     RetrievalNeedV1,
     RetrievalRequiredV1,
@@ -39,6 +38,7 @@ from google_work_agent.application.orchestration.state_artifacts import (
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports import OutputSchemaDefinition
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 ActionNecessityV1 = Literal["REQUIRED", "NOT_REQUIRED"]
 _GUARDED_RELATION_TYPES = frozenset({"DUPLICATES", "CONFLICTS_WITH"})
@@ -389,7 +389,7 @@ def project_work_analysis_confirmation_required_v1(
     decision: WorkAnalysisGapDecisionV1,
     *,
     interrupt_id: str,
-    resume_target: RegisteredResumeTargetRefV1,
+    resume_target: AgentNodeResumeTargetV2,
 ) -> ConfirmationRequiredV1:
     decision = validate_work_analysis_gap_decision_v1(decision)
     if decision["disposition"] != "NEEDS_CONFIRMATION":
@@ -397,7 +397,7 @@ def project_work_analysis_confirmation_required_v1(
     return {
         "kind": "CONFIRMATION_REQUIRED",
         "interrupt_id": _text(interrupt_id, "interrupt_id"),
-        "owner_subgraph": "WORK_ANALYSIS",
+        "semantic_owner_id": "WORK_ANALYSIS",
         "resume_target": _resume_target(resume_target),
         "question": decision["question"],
         "options": list(decision["options"]),
@@ -653,7 +653,7 @@ class WorkAnalysisV2NodeChain:
         policy_confirmation_receipt_refs: Sequence[StateArtifactRefV1],
         confirmation_response: Mapping[str, object] | None = None,
         interrupt_id: str | None = None,
-        resume_target: RegisteredResumeTargetRefV1 | None = None,
+        resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> WorkAnalysisResultV2 | WorkflowSignalV1:
         allowed_evidence_refs = set(retrieval_result["evidence_refs"])
         evidence = _validate_current_run_evidence(evidence_drafts, expected_refs=retrieval_result["evidence_refs"])
@@ -1017,19 +1017,12 @@ def _retrieval_need(value: object, path: str) -> RetrievalNeedV1:
     }
 
 
-def _resume_target(value: object) -> RegisteredResumeTargetRefV1:
-    item = _mapping(value, "resume_target")
-    _exact(item, {"subgraph_id", "node_id", "graph_version"}, "resume_target")
-    if item["subgraph_id"] != "WORK_ANALYSIS":
+def _resume_target(value: AgentNodeResumeTargetV2) -> AgentNodeResumeTargetV2:
+    if not isinstance(value, AgentNodeResumeTargetV2):
+        raise WorkAnalysisV2ValidationError("resume_target must be AgentNodeResumeTargetV2")
+    if value.semantic_owner_id != "WORK_ANALYSIS":
         raise WorkAnalysisV2ValidationError("Work Analysis confirmation must resume WORK_ANALYSIS")
-    return cast(
-        RegisteredResumeTargetRefV1,
-        {
-            "subgraph_id": "WORK_ANALYSIS",
-            "node_id": _text(item["node_id"], "resume_target.node_id"),
-            "graph_version": _text(item["graph_version"], "resume_target.graph_version"),
-        },
-    )
+    return value
 
 
 def _meta(value: object) -> StateArtifactMetaV1:

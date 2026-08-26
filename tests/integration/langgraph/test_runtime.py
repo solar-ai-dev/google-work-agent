@@ -966,15 +966,17 @@ def _make_runtime(
     database_path: Path,
     llm_payloads: Sequence[object],
     gateway: FakeGoogleGateway,
-    checkpoint_database_path: Path,
+    checkpoint_database_path: Path | None = None,
+    checkpoint_port=None,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
     before_llm_invoke: Callable[[], None] | None = None,
     default_tasklist_id: str | None = "task-list-default",
     default_calendar_id: str | None = "calendar-primary",
+    id_prefix: str = "runtime",
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClock(1000)
-    ids = DeterministicUUID(prefix="runtime")
+    ids = DeterministicUUID(prefix=id_prefix)
     return LangGraphWorkflowRuntime(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
@@ -986,6 +988,7 @@ def _make_runtime(
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
         checkpoint_database_path=checkpoint_database_path,
+        checkpoint_port=checkpoint_port,
         graph_profile=graph_profile,
         prompt_manifest_path=prompt_manifest_path,
         default_tasklist_id_provider=(

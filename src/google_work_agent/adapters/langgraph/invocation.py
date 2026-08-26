@@ -31,6 +31,7 @@ class WorkflowInvocationCoordinator:
         *,
         graph: Any,
         graph_profile: GraphProfile,
+        start_node: str,
         initial_state: Callable[[WorkflowStartRequest], GraphState],
         current_run_status: Callable[[str], str],
         latest_unknown_action: Callable[[str], object | None],
@@ -44,6 +45,7 @@ class WorkflowInvocationCoordinator:
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
+        self._start_node = start_node
         self._initial_state = initial_state
         self._current_run_status = current_run_status
         self._latest_unknown_action = latest_unknown_action
@@ -55,10 +57,35 @@ class WorkflowInvocationCoordinator:
         self._cancel_signal_lock = cancel_signal_lock
         self._cancel_signals = cancel_signals
 
+    def prepare_start(self, request: WorkflowStartRequest) -> None:
+        """Durably materialize input state without invoking the first owner node."""
+        config = self.config_for_thread(request.workflow_key)
+        snapshot = self._graph.get_state(config)
+        if snapshot.values or snapshot.next:
+            if tuple(snapshot.next) != (self._start_node,):
+                raise ValueError("workflow thread is not at the prepared START boundary")
+            return
+        self._graph.invoke(
+            self._initial_state(request),
+            config=config,
+            interrupt_before=[self._start_node],
+        )
+
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
         with provider_dispatch_execution_scope():
             config = self.config_for_thread(request.workflow_key)
-            self._graph.invoke(self._initial_state(request), config=config)
+            snapshot = self._graph.get_state(config)
+            if snapshot.values or snapshot.next:
+                if tuple(snapshot.next) != (self._start_node,):
+                    return WorkflowInvocationResult(
+                        run_id=request.run_id,
+                        workflow_key=request.workflow_key,
+                        outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
+                        payload={},
+                    )
+                self._graph.invoke(None, config=config)
+            else:
+                self._graph.invoke(self._initial_state(request), config=config)
             return self.result_from_thread(
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
@@ -83,6 +110,12 @@ class WorkflowInvocationCoordinator:
                     payload={"graph_profile": self._graph_profile.value},
                 )
             if snapshot.next:
+                if request.resume_kind == "CONSUMED_CONTINUATION_RECOVERY":
+                    self._graph.invoke(None, config=config)
+                    return self.result_from_thread(
+                        workflow_key=request.workflow_key,
+                        run_id=request.run_id,
+                    )
                 # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
                 # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
                 # correct way to feed the user's response back into it.

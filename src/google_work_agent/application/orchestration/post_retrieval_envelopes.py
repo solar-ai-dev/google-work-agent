@@ -11,13 +11,16 @@ from collections.abc import Mapping
 from typing import cast
 
 from google_work_agent.application.orchestration.handoff_contracts import SubgraphReturnV2
+from google_work_agent.application.orchestration.inspect_plan_output import (
+    validate_plan_review_candidate_v2,
+)
 from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
-from google_work_agent.application.orchestration.inspect_plan_output import validate_plan_review_candidate_v2
 from google_work_agent.application.orchestration.state_artifacts import (
     AnswerDraftV2,
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 PlanningResultV2 = AnswerDraftV2 | ActionPlanDraftV2
 PostRetrievalSubgraphReturnV2 = SubgraphReturnV2[object]
@@ -238,21 +241,21 @@ def _retrieval_signal(signal: Mapping[str, object]) -> None:
 
 
 def _confirmation_signal(signal: Mapping[str, object]) -> None:
-    expected = {"kind", "interrupt_id", "owner_subgraph", "resume_target", "question", "options"}
+    expected = {"kind", "interrupt_id", "semantic_owner_id", "resume_target", "question", "options"}
     if set(signal) != expected:
         raise PostRetrievalEnvelopeV2Error("ConfirmationRequiredV1 keys are invalid")
-    for field in ("interrupt_id", "owner_subgraph", "question"):
+    for field in ("interrupt_id", "semantic_owner_id", "question"):
         item = signal.get(field)
         if not isinstance(item, str) or not item:
             raise PostRetrievalEnvelopeV2Error(f"ConfirmationRequiredV1.{field} is required")
     _string_list(signal.get("options"), "ConfirmationRequiredV1.options")
-    resume = _mapping(signal.get("resume_target"), "ConfirmationRequiredV1.resume_target")
-    if set(resume) != {"subgraph_id", "node_id", "graph_version"}:
-        raise PostRetrievalEnvelopeV2Error("RegisteredResumeTargetRefV1 keys are invalid")
-    for field in ("subgraph_id", "node_id", "graph_version"):
-        item = resume.get(field)
-        if not isinstance(item, str) or not item:
-            raise PostRetrievalEnvelopeV2Error(f"RegisteredResumeTargetRefV1.{field} is required")
+    resume = signal.get("resume_target")
+    if not isinstance(resume, AgentNodeResumeTargetV2):
+        raise PostRetrievalEnvelopeV2Error(
+            "ConfirmationRequiredV1.resume_target must be AgentNodeResumeTargetV2"
+        )
+    if resume.semantic_owner_id != signal["semantic_owner_id"]:
+        raise PostRetrievalEnvelopeV2Error("confirmation owner/resume target mismatch")
 
 
 def _reason_signal(signal: Mapping[str, object], *, kind: str) -> None:

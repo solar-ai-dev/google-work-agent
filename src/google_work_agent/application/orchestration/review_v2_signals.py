@@ -8,14 +8,16 @@ from typing import cast
 from google_work_agent.application.orchestration.handoff_contracts import (
     BlockedSignalV1,
     ConfirmationRequiredV1,
-    RegisteredResumeTargetRefV1,
     RetrievalNeedV1,
     RetrievalRequiredV1,
     RouteReconsiderationRequiredV1,
     WorkflowSignalV1,
 )
-from google_work_agent.application.orchestration.inspect_plan_output import validate_plan_review_candidate_v2
+from google_work_agent.application.orchestration.inspect_plan_output import (
+    validate_plan_review_candidate_v2,
+)
 from google_work_agent.application.orchestration.state_artifacts import PlanReviewResultV2
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class ReviewV2SignalProjectionError(ValueError):
@@ -26,7 +28,7 @@ def project_review_workflow_signal_v2(
     result: PlanReviewResultV2,
     *,
     interrupt_id: str | None = None,
-    resume_target: RegisteredResumeTargetRefV1 | None = None,
+    resume_target: AgentNodeResumeTargetV2 | None = None,
 ) -> WorkflowSignalV1 | None:
     review = _validated_review(result)
     status = cast(str, review["status"])
@@ -98,7 +100,7 @@ def _confirmation_required(
     review: Mapping[str, object],
     *,
     interrupt_id: str | None,
-    resume_target: RegisteredResumeTargetRefV1 | None,
+    resume_target: AgentNodeResumeTargetV2 | None,
 ) -> ConfirmationRequiredV1:
     if not isinstance(interrupt_id, str) or not interrupt_id:
         raise ReviewV2SignalProjectionError("CONFIRM requires runtime interrupt_id")
@@ -116,8 +118,8 @@ def _confirmation_required(
     return {
         "kind": "CONFIRMATION_REQUIRED",
         "interrupt_id": interrupt_id,
-        "owner_subgraph": "REVIEW",
-        "resume_target": dict(resume_target),  # type: ignore[typeddict-item]
+        "semantic_owner_id": "REVIEW",
+        "resume_target": resume_target,
         "question": question,
         "options": options,
     }
@@ -156,14 +158,11 @@ def _unique_codes(items: list[object], *, label: str) -> list[str]:
     return result
 
 
-def _validate_resume_target(value: RegisteredResumeTargetRefV1) -> None:
-    if set(value) != {"subgraph_id", "node_id", "graph_version"}:
-        raise ReviewV2SignalProjectionError("resume_target keys are invalid")
-    if value["subgraph_id"] != "REVIEW":
+def _validate_resume_target(value: AgentNodeResumeTargetV2) -> None:
+    if not isinstance(value, AgentNodeResumeTargetV2):
+        raise ReviewV2SignalProjectionError("resume_target must be AgentNodeResumeTargetV2")
+    if value.semantic_owner_id != "REVIEW":
         raise ReviewV2SignalProjectionError("Review confirmation resume_target must belong to REVIEW")
-    for field in ("node_id", "graph_version"):
-        if not isinstance(value[field], str) or not value[field]:
-            raise ReviewV2SignalProjectionError(f"resume_target.{field} is required")
 
 
 def _text(value: object, label: str) -> str:

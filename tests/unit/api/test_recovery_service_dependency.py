@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+
 from fastapi import FastAPI
 from starlette.requests import Request
 from tests.support.fakes import FakeClock
@@ -10,18 +11,24 @@ from google_work_agent.api.dependencies.runs import get_run_route_dependencies
 
 def _request_with_run_composition() -> tuple[Request, object]:
     app = FastAPI()
-    unit_of_work_factory = lambda: None
+
+    def unit_of_work_factory() -> None:
+        return None
+
     app.state.container = SimpleNamespace(
         api_contract_version="1",
         query_service=SimpleNamespace(get_run_execution_context=lambda _run_id: None),
         unit_of_work_factory=unit_of_work_factory,
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        resume_target_registry=object(),
         schedule_run_execution=object(),
         local_run_coordinator=object(),
         workflow_runtime=object(),
         clock=FakeClock(1),
         id_generator=object(),
+        resolve_selection_handle=object(),
+        resource_connector_id="google-workspace",
     )
     return (
         Request(
@@ -50,9 +57,4 @@ def test_run_dependency_resolver_fails_closed_without_checkpoint_authority() -> 
     request, _unit_of_work_factory = _request_with_run_composition()
     dependencies = get_run_route_dependencies(request)
 
-    assert (
-        dependencies.resolve_resume_authority(
-            run_id="run-1", resume_kind="CONFIRMATION"
-        )
-        is None
-    )
+    assert dependencies.resolve_resume_authority(run_id="run-1", resume_kind="CONFIRMATION") is None

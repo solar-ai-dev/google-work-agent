@@ -25,6 +25,8 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.fakes import DeterministicUUID, FakeClock, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.workflow_admission import build_test_admission_callbacks
+
 from google_work_agent.adapters.events.in_memory import InMemoryRunEventPublisher
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.unit_of_work import sqlite_unit_of_work_factory
@@ -34,10 +36,15 @@ from google_work_agent.adapters.readiness.composite import (
 )
 from google_work_agent.adapters.runtime import BuildProfile
 from google_work_agent.adapters.runtime.settings import FileSettingsStore, SettingsService
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
+from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ActionPlanDraftV1,
+    RequestIntentV2,
+)
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
@@ -53,10 +60,6 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionPlanDraftV1,
-    RequestIntentV2,
 )
 from google_work_agent.application.write_actions import (
     ApproveWriteActionService,
@@ -320,11 +323,14 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         plan_factory(),
         _review_output("PASS"),
     ]
+    checkpoint = SqliteCheckpointAdapter(
+        tmp_path / "product-checkpoints.db", now_ms=clock.now_ms
+    )
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=llm_payloads,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "product-checkpoints.db",
+        checkpoint_port=checkpoint,
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
     status_provider = StaticRuntimeStatusProvider(
@@ -355,20 +361,22 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     id_generator = DeterministicUUID(prefix="api")
 
-    def _execute_admission(admission: object) -> None:
-        try:
-            coordinator.enqueue_start(
-                run_id=admission.effective_binding.run_id,  # type: ignore[attr-defined]
-                request_id=admission.admission_id,  # type: ignore[attr-defined]
-                command_id=admission.handoff_id,  # type: ignore[attr-defined]
-            )
-        except QueueBusyError:
-            pass
+    checkpoint, materialize, invoke = build_test_admission_callbacks(
+        checkpoint_path=tmp_path / "admission-checkpoints.db",
+        query_service=query_service,
+        unit_of_work_factory=unit_of_work_factory,
+        workflow_runtime=runtime,
+        event_publisher=publisher,
+        now_ms=clock.now_ms,
+        checkpoint=checkpoint,
+    )
 
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
-        execute_admission=_execute_admission,
+        checkpoint=checkpoint,
+        materialize_admission_checkpoint=materialize,
+        invoke_semantic_owner=invoke,
     )
     settings_service = SettingsService(
         store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
@@ -553,8 +561,7 @@ def _create_conversation_and_run(client: TestClient) -> str:
             "conversation_id": "conversation-1",
             "request_text": "Create the requested follow-up task.",
             "entry_mode": "AGENT_SEARCH",
-            "selected_resource_ids": [],
-            "selected_resources": [],
+            "selected_resource_handles": [],
             "requested_mode": "AUTO",
             "api_contract_version": "1",
         },

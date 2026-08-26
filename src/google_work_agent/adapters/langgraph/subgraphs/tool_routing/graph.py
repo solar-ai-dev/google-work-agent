@@ -3,43 +3,39 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     ParentGraphState,
     _require_state_value,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (  # noqa: E501
     bind_registry_candidates_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.determine_io_resources_node import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.determine_io_resources_node import (  # noqa: E501
     determine_io_resources_node,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.finalize_route_node import (
     finalize_route_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.select_tool_if_needed_node import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.select_tool_if_needed_node import (  # noqa: E501
     select_tool_if_needed_node,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.validate_route_node import (
     validate_route_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_confirmation import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_confirmation import (  # noqa: E501
     route_after_confirmation,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_determine_io_resources import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_determine_io_resources import (  # noqa: E501
     route_after_determine_io_resources,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import (  # noqa: E501
     route_after_finalize_route,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
@@ -47,10 +43,9 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRoutingState,
 )
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    PolicyConfirmationReceiptV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -58,9 +53,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.request_understanding import (
     build_user_interrupt_v1,
-)
-from google_work_agent.application.orchestration.scope_expansion import (
-    build_policy_confirmation_receipt,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -75,9 +67,8 @@ from google_work_agent.domain import ConnectorToolCatalog
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
-    [ToolRoutingState], tuple[ConfirmationResponseV1 | None, dict[str, object] | None]
+    [ToolRoutingState], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
 ]
-RecordPolicyConfirmationReceipt = Callable[[str, PolicyConfirmationReceiptV1], None]
 
 
 def _scope_expansion_affected_route_ids(resource_types: list[str]) -> list[str]:
@@ -101,7 +92,6 @@ class ToolRoutingSubgraph:
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
         confirm_inline: ConfirmInline,
-        record_policy_confirmation_receipt: RecordPolicyConfirmationReceipt,
         id_factory: Callable[[], str],
     ) -> None:
         self._coordinator = coordinator
@@ -109,7 +99,6 @@ class ToolRoutingSubgraph:
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
         self._confirm_inline = confirm_inline
-        self._record_policy_confirmation_receipt = record_policy_confirmation_receipt
         self._id_factory = id_factory
 
     @property
@@ -256,7 +245,10 @@ class ToolRoutingSubgraph:
             question: ClarificationQuestionV1 = {
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
-                "question": f"요청한 작업을 처리하려면 {resources} 데이터를 추가 확인해야 합니다. 진행할까요?",
+                "question": (
+                    f"요청한 작업을 처리하려면 {resources} 데이터를 "
+                    "추가 확인해야 합니다. 진행할까요?"
+                ),
                 "affected_field_paths": ["requested_resource_hints"],
                 "reason_code": typed_signal["reason_codes"][0]
                 if typed_signal["reason_codes"]
@@ -293,23 +285,21 @@ class ToolRoutingSubgraph:
         else:
             question["question"] = "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요."
         interrupt_id = self._id_factory()
-        prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
-        prompt_context["confirmation_interrupt"] = {
-            "schema_version": 1,
-            "interrupt_id": interrupt_id,
-            "owner_subgraph": "TOOL_ROUTE",
-            "origin_target": question["origin_target"],
-            "resume_target": {
-                "subgraph_id": "TOOL_ROUTE",
-                "node_id": "confirm",
-                "graph_version": RESUME_CONTRACT_VERSION,
-            },
-            "resume_status": confirmation_resume_status("TOOL_ROUTE").value,
-        }
+        raw_interrupt = {**build_user_interrupt_v1(question), "interrupt_id": interrupt_id}
+        if origin == "scope_expansion":
+            signal = cast(ScopeExpansionRequiredV1, result["workflow_signal"])
+            raw_interrupt["policy_confirmation"] = {
+                "confirmation_kind": "SCOPE_EXPANSION",
+                "request_intent": request_intent,
+                "required_resource_types": list(signal["required_resource_types"]),
+                "reason_codes": list(signal["reason_codes"]),
+                "affected_route_ids": _scope_expansion_affected_route_ids(
+                    signal["required_resource_types"]
+                ),
+            }
         return {
             "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
-            "user_interrupt": {**build_user_interrupt_v1(question), "interrupt_id": interrupt_id},
-            "prompt_context": prompt_context,
+            "user_interrupt": raw_interrupt,
             "tr_confirmation_origin": origin,
             "tr_current_interrupt_id": interrupt_id,
             "trace_context": self._trace(state, node_name="prepare_confirmation"),
@@ -330,6 +320,7 @@ class ToolRoutingSubgraph:
             raise ValueError("tool-routing confirmation response is required")
         prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
         prompt_context.pop("confirmation_interrupt", None)
+        receipts = list(state.get("policy_confirmation_receipts", []))
         if state.get("tr_confirmation_origin") != "scope_expansion":
             return {
                 "tr_confirmation_response": confirmation_response,
@@ -337,33 +328,12 @@ class ToolRoutingSubgraph:
                 "prompt_context": prompt_context,
                 "trace_context": self._trace(state, node_name="confirm"),
             }
-        result = _require_state_value(state.get("tr_result"), "tr_result")
-        signal = cast(ScopeExpansionRequiredV1, result["workflow_signal"])
-        interrupt_id = _require_state_value(
-            state.get("tr_current_interrupt_id"), "tr_current_interrupt_id"
-        )
-        decision: Literal["APPROVED", "DECLINED"] = (
+        decision = (
             "APPROVED"
-            if confirmation_response["selected_option_ids"] == ["APPROVED"]
+            if confirmation_response["response_kind"] == "OPTION"
+            and confirmation_response["selected_option"] == "APPROVED"
             else "DECLINED"
         )
-        request_intent = _require_state_value(state.get("request_intent"), "request_intent")
-        receipt = build_policy_confirmation_receipt(
-            id_factory=self._id_factory,
-            interrupt_id=interrupt_id,
-            decision=decision,
-            request_intent=request_intent,
-            required_resource_types=tuple(signal["required_resource_types"]),
-            reason_codes=tuple(signal["reason_codes"]),
-            affected_route_ids=_scope_expansion_affected_route_ids(
-                signal["required_resource_types"]
-            ),
-        )
-        self._record_policy_confirmation_receipt(cast(str, state["run_id"]), receipt)
-        receipts = [
-            *cast(list[PolicyConfirmationReceiptV1], state.get("policy_confirmation_receipts", [])),
-            receipt,
-        ]
         if decision == "DECLINED":
             return {
                 "policy_confirmation_receipts": receipts,
@@ -450,7 +420,6 @@ def build_tool_routing_subgraph(
     semantic_agent: ToolRouteAgent,
     graph_profile: GraphProfile,
     confirm_inline: ConfirmInline,
-    record_policy_confirmation_receipt: RecordPolicyConfirmationReceipt,
 ) -> Any:
     return ToolRoutingSubgraph(
         coordinator=ToolRouteCoordinator(tool_catalog=tool_catalog, id_factory=id_factory),
@@ -458,6 +427,5 @@ def build_tool_routing_subgraph(
         graph_profile=graph_profile,
         merge_decision=merge_decision,
         confirm_inline=confirm_inline,
-        record_policy_confirmation_receipt=record_policy_confirmation_receipt,
         id_factory=id_factory,
     ).build()

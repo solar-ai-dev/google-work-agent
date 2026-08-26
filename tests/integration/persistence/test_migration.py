@@ -125,7 +125,7 @@ def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 9
+    assert len(migrations) == 10
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -145,6 +145,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[7].name == "resource_ref_connector_identity"
     assert migrations[8].version == 9
     assert migrations[8].name == "workflow_handoff_outbox"
+    assert migrations[9].version == 10
+    assert migrations[9].name == "plan_review_disposition"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -157,7 +159,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 9
+        assert len(first_results) == 10
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -169,6 +171,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (7, "connector_neutral_persistence"),
             (8, "resource_ref_connector_identity"),
             (9, "workflow_handoff_outbox"),
+            (10, "plan_review_disposition"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -179,9 +182,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 9
+        assert len(second_results) == 10
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 9
+        assert len(rows) == 10
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -283,6 +286,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,

@@ -1,34 +1,26 @@
 """Checkpoint projection and runtime verification for Application-owned Run resume."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
-from langgraph.types import interrupt
-
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    confirmation_owner,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
     WorkflowPhase,
-    validate_confirmation_response_v1,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 from google_work_agent.domain import RunStatus
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class ResumeCheckpointMixin:
     """Expose persisted resume targets and continue only Handler-decided resumes."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._handler_confirmation_resumes: set[str] = set()
-
-    def resolve_resume_authority(self, *, run_id: str, workflow_key: str, resume_kind: str) -> dict[str, object] | None:
+    def resolve_resume_authority(
+        self, *, run_id: str, workflow_key: str, resume_kind: str
+    ) -> dict[str, object] | None:
         """Read checkpoint authority without mutating Domain or workflow state."""
         snapshot = self._graph.get_state(
             self._config_for_thread(workflow_key),
@@ -38,42 +30,7 @@ class ResumeCheckpointMixin:
             return None
         state = cast(GraphState, snapshot.values)
         if resume_kind == "CONFIRMATION":
-            # A nested owner can publish a later confirmation round while the
-            # outer state still carries the prior round's metadata. The live
-            # pending interrupt is therefore the canonical resume authority.
-            for task in snapshot.tasks:
-                for pending in getattr(task, "interrupts", ()):
-                    value = getattr(pending, "value", None)
-                    if not isinstance(value, Mapping) or value.get("interrupt_kind") != "CONFIRMATION":
-                        continue
-                    origin_target = value.get("origin_target")
-                    interrupt_id = value.get("interrupt_id")
-                    if isinstance(origin_target, str) and origin_target and isinstance(interrupt_id, str):
-                        options = value.get("options", [])
-                        allowed_option_ids = [
-                            str(option["option_id"])
-                            for option in options
-                            if isinstance(option, Mapping)
-                            and isinstance(option.get("option_id"), str)
-                            and option["option_id"]
-                        ] if isinstance(options, list) else []
-                        return {
-                            "resume_status": confirmation_resume_status(confirmation_owner(origin_target)).value,
-                            "interrupt_id": interrupt_id,
-                            "allowed_option_ids": allowed_option_ids,
-                        }
-            prompt_context = state.get("prompt_context")
-            if isinstance(prompt_context, Mapping):
-                meta = prompt_context.get("confirmation_interrupt")
-                if isinstance(meta, Mapping):
-                    stored = meta.get("resume_status")
-                    interrupt_id = meta.get("interrupt_id")
-                    if isinstance(stored, str) and isinstance(interrupt_id, str):
-                        try:
-                            return {"resume_status": RunStatus(stored).value, "interrupt_id": interrupt_id}
-                        except ValueError:
-                            return None
-            return None
+            return self.resolve_pending_confirmation(run_id)
         if resume_kind == "REAUTH_COMPLETED":
             status = _reauth_resume_status(state)
             if status is None:
@@ -87,28 +44,30 @@ class ResumeCheckpointMixin:
             return {"resume_status": RunStatus.VERIFYING.value}
         return None
 
-    def resolve_resume_domain_status(self, *, run_id: str, workflow_key: str, resume_kind: str) -> str | None:
-        authority = self.resolve_resume_authority(run_id=run_id, workflow_key=workflow_key, resume_kind=resume_kind)
+    def resolve_resume_domain_status(
+        self, *, run_id: str, workflow_key: str, resume_kind: str
+    ) -> str | None:
+        authority = self.resolve_resume_authority(
+            run_id=run_id, workflow_key=workflow_key, resume_kind=resume_kind
+        )
         status = None if authority is None else authority.get("resume_status")
         return status if isinstance(status, str) else None
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        if request.resume_kind == "CONFIRMATION":
-            self._handler_confirmation_resumes.add(request.run_id)
-            try:
-                return super().resume(request)
-            finally:
-                self._handler_confirmation_resumes.discard(request.run_id)
         if request.resume_kind == "REAUTH_COMPLETED":
             return self._resume_after_reauth_transition(request)
         return super().resume(request)
 
-    def _resume_after_reauth_transition(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
+    def _resume_after_reauth_transition(
+        self, request: WorkflowResumeRequest
+    ) -> WorkflowInvocationResult:
         """Validate the persisted target and continue it without recovery semantics."""
         config = self._config_for_thread(request.workflow_key)
         snapshot = self._graph.get_state(config)
         if not snapshot.values and not snapshot.next:
-            return WorkflowInvocationResult(request.run_id, request.workflow_key, WorkflowOutcome.CHECKPOINT_MISSING, {})
+            return WorkflowInvocationResult(
+                request.run_id, request.workflow_key, WorkflowOutcome.CHECKPOINT_MISSING, {}
+            )
         state = cast(GraphState, snapshot.values)
         if not self._is_profile_compatible(state):
             return WorkflowInvocationResult(
@@ -126,7 +85,10 @@ class ResumeCheckpointMixin:
         expected_status = None if authority is None else authority.get("resume_status")
         expected_target = None if authority is None else authority.get("continuation_target")
         requested_target = request.resume_payload.get("continuation_target")
-        if not isinstance(expected_status, str) or self._current_run_status(request.run_id) != expected_status:
+        if (
+            not isinstance(expected_status, str)
+            or self._current_run_status(request.run_id) != expected_status
+        ):
             return WorkflowInvocationResult(
                 request.run_id,
                 request.workflow_key,
@@ -192,67 +154,69 @@ class ResumeCheckpointMixin:
             return None
         return self._route_translator.translate(target.value).node
 
-    def _run_confirmation_interrupt_cycle(
-        self,
-        *,
-        request: Any,
-        interrupt_id: str,
-        owner_subgraph: str,
-        raw_interrupt: Mapping[str, object],
-        raw_stored_resume_status: object,
-        check_stored_resume_status: bool,
-    ) -> tuple[ConfirmationResponseV1 | None, dict[str, object] | None]:
-        """Request confirmation initially; on resume verify Handler-restored Domain truth."""
-        expected_resume_status = confirmation_resume_status(owner_subgraph)
-        pretransitioned = request.run_id in self._handler_confirmation_resumes
-        current_status = RunStatus(self._current_run_status(request.run_id))
-        if pretransitioned:
-            if current_status is not expected_resume_status:
-                return None, {
-                    "__target__": "end",
-                    "execution_summary": {"result": "CONFIRMATION_RESUME_CONFLICT"},
-                }
-        else:
-            if current_status is not RunStatus.WAITING_CONFIRMATION:
-                self._transition_run(request.run_id, "request_confirmation")
-            if RunStatus(self._current_run_status(request.run_id)) is not RunStatus.WAITING_CONFIRMATION:
-                return None, {
-                    "__target__": "end",
-                    "execution_summary": {"result": "REQUEST_CONFIRMATION_NOT_APPLIED"},
-                }
-
-        raw_resume = interrupt({
-            "interrupt_kind": "CONFIRMATION",
-            "run_id": request.run_id,
-            **dict(raw_interrupt),
-        })
-        if pretransitioned:
-            # The Application transition authorizes exactly the pending
-            # interrupt being resumed. A later confirmation round created in
-            # this same graph invocation must request its own Domain pause.
-            self._handler_confirmation_resumes.discard(request.run_id)
-        if not isinstance(raw_resume, Mapping):
-            raise ValueError("confirmation resume payload must be an object")
-        if raw_resume.get("interrupt_id") != interrupt_id:
-            raise ValueError("confirmation response interrupt_id mismatch")
-        confirmation_response = validate_confirmation_response_v1({
-            "schema_version": raw_resume.get("schema_version"),
-            "response_kind": raw_resume.get("response_kind"),
-            "selected_option_ids": raw_resume.get("selected_option_ids"),
-            "free_text": raw_resume.get("free_text"),
-        })
-        self._validate_confirmation_option_scope(
-            interrupt_payload=raw_interrupt,
-            response=confirmation_response,
+    def resolve_pending_confirmation(self, run_id: str) -> dict[str, object] | None:
+        with self._unit_of_work_factory() as unit_of_work:
+            binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            return None
+        snapshot = self._graph.get_state(
+            self._config_for_thread(binding.workflow_key), subgraphs=True
         )
-        if check_stored_resume_status and raw_stored_resume_status != expected_resume_status.value:
-            raise ValueError("confirmation resume status metadata is invalid")
-        if not pretransitioned:
-            return None, {
-                "__target__": "end",
-                "execution_summary": {"result": "CONFIRMATION_RESUME_REQUIRES_APPLICATION_TRANSITION"},
+        latest = self._checkpoint_port.load_same_run_checkpoint(run_id, binding.langgraph_thread_id)
+        if latest is None or latest.registered_resume_target is None:
+            return None
+        for value in _pending_interrupt_values(snapshot):
+            if value.get("interrupt_kind") != "CONFIRMATION":
+                continue
+            raw_target = value.get("resume_target")
+            if not isinstance(raw_target, Mapping):
+                return None
+            try:
+                target = AgentNodeResumeTargetV2(**dict(raw_target))  # type: ignore[arg-type]
+                self._resume_target_registry.validate(target)
+            except (TypeError, ValueError):
+                return None
+            if target != latest.registered_resume_target:
+                return None
+            raw_options = value.get("options", [])
+            if not isinstance(raw_options, list):
+                return None
+            options = [
+                str(option["option_id"])
+                for option in raw_options
+                if isinstance(option, Mapping)
+                and isinstance(option.get("option_id"), str)
+                and option["option_id"]
+            ]
+            return {
+                "interrupt_id": value.get("interrupt_id"),
+                "semantic_owner_id": value.get("semantic_owner_id"),
+                "resume_target": dict(raw_target),
+                "pre_confirmation_status": value.get("pre_confirmation_status"),
+                "question": value.get("question"),
+                "options": options,
+                "checkpoint_id": latest.checkpoint_id,
+                "checkpoint_generation": latest.checkpoint_generation,
+                "policy_confirmation": value.get("policy_confirmation"),
             }
-        return confirmation_response, None
+        return None
+
+
+def _pending_interrupt_values(snapshot: object) -> list[Mapping[str, object]]:
+    values: list[Mapping[str, object]] = []
+    for pending in getattr(snapshot, "interrupts", ()):
+        value = getattr(pending, "value", None)
+        if isinstance(value, Mapping):
+            values.append(value)
+    for task in getattr(snapshot, "tasks", ()):
+        for pending in getattr(task, "interrupts", ()):
+            value = getattr(pending, "value", None)
+            if isinstance(value, Mapping):
+                values.append(value)
+        state = getattr(task, "state", None)
+        if state is not None and state is not snapshot:
+            values.extend(_pending_interrupt_values(state))
+    return values
 
 
 def _reauth_resume_status(state: GraphState) -> str | None:

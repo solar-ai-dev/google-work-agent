@@ -225,10 +225,9 @@ def test_production_callers_preserve_generic_failure_and_expose_real_retry_trigg
     assert "except Exception as error:" in process_source
     assert "WorkflowOutcome.FAILED" in process_source
 
-    # Existing startup recovery enqueues unfinished PLANNING runs as recover work.
-    assert "list_open_runs()" in startup_source
-    assert 'kind="recover"' in startup_source
-    assert "RunStatus.PLANNING" not in startup_source
+    # Durable WorkflowHandoff reconciliation is the only startup recovery owner.
+    assert "list_open_runs()" not in startup_source
+    assert 'kind="recover"' not in startup_source
 
     # Same-process command replay has a concrete producer for the same
     # registered corrective continuation.

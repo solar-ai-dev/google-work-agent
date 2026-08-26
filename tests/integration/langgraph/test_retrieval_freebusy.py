@@ -72,7 +72,7 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
     that round must reach finalize (through the real calendar_query_freebusy
     MCP tool) rather than crash or be silently dropped."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
+    database_path = _seed_runtime_database(tmp_path, status="ANALYZING")
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     llm_runtime = _QueuedLLMRuntime([])

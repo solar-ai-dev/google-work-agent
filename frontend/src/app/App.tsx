@@ -90,12 +90,19 @@ export function App(): JSX.Element {
     () => [...new Set(resourceState.selectedIds)],
     [resourceState.selectedIds],
   );
-  const selectedResourceLabels = useMemo(
+  const selectedResourceItems = useMemo(
     () => resourceItemsForSelection(resourceState, gmail.items, tasks.items)
-      .filter((item) => selectedResourceIds.includes(item.resource_id))
-      .map((item) => resourcePresentation(item).title)
-      .filter((title): title is string => Boolean(title)),
+      .filter((item) => selectedResourceIds.includes(item.resource_id)),
     [resourceState, gmail.items, selectedResourceIds, tasks.items],
+  );
+  const selectedResourceHandles = useMemo(
+    () => [...new Set(selectedResourceItems.map((item) => item.selection_handle))],
+    [selectedResourceItems],
+  );
+  const selectedResourceLabels = useMemo(
+    () => selectedResourceItems.map((item) => resourcePresentation(item).title)
+      .filter((title): title is string => Boolean(title)),
+    [selectedResourceItems],
   );
   const composerPrompt = resourceComposerPrompt(resourceState.tab);
   const visibleResourceItems = useMemo(() => {
@@ -116,7 +123,7 @@ export function App(): JSX.Element {
   ), [resourceState.tab, tasks.sort, visibleResourceItems]);
   const conversation = useConversation({
     currentAccount,
-    selectedResourceIds,
+    selectedResourceHandles,
     onStatusLine: setStatusLine,
   });
   const {

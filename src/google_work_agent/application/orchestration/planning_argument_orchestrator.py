@@ -18,12 +18,13 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     ConfirmationRequiredV1,
     EvidenceDraftV1,
-    RegisteredResumeTargetRefV1,
-    ReviewIssueV1,
     RequestIntentV2,
+    ReviewIssueV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.planning_argument_writer import PlanningArgumentWriter
+from google_work_agent.application.orchestration.planning_argument_writer import (
+    PlanningArgumentWriter,
+)
 from google_work_agent.application.orchestration.planning_arguments import (
     BoundSelectedToolSchemaV1,
     DefaultContainerResolver,
@@ -32,9 +33,12 @@ from google_work_agent.application.orchestration.planning_arguments import (
     ToolArgumentCandidateV1,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.orchestration.planning_tool_schemas import planning_tool_argument_schema
+from google_work_agent.application.orchestration.planning_tool_schemas import (
+    planning_tool_argument_schema,
+)
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.ports import PromptReference, StructuredLLMResult, WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class PlanningActionPreparationReadyV1(TypedDict):
@@ -315,20 +319,20 @@ def project_planning_action_confirmation_required_v1(
     preparation: PlanningActionPreparationResultV1,
     *,
     interrupt_id: str,
-    resume_target: RegisteredResumeTargetRefV1,
+    resume_target: AgentNodeResumeTargetV2,
 ) -> ConfirmationRequiredV1:
     preparation = validate_planning_action_preparation_result_v1(preparation)
     if preparation["disposition"] != "NEEDS_CONFIRMATION":
         raise ValueError("Planning confirmation projection requires NEEDS_CONFIRMATION")
     if not interrupt_id:
         raise ValueError("interrupt_id is required")
-    if resume_target.get("subgraph_id") != "PLANNING":
+    if resume_target.semantic_owner_id != "PLANNING":
         raise ValueError("Planning confirmation must resume PLANNING")
     return {
         "kind": "CONFIRMATION_REQUIRED",
         "interrupt_id": interrupt_id,
-        "owner_subgraph": "PLANNING",
-        "resume_target": cast(RegisteredResumeTargetRefV1, dict(resume_target)),
+        "semantic_owner_id": "PLANNING",
+        "resume_target": resume_target,
         "question": preparation["question"],
         "options": list(preparation["options"]),
     }

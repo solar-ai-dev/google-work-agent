@@ -245,7 +245,7 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
+    database_path = _seed_runtime_database(tmp_path, status="ANALYZING")
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     llm_runtime = _QueuedLLMRuntime([[_plan("TASKS", {"task_list_id": "task-list-default"})]])
@@ -382,7 +382,7 @@ def test_context_subgraph_routes_needs_more_data_back_to_source_planning(
     goes through ``_route_retrieval_required`` (see
     test_review_subgraph_routes_revise_and_retrieve_more_through_parent)."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
+    database_path = _seed_runtime_database(tmp_path, status="ANALYZING")
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,

@@ -47,6 +47,7 @@ def _coordinator(
     return WorkflowInvocationCoordinator(
         graph=_UnusedGraph(),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        start_node="request_understanding",
         initial_state=lambda _request: cast(GraphState, {}),
         current_run_status=lambda _run_id: run_status,
         latest_unknown_action=lambda _run_id: object() if unknown else None,

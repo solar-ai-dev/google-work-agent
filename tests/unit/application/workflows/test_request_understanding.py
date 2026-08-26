@@ -17,7 +17,7 @@ from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseKind,
     RequestUnderstandingResult,
     WorkflowPhase,
-    validate_confirmation_response_v1,
+    validate_confirmation_response_projection_v1,
 )
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
@@ -396,46 +396,46 @@ def test_confirmation_response_contract_and_origin_resolution_are_deterministic(
         }
     )
 
-    selection = validate_confirmation_response_v1(
+    selection = validate_confirmation_response_projection_v1(
         {
             "schema_version": 1,
-            "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
-            "selected_option_ids": ["create-task"],
+            "response_kind": ConfirmationResponseKind.OPTION.value,
+            "selected_option": "create-task",
             "free_text": None,
         }
     )
-    free_text = validate_confirmation_response_v1(
+    free_text = validate_confirmation_response_projection_v1(
         {
             "schema_version": 1,
             "response_kind": ConfirmationResponseKind.FREE_TEXT.value,
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "Use the existing draft only.",
         }
     )
 
-    assert selection["selected_option_ids"] == ["create-task"]
+    assert selection["selected_option"] == "create-task"
     assert free_text["free_text"] == "Use the existing draft only."
     assert (
         resolve_confirmation_origin_target(user_interrupt=user_interrupt, response=selection)
         == "planning.draft_plan"
     )
 
-    with pytest.raises(ValueError, match="OPTION_SELECTION requires at least one"):
-        validate_confirmation_response_v1(
+    with pytest.raises(ValueError, match="OPTION requires selected_option"):
+        validate_confirmation_response_projection_v1(
             {
                 "schema_version": 1,
-                "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
-                "selected_option_ids": [],
+                "response_kind": ConfirmationResponseKind.OPTION.value,
+                "selected_option": None,
                 "free_text": None,
             }
         )
 
     with pytest.raises(ValueError, match="FREE_TEXT requires non-empty free_text"):
-        validate_confirmation_response_v1(
+        validate_confirmation_response_projection_v1(
             {
                 "schema_version": 1,
                 "response_kind": ConfirmationResponseKind.FREE_TEXT.value,
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "   ",
             }
         )
@@ -445,8 +445,8 @@ def test_confirmation_response_contract_and_origin_resolution_are_deterministic(
             user_interrupt=user_interrupt,
             response={
                 "schema_version": 1,
-                "response_kind": ConfirmationResponseKind.OPTION_SELECTION.value,
-                "selected_option_ids": ["unknown-option"],
+                "response_kind": ConfirmationResponseKind.OPTION.value,
+                "selected_option": "unknown-option",
                 "free_text": None,
             },
         )

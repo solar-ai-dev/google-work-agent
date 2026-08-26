@@ -56,7 +56,7 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path)
+    database_path = _seed_runtime_database(tmp_path, status="ANALYZING")
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     llm_runtime = _QueuedLLMRuntime([])

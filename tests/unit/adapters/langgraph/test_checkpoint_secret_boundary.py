@@ -74,9 +74,7 @@ def test_checkpoint_boundary_rejects_random_secret_in_checkpoint_metadata_and_wr
     connection, checkpointer = _checkpointer()
     try:
         allowed_checkpoint = empty_checkpoint()
-        allowed_config = {
-            "configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}
-        }
+        allowed_config = {"configurable": {"thread_id": "thread-1", "checkpoint_ns": ""}}
         stored_config = checkpointer.put(
             allowed_config,
             allowed_checkpoint,
@@ -224,9 +222,7 @@ def test_compiled_graph_checkpoint_positive_round_trip_preserves_allowed_metadat
         )
         assert first["count"] == 1
 
-        checkpoint_rows = connection.execute(
-            "SELECT COUNT(*) FROM checkpoints"
-        ).fetchone()
+        checkpoint_rows = connection.execute("SELECT COUNT(*) FROM checkpoints").fetchone()
         assert checkpoint_rows is not None
         assert checkpoint_rows[0] > 0
 
@@ -336,9 +332,7 @@ def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
         with pytest.raises(NotImplementedError):
             asyncio.run(checkpointer.aput(config, checkpoint, metadata, {}))
         with pytest.raises(NotImplementedError):
-            asyncio.run(
-                checkpointer.aput_writes(config, [("state", {"count": 1})], "task")
-            )
+            asyncio.run(checkpointer.aput_writes(config, [("state", {"count": 1})], "task"))
         with pytest.raises(NotImplementedError):
             asyncio.run(checkpointer.adelete_thread("sync-only"))
     finally:
@@ -369,7 +363,6 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
             review=noop,
             single_workflow=noop,
             domain_validation=noop,
-            waiting_confirmation=noop,
             waiting_approval=noop,
             modify_review=noop,
             action_execution=noop,

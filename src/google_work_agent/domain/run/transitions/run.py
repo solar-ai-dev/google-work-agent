@@ -3,7 +3,10 @@
 from google_work_agent.domain.enums import RecoveryResolution, ResultCode, RunStatus
 from google_work_agent.domain.exceptions import InvariantViolationError
 from google_work_agent.domain.results import CommandResult
-from google_work_agent.domain.run.model import RunCommand
+from google_work_agent.domain.run.model import RunCommand, RunTransitionRejected
+from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
+from google_work_agent.domain.run.transitions.begin_retrieval import transition_begin_retrieval
+from google_work_agent.domain.run.transitions.start_analysis import transition_start_analysis
 from google_work_agent.domain.version_validation import is_non_negative_version
 
 RUN_TERMINAL_STATUSES = frozenset(
@@ -26,12 +29,6 @@ _RECOVERY_TARGET_RESOLUTIONS = {
 
 
 RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
-    (RunStatus.CREATED, RunCommand.START_ANALYSIS): RunStatus.ANALYZING,
-    (RunStatus.ANALYZING, RunCommand.BEGIN_RETRIEVAL): RunStatus.RETRIEVING,
-    (RunStatus.RETRIEVING, RunCommand.BEGIN_PLANNING): RunStatus.PLANNING,
-    (RunStatus.ANALYZING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
-    (RunStatus.RETRIEVING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
-    (RunStatus.PLANNING, RunCommand.REQUEST_CONFIRMATION): RunStatus.WAITING_CONFIRMATION,
     (RunStatus.CREATED, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.ANALYZING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
     (RunStatus.RETRIEVING, RunCommand.BLOCK_RUN): RunStatus.BLOCKED,
@@ -41,7 +38,6 @@ RUN_TRANSITIONS: dict[tuple[RunStatus, RunCommand], RunStatus] = {
     (RunStatus.ANALYZING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.RETRIEVING, RunCommand.FAIL_RUN): RunStatus.FAILED,
     (RunStatus.PLANNING, RunCommand.FAIL_RUN): RunStatus.FAILED,
-    (RunStatus.WAITING_APPROVAL, RunCommand.REPLAN): RunStatus.PLANNING,
     (RunStatus.ANALYZING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.RETRIEVING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
     (RunStatus.PLANNING, RunCommand.COMPLETE_ANSWER_ONLY_RUN): RunStatus.COMPLETED,
@@ -73,10 +69,10 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
     commands = [
         command
         for command in RUN_COMMAND_ORDER
-        if command not in {RunCommand.REPLAN, RunCommand.FINALIZE_ACTION_OUTCOMES}
+        if command is not RunCommand.FINALIZE_ACTION_OUTCOMES
         and (
             (current_status, command) in RUN_TRANSITIONS
-            or _is_confirmation_resume_candidate(current_status, command)
+            or _is_phase_entry_candidate(current_status, command)
             or _is_publish_plan_candidate(current_status, command)
             or _is_cancel_candidate(current_status, command)
             or _is_require_recovery_candidate(current_status, command)
@@ -86,11 +82,19 @@ def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ..
     return tuple(dict.fromkeys(commands))
 
 
-def _is_confirmation_resume_candidate(current_status: RunStatus, command: RunCommand) -> bool:
-    return (
-        current_status is RunStatus.WAITING_CONFIRMATION
-        and command is RunCommand.RESUME_CONFIRMATION
-    )
+def _is_phase_entry_candidate(current_status: RunStatus, command: RunCommand) -> bool:
+    try:
+        if command is RunCommand.START_ANALYSIS:
+            transition_start_analysis(current_status)
+        elif command is RunCommand.BEGIN_RETRIEVAL:
+            transition_begin_retrieval(current_status)
+        elif command is RunCommand.BEGIN_PLANNING:
+            transition_begin_planning(current_status)
+        else:
+            return False
+    except RunTransitionRejected:
+        return False
+    return True
 
 
 def transition_run(
@@ -121,9 +125,12 @@ def transition_run(
             ResultCode.VERSION_CONFLICT,
             "expected_version does not match current_version",
         )
-    if current_status is RunStatus.PLANNING and command is RunCommand.PUBLISH_PLAN:
-        if plan_requires_approval is None:
-            raise InvariantViolationError("plan_requires_approval is required")
+    if (
+        current_status is RunStatus.PLANNING
+        and command is RunCommand.PUBLISH_PLAN
+        and plan_requires_approval is None
+    ):
+        raise InvariantViolationError("plan_requires_approval is required")
     if current_status is RunStatus.RECOVERY_REQUIRED and command is RunCommand.RESOLVE_RECOVERY:
         recovery_resolution = _normalize_recovery_resolution(
             recovery_resolution=recovery_resolution,
@@ -169,9 +176,12 @@ def _resolve_run_next_status(
     plan_requires_approval: bool | None,
     recovery_resolution: RecoveryResolution | None,
 ) -> RunStatus | None:
-    if current_status is RunStatus.PLANNING and command is RunCommand.PUBLISH_PLAN:
-        if plan_requires_approval is not None:
-            return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
+    if (
+        current_status is RunStatus.PLANNING
+        and command is RunCommand.PUBLISH_PLAN
+        and plan_requires_approval is not None
+    ):
+        return RunStatus.WAITING_APPROVAL if plan_requires_approval else RunStatus.EXECUTING
     if _is_cancel_candidate(current_status, command):
         return RunStatus.CANCEL_REQUESTED
     if _is_require_recovery_candidate(current_status, command):

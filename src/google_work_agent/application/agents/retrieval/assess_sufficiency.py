@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseV1, RunBudgetV1
+from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1, RunBudgetV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     EvidenceDraftV1,
@@ -33,7 +33,7 @@ def assess_sufficiency(
     acquisition_result: AcquisitionResultV1,
     evidence_drafts: list[EvidenceDraftV1],
     retry_budget: RunBudgetV1,
-    confirmation_response: ConfirmationResponseV1 | None = None,
+    confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> SufficiencyResultV2:
     """Assess evidence completeness, then apply the deterministic insufficient-data guard."""
     prompt_input: dict[str, object] = {

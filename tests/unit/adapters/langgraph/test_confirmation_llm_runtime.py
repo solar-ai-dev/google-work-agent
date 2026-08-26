@@ -7,8 +7,8 @@ from typing import Any
 from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
     ConfirmationAwareLLMRuntime,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports import PromptReference
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 
 @dataclass
@@ -44,7 +44,7 @@ def _response() -> dict[str, object]:
     return {
         "schema_version": 1,
         "response_kind": "FREE_TEXT",
-        "selected_option_ids": [],
+        "selected_option": None,
         "free_text": "use the existing task",
     }
 

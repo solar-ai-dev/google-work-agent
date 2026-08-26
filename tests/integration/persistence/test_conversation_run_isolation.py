@@ -60,7 +60,9 @@ def _mark_run_terminal(database_path: Path, *, run_id: str, finished_at_ms: int)
         connection.close()
 
 
-def _handler(unit_of_work_factory: Callable[[], object], *, now_ms: Callable[[], int]) -> StartRunHandler:
+def _handler(
+    unit_of_work_factory: Callable[[], object], *, now_ms: Callable[[], int]
+) -> StartRunHandler:
     counter = itertools.count(1)
     return StartRunHandler(
         unit_of_work_factory=unit_of_work_factory,  # type: ignore[arg-type]
@@ -78,7 +80,6 @@ def _command(*, command_id: str, request_hash: str, request_text: str) -> StartR
         conversation_id="conversation-1",
         request_text=request_text,
         entry_mode="AGENT_SEARCH",
-        selected_resource_ids=(),
         requested_mode="AUTO",
         api_contract_version="1",
     )

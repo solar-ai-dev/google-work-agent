@@ -7,7 +7,6 @@ from typing import Callable, Protocol, cast
 
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
-    RegisteredResumeTargetRefV1,
     RequestIntentV2,
     RetrievalNeedV1,
     RetrievalResultV1,
@@ -15,19 +14,20 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactRefV1,
     SubgraphReturnV2,
 )
-from google_work_agent.application.orchestration.post_retrieval_envelopes import (
-    PlanningResultV2,
-    validate_review_return_v2,
-)
 from google_work_agent.application.orchestration.inspect_plan_output import (
     PlanReviewCandidateV2,
     materialize_plan_review_result_v2,
     validate_plan_review_candidate_v2,
 )
+from google_work_agent.application.orchestration.post_retrieval_envelopes import (
+    PlanningResultV2,
+    validate_review_return_v2,
+)
 from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 RetrievalNeedSatisfier = Callable[[Sequence[RetrievalNeedV1]], bool]
 
@@ -70,7 +70,7 @@ class ReviewV2Producer:
         planning_result: PlanningResultV2,
         evidence_drafts: Sequence[EvidenceDraftV1],
         interrupt_id: str | None = None,
-        resume_target: RegisteredResumeTargetRefV1 | None = None,
+        resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> SubgraphReturnV2[PlanReviewResultV2]:
         evidence = _validate_current_evidence(
             evidence_drafts,
@@ -118,7 +118,7 @@ def _review_signal(
     review: PlanReviewResultV2,
     *,
     interrupt_id: str | None,
-    resume_target: RegisteredResumeTargetRefV1 | None,
+    resume_target: AgentNodeResumeTargetV2 | None,
     retrieval_need_satisfier: RetrievalNeedSatisfier | None,
 ) -> dict[str, object] | None:
     status = review["status"]
@@ -162,13 +162,13 @@ def _review_signal(
             raise ReviewV2RuntimeError(
                 "Application-owned interrupt_id and resume_target are required for Review confirmation"
             )
-        if resume_target.get("subgraph_id") != "REVIEW":
+        if resume_target.semantic_owner_id != "REVIEW":
             raise ReviewV2RuntimeError("Review confirmation must resume REVIEW")
         confirmation = review["confirmation"]
         return {
             "kind": "CONFIRMATION_REQUIRED",
             "interrupt_id": _required_id(interrupt_id, "interrupt_id"),
-            "owner_subgraph": "REVIEW",
+            "semantic_owner_id": "REVIEW",
             "resume_target": _resume_target(resume_target),
             "question": confirmation["question"],
             "options": list(confirmation["options"]),
@@ -233,13 +233,10 @@ def _validate_current_evidence(
     return [by_id[evidence_id] for evidence_id in expected]
 
 
-def _resume_target(value: RegisteredResumeTargetRefV1) -> RegisteredResumeTargetRefV1:
-    expected = {"subgraph_id", "node_id", "graph_version"}
-    if set(value) != expected:
-        raise ReviewV2RuntimeError("RegisteredResumeTargetRefV1 keys are invalid")
-    for field in expected:
-        _required_id(value[field], f"resume_target.{field}")
-    return cast(RegisteredResumeTargetRefV1, dict(value))
+def _resume_target(value: AgentNodeResumeTargetV2) -> AgentNodeResumeTargetV2:
+    if not isinstance(value, AgentNodeResumeTargetV2):
+        raise ReviewV2RuntimeError("resume_target must be AgentNodeResumeTargetV2")
+    return value
 
 
 def _required_id(value: object, label: str) -> str:

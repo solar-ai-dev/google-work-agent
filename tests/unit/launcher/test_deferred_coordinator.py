@@ -1,13 +1,7 @@
 """Unit tests for _DeferredCoordinator command forwarding.
 
-Regression coverage for the bug where POST /api/v1/runs returned
-503 SERVICE_BUSY with detail_code=AttributeError: `local_run_coordinator`
-is set once as a real instance attribute on `_DeferredApiContainer`, so it
-never falls through to `__getattr__`'s post-init delegation. Before this
-fix, `_DeferredCoordinator` only forwarded start()/stop(); every call to
-enqueue_start/enqueue_resume/request_cancel hit the placeholder itself
-(which had no such methods) forever, even after core initialization
-completed and the real coordinator was bound.
+Only the explicitly deferred resume/cancel flows remain here. START execution
+and open-Run startup recovery belong to the durable WorkflowHandoff path.
 """
 
 from __future__ import annotations
@@ -21,7 +15,6 @@ class _RecordingCoordinator:
     def __init__(self) -> None:
         self.started = False
         self.stopped = False
-        self.start_calls: list[dict[str, object]] = []
         self.resume_calls: list[dict[str, object]] = []
         self.cancel_calls: list[dict[str, object]] = []
 
@@ -30,11 +23,6 @@ class _RecordingCoordinator:
 
     def stop(self) -> None:
         self.stopped = True
-
-    def enqueue_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
-        self.start_calls.append(
-            {"run_id": run_id, "request_id": request_id, "command_id": command_id}
-        )
 
     def enqueue_resume(
         self,
@@ -61,13 +49,6 @@ class _RecordingCoordinator:
         )
 
 
-def test_enqueue_start_raises_a_clear_error_before_the_delegate_is_bound() -> None:
-    deferred = _DeferredCoordinator()
-
-    with pytest.raises(RuntimeError, match="core initialization is incomplete"):
-        deferred.enqueue_start(run_id="run-1", request_id="req-1", command_id="cmd-1")
-
-
 def test_enqueue_resume_raises_a_clear_error_before_the_delegate_is_bound() -> None:
     deferred = _DeferredCoordinator()
 
@@ -86,18 +67,6 @@ def test_request_cancel_raises_a_clear_error_before_the_delegate_is_bound() -> N
 
     with pytest.raises(RuntimeError, match="core initialization is incomplete"):
         deferred.request_cancel(run_id="run-1", request_id="req-1", reason_code="user_requested")
-
-
-def test_enqueue_start_forwards_to_the_bound_delegate_after_core_initialization() -> None:
-    deferred = _DeferredCoordinator()
-    delegate = _RecordingCoordinator()
-    deferred.bind(delegate)  # type: ignore[arg-type]
-
-    deferred.enqueue_start(run_id="run-1", request_id="req-1", command_id="cmd-1")
-
-    assert delegate.start_calls == [
-        {"run_id": "run-1", "request_id": "req-1", "command_id": "cmd-1"}
-    ]
 
 
 def test_enqueue_resume_forwards_to_the_bound_delegate_after_core_initialization() -> None:

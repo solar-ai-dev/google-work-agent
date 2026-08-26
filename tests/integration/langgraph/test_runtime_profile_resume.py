@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
-
 from tests.integration.langgraph.test_runtime import (
     _PROFILE_CANDIDATE_PROMPT_IDS,
     _SIX_ROLE_BASELINE_PROMPT_IDS,
@@ -16,8 +14,8 @@ from tests.integration.langgraph.test_runtime import (
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowResumeRequest,
-    _ambiguous_intent,
     _action_required_intent,
+    _ambiguous_intent,
     _make_runtime,
     _profile_reason_plan_output,
     _profile_request_source_output,
@@ -28,13 +26,12 @@ from tests.integration.langgraph.test_runtime import (
     _start_write_request,
     connect_sqlite,
     pytest,
-    sqlite_unit_of_work_factory,
     write_draft_manifest,
     write_manifest_with_legacy_profile_slots,
 )
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
+from tests.support.canonical_workflow_runtime import (
+    resume_confirmation_with_handoff,
+    start_with_admission,
 )
 
 
@@ -258,11 +255,11 @@ def test_resume_rejects_profile_change_for_same_thread(
         database_path=database_path,
         llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-profile.db",
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
-    first = three_runtime.start(_start_request())
+    first = start_with_admission(three_runtime, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     three_runtime.close()
 
@@ -270,7 +267,7 @@ def test_resume_rejects_profile_change_for_same_thread(
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-profile.db",
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -281,10 +278,12 @@ def test_resume_rejects_profile_change_for_same_thread(
             workflow_key="thread-1",
             resume_kind="CONFIRMATION",
             resume_payload={
-                "schema_version": 1,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "I mean Kim from project alpha.",
+                "confirmation_response": {
+                    "schema_version": 1,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option": None,
+                    "free_text": "I mean Kim from project alpha.",
+                },
             },
             correlation=WorkflowCorrelationContext(
                 request_id="request-2",
@@ -371,12 +370,13 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
         database_path=database_path,
         llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=root / "checkpoints-resume.db",
+        checkpoint_database_path=database_path,
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
+        id_prefix=f"{root_name}-initial",
     )
 
-    first = first_runtime.start(_start_request())
+    first = start_with_admission(first_runtime, database_path, _start_request())
 
     assert first.outcome is WorkflowOutcome.ACCEPTED
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
@@ -390,63 +390,25 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=root / "checkpoints-resume.db",
+        checkpoint_database_path=database_path,
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
+        id_prefix=f"{root_name}-resumed",
     )
 
-    runtime_results = []
-
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            resumed_runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
-                    workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
-                )
-            )
-        )
-
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
-        assert run is not None
-        expected_run_version = run.version
-    application_result = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=lambda: 2000,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: resumed_runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
-        ),
-    )(
-        ResumeRunCommand(
-            command_id="command-2",
-            request_hash=sha256(b"command-2").hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_run_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version="1",
-        ),
-        request_id="request-2",
+    application_result, resumed = resume_confirmation_with_handoff(
+        resumed_runtime,
+        database_path,
+        command_id="command-2",
         resume_payload={
-            "schema_version": 1,
             "interrupt_id": interrupt_id,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "Use the default task list.",
         },
     )
     assert application_result.applied is True
-    resumed = runtime_results[0]
+    assert resumed is not None
 
     try:
         assert resumed.outcome is WorkflowOutcome.COMPLETED
@@ -481,11 +443,11 @@ def test_resume_rejects_mismatched_profile_for_thread(
         database_path=database_path,
         llm_payloads=start_payloads,
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=root / "checkpoints-mismatch.db",
+        checkpoint_database_path=database_path,
         graph_profile=start_profile,
         prompt_manifest_path=manifest_path,
     )
-    first = starter.start(_start_request())
+    first = start_with_admission(starter, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     starter.close()
 
@@ -493,7 +455,7 @@ def test_resume_rejects_mismatched_profile_for_thread(
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=root / "checkpoints-mismatch.db",
+        checkpoint_database_path=database_path,
         graph_profile=resume_profile,
         prompt_manifest_path=manifest_path,
     )
@@ -504,10 +466,12 @@ def test_resume_rejects_mismatched_profile_for_thread(
             workflow_key="thread-1",
             resume_kind="CONFIRMATION",
             resume_payload={
-                "schema_version": 1,
-                "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
-                "free_text": "Continue with the default task list.",
+                "confirmation_response": {
+                    "schema_version": 1,
+                    "response_kind": "FREE_TEXT",
+                    "selected_option": None,
+                    "free_text": "Continue with the default task list.",
+                },
             },
             correlation=WorkflowCorrelationContext(
                 request_id="request-2",

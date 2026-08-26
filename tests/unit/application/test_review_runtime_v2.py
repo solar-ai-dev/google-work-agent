@@ -6,6 +6,7 @@ from google_work_agent.application.orchestration.review_invocation import (
     ReviewV2Producer,
     ReviewV2RuntimeError,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class _PassProvider:
@@ -164,16 +165,19 @@ def test_review_confirmation_keeps_application_owned_resume_identity() -> None:
         planning_result=_plan(),
         evidence_drafts=_evidence(),
         interrupt_id="interrupt-1",
-        resume_target={
-            "subgraph_id": "REVIEW",
-            "node_id": "inspect",
-            "graph_version": "runtime-v2",
-        },
+        resume_target=AgentNodeResumeTargetV2(
+            kind="AGENT_NODE",
+            semantic_owner_id="REVIEW",
+            compiled_subgraph_id="SIX_REVIEW",
+            node_id="review.aggregate_findings",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="runtime-v2",
+        ),
     )
     assert result["disposition"] == "CONFIRM"
     assert result["typed_result"]["status"] == "CONFIRM"
     assert result["workflow_signal"]["kind"] == "CONFIRMATION_REQUIRED"
-    assert result["workflow_signal"]["owner_subgraph"] == "REVIEW"
+    assert result["workflow_signal"]["semantic_owner_id"] == "REVIEW"
     assert result["workflow_signal"]["interrupt_id"] == "interrupt-1"
 
 

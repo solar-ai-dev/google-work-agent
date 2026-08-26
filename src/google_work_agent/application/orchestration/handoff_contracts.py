@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Literal, NotRequired, Required, TypedDict
 
 from google_work_agent.application.orchestration.contracts import AdditionalAcquisitionRequestV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    AgentNodeResumeTargetV2,
+    SemanticAgentOwnerIdV1,
+)
 
 SourceName = Literal["GMAIL", "TASKS", "CALENDAR"]
 CalendarReadMode = Literal["EVENTS_ONLY", "EVENTS_AND_FREEBUSY"]
@@ -311,19 +315,11 @@ class RetrievalResultV1(TypedDict):
     retrieval_rounds: int
 
 
-class RegisteredResumeTargetRefV1(TypedDict):
-    subgraph_id: Literal[
-        "REQUEST_UNDERSTANDING", "TOOL_ROUTE", "RETRIEVAL", "WORK_ANALYSIS", "PLANNING", "REVIEW"
-    ]
-    node_id: str
-    graph_version: str
-
-
 class ConfirmationRequiredV1(TypedDict):
     kind: Required[Literal["CONFIRMATION_REQUIRED"]]
     interrupt_id: str
-    owner_subgraph: str
-    resume_target: RegisteredResumeTargetRefV1
+    semantic_owner_id: SemanticAgentOwnerIdV1
+    resume_target: AgentNodeResumeTargetV2
     question: str
     options: list[str]
 

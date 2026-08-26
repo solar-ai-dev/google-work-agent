@@ -16,19 +16,18 @@ from typing import Literal, cast
 import pytest
 
 from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
     RetrievalResultV1,
 )
-from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
 from google_work_agent.application.orchestration.prompt_registry import (
     default_prompt_manifest_path,
 )
+from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.ports import (
     ActualRuntime,
     LLMErrorCode,
@@ -42,6 +41,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 _WORK_ANALYSIS_ANALYZE_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r8.6",
@@ -300,7 +300,7 @@ def test_confirmation_response_stays_within_allowed_roots() -> None:
         confirmation_response={
             "schema_version": 1,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "The follow-up task is the primary one.",
         },
     )

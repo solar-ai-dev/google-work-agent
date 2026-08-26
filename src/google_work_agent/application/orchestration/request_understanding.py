@@ -11,13 +11,13 @@ from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     CONFIRMATION_ORIGIN_TARGETS,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     RequestUnderstandingResult,
     UserInterruptV1,
     WorkflowPhase,
     validate_confirmation_origin_target,
-    validate_confirmation_response_v1,
+    validate_confirmation_response_projection_v1,
     validate_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -205,7 +205,7 @@ class RequestUnderstandingAgent:
         self,
         request: WorkflowStartRequest,
         *,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> RequestUnderstandingOutputV1:
         llm_result = self.invoke_classify_llm(request, confirmation_response=confirmation_response)
         return self.build_output_from_llm_result(llm_result)
@@ -214,7 +214,7 @@ class RequestUnderstandingAgent:
         self,
         request: WorkflowStartRequest,
         *,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         return self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
@@ -619,7 +619,7 @@ _P0_CONNECTOR_ID: Final = "google_workspace"
 def _prompt_input_from_request(
     request: WorkflowStartRequest,
     *,
-    confirmation_response: ConfirmationResponseV1 | None = None,
+    confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> dict[str, object]:
     prompt_input: dict[str, object] = {
         "user_request": request.request_text,
@@ -643,8 +643,8 @@ def _prompt_input_from_request(
     }
     if confirmation_response is not None:
         # Pre-Prompt Runtime Closure: the already-canonical, already-bounded
-        # ConfirmationResponseV1 (schema_version/response_kind/
-        # selected_option_ids/free_text -- see validate_confirmation_response_v1)
+        # ConfirmationResponseProjectionV1 (schema_version/response_kind/
+        # selected_option/free_text -- see validate_confirmation_response_projection_v1)
         # is the only thing that crosses this boundary on a WAITING_CONFIRMATION
         # resume. The raw interrupt resume_payload dict is never forwarded
         # as-is; it is always re-validated into this bounded shape first
@@ -662,17 +662,17 @@ def _phase_for_result(result: RequestUnderstandingResult) -> WorkflowPhase:
 def resolve_confirmation_origin_target(
     *,
     user_interrupt: UserInterruptV1,
-    response: ConfirmationResponseV1,
+    response: ConfirmationResponseProjectionV1,
 ) -> str:
     question = validate_user_interrupt_v1(user_interrupt)
-    normalized = validate_confirmation_response_v1(response)
-    if normalized["response_kind"] == "OPTION_SELECTION":
+    normalized = validate_confirmation_response_projection_v1(response)
+    if normalized["response_kind"] == "OPTION":
         allowed_ids = {option["option_id"] for option in question["options"]}
-        for option_id in normalized["selected_option_ids"]:
-            if option_id not in allowed_ids:
-                raise RequestUnderstandingValidationError(
-                    f"unknown clarification option_id: {option_id}"
-                )
+        selected_option = normalized["selected_option"]
+        if selected_option not in allowed_ids:
+            raise RequestUnderstandingValidationError(
+                f"unknown clarification option_id: {selected_option}"
+            )
     return question["origin_target"]
 
 

@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Sequence
-from hashlib import sha256
 from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -38,9 +37,7 @@ from tests.integration.langgraph.test_runtime import (
     Path,
     ProductFixtureSnapshotLoader,
     RequestIntentV2,
-    WorkflowCorrelationContext,
     WorkflowOutcome,
-    WorkflowResumeRequest,
     _action_required_intent,
     _analysis_output,
     _answer_output,
@@ -63,19 +60,18 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.canonical_workflow_runtime import (
+    resume_confirmation_with_handoff,
+    start_with_admission,
+)
 
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+)
 from google_work_agent.ports import (
     LLMErrorCode,
     LLMInvocationError,
     WorkflowInvocationResult,
-)
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
-    ResumeRunResult,
-)
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    account_provider_dispatch,
 )
 
 
@@ -208,7 +204,7 @@ def _build_runtime(
         id_factory=DeterministicUUID(prefix=id_prefix).next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id_provider=lambda: "task-list-default",
@@ -221,54 +217,13 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[ResumeRunResult, WorkflowInvocationResult | None]:
-    """Apply the canonical Domain transition before resuming the checkpoint."""
-    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
-        assert run is not None
-        expected_version = run.version
-
-    runtime_results: list[WorkflowInvocationResult] = []
-
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
-                    workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
-                )
-            )
-        )
-
-    application_result = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=FakeClock(2000).now_ms,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
-        ),
-    )(
-        ResumeRunCommand(
-            command_id=command_id,
-            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version="1",
-        ),
-        request_id=f"request-{command_id}",
+) -> tuple[object, WorkflowInvocationResult | None]:
+    return resume_confirmation_with_handoff(
+        runtime,
+        database_path,
         resume_payload=resume_payload,
+        command_id=command_id,
     )
-    return application_result, runtime_results[0] if runtime_results else None
 
 
 def _nested_tool_route_task(runtime: LangGraphWorkflowRuntime) -> Any:
@@ -305,7 +260,7 @@ def test_tool_route_ambiguity_pauses_inside_own_nested_task(tmp_path: Path) -> N
     )
     # request_intent must itself be COMPLETE (Request Understanding must not
     # be the thing pausing here) -- _clear_intent() classifies cleanly.
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
 
     assert first.outcome is WorkflowOutcome.ACCEPTED
     assert first.payload["user_interrupt"] is not None
@@ -365,7 +320,7 @@ def test_tool_route_resume_makes_exactly_one_more_semantic_call_and_completes(
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     runtime.close()
 
@@ -396,7 +351,7 @@ def test_tool_route_resume_makes_exactly_one_more_semantic_call_and_completes(
             "schema_version": 1,
             "interrupt_id": interrupt_id,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "Use my Tasks list.",
         },
     )
@@ -459,7 +414,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     assert first.payload["user_interrupt"]["origin_target"] == "tool_route.finalize"
@@ -485,7 +440,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
             "schema_version": 1,
             "interrupt_id": round1_interrupt_id,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "round-1 answer, still ambiguous apparently.",
         },
     )
@@ -537,7 +492,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
                 "schema_version": 1,
                 "interrupt_id": round2_interrupt_id,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "round-2 answer, resolves it.",
             },
         )
@@ -579,7 +534,7 @@ def test_tool_route_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    runtime.start(_start_request())
+    start_with_admission(runtime, database_path, _start_request())
     runtime.close()
 
     resumed_llm_runtime = _ToolRouteQueuedLLMRuntime([])
@@ -601,7 +556,7 @@ def test_tool_route_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
                 "schema_version": 1,
                 "interrupt_id": "definitely-the-wrong-interrupt-id",
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "irrelevant",
             },
         )
@@ -630,10 +585,10 @@ def test_tool_route_resume_rejects_option_id_outside_allowed_scope(tmp_path: Pat
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_request())
+    first = start_with_admission(runtime, database_path, _start_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     # Tool Route's ordinary-ambiguity question is always free-text
-    # (options=[]) -- a closed-choice OPTION_SELECTION response must be
+    # (options=[]) -- a closed-choice OPTION response must be
     # rejected as outside scope.
     assert first.payload["user_interrupt"]["options"] == []
     runtime.close()
@@ -656,8 +611,8 @@ def test_tool_route_resume_rejects_option_id_outside_allowed_scope(tmp_path: Pat
             resume_payload={
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "response_kind": "OPTION_SELECTION",
-                "selected_option_ids": ["option-not-offered"],
+                "response_kind": "OPTION",
+                "selected_option": "option-not-offered",
                 "free_text": None,
             },
         )
@@ -688,11 +643,11 @@ def test_tool_route_happy_path_without_confirmation_reaches_context_retrieval(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-tool-route-happy.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
     try:
-        result = runtime.start(_start_request())
+        result = start_with_admission(runtime, database_path, _start_request())
         assert result.outcome is WorkflowOutcome.COMPLETED
         connection = connect_sqlite(database_path)
         try:
@@ -744,7 +699,7 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         id_prefix="round1",
     )
     try:
-        first = runtime.start(_start_write_request())
+        first = start_with_admission(runtime, database_path, _start_write_request())
 
         assert first.outcome is WorkflowOutcome.ACCEPTED
         interrupt = first.payload["user_interrupt"]
@@ -806,7 +761,7 @@ def test_tool_route_scope_expansion_for_calendar_event_create(tmp_path: Path) ->
         id_prefix="round1",
     )
     try:
-        first = runtime.start(_start_write_request())
+        first = start_with_admission(runtime, database_path, _start_write_request())
         assert first.outcome is WorkflowOutcome.ACCEPTED
         interrupt = first.payload["user_interrupt"]
         assert interrupt is not None
@@ -841,7 +796,7 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_write_request())
+    first = start_with_admission(runtime, database_path, _start_write_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     runtime.close()
 
@@ -877,8 +832,8 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
                 resume_payload={
                     "schema_version": 1,
                     "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION_SELECTION",
-                    "selected_option_ids": ["APPROVED"],
+                    "response_kind": "OPTION",
+                    "selected_option": "APPROVED",
                     "free_text": None,
                 },
             )
@@ -922,7 +877,7 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
         assert row is not None
         audit_attributes = json.loads(row[0])["attributes"]
         assert row[1] == "APPROVED"
-        assert audit_attributes["confirmation_receipt_id"] == receipt["confirmation_receipt_id"]
+        assert audit_attributes["confirmation_receipt_id"] == receipt["meta"]["artifact_id"]
         assert audit_attributes["interrupt_id"] == interrupt_id
         assert audit_attributes["decision_context_hash"] == receipt["decision_context_hash"]
         assert audit_attributes["confirmation_kind"] == "SCOPE_EXPANSION"
@@ -957,7 +912,7 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_write_request())
+    first = start_with_admission(runtime, database_path, _start_write_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     runtime.close()
 
@@ -979,8 +934,8 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
             resume_payload={
                 "schema_version": 1,
                 "interrupt_id": interrupt_id,
-                "response_kind": "OPTION_SELECTION",
-                "selected_option_ids": ["DECLINED"],
+                "response_kind": "OPTION",
+                "selected_option": "DECLINED",
                 "free_text": None,
             },
         )
@@ -1019,7 +974,7 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
         assert row is not None
         assert row[1] == "DECLINED"
         audit_attributes = json.loads(row[0])["attributes"]
-        assert audit_attributes["confirmation_receipt_id"] == receipts[0]["confirmation_receipt_id"]
+        assert audit_attributes["confirmation_receipt_id"] == receipts[0]["meta"]["artifact_id"]
         assert audit_attributes["decision"] == "DECLINED"
     finally:
         resumed_runtime.close()
@@ -1055,7 +1010,7 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_write_request())
+    first = start_with_admission(runtime, database_path, _start_write_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
 
     # Inject a forged receipt directly into the checkpoint -- simulating a
@@ -1073,10 +1028,10 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
             "revision": 1,
             "based_on": [{"artifact_id": "intent-1", "revision": 1}],
         },
-        "confirmation_receipt_id": "forged-receipt",
         "interrupt_id": interrupt_id,
         "confirmation_kind": "SCOPE_EXPANSION",
         "decision": "APPROVED",
+        "semantic_owner_id": "TOOL_ROUTE",
         "decision_context_hash": "not-a-real-hash",
         "affected_route_ids": ["TASK:CREATE"],
         "affected_resource_refs": ["TASK", "TASK_LIST"],
@@ -1115,8 +1070,8 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
                 resume_payload={
                     "schema_version": 1,
                     "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION_SELECTION",
-                    "selected_option_ids": ["APPROVED"],
+                    "response_kind": "OPTION",
+                    "selected_option": "APPROVED",
                     "free_text": None,
                 },
             )
@@ -1132,7 +1087,7 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
         assert receipts[0] == forged_receipt
         genuine_receipt = receipts[1]
         assert genuine_receipt["decision_context_hash"] != "not-a-real-hash"
-        assert genuine_receipt["confirmation_receipt_id"] != "forged-receipt"
+        assert genuine_receipt["meta"]["artifact_id"] != "forged-artifact"
 
         # The merge itself proceeded -- unlocked by the genuine receipt, not
         # by the forged one (whose hash never matched anything).
@@ -1171,7 +1126,7 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
         manifest_path=manifest_path,
         id_prefix="round1",
     )
-    first = runtime.start(_start_write_request())
+    first = start_with_admission(runtime, database_path, _start_write_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     assert first.payload["user_interrupt"]["options"] == []
@@ -1198,7 +1153,7 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
             "schema_version": 1,
             "interrupt_id": round1_interrupt_id,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "Create a task.",
         },
     )
@@ -1247,8 +1202,8 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
                 resume_payload={
                     "schema_version": 1,
                     "interrupt_id": round2_interrupt_id,
-                    "response_kind": "OPTION_SELECTION",
-                    "selected_option_ids": ["APPROVED"],
+                    "response_kind": "OPTION",
+                    "selected_option": "APPROVED",
                     "free_text": None,
                 },
             )

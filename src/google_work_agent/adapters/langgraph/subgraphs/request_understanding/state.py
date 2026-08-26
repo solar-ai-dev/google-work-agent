@@ -17,7 +17,7 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2,
 )
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     FinalizeIntentV1,
     PolicyConfirmationReceiptV1,
     RunBudgetV1,
@@ -47,5 +47,5 @@ class RequestUnderstandingState(RequestUnderstandingLocalState, total=False):
     ru_candidate: NotRequired[RequestIntentCandidateV1]
     ru_ambiguity: NotRequired[AmbiguityV1]
     ru_intent: NotRequired[RequestIntentV2]
-    ru_confirmation_response: NotRequired[ConfirmationResponseV1 | None]
+    ru_confirmation_response: NotRequired[ConfirmationResponseProjectionV1 | None]
     ru_invocation_id: NotRequired[str]

@@ -8,11 +8,11 @@ from dataclasses import asdict
 from json import dumps, loads
 from typing import Any, cast
 
+from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ConfirmationResumeControlV1,
     ContextAdjustmentControlV1,
-    GraphProfileIdV1,
     MainControlResumeTargetV2,
     RequestedModeV1,
     RetrievalCacheRestartControlV1,

@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.api.security.policies import DEFAULT_ENDPOINT_POLICY_REGISTRY
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
@@ -75,6 +79,7 @@ class ApiContainer:
     graph_profile: Any = "SIX_ROLE_BASELINE"
     graph_version: str = "resume-contract-v1"
     schedule_run_execution: Any | None = None
+    resume_target_registry: Any | None = None
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
     start_google_oauth_service: Any | None = None
@@ -107,6 +112,15 @@ class ApiContainer:
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()
 
     def __post_init__(self) -> None:
+        if self.resume_target_registry is None:
+            object.__setattr__(
+                self,
+                "resume_target_registry",
+                ResumeTargetRegistry(
+                    node_registry=NodeRegistry(graph_version=self.graph_version),
+                    graph_version=self.graph_version,
+                ),
+            )
         if self.issue_selection_handle is None or self.resolve_selection_handle is None:
             signing_secret = secrets.token_bytes(32)
             object.__setattr__(

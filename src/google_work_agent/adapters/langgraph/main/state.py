@@ -228,8 +228,9 @@ def request_from_state(state: GraphState) -> WorkflowStartRequest:
         + "\n\n[clarification]\n"
         + dumps(
             {
-                "selected_option_ids": cast(
-                    list[str], confirmation_response.get("selected_option_ids", [])
+                "response_kind": cast(str, confirmation_response.get("response_kind")),
+                "selected_option": cast(
+                    str | None, confirmation_response.get("selected_option")
                 ),
                 "free_text": cast(str | None, confirmation_response.get("free_text")),
             },

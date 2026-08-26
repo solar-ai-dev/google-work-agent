@@ -388,7 +388,7 @@ def test_modify_review_branches_use_existing_supervisor_routes(
         runtime.close()
 
 
-def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: Path) -> None:
+def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path: Path) -> None:
     """Pre-Prompt Runtime Closure item 6: a post-approval modify-review re-run
     that itself resolves to ROUTE_RECONSIDERATION (a live route-level defect
     discovered on the re-invoked Review) has no dedicated
@@ -445,9 +445,9 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
         action_id = _sole_persisted_action_id(database_path)
         plan_id = _sole_persisted_plan_id(database_path)
-        cast(
-            "list[dict[str, object]]", route_reconsideration_review_output["issues"]
-        )[0]["affected_action_ids"] = [action_id]
+        cast("list[dict[str, object]]", route_reconsideration_review_output["issues"])[0][
+            "affected_action_ids"
+        ] = [action_id]
         modified = ModifyWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=lambda: 1000,
@@ -478,7 +478,8 @@ def test_modify_review_route_reconsideration_folds_into_retrieve_more(tmp_path: 
             plan = unit_of_work.plans.get_by_id(plan_id)
             run = unit_of_work.runs.get_by_id("run-1")
             approvals = unit_of_work.approvals.list_by_action(action_id)
-        assert plan is not None and plan.review_status.value == "RETRIEVE_MORE"
+        assert plan is not None and plan.review_status.value == "REQUIRED"
+        assert plan.review_disposition == "ROUTE_RECONSIDERATION"
         assert plan.status.value == "SUPERSEDED"
         assert run is not None and run.status.value == "PLANNING"
         assert approvals == ()

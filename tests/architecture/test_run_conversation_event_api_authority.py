@@ -1,4 +1,5 @@
 """Architecture gates for B-API-2 canonical API ownership."""
+
 from __future__ import annotations
 
 import ast
@@ -11,9 +12,7 @@ ROUTES = (
     ROOT / "src/google_work_agent/api/routes/events.py",
 )
 USE_CASE_ROOT = ROOT / "src/google_work_agent/application/use_cases"
-LANGGRAPH_RESUME = (
-    ROOT / "src/google_work_agent/adapters/langgraph/main/resume_checkpoint.py"
-)
+LANGGRAPH_RESUME = ROOT / "src/google_work_agent/adapters/langgraph/main/resume_checkpoint.py"
 OWNERS = ("run", "conversation", "message", "recovery")
 
 _REAUTH_FORBIDDEN_MEMBERS = {
@@ -86,7 +85,11 @@ def _invokes_handler(path: Path, endpoint: str, handler: str) -> bool:
     function = _function(path, endpoint)
     bound = set()
     for node in ast.walk(function):
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and _constructs_handler(node.value, handler):
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and _constructs_handler(node.value, handler)
+        ):
             bound.update(target.id for target in node.targets if isinstance(target, ast.Name))
     for node in ast.walk(function):
         if not isinstance(node, ast.Call):
@@ -100,7 +103,9 @@ def _invokes_handler(path: Path, endpoint: str, handler: str) -> bool:
         if isinstance(node.func, ast.Attribute) and node.func.attr in {"handle", "__call__"}:
             if isinstance(node.func.value, ast.Name) and node.func.value.id in bound:
                 return True
-            if isinstance(node.func.value, ast.Call) and _constructs_handler(node.func.value, handler):
+            if isinstance(node.func.value, ast.Call) and _constructs_handler(
+                node.func.value, handler
+            ):
                 return True
     return False
 
@@ -121,12 +126,18 @@ def _self_local_calls(method: ast.AST, local_names: set[str]) -> set[str]:
     for node in ast.walk(method):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
-        if isinstance(node.func.value, ast.Name) and node.func.value.id == "self" and node.func.attr in local_names:
+        if (
+            isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            and node.func.attr in local_names
+        ):
             calls.add(node.func.attr)
     return calls
 
 
-def _reachable_class_methods(source: str, class_name: str, entry_method: str) -> dict[str, ast.FunctionDef]:
+def _reachable_class_methods(
+    source: str, class_name: str, entry_method: str
+) -> dict[str, ast.FunctionDef]:
     methods = _class_methods(source, class_name)
     if entry_method not in methods:
         raise AssertionError(f"{class_name}.{entry_method} missing")
@@ -145,7 +156,9 @@ def _reachable_class_methods(source: str, class_name: str, entry_method: str) ->
     return reachable
 
 
-def _reauth_semantic_authority_violations(source: str, class_name: str, entry_method: str) -> set[str]:
+def _reauth_semantic_authority_violations(
+    source: str, class_name: str, entry_method: str
+) -> set[str]:
     violations: set[str] = set()
     for method_name, method in _reachable_class_methods(source, class_name, entry_method).items():
         for node in ast.walk(method):
@@ -170,7 +183,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "get_run_context": "GetExecutionContextHandler",
             "cancel_run": "RequestCancelHandler",
             "resume_run": "ResumeRunHandler",
-            "confirm_run": "ResumeRunHandler",
+            "confirm_run": "ConfirmRunHandler",
             "resolve_recovery": "ResolveMismatchRecoveryHandler",
         },
         ROOT / "src/google_work_agent/api/routes/conversations.py": {
@@ -180,11 +193,15 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "get_conversation_history": "dependencies.get_conversation_history_handler",
             "get_latest_conversation_run": "GetLatestRunHandler",
         },
-        ROOT / "src/google_work_agent/api/routes/events.py": {"stream_events": "GetEventReplayHandler"},
+        ROOT / "src/google_work_agent/api/routes/events.py": {
+            "stream_events": "GetEventReplayHandler"
+        },
     }
     for path, endpoints in cases.items():
         for endpoint, handler in endpoints.items():
-            assert _invokes_handler(path, endpoint, handler), f"{path}:{endpoint} does not invoke {handler}"
+            assert _invokes_handler(path, endpoint, handler), (
+                f"{path}:{endpoint} does not invoke {handler}"
+            )
 
 
 def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
@@ -240,7 +257,9 @@ def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes()
     for owner in OWNERS:
         for path in (USE_CASE_ROOT / owner).glob("*.py"):
             for imported in _imports(path):
-                assert not imported.startswith(forbidden_prefixes), f"{path}: reverse/concrete dependency {imported}"
+                assert not imported.startswith(forbidden_prefixes), (
+                    f"{path}: reverse/concrete dependency {imported}"
+                )
 
 
 def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> None:
@@ -254,7 +273,9 @@ def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> Non
     }
     for owner in OWNERS:
         for path in (USE_CASE_ROOT / owner).glob("*.py"):
-            assert not (_imports(path) & forbidden), f"{path}: canonical handler delegates to legacy authority"
+            assert not (_imports(path) & forbidden), (
+                f"{path}: canonical handler delegates to legacy authority"
+            )
 
 
 def test_conversation_message_slice_has_one_production_authority() -> None:
@@ -271,17 +292,28 @@ def test_conversation_message_slice_has_one_production_authority() -> None:
     assert "class SQLiteMessageRepository" not in broad_adapters
 
 
-def test_resume_handler_owns_all_substantive_resume_transitions_and_commit() -> None:
+def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     path = USE_CASE_ROOT / "run/resume_run.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     calls = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
-    assert any(name.endswith("runs.resume_confirmation") for name in calls)
+    assert not any(name.endswith("runs.resume_confirmation") for name in calls)
     assert any(name.endswith("runs.resume_after_reauth") for name in calls)
     assert any(name.endswith("runs.require_recovery") for name in calls)
     assert any(name.endswith("runs.resolve_recovery") for name in calls)
     assert any(name.endswith("commit") for name in calls)
     assert not any("workflow_runtime.resume" in name for name in calls)
-    assert not any(name.startswith("google_work_agent.adapters.langgraph") for name in _imports(path))
+    assert not any(
+        name.startswith("google_work_agent.adapters.langgraph") for name in _imports(path)
+    )
+
+    confirmation_path = USE_CASE_ROOT / "run/resume_confirmation.py"
+    confirmation_tree = ast.parse(confirmation_path.read_text(encoding="utf-8"))
+    confirmation_calls = {
+        ast.unparse(node.func) for node in ast.walk(confirmation_tree) if isinstance(node, ast.Call)
+    }
+    assert any(name.endswith("transition_resume_confirmation") for name in confirmation_calls)
+    assert any(name.endswith("workflow_handoffs.stage_pending") for name in confirmation_calls)
+    assert any(name.endswith("commit") for name in confirmation_calls)
 
 
 def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
@@ -291,7 +323,9 @@ def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
         "ResumeCheckpointMixin",
         "_resume_after_reauth_transition",
     )
-    assert not violations, "reauth adapter owns transitive semantic authority: " + "; ".join(sorted(violations))
+    assert not violations, "reauth adapter owns transitive semantic authority: " + "; ".join(
+        sorted(violations)
+    )
 
     reachable = _reachable_class_methods(
         source,
@@ -326,7 +360,11 @@ class Runtime:
         return self._graph.invoke(None, config=self._config)
 """
     assert _reauth_semantic_authority_violations(source, "Runtime", "entry") == set()
-    assert set(_reachable_class_methods(source, "Runtime", "entry")) == {"entry", "helper_a", "helper_b"}
+    assert set(_reachable_class_methods(source, "Runtime", "entry")) == {
+        "entry",
+        "helper_a",
+        "helper_b",
+    }
 
 
 def test_reauth_transitive_authority_analyzer_rejects_indirected_recovery_authority() -> None:
@@ -342,7 +380,9 @@ class Runtime:
         return self._write_recovery.recover_unknown("action-id")
 """
     violations = _reauth_semantic_authority_violations(source, "Runtime", "entry")
-    assert any("helper_b: self._write_recovery.recover_unknown" in violation for violation in violations)
+    assert any(
+        "helper_b: self._write_recovery.recover_unknown" in violation for violation in violations
+    )
 
 
 def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
@@ -352,7 +392,12 @@ def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
 
 def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:
     source = (ROOT / "src/google_work_agent/api/routes/events.py").read_text(encoding="utf-8")
-    assert "StreamingResponse" in source and "_format_sse" in source and ".subscribe(" in source and "keepalive" in source
+    assert (
+        "StreamingResponse" in source
+        and "_format_sse" in source
+        and ".subscribe(" in source
+        and "keepalive" in source
+    )
     assert ".replay(" not in source
     assert "SnapshotRequiredReplayError" not in source
     assert "InvalidReplayCursorError" not in source

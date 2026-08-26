@@ -11,7 +11,7 @@ import google_work_agent.application.orchestration._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
@@ -374,7 +374,7 @@ class SolutionPlanningAgent:
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -505,7 +505,7 @@ class SolutionPlanningAgent:
         request: WorkflowStartRequest,
         frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
         frozen_read_tool_ids: frozenset[str] = frozenset(),
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -641,7 +641,7 @@ class SolutionPlanningAgent:
         evidence_drafts: list[EvidenceDraftV1],
         analysis_result: WorkAnalysisResultV1,
         request: WorkflowStartRequest,
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 
@@ -763,7 +763,7 @@ class SolutionPlanningAgent:
         request: WorkflowStartRequest,
         frozen_output_routes: tuple[OutputToolRouteV1, ...] | None = None,
         frozen_read_tool_ids: frozenset[str] = frozenset(),
-        confirmation_response: ConfirmationResponseV1 | None = None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
     ) -> StructuredLLMResult:
         """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
 

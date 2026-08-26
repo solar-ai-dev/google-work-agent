@@ -77,13 +77,13 @@ def test_compiled_graph_registers_profile_and_shared_nodes(
         graph = runtime._graph.get_graph()  # noqa: SLF001
         shared = {
             "domain_validation",
-            "waiting_confirmation",
             "waiting_approval",
             "action_execution",
             "recovery",
             "finalize",
         }
         assert profile_nodes | shared <= set(graph.nodes)
+        assert "waiting_confirmation" not in graph.nodes
         assert any(edge.target == "action_execution" for edge in graph.edges)
         assert any(edge.source == "action_execution" for edge in graph.edges)
     finally:

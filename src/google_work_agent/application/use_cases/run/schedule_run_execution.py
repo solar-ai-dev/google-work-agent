@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from google_work_agent.domain.run.model import TERMINAL_RUN_STATUSES
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     WorkflowExecutionAdmissionV1,
@@ -22,11 +23,102 @@ type EffectiveBindingResolver = Callable[
 ]
 type ScheduleRunExecutionResult = RunExecutionAcceptedV1
 
+_RECOVERY_PREEMPTING_STATUSES = {
+    "REAUTH_REQUIRED",
+    "RECOVERY_REQUIRED",
+    "CANCEL_REQUESTED",
+    "COMPLETED",
+    "CANCELLED",
+    "FAILED",
+    "BLOCKED",
+}
+_MAIN_RESUME_STAGES = {
+    "RETRIEVAL_ENTRY",
+    "PLANNING_ENTRY",
+    "REVIEW_ENTRY",
+    "PREFLIGHT",
+    "READ_EXECUTION",
+    "VERIFICATION",
+    "RECOVERY",
+    "CANCEL_RESOLUTION",
+}
+_COMPILED_OWNER_BY_PROFILE = {
+    "SINGLE_BASELINE": {
+        "REQUEST_UNDERSTANDING": "UNIFIED_AGENT",
+        "TOOL_ROUTE": "UNIFIED_AGENT",
+        "RETRIEVAL": "UNIFIED_AGENT",
+        "WORK_ANALYSIS": "UNIFIED_AGENT",
+        "PLANNING": "UNIFIED_AGENT",
+        "REVIEW": "UNIFIED_AGENT",
+    },
+    "THREE_STAGE": {
+        "REQUEST_UNDERSTANDING": "STAGE_REQUEST_ROUTE_RETRIEVAL",
+        "TOOL_ROUTE": "STAGE_REQUEST_ROUTE_RETRIEVAL",
+        "RETRIEVAL": "STAGE_REQUEST_ROUTE_RETRIEVAL",
+        "WORK_ANALYSIS": "STAGE_ANALYSIS_PLANNING",
+        "PLANNING": "STAGE_ANALYSIS_PLANNING",
+        "REVIEW": "STAGE_REVIEW",
+    },
+    "SIX_ROLE_BASELINE": {
+        "REQUEST_UNDERSTANDING": "SIX_REQUEST_UNDERSTANDING",
+        "TOOL_ROUTE": "SIX_TOOL_ROUTE",
+        "RETRIEVAL": "SIX_RETRIEVAL",
+        "WORK_ANALYSIS": "SIX_WORK_ANALYSIS",
+        "PLANNING": "SIX_PLANNING",
+        "REVIEW": "SIX_REVIEW",
+    },
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ScheduleRunExecutionCommand:
     handoff_id: str
     submission_kind: str = "NORMAL_HANDOFF"
+
+
+class CheckpointEffectiveBindingResolver:
+    """Resolve recovery only from the latest typed active-lineage checkpoint."""
+
+    def __init__(self, checkpoint_port: CheckpointPort) -> None:
+        self._checkpoint_port = checkpoint_port
+
+    def __call__(
+        self, handoff: WorkflowHandoffV1, submission_kind: str
+    ) -> WorkflowExecutionBindingV1 | None:
+        if submission_kind == "NORMAL_HANDOFF":
+            execution = handoff.execution
+            return WorkflowExecutionBindingV1(
+                schema_version=1,
+                execution_kind=execution.execution_kind,
+                run_id=execution.run_id,
+                langgraph_thread_id=execution.langgraph_thread_id,
+                graph_profile=execution.graph_profile,
+                graph_version=execution.graph_version,
+                requested_mode=execution.requested_mode,
+                checkpoint_id=handoff.checkpoint_id,
+                checkpoint_generation=handoff.checkpoint_generation,
+                resume_target=execution.resume_target,
+            )
+        if submission_kind != "CONSUMED_CONTINUATION_RECOVERY":
+            return None
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
+            handoff.execution.run_id,
+            handoff.execution.langgraph_thread_id,
+        )
+        if checkpoint is None or not _checkpoint_authorizes_recovery(checkpoint, handoff):
+            return None
+        return WorkflowExecutionBindingV1(
+            schema_version=1,
+            execution_kind="RESUME",
+            run_id=checkpoint.run_id,
+            langgraph_thread_id=checkpoint.langgraph_thread_id,
+            graph_profile=checkpoint.graph_profile,
+            graph_version=checkpoint.graph_version,
+            requested_mode=handoff.execution.requested_mode,
+            checkpoint_id=checkpoint.checkpoint_id,
+            checkpoint_generation=checkpoint.checkpoint_generation,
+            resume_target=checkpoint.registered_resume_target,
+        )
 
 
 class ScheduleRunExecutionHandler:
@@ -64,6 +156,11 @@ class ScheduleRunExecutionHandler:
                     )
                     unit_of_work.commit()
                 return _rejected("NOT_COMMITTED")
+            if (
+                command.submission_kind == "CONSUMED_CONTINUATION_RECOVERY"
+                and run.status.value in _RECOVERY_PREEMPTING_STATUSES
+            ):
+                return _rejected("BINDING_MISMATCH")
             existing = handoff.execution_admission
             if existing is not None and existing.expected_run_version != run.version:
                 unit_of_work.workflow_handoffs.release_execution_admission(
@@ -152,6 +249,37 @@ def _binding_matches_handoff(
         and binding.graph_version == execution.graph_version
         and binding.requested_mode == execution.requested_mode
     )
+
+
+def _checkpoint_authorizes_recovery(checkpoint: object, handoff: WorkflowHandoffV1) -> bool:
+    from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+
+    if not isinstance(checkpoint, GraphCheckpointEnvelopeV1):
+        return False
+    execution = handoff.execution
+    if (
+        checkpoint.run_id != execution.run_id
+        or checkpoint.langgraph_thread_id != execution.langgraph_thread_id
+        or checkpoint.graph_profile != execution.graph_profile
+        or checkpoint.graph_version != execution.graph_version
+        or checkpoint.active_handoff_id != handoff.handoff_id
+        or checkpoint.active_handoff_run_sequence != handoff.run_sequence
+        or checkpoint.registered_resume_target is None
+        or checkpoint.checkpoint_generation < (handoff.applied_checkpoint_generation or 0)
+    ):
+        return False
+    target = checkpoint.registered_resume_target
+    if (
+        target.graph_profile != checkpoint.graph_profile
+        or target.graph_version != checkpoint.graph_version
+    ):
+        return False
+    if target.kind == "MAIN_CONTROL":
+        return target.stage_id in _MAIN_RESUME_STAGES
+    expected_subgraph = _COMPILED_OWNER_BY_PROFILE[checkpoint.graph_profile].get(
+        target.semantic_owner_id
+    )
+    return bool(target.node_id) and target.compiled_subgraph_id == expected_subgraph
 
 
 def _rejected(reason_code: str) -> RunExecutionAcceptedV1:

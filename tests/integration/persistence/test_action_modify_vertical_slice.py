@@ -258,6 +258,7 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
             "plan-1",
             expected_review_version=1,
             review_status=PlanReviewStatus.PASSED.value,
+            review_disposition="PASS",
         )
         unit_of_work.commit()
 
@@ -314,6 +315,7 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
             "plan-1",
             expected_review_version=1,
             review_status=PlanReviewStatus.PASSED.value,
+            review_disposition="PASS",
         )
         plan = unit_of_work.plans.get_by_id("plan-1")
     assert stale_applied is False

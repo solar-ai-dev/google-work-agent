@@ -28,6 +28,10 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.llm import (
     DEFAULT_GEMINI_MODEL_ID,
     APIProviderConnectionService,
@@ -57,6 +61,7 @@ from google_work_agent.adapters.runtime import (
 from google_work_agent.adapters.runtime.attachment_staging import (
     LocalAttachmentStaging,
 )
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
@@ -68,7 +73,8 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
-from google_work_agent.application.coordinator import LocalRunCoordinator, QueueBusyError
+from google_work_agent.application.coordinator import LocalRunCoordinator
+from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
 from google_work_agent.application.google_connection import (
     DisconnectGoogleService,
     GetGoogleConnectionService,
@@ -130,6 +136,7 @@ from google_work_agent.ports import (
     RuntimeStatusProvider,
     RuntimeSummary,
     WorkflowCancelRequest,
+    WorkflowCorrelationContext,
     WorkflowInvocationResult,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
@@ -138,7 +145,10 @@ from google_work_agent.ports import (
 )
 from google_work_agent.ports.mcp_transport import MCPTransportError
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    AgentNodeResumeTargetV2,
+    ConfirmationResumeControlV1,
     WorkflowExecutionAdmissionV1,
+    WorkflowHandoffV1,
 )
 
 DEFAULT_HOST = "127.0.0.1"
@@ -210,22 +220,6 @@ class _DeferredCoordinator:
     def stop(self) -> None:
         if self._delegate is not None:
             self._delegate.stop()
-
-    def enqueue_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
-        self._require_delegate().enqueue_start(
-            run_id=run_id, request_id=request_id, command_id=command_id
-        )
-
-    def reserve_start(self, *, run_id: str) -> bool:
-        return self._require_delegate().reserve_start(run_id=run_id)
-
-    def confirm_start(self, *, run_id: str, request_id: str, command_id: str) -> None:
-        self._require_delegate().confirm_start(
-            run_id=run_id, request_id=request_id, command_id=command_id
-        )
-
-    def release_reservation(self, *, run_id: str) -> None:
-        self._require_delegate().release_reservation(run_id=run_id)
 
     def enqueue_resume(
         self,
@@ -408,6 +402,15 @@ class _DeferredApiContainer:
         if self._closed:
             _close_container(core)
             return
+        try:
+            for callback in core.startup_callbacks:
+                await callback()
+        except Exception:
+            _close_container(core)
+            self.core_initialization_in_progress = False
+            self.safe_mode_controller.enable("CORE_STARTUP_RECONCILIATION_FAILED")
+            self.readiness_aggregator.fail("CORE_STARTUP_RECONCILIATION_FAILED")
+            return
         self._core = core
         self.local_run_coordinator.bind(core.local_run_coordinator)
         self.readiness_aggregator.bind(core.readiness_aggregator)
@@ -417,6 +420,8 @@ class _DeferredApiContainer:
         self.safe_mode_controller.disable()
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
         if self._core is not None:
             _close_container(self._core)
@@ -470,7 +475,6 @@ def build_container(
     root = (runtime_root or PROJECT_ROOT / "runtime" / "development").resolve()
     root.mkdir(parents=True, exist_ok=True)
     database_path = root / "google-work-agent.sqlite3"
-    checkpoint_database_path = root / "langgraph-checkpoints.sqlite3"
     mcp_manifest_path = _write_mcp_manifest(root)
     prompt_manifest_path = default_prompt_manifest_path()
     clock = SystemClock()
@@ -521,6 +525,11 @@ def build_container(
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
     gateway = google_connector.workspace_gateway
+    checkpoint = SqliteCheckpointAdapter(database_path, now_ms=clock.now_ms)
+    resume_target_registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
+    )
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
@@ -532,7 +541,7 @@ def build_container(
             id_factory=id_generator.next_id,
             signing_secret=secrets.token_hex(32),
             service_instance_id=service_instance_id,
-            checkpoint_database_path=checkpoint_database_path,
+            checkpoint_port=checkpoint,
             prompt_manifest_path=prompt_manifest_path,
             timezone_provider=lambda: settings_service.get().timezone,
             work_hours_provider=lambda: CalendarWorkHours(
@@ -543,6 +552,7 @@ def build_container(
             ),
             default_tasklist_id_provider=lambda: settings_service.get().default_tasklist_id,
             attachment_verifier=attachment_staging,
+            resume_target_registry=resume_target_registry,
         )
     except InactivePromptArtifactError:
         prompt_active = False
@@ -567,28 +577,165 @@ def build_container(
         id_factory=id_generator.next_id,
     )
 
-    def _execute_admission(admission: WorkflowExecutionAdmissionV1) -> None:
-        # BackgroundRunExecutorAdapter's worker thread has no exception
-        # handling around this call; a busy LocalRunCoordinator queue must
-        # not kill that thread. A dropped admission stays PENDING and the
-        # reconciliation loop redrives it.
-        try:
-            coordinator.enqueue_start(
-                run_id=admission.effective_binding.run_id,
+    outcome_handler = RunOutcomeHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        event_publisher=event_publisher,
+        now_ms=clock.now_ms,
+    )
+
+    def _start_request(admission: WorkflowExecutionAdmissionV1) -> WorkflowStartRequest:
+        binding = admission.effective_binding
+        context = query_service.get_run_execution_context(binding.run_id)
+        if (
+            context is None
+            or context.workflow_key != binding.langgraph_thread_id
+            or context.requested_mode != binding.requested_mode
+        ):
+            raise ValueError("persisted admission does not match Run execution context")
+        return WorkflowStartRequest(
+            run_id=context.run_id,
+            conversation_id=context.conversation_id,
+            workflow_key=context.workflow_key,
+            entry_mode=context.entry_mode,
+            requested_mode=context.requested_mode,
+            request_text=context.request_text,
+            selected_resource_ids=context.selected_resource_ids,
+            correlation=WorkflowCorrelationContext(
                 request_id=admission.admission_id,
                 command_id=admission.handoff_id,
+                api_contract_version=API_CONTRACT_VERSION,
+            ),
+            selected_resources=context.selected_resources,
+        )
+
+    def _initial_target(admission: WorkflowExecutionAdmissionV1) -> AgentNodeResumeTargetV2:
+        profile = admission.effective_binding.graph_profile
+        return resume_target_registry.issue_agent_node(
+            profile,
+            "REQUEST_UNDERSTANDING",
+            "request.identify_goal",
+            admission.effective_binding.graph_version,
+        )
+
+    def _materialize_admission_checkpoint(admission: WorkflowExecutionAdmissionV1):
+        if admission.effective_binding.execution_kind != "START":
+            raise ValueError("only START requires native checkpoint materialization")
+        target = _initial_target(admission)
+        with checkpoint.execution_scope(
+            admission,
+            applied_handoff_id=admission.handoff_id,
+            owner_scope="REQUEST_UNDERSTANDING",
+            resume_target=target,
+        ):
+            workflow_runtime.prepare_start(_start_request(admission))
+        materialized = checkpoint.load_same_run_checkpoint(
+            admission.effective_binding.run_id,
+            admission.effective_binding.langgraph_thread_id,
+        )
+        if materialized is None:
+            raise RuntimeError("START did not materialize a native checkpoint")
+        return materialized
+
+    def _invoke_semantic_owner(
+        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
+    ) -> None:
+        binding = admission.effective_binding
+        context = query_service.get_run_execution_context(binding.run_id)
+        if (
+            context is None
+            or context.workflow_key != binding.langgraph_thread_id
+            or context.requested_mode != binding.requested_mode
+        ):
+            return
+        try:
+            correlation = WorkflowCorrelationContext(
+                request_id=admission.admission_id,
+                command_id=admission.handoff_id,
+                api_contract_version=API_CONTRACT_VERSION,
             )
-        except QueueBusyError:
-            pass
+            latest = checkpoint.load_same_run_checkpoint(
+                binding.run_id, binding.langgraph_thread_id
+            )
+            target = (
+                _initial_target(admission)
+                if binding.execution_kind == "START"
+                else binding.resume_target
+            )
+            if target is None:
+                raise ValueError("persisted admission has no registered resume target")
+            with checkpoint.execution_scope(
+                admission,
+                applied_handoff_id=admission.handoff_id
+                if admission.submission_kind == "NORMAL_HANDOFF"
+                else None
+                if latest is None
+                else latest.applied_handoff_id,
+                owner_scope=latest.owner_scope if latest is not None else "REQUEST_UNDERSTANDING",
+                resume_target=target,
+            ):
+                if binding.execution_kind == "START":
+                    result = workflow_runtime.start(_start_request(admission))
+                else:
+                    if handoff.control_kind == "CONFIRMATION_RESPONSE":
+                        control = handoff.control
+                        if not isinstance(control, ConfirmationResumeControlV1):
+                            raise ValueError("confirmation handoff control is invalid")
+                        resume_kind = "CONFIRMATION"
+                        resume_payload = {
+                            "confirmation_response": dict(control.confirmation_response),
+                            "policy_confirmation_receipt": (
+                                None
+                                if control.policy_confirmation_receipt is None
+                                else dict(control.policy_confirmation_receipt)
+                            ),
+                        }
+                    else:
+                        resume_kind = "CONSUMED_CONTINUATION_RECOVERY"
+                        resume_payload = {}
+                    result = workflow_runtime.resume(
+                        WorkflowResumeRequest(
+                            run_id=context.run_id,
+                            workflow_key=context.workflow_key,
+                            resume_kind=resume_kind,
+                            resume_payload=resume_payload,
+                            correlation=correlation,
+                        )
+                    )
+        except Exception as error:
+            current = query_service.get_run_execution_context(binding.run_id)
+            outcome_handler.handle_result(
+                binding.run_id,
+                WorkflowOutcome.FAILED,
+                {"error_code": "INTERNAL_ERROR", "message": str(error)[:200]},
+                context.version if current is None else current.version,
+            )
+            return
+        current = query_service.get_run_execution_context(binding.run_id)
+        outcome_handler.handle_result(
+            binding.run_id,
+            result.outcome,
+            result.payload,
+            context.version if current is None else current.version,
+        )
 
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
-        execute_admission=_execute_admission,
+        checkpoint=checkpoint,
+        materialize_admission_checkpoint=_materialize_admission_checkpoint,
+        invoke_semantic_owner=_invoke_semantic_owner,
     )
 
     async def _start_workflow_handoff_reconciliation() -> None:
+        await asyncio.to_thread(production_runtime.redrive_workflow_handoffs)
         production_runtime.workflow_handoff_reconciliation_loop.start()
+
+    def _stop_workflow_handoff_runtime() -> None:
+        production_runtime.workflow_handoff_reconciliation_loop.stop()
+        production_runtime.workflow_execution.begin_shutdown()
+        production_runtime.workflow_execution.await_drained(5_000)
+        production_runtime.workflow_execution.close()
+        production_runtime.checkpoint.close()
 
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
@@ -609,6 +756,7 @@ def build_container(
         graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
         graph_version=RESUME_CONTRACT_VERSION,
         schedule_run_execution=production_runtime.schedule_run_execution,
+        resume_target_registry=resume_target_registry,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -712,9 +860,9 @@ def build_container(
         safe_mode_controller=safe_mode_controller,
         startup_callbacks=(_start_workflow_handoff_reconciliation,),
         shutdown_callbacks=(
+            _stop_workflow_handoff_runtime,
             workflow_runtime.close,
             connector_registry.close_all,
-            production_runtime.workflow_handoff_reconciliation_loop.stop,
         ),
     )
 

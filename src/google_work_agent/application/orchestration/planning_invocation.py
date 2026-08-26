@@ -12,26 +12,25 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
+from google_work_agent.application.orchestration.assemble_planning_answer import (
+    AnswerDraftCandidateV2,
+    materialize_answer_draft_v2,
+    validate_answer_draft_candidate_v2,
+)
+from google_work_agent.application.orchestration.compose_planning_arguments import (
+    PlanningArgumentOrchestratorV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
-    RegisteredResumeTargetRefV1,
     RequestIntentV2,
     RetrievalResultV1,
     StateArtifactMetaV1,
     StateArtifactRefV1,
     SubgraphReturnV2,
 )
-from google_work_agent.application.orchestration.assemble_planning_answer import (
-    AnswerDraftCandidateV2,
-    materialize_answer_draft_v2,
-    validate_answer_draft_candidate_v2,
-)
 from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningActionPreparationResultV1,
     project_planning_action_confirmation_required_v1,
-)
-from google_work_agent.application.orchestration.compose_planning_arguments import (
-    PlanningArgumentOrchestratorV2,
 )
 from google_work_agent.application.orchestration.planning_plan_assembler import (
     assemble_action_plan_draft_v2,
@@ -47,6 +46,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     output_routes,
 )
 from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
 class PlanningSemanticCompleteV1(TypedDict):
@@ -120,7 +120,7 @@ class PlanningV2Producer:
         evidence_drafts: Sequence[EvidenceDraftV1],
         semantic_control: PlanningSemanticControlV1 | None = None,
         interrupt_id: str | None = None,
-        resume_target: RegisteredResumeTargetRefV1 | None = None,
+        resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> SubgraphReturnV2[PlanningResultV2]:
         evidence = _validate_current_evidence(
             evidence_drafts,
@@ -251,7 +251,7 @@ def _planning_control_return(
     control: PlanningSemanticControlV1,
     *,
     interrupt_id: str | None,
-    resume_target: RegisteredResumeTargetRefV1 | None,
+    resume_target: AgentNodeResumeTargetV2 | None,
 ) -> object:
     disposition = control["disposition"]
     if disposition == "NEEDS_CONFIRMATION":
@@ -287,7 +287,7 @@ def _preparation_control_return(
     preparations: tuple[PlanningActionPreparationResultV1, ...],
     *,
     interrupt_id: str | None,
-    resume_target: RegisteredResumeTargetRefV1 | None,
+    resume_target: AgentNodeResumeTargetV2 | None,
 ) -> object | None:
     blocked = [item for item in preparations if item["disposition"] == "BLOCKED"]
     if blocked:

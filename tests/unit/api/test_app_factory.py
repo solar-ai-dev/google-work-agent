@@ -14,6 +14,7 @@ from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
     ResolveMismatchRecoveryResult,
 )
@@ -229,25 +230,19 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
         resolve_recovery_service=recovery_service,
     )
 
-    def resume_handler(
-        command: object,
-        *,
-        request_id: str,
-        resume_payload: dict[str, object] | None = None,
-    ) -> ResumeRunResponse:
-        result = resume_service(command)
-        coordinator.enqueue_resume(
+    def confirm_handler(command: object) -> ConfirmRunResult:
+        captured["confirm"] = command
+        return ConfirmRunResult(
+            applied=True,
+            result_code="TRANSITION_APPLIED",
             run_id="run-1",
-            request_id=request_id,
-            command_id="confirm-1",
-            resume_kind="CONFIRMATION",
-            resume_payload=resume_payload or {},
+            run_status="PLANNING",
+            run_version=3,
+            should_enqueue=True,
+            request_replayed=False,
         )
-        return result
 
-    def recovery_handler(
-        command: object, *, request_id: str
-    ) -> ResolveMismatchRecoveryResult:
+    def recovery_handler(command: object, *, request_id: str) -> ResolveMismatchRecoveryResult:
         del request_id
         legacy = recovery_service(command)
         return ResolveMismatchRecoveryResult(
@@ -263,8 +258,8 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
 
     with (
         patch(
-            "google_work_agent.api.routes.runs.ResumeRunHandler",
-            return_value=resume_handler,
+            "google_work_agent.api.routes.runs.ConfirmRunHandler",
+            return_value=confirm_handler,
         ),
         patch(
             "google_work_agent.api.routes.runs.ResolveMismatchRecoveryHandler",
@@ -279,7 +274,7 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
                 "expected_version": 2,
                 "interrupt_id": "interrupt-1",
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "Use the default list.",
                 "api_contract_version": "1",
             },
@@ -297,15 +292,9 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
 
     assert confirmed.status_code == 200
     assert resolved.status_code == 200
-    assert captured["resume"].request_hash != "confirm-1"  # type: ignore[attr-defined]
+    assert captured["confirm"].request_hash != "confirm-1"  # type: ignore[attr-defined]
     assert captured["recovery"].request_hash != "recovery-1"  # type: ignore[attr-defined]
-    assert coordinator.resume_calls[0]["resume_payload"] == {
-        "schema_version": 1,
-        "interrupt_id": "interrupt-1",
-        "response_kind": "FREE_TEXT",
-        "selected_option_ids": [],
-        "free_text": "Use the default list.",
-    }
+    assert coordinator.resume_calls == []
 
 
 def test_cancel_route_returns_partial_result_projection() -> None:

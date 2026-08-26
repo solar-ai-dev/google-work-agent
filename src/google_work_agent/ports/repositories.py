@@ -42,51 +42,6 @@ class RunRepository(Protocol):
     def add(self, run: RunCreateRecord) -> None:
         """Persist a new run row."""
 
-    def start_analysis(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        """Transition one run from CREATED into ANALYZING."""
-
-    def begin_retrieval(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        """Transition one run into RETRIEVING."""
-
-    def begin_planning(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        """Transition one run into PLANNING."""
-
-    def replan(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        """Move a waiting-approval run back to PLANNING for a new revision."""
-
-    def request_confirmation(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        """Transition one run into WAITING_CONFIRMATION."""
-
     def complete_answer_only_run(
         self,
         run_id: str,
@@ -272,6 +227,7 @@ class PlanRepository(Protocol):
         *,
         expected_review_version: int,
         review_status: str,
+        review_disposition: str,
     ) -> bool:
         """Store a review result only for the generation that was reviewed."""
 

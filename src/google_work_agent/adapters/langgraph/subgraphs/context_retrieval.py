@@ -16,10 +16,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_AGENT_LOCAL_KEY,
     CONTEXT_CANONICAL_PLANS_KEY,
@@ -49,7 +45,7 @@ from google_work_agent.application.orchestration.context_retrieval import (
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     RunBudgetV1,
@@ -118,7 +114,7 @@ from google_work_agent.ports.observability_events import ObservabilityContext
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
     [ContextRetrievalLocalState],
-    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 
 
@@ -423,7 +419,7 @@ class ContextRetrieverSubgraph:
         self,
         state: ContextRetrievalLocalState,
         *,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[SufficiencyResultV2, dict[str, object], RunBudgetV1]:
         """One ``retrieval.assess_sufficiency`` LLM call. Safe to call again
         for a later confirmation round -- ``select_evidence``/
@@ -446,9 +442,7 @@ class ContextRetrieverSubgraph:
         )
         retry_budget = consume_llm_call_budget(
             state,
-            provider_calls_consumed=cast(
-                int, llm_provider_result["structured_output_attempts"]
-            ),
+            provider_calls_consumed=cast(int, llm_provider_result["structured_output_attempts"]),
         )
         return sufficiency_result, llm_provider_result, retry_budget
 
@@ -966,9 +960,7 @@ class ContextRetrieverSubgraph:
             return cast(ContextRetrievalLocalState, published_state)
         return state
 
-    def _build_context_result(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalResultV1:
+    def _build_context_result(self, state: ContextRetrievalLocalState) -> ContextRetrievalResultV1:
         """Pure projection of ``state`` (selection/sufficiency/acquisition_result/
         llm_provider_result) into one ``ContextRetrievalResultV1``. Safe to
         call repeatedly -- including on every ``finalize`` node-replay before
@@ -1017,14 +1009,8 @@ class ContextRetrieverSubgraph:
         confirmation_interrupt = {
             "schema_version": 1,
             "interrupt_id": interrupt_id,
-            "owner_subgraph": "RETRIEVAL",
+            "semantic_owner_id": "RETRIEVAL",
             "origin_target": question["origin_target"],
-            "resume_target": {
-                "subgraph_id": "RETRIEVAL",
-                "node_id": "finalize",
-                "graph_version": RESUME_CONTRACT_VERSION,
-            },
-            "resume_status": confirmation_resume_status("RETRIEVAL").value,
         }
         return user_interrupt, confirmation_interrupt
 
@@ -1052,9 +1038,7 @@ class ContextRetrieverSubgraph:
                 # paused yet) and cleanly return so the self-loop
                 # conditional edge re-enters "finalize" as a fresh, separate
                 # task for that round.
-                request_intent = _require_state_value(
-                    state["request_intent"], "request_intent"
-                )
+                request_intent = _require_state_value(state["request_intent"], "request_intent")
                 user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
                     result=result, request_intent=request_intent
                 )
@@ -1077,7 +1061,7 @@ class ContextRetrieverSubgraph:
         self, state: ContextRetrievalLocalState
     ) -> tuple[ContextRetrievalLocalState, Any]:
         """Pause via a real nested-subgraph ``interrupt()``, then resolve the
-        bounded ``ConfirmationResponseV1`` with exactly one more
+        bounded ``ConfirmationResponseProjectionV1`` with exactly one more
         ``retrieval.assess_sufficiency`` call -- not by re-entering
         ``select_evidence``/``selection_validate`` or re-reading any
         provider data. Returns ``(state, None)`` when the caller must return
@@ -1094,9 +1078,7 @@ class ContextRetrieverSubgraph:
         """
         confirmation_response, early_return_patch = self._confirm_inline(state)
         if early_return_patch is not None:
-            return cast(
-                ContextRetrievalLocalState, {**state, **early_return_patch}
-            ), None
+            return cast(ContextRetrievalLocalState, {**state, **early_return_patch}), None
         assert confirmation_response is not None
 
         sufficiency_result, llm_provider_result, retry_budget = self._run_sufficiency_attempt(

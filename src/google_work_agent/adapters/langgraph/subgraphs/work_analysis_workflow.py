@@ -10,7 +10,7 @@ resume: they already completed and committed before the pause, so
 ``finalize``'s node-replay on resume only re-derives its own (pure) decision
 from that committed output, then makes exactly one more direct
 ``invoke_analyze_llm_from_retrieval_result`` call carrying the validated
-``ConfirmationResponseV1`` -- not a second traversal of ``analyze``.
+``ConfirmationResponseProjectionV1`` -- not a second traversal of ``analyze``.
 
 If that resolution is *itself* still ambiguous, ``finalize`` does NOT call
 ``interrupt()`` a second time within the same (already-resumed) task -- any
@@ -37,10 +37,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
     record_llm_result,
 )
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESUME_CONTRACT_VERSION,
-    confirmation_resume_status,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     ANALYSIS_AGENT_LOCAL_KEY,
     ParentGraphState,
@@ -54,7 +50,7 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    ConfirmationResponseV1,
+    ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     WorkflowPhase,
@@ -84,7 +80,7 @@ MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
 ConfirmInline = Callable[
     [WorkAnalysisLocalState],
-    tuple[ConfirmationResponseV1 | None, dict[str, object] | None],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 
 
@@ -173,7 +169,7 @@ class WorkAnalysisSubgraph:
         self,
         state: WorkAnalysisLocalState,
         *,
-        confirmation_response: ConfirmationResponseV1 | None,
+        confirmation_response: ConfirmationResponseProjectionV1 | None,
     ) -> tuple[WorkAnalysisResultV1, StructuredLLMResult]:
         """One ``work_analysis.analyze`` LLM call. Safe to call again for a
         later confirmation round -- ``retrieval_result`` and its
@@ -191,7 +187,8 @@ class WorkAnalysisSubgraph:
         for receipt in state.get("policy_confirmation_receipts", []):
             if not isinstance(receipt, Mapping):
                 continue
-            receipt_id = receipt.get("confirmation_receipt_id")
+            meta = receipt.get("meta")
+            receipt_id = meta.get("artifact_id") if isinstance(meta, Mapping) else None
             if isinstance(receipt_id, str) and receipt_id:
                 receipt_refs.append(receipt_id)
         ensure_llm_call_budget(state)
@@ -282,14 +279,8 @@ class WorkAnalysisSubgraph:
         confirmation_interrupt = {
             "schema_version": 1,
             "interrupt_id": interrupt_id,
-            "owner_subgraph": "WORK_ANALYSIS",
+            "semantic_owner_id": "WORK_ANALYSIS",
             "origin_target": question["origin_target"],
-            "resume_target": {
-                "subgraph_id": "WORK_ANALYSIS",
-                "node_id": "finalize",
-                "graph_version": RESUME_CONTRACT_VERSION,
-            },
-            "resume_status": confirmation_resume_status("WORK_ANALYSIS").value,
         }
         return user_interrupt, confirmation_interrupt
 
@@ -338,9 +329,7 @@ class WorkAnalysisSubgraph:
                 # invocation has not itself paused yet) and cleanly return so
                 # the self-loop conditional edge re-enters "finalize" as a
                 # fresh, separate task for that round.
-                request_intent = _require_state_value(
-                    state["request_intent"], "request_intent"
-                )
+                request_intent = _require_state_value(state["request_intent"], "request_intent")
                 user_interrupt, confirmation_interrupt = self._materialize_confirmation_interrupt(
                     result=result, request_intent=request_intent
                 )
@@ -363,7 +352,7 @@ class WorkAnalysisSubgraph:
         self, state: WorkAnalysisLocalState
     ) -> tuple[WorkAnalysisLocalState, Any]:
         """Pause via a real nested-subgraph ``interrupt()``, then resolve the
-        bounded ``ConfirmationResponseV1`` with exactly one more
+        bounded ``ConfirmationResponseProjectionV1`` with exactly one more
         ``work_analysis.analyze`` call -- not by re-entering ``analyze`` or
         re-deriving ``retrieval_result``/evidence. Returns ``(state, None)``
         when the caller must return ``state`` immediately (not-applied/conflict
@@ -378,9 +367,7 @@ class WorkAnalysisSubgraph:
         """
         confirmation_response, early_return_patch = self._confirm_inline(state)
         if early_return_patch is not None:
-            return cast(
-                WorkAnalysisLocalState, {**state, **early_return_patch}
-            ), None
+            return cast(WorkAnalysisLocalState, {**state, **early_return_patch}), None
         assert confirmation_response is not None
 
         local_state = cast(AgentLocalStateV1, state[ANALYSIS_AGENT_LOCAL_KEY])

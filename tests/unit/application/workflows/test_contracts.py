@@ -31,7 +31,7 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
     validate_confirmation_origin_target,
-    validate_confirmation_response_v1,
+    validate_confirmation_response_projection_v1,
     validate_domain_validation_output_v1,
     validate_finalize_intent_v1,
     validate_user_interrupt_v1,
@@ -298,10 +298,11 @@ def test_additional_acquisition_request_rejects_empty_handoff_reason() -> None:
 
 def test_confirmation_contract_constants_match_gap_b_contract() -> None:
     assert _values(ConfirmationResponseKind) == (
-        "OPTION_SELECTION",
+        "OPTION",
         "FREE_TEXT",
+        "DECLINE",
     )
-    assert {"OPTION_SELECTION", "FREE_TEXT"} == CONFIRMATION_RESPONSE_ALLOWED_KINDS
+    assert {"OPTION", "FREE_TEXT", "DECLINE"} == CONFIRMATION_RESPONSE_ALLOWED_KINDS
     assert {
         "request_understanding.classify",
         "tool_route.finalize",
@@ -344,45 +345,45 @@ def test_user_interrupt_validator_preserves_confirmation_projection() -> None:
 def test_confirmation_origin_target_and_response_validators_enforce_runtime_contract() -> None:
     assert validate_confirmation_origin_target("review.inspect") == "review.inspect"
 
-    selection = validate_confirmation_response_v1(
+    selection = validate_confirmation_response_projection_v1(
         {
             "schema_version": 1,
-            "response_kind": "OPTION_SELECTION",
-            "selected_option_ids": ["option-1"],
+            "response_kind": "OPTION",
+            "selected_option": "option-1",
             "free_text": None,
         }
     )
-    free_text = validate_confirmation_response_v1(
+    free_text = validate_confirmation_response_projection_v1(
         {
             "schema_version": 1,
             "response_kind": "FREE_TEXT",
-            "selected_option_ids": [],
+            "selected_option": None,
             "free_text": "Use the existing draft only.",
         }
     )
 
-    assert selection["selected_option_ids"] == ["option-1"]
+    assert selection["selected_option"] == "option-1"
     assert free_text["free_text"] == "Use the existing draft only."
 
     with pytest.raises(ValueError, match="confirmation origin_target is invalid"):
         validate_confirmation_origin_target("planning.revise_plan")
 
-    with pytest.raises(ValueError, match="OPTION_SELECTION requires at least one"):
-        validate_confirmation_response_v1(
+    with pytest.raises(ValueError, match="OPTION requires selected_option"):
+        validate_confirmation_response_projection_v1(
             {
                 "schema_version": 1,
-                "response_kind": "OPTION_SELECTION",
-                "selected_option_ids": [],
+                "response_kind": "OPTION",
+                "selected_option": None,
                 "free_text": None,
             }
         )
 
     with pytest.raises(ValueError, match="FREE_TEXT requires non-empty free_text"):
-        validate_confirmation_response_v1(
+        validate_confirmation_response_projection_v1(
             {
                 "schema_version": 1,
                 "response_kind": "FREE_TEXT",
-                "selected_option_ids": [],
+                "selected_option": None,
                 "free_text": "   ",
             }
         )

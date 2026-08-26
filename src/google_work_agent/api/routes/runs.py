@@ -14,17 +14,33 @@ from google_work_agent.api.dependencies.runtime_operation import enforce_runtime
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.errors.result_code_http_mapping import http_status_for_result_code
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2, RunCommandResponse
-from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
+from google_work_agent.api.schemas.runs.confirm_run import (
+    ConfirmationResponseV1,
+    PendingInterruptResponseV1,
+)
 from google_work_agent.api.schemas.runs.get_run import RunSnapshotResponse
 from google_work_agent.api.schemas.runs.get_run_context import RunContextResponse
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
+from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.coordinator import QueueBusyError
 from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
     MismatchRecoveryResolution,
     ResolveMismatchRecoveryCommand,
     ResolveMismatchRecoveryHandler,
+)
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    ResourceSelectionHandlePayloadV1,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandleQuery,
+    SelectionHandleValidationError,
+)
+from google_work_agent.application.use_cases.run.confirm_run import (
+    ConfirmRunCommand,
+    ConfirmRunHandler,
 )
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
@@ -38,6 +54,9 @@ from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
 )
+from google_work_agent.application.use_cases.run.resume_confirmation import (
+    ResumeConfirmationHandler,
+)
 from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand,
     ResumeRunHandler,
@@ -49,7 +68,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
-from google_work_agent.ports import EndpointPolicy, SelectedResourceRef
+from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
@@ -69,10 +88,12 @@ def start_run(
     command_payload["request_hash"] = calculate_server_request_hash(
         operation="StartRunRequestV1", payload={"request": command_payload}
     )
-    selected_resources = tuple(
-        SelectedResourceRef(**item) for item in command_payload.pop("selected_resources")
+    selected_resource_handles = tuple(command_payload.pop("selected_resource_handles"))
+    resolved_resource_selections = _resolve_start_run_selections(
+        request=request,
+        dependencies=dependencies,
+        selection_handles=selected_resource_handles,
     )
-    command_payload["selected_resource_ids"] = tuple(command_payload["selected_resource_ids"])
     handler = StartRunHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
@@ -80,13 +101,59 @@ def start_run(
         graph_profile=dependencies.graph_profile,
         graph_version=dependencies.graph_version,
     )
-    result = handler(StartRunCommand(**command_payload, selected_resources=selected_resources))
+    result = handler(
+        StartRunCommand(
+            **command_payload,
+            resolved_resource_selections=resolved_resource_selections,
+        )
+    )
     if result.applied and result.enqueued:
         dependencies.schedule_run_execution(
             ScheduleRunExecutionCommand(handoff_id=result.handoff_id)
         )
     response.status_code = http_status_for_result_code(result.result_code, default_success=202)
     return StartRunResponseModel(**asdict(result))
+
+
+def _resolve_start_run_selections(
+    *,
+    request: Request,
+    dependencies: RunRouteDependency,
+    selection_handles: tuple[str, ...],
+) -> tuple[ResourceSelectionHandlePayloadV1, ...]:
+    if not selection_handles:
+        return ()
+    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    account_id = dependencies.current_account_id()
+    if session_token is None or account_id is None:
+        raise ApiRequestError(
+            error_code="LOCAL_SESSION_INVALID",
+            user_message="Resource selection requires an active account and local session.",
+            status_code=401,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_SELECTION_BINDING_UNAVAILABLE",
+        )
+    session_digest = calculate_session_digest(session_token)
+    try:
+        return tuple(
+            dependencies.resolve_selection_handle(
+                ResolveSelectionHandleQuery(
+                    selection_handle=handle,
+                    session_digest=session_digest,
+                    account_id=account_id,
+                    expected_connector_id=dependencies.resource_connector_id,
+                )
+            )
+            for handle in selection_handles
+        )
+    except SelectionHandleValidationError as error:
+        raise ApiRequestError(
+            error_code="INVALID_ARGUMENT",
+            user_message="선택한 리소스의 인증 정보가 유효하지 않습니다.",
+            status_code=422,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_SELECTION_HANDLE_INVALID",
+        ) from error
 
 
 @router.get("/runs/{run_id}", response_model=RunSnapshotResponse)
@@ -114,8 +181,21 @@ def get_run_snapshot(
             status_code=404,
             request_id=request.state.request_id,
         )
+    projection = asdict(snapshot)
+    pending = dependencies.resolve_pending_confirmation(run_id)
+    if pending is not None:
+        options = pending.get("options")
+        projection["pending_interrupt"] = PendingInterruptResponseV1(
+            interrupt_id=str(pending["interrupt_id"]),
+            semantic_owner_id=pending["semantic_owner_id"],  # type: ignore[arg-type]
+            question=str(pending["question"]),
+            options=[] if not isinstance(options, list) else options,
+            response_mode="FREE_TEXT" if not options else "OPTION",
+        ).model_dump()
+    else:
+        projection["pending_interrupt"] = None
     return RunSnapshotResponse(
-        snapshot=asdict(snapshot), api_contract_version=dependencies.api_contract_version
+        snapshot=projection, api_contract_version=dependencies.api_contract_version
     )
 
 
@@ -238,32 +318,33 @@ def confirm_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler = ResumeRunHandler(
+    resume_handler = ResumeConfirmationHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        enqueue_resume=dependencies.local_run_coordinator.enqueue_resume,
-        resolve_resume_authority=dependencies.resolve_resume_authority,
+        id_factory=dependencies.id_generator.next_id,
+        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+    )
+    handler = ConfirmRunHandler(
+        resolve_pending_confirmation=dependencies.resolve_pending_confirmation,
+        resume_confirmation=resume_handler,
+        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+        schedule_run_execution=dependencies.schedule_run_execution,
+        id_factory=dependencies.id_generator.next_id,
     )
     result = handler(
-        ResumeRunCommand(
+        ConfirmRunCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ConfirmationResponseV1",
                 payload={"run_id": run_id, **payload.model_dump()},
             ),
             run_id=run_id,
-            expected_run_version=payload.expected_version,
-            resume_kind="CONFIRMATION",
-            api_contract_version=payload.api_contract_version,
+            expected_version=payload.expected_version,
+            interrupt_id=payload.interrupt_id,
+            response_kind=payload.response_kind,
+            selected_option=payload.selected_option,
+            free_text=None if payload.free_text is None else payload.free_text.strip(),
         ),
-        request_id=request.state.request_id,
-        resume_payload={
-            "schema_version": 1,
-            "interrupt_id": payload.interrupt_id,
-            "response_kind": payload.response_kind,
-            "selected_option_ids": payload.selected_option_ids,
-            "free_text": None if payload.free_text is None else payload.free_text.strip(),
-        },
     )
     response.status_code = http_status_for_result_code(result.result_code)
     return RunCommandResponse(**asdict(result))

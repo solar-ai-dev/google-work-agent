@@ -23,3 +23,25 @@ def test_resource_ref_application_operations_do_not_import_concrete_adapters() -
         ROOT / "application/use_cases/resource_ref/persist_resource_ref.py",
     )
     assert all("adapters." not in path.read_text(encoding="utf-8") for path in paths)
+
+
+def test_start_run_wire_accepts_only_opaque_selection_handles() -> None:
+    schema = (ROOT / "api/schemas/runs/start_run.py").read_text(encoding="utf-8")
+    route = (ROOT / "api/routes/runs.py").read_text(encoding="utf-8")
+
+    assert "selected_resource_handles" in schema
+    assert "selected_resource_ids" not in schema
+    assert "SelectedResourceRefModel" not in schema
+    assert "ResolveSelectionHandleQuery(" in route
+    assert "SelectedResourceRef(**" not in route
+
+
+def test_start_run_has_no_raw_resource_wire_compatibility_path() -> None:
+    frontend_api = Path("frontend/src/api/index.ts").read_text(encoding="utf-8")
+    frontend_submit = Path("frontend/src/features/conversation/useConversation.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "selected_resource_handles" in frontend_api
+    assert "selected_resource_ids" not in frontend_api
+    assert "selected_resource_handles: selectedResourceHandles" in frontend_submit

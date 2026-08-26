@@ -108,81 +108,6 @@ class SQLiteRunRepository:
             ),
         )
 
-    def start_analysis(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        return self._transition_run(
-            run_id=run_id,
-            expected_version=expected_version,
-            command=RunCommand.START_ANALYSIS,
-            finished_at_ms=finished_at_ms,
-            error_message="run start_analysis affected an unexpected row count",
-        )
-
-    def begin_retrieval(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        return self._transition_run(
-            run_id=run_id,
-            expected_version=expected_version,
-            command=RunCommand.BEGIN_RETRIEVAL,
-            finished_at_ms=finished_at_ms,
-            error_message="run begin_retrieval affected an unexpected row count",
-        )
-
-    def begin_planning(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        return self._transition_run(
-            run_id=run_id,
-            expected_version=expected_version,
-            command=RunCommand.BEGIN_PLANNING,
-            finished_at_ms=finished_at_ms,
-            error_message="run begin_planning affected an unexpected row count",
-        )
-
-    def replan(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        return self._transition_run(
-            run_id=run_id,
-            expected_version=expected_version,
-            command=RunCommand.REPLAN,
-            finished_at_ms=finished_at_ms,
-            error_message="run replan affected an unexpected row count",
-        )
-
-    def request_confirmation(
-        self,
-        run_id: str,
-        *,
-        expected_version: int,
-        finished_at_ms: int | None = None,
-    ) -> CommandResult[RunStatus, RunCommand]:
-        return self._transition_run(
-            run_id=run_id,
-            expected_version=expected_version,
-            command=RunCommand.REQUEST_CONFIRMATION,
-            finished_at_ms=finished_at_ms,
-            error_message="run request_confirmation affected an unexpected row count",
-        )
-
     def complete_answer_only_run(
         self,
         run_id: str,
@@ -876,7 +801,7 @@ class SQLitePlanRepository:
         row = self._connection.execute(
             """
             SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
-                   review_status, review_version
+                   review_status, review_version, review_disposition
             FROM plans
             WHERE id = ?;
             """,
@@ -893,6 +818,9 @@ class SQLitePlanRepository:
             created_at_ms=int(row["created_at_ms"]),
             review_status=PlanReviewStatus(str(row["review_status"])),
             review_version=int(row["review_version"]),
+            review_disposition=None
+            if row["review_disposition"] is None
+            else str(row["review_disposition"]),
         )
 
     def insert_draft(self, plan: PlanRecord) -> None:
@@ -900,9 +828,9 @@ class SQLitePlanRepository:
             """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
-                review_status, review_version
+                review_status, review_version, review_disposition
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 plan.id,
@@ -913,6 +841,7 @@ class SQLitePlanRepository:
                 plan.created_at_ms,
                 plan.review_status.value,
                 plan.review_version,
+                plan.review_disposition,
             ),
         )
 
@@ -920,7 +849,8 @@ class SQLitePlanRepository:
         cursor = self._connection.execute(
             """
             UPDATE plans
-            SET review_status = 'REQUIRED', review_version = review_version + 1
+            SET review_status = 'REQUIRED', review_disposition = NULL,
+                review_version = review_version + 1
             WHERE id = ? AND status IN ('WAITING_APPROVAL', 'ACTIVE');
             """,
             (plan_id,),
@@ -940,14 +870,15 @@ class SQLitePlanRepository:
         *,
         expected_review_version: int,
         review_status: str,
+        review_disposition: str,
     ) -> bool:
         cursor = self._connection.execute(
             """
             UPDATE plans
-            SET review_status = ?
+            SET review_status = ?, review_disposition = ?
             WHERE id = ? AND review_version = ? AND review_status <> 'PASSED';
             """,
-            (review_status, plan_id, expected_review_version),
+            (review_status, review_disposition, plan_id, expected_review_version),
         )
         if cursor.rowcount > 1:
             raise sqlite3.IntegrityError("plan review result affected an unexpected row count")
@@ -1023,7 +954,7 @@ class SQLitePlanRepository:
         rows = self._connection.execute(
             """
             SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
-                   review_status, review_version
+                   review_status, review_version, review_disposition
             FROM plans
             WHERE run_id = ?
             ORDER BY revision_no ASC;
@@ -1040,6 +971,9 @@ class SQLitePlanRepository:
                 created_at_ms=int(row["created_at_ms"]),
                 review_status=PlanReviewStatus(str(row["review_status"])),
                 review_version=int(row["review_version"]),
+                review_disposition=None
+                if row["review_disposition"] is None
+                else str(row["review_disposition"]),
             )
             for row in rows
         )

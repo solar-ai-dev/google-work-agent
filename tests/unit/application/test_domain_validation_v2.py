@@ -143,10 +143,10 @@ def _receipt(*, decision: str = "APPROVED"):
             "revision": 1,
             "based_on": [],
         },
-        "confirmation_receipt_id": "receipt-1",
         "interrupt_id": "interrupt-1",
         "confirmation_kind": "DUPLICATE_OVERRIDE",
         "decision": decision,
+        "semantic_owner_id": "WORK_ANALYSIS",
         "decision_context_hash": "hash",
         "affected_route_ids": ["r1"],
         "affected_resource_refs": [],
@@ -204,9 +204,7 @@ def test_stale_review_cannot_authorize_current_plan() -> None:
 
 
 def test_work_analysis_receipt_ref_must_resolve_to_approved_receipt() -> None:
-    analysis = _analysis(
-        receipt_refs=[{"artifact_id": "receipt-artifact-1", "revision": 1}]
-    )
+    analysis = _analysis(receipt_refs=[{"artifact_id": "receipt-artifact-1", "revision": 1}])
 
     result = _call(
         _task_create_plan(),

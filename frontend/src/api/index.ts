@@ -147,7 +147,7 @@ export function startRun(payload: {
   conversation_id: string;
   request_text: string;
   entry_mode: string;
-  selected_resource_ids: string[];
+  selected_resource_handles: string[];
   requested_mode: string;
 }): Promise<StartRunResponse> {
   return requestJson("/api/v1/runs", {
@@ -193,8 +193,8 @@ export function confirmRun(payload: {
   command_id: string;
   expected_version: number;
   interrupt_id: string;
-  response_kind: "OPTION_SELECTION" | "FREE_TEXT";
-  selected_option_ids?: string[];
+  response_kind: "OPTION" | "FREE_TEXT" | "DECLINE";
+  selected_option?: string | null;
   free_text?: string | null;
 }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/confirm`, {
@@ -204,7 +204,7 @@ export function confirmRun(payload: {
       expected_version: payload.expected_version,
       interrupt_id: payload.interrupt_id,
       response_kind: payload.response_kind,
-      selected_option_ids: payload.selected_option_ids ?? [],
+      selected_option: payload.selected_option ?? null,
       free_text: payload.free_text ?? null,
       api_contract_version: API_CONTRACT_VERSION,
     },

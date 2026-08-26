@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from json import loads
 from pathlib import Path
 from sqlite3 import Row
 
@@ -24,6 +23,7 @@ from google_work_agent.ports import (
     RuntimeSummary,
     SelectedResourceRef,
 )
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationListItem:
@@ -351,33 +351,19 @@ class QueryService:
                 """,
                 (run_id,),
             ).fetchone()
-            trace_rows = connection.execute(
+            resource_rows = connection.execute(
                 """
-                SELECT payload_json
-                FROM trace_events
+                SELECT source, resource_type, resource_id, parent_resource_id
+                FROM resource_refs
                 WHERE run_id = ?
-                ORDER BY id ASC;
+                ORDER BY connector_id, resource_type, resource_id;
                 """,
                 (run_id,),
             ).fetchall()
-        selected_resource_ids: tuple[str, ...] = ()
-        selected_resources: tuple[SelectedResourceRef, ...] = ()
-        for row in trace_rows:
-            try:
-                payload = loads(str(row["payload_json"]))
-                attributes = payload.get("attributes", {})
-                original = attributes.get("selected_resource_ids", [])
-                if isinstance(original, list):
-                    selected_resource_ids = tuple(str(item) for item in original)
-                selected_original = attributes.get("selected_resources", [])
-                if isinstance(selected_original, list):
-                    selected_resources = tuple(
-                        _selected_resource_ref_from_mapping(item)
-                        for item in selected_original
-                        if isinstance(item, dict)
-                    )
-            except Exception:
-                continue
+        selected_resource_ids = tuple(str(row["resource_id"]) for row in resource_rows)
+        selected_resources = tuple(
+            _selected_resource_ref_from_mapping(row) for row in resource_rows
+        )
         return RunExecutionContext(
             run_id=str(run_row["id"]),
             conversation_id=str(run_row["conversation_id"]),
@@ -522,13 +508,13 @@ def _google_account_id_for_email(email: str) -> str:
     return f"acct-{digest[:24]}"
 
 
-def _selected_resource_ref_from_mapping(value: dict[object, object]) -> SelectedResourceRef:
+def _selected_resource_ref_from_mapping(value: Row) -> SelectedResourceRef:
     return SelectedResourceRef(
         source=str(value["source"]),
         resource_type=str(value["resource_type"]),
         resource_id=str(value["resource_id"]),
         parent_resource_id=(
-            None if value.get("parent_resource_id") is None else str(value["parent_resource_id"])
+            None if value["parent_resource_id"] is None else str(value["parent_resource_id"])
         ),
     )
 
