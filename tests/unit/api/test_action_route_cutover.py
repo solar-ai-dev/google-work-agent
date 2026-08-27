@@ -9,8 +9,8 @@ def test_action_route_has_zero_uow_or_repository_traversal() -> None:
     source = inspect.getsource(actions)
 
     assert "with dependencies.unit_of_work_factory()" not in source
-    assert ".actions.get_by_id(" not in source
-    assert ".plans.get_by_id(" not in source
+    assert ".actions.get(" not in source
+    assert ".plans.load_bundle(" not in source
     assert ".runs.get_by_id(" not in source
     assert ".conversations.get_by_id(" not in source
 

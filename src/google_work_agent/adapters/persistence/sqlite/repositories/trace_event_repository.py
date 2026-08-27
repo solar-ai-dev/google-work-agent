@@ -14,17 +14,17 @@ from google_work_agent.ports.observability_events import (
     sanitize_persistent_event_json,
     serialize_event_envelope,
 )
-from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
+from google_work_agent.ports.persistence.trace_event_repository import (
+    PersistedTraceEventRecord,
+    TraceEventCursor,
+)
 
 
-class SQLiteTraceRepository:
+class SqliteTraceEventRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
     def append(self, event: TraceEventRecord) -> None:
-        self.add(event)
-
-    def add(self, event: TraceEventRecord) -> None:
         event = replace(event, payload_json=sanitize_persistent_event_json(event.payload_json))
         raw = event.payload_json
         try:
@@ -45,7 +45,7 @@ class SQLiteTraceRepository:
                     event_category=EventCategory.DOMAIN,
                     occurred_at_ms=event.created_at_ms,
                     severity=Severity.INFO,
-                    component="trace_repository",
+                    component="trace_event_repository",
                     environment="test",
                     release_version="dev",
                     correlation=ObservabilityContext(
@@ -58,7 +58,7 @@ class SQLiteTraceRepository:
                 )
             )
         self._connection.execute(
-            "INSERT INTO trace_events (run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?);",
+            "INSERT INTO trace_events (run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
             (
                 event.run_id,
                 event.action_id,
@@ -83,28 +83,22 @@ class SQLiteTraceRepository:
             created_at_ms=int(r["created_at_ms"]),
         )
 
-    def list_by_run_after_cursor(
-        self, *, run_id: str, cursor_after: int | None, limit: int = 100
+    def list_page(
+        self, cursor: TraceEventCursor | None, limit: int
     ) -> tuple[PersistedTraceEventRecord, ...]:
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        run_id = None if cursor is None else cursor.run_id
+        cursor_after = None if cursor is None else cursor.after_id
         rows = self._connection.execute(
-            "SELECT id, run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms FROM trace_events WHERE run_id=? AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",
-            (run_id, cursor_after, cursor_after, limit),
+            "SELECT id, run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms FROM trace_events WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",  # noqa: E501
+            (run_id, run_id, cursor_after, cursor_after, limit),
         ).fetchall()
         return tuple(self._record(r) for r in rows)
 
-    def list_before_retention_cutoff(
-        self, *, cutoff_ms: int, limit: int
-    ) -> tuple[PersistedTraceEventRecord, ...]:
-        rows = self._connection.execute(
-            "SELECT id, run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms FROM trace_events WHERE created_at_ms < ? ORDER BY id ASC LIMIT ?;",
-            (cutoff_ms, limit),
-        ).fetchall()
-        return tuple(self._record(r) for r in rows)
-
-    def purge_before_cutoff(self, *, cutoff_ms: int, limit: int) -> int:
+    def purge_before(self, timestamp_ms: int) -> int:
         return int(
             self._connection.execute(
-                "DELETE FROM trace_events WHERE id IN (SELECT id FROM trace_events WHERE created_at_ms < ? ORDER BY id ASC LIMIT ?);",
-                (cutoff_ms, limit),
+                "DELETE FROM trace_events WHERE created_at_ms < ?;", (timestamp_ms,)
             ).rowcount
         )

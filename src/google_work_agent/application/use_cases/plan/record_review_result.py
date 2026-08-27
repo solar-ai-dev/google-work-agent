@@ -56,7 +56,7 @@ class RecordReviewResultHandler:
                 return self._replay(existing, command)
 
             now_ms = self._now_ms()
-            plan = unit_of_work.plans.get_by_id(command.plan_id)
+            plan = unit_of_work.plans.load_bundle(command.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {command.plan_id}")
             if unit_of_work.runs.get(plan.run_id) is None:
@@ -73,7 +73,7 @@ class RecordReviewResultHandler:
                 self._finish(unit_of_work, command, result, now_ms)
                 return result
 
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RecordReviewResult",
                 request_hash=_request_hash(command),
@@ -82,7 +82,7 @@ class RecordReviewResultHandler:
                 created_at_ms=now_ms,
             )
             review_status = _review_status(command.disposition)
-            updated = unit_of_work.plans.update_review_if_version_and_status(
+            updated = unit_of_work.plans.record_review_result(
                 plan.id,
                 expected_review_version=command.expected_review_version,
                 expected_review_statuses=frozenset({PlanReviewStatus.REQUIRED}),
@@ -102,7 +102,7 @@ class RecordReviewResultHandler:
                 self._finish(unit_of_work, command, result, now_ms)
                 return result
 
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 AuditEventRecord(
                     account_id=None,
                     run_id=plan.run_id,
@@ -158,7 +158,7 @@ class RecordReviewResultHandler:
         now_ms: int,
     ) -> None:
         if unit_of_work.command_receipts.get_by_command_id(command.command_id) is None:
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RecordReviewResult",
                 request_hash=_request_hash(command),
@@ -166,7 +166,7 @@ class RecordReviewResultHandler:
                 aggregate_id=command.plan_id,
                 created_at_ms=now_ms,
             )
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=result.applied,
             result_code=ResultCode(result.result_code),
@@ -180,7 +180,7 @@ class RecordReviewResultHandler:
 def _freshness_conflict(
     unit_of_work: UnitOfWork, plan_id: str, command: RecordReviewResultCommandV1
 ) -> str | None:
-    plan = unit_of_work.plans.get_by_id(plan_id)
+    plan = unit_of_work.plans.load_bundle(plan_id)
     assert plan is not None
     if plan.revision_no != command.expected_plan_version:
         return "plan version is stale"
@@ -191,7 +191,7 @@ def _freshness_conflict(
         return "review version is stale"
     if plan.review_status is not PlanReviewStatus.REQUIRED:
         return "plan is not awaiting a fresh review"
-    current = {action.id: action.version for action in unit_of_work.actions.list_by_plan(plan_id)}
+    current = {action.id: action.version for action in unit_of_work.actions.list_for_plan(plan_id)}
     if current != dict(command.based_on_action_versions):
         return "review action versions are stale"
     return None

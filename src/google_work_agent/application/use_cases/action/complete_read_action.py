@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.read_contracts import (
     CompleteReadActionCommand,
     ReadActionCommandResponse,
@@ -58,7 +60,7 @@ class CompleteReadActionHandler:
 
             now_ms = self._now_ms()
             if existing_receipt is None:
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="CompleteReadAction",
                     request_hash=command.request_hash,
@@ -99,7 +101,8 @@ class CompleteReadActionHandler:
             if not action.connector_id:
                 raise ValueError("persisted READ action connector_id is required")
             for resource_ref in command.resource_refs:
-                unit_of_work.resource_refs.upsert_bound_ref(
+                upsert_registered_resource_ref(
+                    unit_of_work,
                     ResourceRefRecord(
                         id=resource_ref.id,
                         run_id=plan.run_id,
@@ -118,7 +121,7 @@ class CompleteReadActionHandler:
                 )
 
             for evidence in command.evidence:
-                unit_of_work.evidence.insert(
+                unit_of_work.evidence.insert_bounded(
                     EvidenceRecord(
                         id=evidence.id,
                         run_id=plan.run_id,
@@ -129,10 +132,8 @@ class CompleteReadActionHandler:
                         excerpt=evidence.excerpt,
                         locator_json=evidence.locator_json,
                         created_at_ms=now_ms,
-                    )
-                )
-                unit_of_work.evidence.link_to_action(
-                    action_id=command.action_id, evidence_id=evidence.id
+                    ),
+                    action_ids=(command.action_id,),
                 )
 
             result = transition_complete_read_action(
@@ -143,7 +144,8 @@ class CompleteReadActionHandler:
             )
             if (
                 result.applied
-                and unit_of_work.actions.update_if_version_and_status(
+                and update_action_record(
+                    unit_of_work,
                     command.action_id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -154,7 +156,7 @@ class CompleteReadActionHandler:
             ):
                 raise RuntimeError("validated CompleteReadAction CAS failed")
             response = action_result_response(command.action_id, result)
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=command.action_id,
@@ -172,7 +174,7 @@ class CompleteReadActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=plan.run_id,
                     action_id=command.action_id,

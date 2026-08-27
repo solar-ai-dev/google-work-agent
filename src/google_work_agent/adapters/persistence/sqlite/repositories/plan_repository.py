@@ -6,7 +6,7 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 
 
-class SQLitePlanRepository:
+class SqlitePlanRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
@@ -26,7 +26,7 @@ class SQLitePlanRepository:
             ),
         )
 
-    def get_by_id(self, plan_id: str) -> PlanRecord | None:
+    def load_bundle(self, plan_id: str) -> PlanRecord | None:
         row = self._connection.execute(
             """SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
                       review_status, review_version, review_disposition
@@ -35,8 +35,17 @@ class SQLitePlanRepository:
         ).fetchone()
         return None if row is None else self._record(row)
 
-    def insert_draft(self, plan: PlanRecord) -> None:
-        existing = self.get_by_id(plan.id)
+    def get_current(self, run_id: str) -> PlanRecord | None:
+        row = self._connection.execute(
+            """SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
+                      review_status, review_version, review_disposition
+               FROM plans WHERE run_id=? ORDER BY revision_no DESC LIMIT 1;""",
+            (run_id,),
+        ).fetchone()
+        return None if row is None else self._record(row)
+
+    def insert_revision(self, plan: PlanRecord) -> None:
+        existing = self.load_bundle(plan.id)
         if existing is None:
             self._connection.execute(
                 """INSERT INTO plans (
@@ -76,18 +85,36 @@ class SQLitePlanRepository:
             (plan.summary_text, plan.id),
         )
 
-    def update_if_status(
-        self, plan_id: str, *, expected_status: PlanStatusV1, next_status: PlanStatusV1
-    ) -> PlanRecord | None:
+    def update_if_version_and_status(
+        self,
+        plan_id: str,
+        expected_version: int,
+        expected_statuses: frozenset[PlanStatusV1],
+        values: dict[str, object],
+    ) -> bool:
+        if not values or not expected_statuses:
+            raise ValueError("Plan CAS requires values and expected statuses")
+        if not set(values).issubset({"status"}):
+            raise ValueError("Plan CAS contains an unsupported column")
+        normalized = {
+            key: value.value if isinstance(value, PlanStatusV1) else value
+            for key, value in values.items()
+        }
+        set_clause = ", ".join(f"{column}=?" for column in normalized)
+        placeholders = ", ".join("?" for _ in expected_statuses)
         cursor = self._connection.execute(
-            "UPDATE plans SET status=? WHERE id=? AND status=?;",
-            (next_status.value, plan_id, expected_status.value),
+            f"UPDATE plans SET {set_clause} WHERE id=? AND revision_no=? "
+            f"AND status IN ({placeholders});",
+            [
+                *normalized.values(),
+                plan_id,
+                expected_version,
+                *(status.value for status in expected_statuses),
+            ],
         )
-        if cursor.rowcount != 1:
-            return None
-        return self.get_by_id(plan_id)
+        return cursor.rowcount == 1
 
-    def update_review_if_version_and_status(
+    def record_review_result(
         self,
         plan_id: str,
         *,
@@ -116,13 +143,4 @@ class SQLitePlanRepository:
                 *(status.value for status in expected_review_statuses),
             ],
         )
-        return None if cursor.rowcount != 1 else self.get_by_id(plan_id)
-
-    def list_by_run(self, run_id: str) -> tuple[PlanRecord, ...]:
-        rows = self._connection.execute(
-            """SELECT id, run_id, revision_no, status, summary_text, created_at_ms,
-                      review_status, review_version, review_disposition
-               FROM plans WHERE run_id=? ORDER BY revision_no ASC;""",
-            (run_id,),
-        ).fetchall()
-        return tuple(self._record(row) for row in rows)
+        return None if cursor.rowcount != 1 else self.load_bundle(plan_id)

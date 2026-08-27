@@ -7,15 +7,19 @@ from google_work_agent.domain.approval.model import ApprovalStatusV1
 
 
 class ApprovalRepository(Protocol):
-    def get_by_id(self, approval_id: str) -> ApprovalRecord | None: ...
-    def get_active_by_action(self, action_id: str) -> ApprovalRecord | None: ...
-    def insert(self, record: ApprovalRecord) -> None: ...
+    def get_active_for_action(self, action_id: str) -> ApprovalRecord | None: ...
+    def insert_active_snapshot(self, record: ApprovalRecord) -> None: ...
+    def list_active_for_plan(self, plan_id: str) -> tuple[ApprovalRecord, ...]: ...
     def update_if_status(
         self,
         approval_id: str,
-        *,
         expected_status: ApprovalStatusV1,
-        next_status: ApprovalStatusV1,
-        consumed_at_ms: int | None = None,
+        values: dict[str, object],
     ) -> bool: ...
-    def list_by_action(self, action_id: str) -> tuple[ApprovalRecord, ...]: ...
+
+
+def active_approval_tuple(
+    repository: ApprovalRepository, action_id: str
+) -> tuple[ApprovalRecord, ...]:
+    active = repository.get_active_for_action(action_id)
+    return () if active is None else (active,)

@@ -7,6 +7,11 @@ from enum import StrEnum
 from json import dumps, loads
 from typing import Any, Protocol, cast
 
+from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_approval_status,
+)
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionCommand,
     CancelPendingActionHandler,
@@ -46,6 +51,8 @@ from google_work_agent.ports import (
     UnitOfWork,
 )
 from google_work_agent.ports.observability_events import sanitize_event_attributes
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 WriteResponse = (
     SaveWritePlanResponse | PublishWritePlanResponse | WriteActionResponse | WriteRunResponse
@@ -68,10 +75,11 @@ class ReceiptResponse(Protocol):
 
 def revoke_active_approvals(unit_of_work: UnitOfWork, action_id: str) -> tuple[str, ...]:
     revoked: list[str] = []
-    for approval in unit_of_work.approvals.list_by_action(action_id):
+    for approval in active_approval_tuple(unit_of_work.approvals, action_id):
         if approval.status is not ApprovalStatusV1.ACTIVE:
             continue
-        if not unit_of_work.approvals.update_if_status(
+        if not update_approval_status(
+            unit_of_work,
             approval.id,
             expected_status=approval.status,
             next_status=ApprovalStatusV1.REVOKED,
@@ -91,7 +99,7 @@ def append_approval_revoked_audits(
     created_at_ms: int,
 ) -> None:
     for approval_id in approval_ids:
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             audit_event(
                 run_id=run_id,
                 action_id=action_id,
@@ -105,12 +113,12 @@ def append_approval_revoked_audits(
 
 def require_plan_review(unit_of_work: UnitOfWork, plan_id: str) -> int:
     """Invalidate the current review through a persistence-only Plan CAS."""
-    plan = unit_of_work.plans.get_by_id(plan_id)
+    plan = unit_of_work.plans.load_bundle(plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     if plan.status not in {PlanStatusV1.WAITING_APPROVAL, PlanStatusV1.ACTIVE}:
         raise RuntimeError(f"Plan review cannot be invalidated from {plan.status.value}")
-    updated = unit_of_work.plans.update_review_if_version_and_status(
+    updated = unit_of_work.plans.record_review_result(
         plan.id,
         expected_review_version=plan.review_version,
         expected_review_statuses=frozenset(PlanReviewStatus),
@@ -187,7 +195,7 @@ def finish_json_receipt(
     result_version: int,
     completed_at_ms: int,
 ) -> None:
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=bool(response.applied),
         result_code=ResultCode(str(response.result_code)),
@@ -205,35 +213,35 @@ def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
 
 
 def require_plan(unit_of_work: UnitOfWork, plan_id: str) -> PlanRecord:
-    plan = unit_of_work.plans.get_by_id(plan_id)
+    plan = unit_of_work.plans.load_bundle(plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     return plan
 
 
 def require_latest_plan_for_run(unit_of_work: UnitOfWork, run_id: str) -> PlanRecord:
-    plans = unit_of_work.plans.list_by_run(run_id)
+    plans = current_plan_tuple(unit_of_work.plans, run_id)
     if not plans:
         raise LookupError(f"plan not found for run: {run_id}")
     return plans[-1]
 
 
 def require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-    action = unit_of_work.actions.get_by_id(action_id)
+    action = unit_of_work.actions.get(action_id)
     if action is None:
         raise LookupError(f"action not found: {action_id}")
     return action
 
 
 def require_approval(unit_of_work: UnitOfWork, approval_id: str) -> ApprovalRecord:
-    approval = unit_of_work.approvals.get_by_id(approval_id)
+    approval = unit_of_work.approval_history.get(approval_id)
     if approval is None:
         raise LookupError(f"approval not found: {approval_id}")
     return approval
 
 
 def require_attempt(unit_of_work: UnitOfWork, attempt_id: str) -> ExecutionAttemptRecord:
-    attempt = unit_of_work.execution_attempts.get_by_id(attempt_id)
+    attempt = unit_of_work.execution_attempts.get(attempt_id)
     if attempt is None:
         raise LookupError(f"execution attempt not found: {attempt_id}")
     return attempt
@@ -277,7 +285,7 @@ def emit_command_rejected_hash_mismatch(
         "result_code": ResultCode.DUPLICATE_COMMAND.value,
     }
     sanitized_metadata = sanitize_event_attributes(metadata).values
-    unit_of_work.audits.add(
+    unit_of_work.audits.append(
         AuditEventRecord(
             account_id=None,
             run_id=run_id,
@@ -292,7 +300,7 @@ def emit_command_rejected_hash_mismatch(
         )
     )
     if run_id is not None:
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id=run_id,
                 action_id=action_id,
@@ -316,7 +324,7 @@ def cancel_pending_actions(
         ActionStatusV1.APPROVED.value,
         ActionStatusV1.EXPIRED.value,
     }
-    for action in unit_of_work.actions.list_by_plan(plan_id):
+    for action in unit_of_work.actions.list_for_plan(plan_id):
         if action.status not in pending_statuses:
             continue
         child_payload = {
@@ -363,7 +371,7 @@ def resolve_existing_run_receipt(
         )
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
         run = require_run(unit_of_work, run_id)
-        plans = unit_of_work.plans.list_by_run(run_id)
+        plans = current_plan_tuple(unit_of_work.plans, run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
         applied_statuses = {
             RunStatusV1.CANCEL_REQUESTED.value,
@@ -442,7 +450,8 @@ def upsert_resource_ref(
     """Persist by the single connector-aware ResourceRef identity."""
     if not resource_ref.connector_id:
         raise ValueError("resource reference connector_id is required")
-    return unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
+    return upsert_registered_resource_ref(
+        unit_of_work,resource_ref)
 
 
 def action_response_from_result[CommandType: StrEnum](
@@ -542,14 +551,14 @@ def propagate_dependency_blocked(
     updated_at_ms: int,
 ) -> None:
     blocked_action_ids: list[str] = []
-    pending = list(unit_of_work.action_dependencies.list_dependents(action_id))
+    pending = list(unit_of_work.actions.list_dependents(action_id))
     visited: set[str] = set()
     while pending:
         dependent_action_id = pending.pop(0)
         if dependent_action_id in visited:
             continue
         visited.add(dependent_action_id)
-        dependent = unit_of_work.actions.get_by_id(dependent_action_id)
+        dependent = unit_of_work.actions.get(dependent_action_id)
         if dependent is not None and dependent.status in {
             ActionStatusV1.PROPOSED.value,
             ActionStatusV1.MODIFIED.value,
@@ -557,7 +566,8 @@ def propagate_dependency_blocked(
         }:
             revoke_active_approvals(unit_of_work, dependent_action_id)
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     dependent_action_id,
                     expected_version=dependent.version,
                     expected_status=ActionStatusV1(dependent.status),
@@ -568,9 +578,9 @@ def propagate_dependency_blocked(
             ):
                 raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
             blocked_action_ids.append(dependent_action_id)
-            pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_action_id))
+            pending.extend(unit_of_work.actions.list_dependents(dependent_action_id))
     for blocked_action_id in blocked_action_ids:
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id=run_id,
                 action_id=blocked_action_id,
@@ -581,7 +591,7 @@ def propagate_dependency_blocked(
                 created_at_ms=updated_at_ms,
             )
         )
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             audit_event(
                 run_id=run_id,
                 action_id=blocked_action_id,

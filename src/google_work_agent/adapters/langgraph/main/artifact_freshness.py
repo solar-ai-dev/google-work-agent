@@ -23,10 +23,7 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     persist_reachable_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
@@ -47,6 +44,7 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class ArtifactFreshnessMixin:
@@ -162,8 +160,8 @@ class ArtifactFreshnessMixin:
 
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(request.run_id)
-            plan = unit_of_work.plans.get_by_id(plan_id)
-            plans = unit_of_work.plans.list_by_run(request.run_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
+            plans = current_plan_tuple(unit_of_work.plans, request.run_id)
         latest_plan = max(plans, key=lambda item: item.revision_no) if plans else None
         if (
             run is None
@@ -266,7 +264,7 @@ class ArtifactFreshnessMixin:
             return super()._persist_write_plan(state, plan_draft)
 
         with self._unit_of_work_factory() as unit_of_work:
-            reserved_plan = unit_of_work.plans.get_by_id(reserved_plan_id)
+            reserved_plan = unit_of_work.plans.load_bundle(reserved_plan_id)
         if reserved_plan is None:
             raise LookupError(f"reserved corrective plan not found: {reserved_plan_id}")
 
@@ -298,7 +296,7 @@ class ArtifactFreshnessMixin:
     def _has_persisted_cancel_intent(self, run_id: str) -> bool:
         """Production cancel authority: APPLIED RequestCancel command receipt."""
         with self._unit_of_work_factory() as unit_of_work:
-            reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
+            reader = unit_of_work.cancel_intents
             return has_durable_cancel_intent(reader, run_id)
 
     def _complete_write_run_if_verified(

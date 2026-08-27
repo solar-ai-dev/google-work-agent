@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
-from typing import cast
 
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
 )
 from google_work_agent.application.write_persistence import (
     audit_event,
@@ -106,7 +106,7 @@ class AbortClaimedExecutionHandler:
         existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
         if existing is not None:
             return AbortClaimedExecutionHandler._replay(unit_of_work, command, existing)
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="AbortClaimedExecution",
             request_hash=command.request_hash,
@@ -129,7 +129,7 @@ class AbortClaimedExecutionHandler:
             attempt_version=attempt.version,
             expected_attempt_version=command.expected_attempt_version,
             durable_cancel_intent=has_durable_cancel_intent(
-                cast(CancelIntentReceiptReader, unit_of_work.command_receipts), run.id
+                unit_of_work.cancel_intents, run.id
             ),
             begin_receipt_applied=(
                 begin_receipt is not None and begin_receipt.status is CommandReceiptStatus.APPLIED
@@ -137,7 +137,8 @@ class AbortClaimedExecutionHandler:
             provider_dispatch_count=0,
         )
         if decision.applied:
-            updated_attempt = unit_of_work.execution_attempts.update_if_version_and_status(
+            updated_attempt = update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=attempt.version,
                 expected_status=attempt.status,
@@ -151,7 +152,8 @@ class AbortClaimedExecutionHandler:
             if updated_attempt is None:
                 raise RuntimeError("validated AbortClaimedExecution Attempt CAS failed")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -161,7 +163,7 @@ class AbortClaimedExecutionHandler:
                 is None
             ):
                 raise RuntimeError("validated AbortClaimedExecution Action CAS failed")
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run.id,
                     action_id=action.id,
@@ -190,7 +192,7 @@ class AbortClaimedExecutionHandler:
         payload["result_code"] = result.result_code.value
         payload["action_status"] = result.action_status.value
         payload["attempt_status"] = result.attempt_status.value
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command_id,
             applied=result.applied,
             result_code=result.result_code,

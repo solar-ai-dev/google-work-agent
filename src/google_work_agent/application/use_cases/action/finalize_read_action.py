@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from json import dumps
 
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.read_contracts import (
     FinalizeReadActionCommand,
     ReadActionCommandResponse,
@@ -58,7 +59,7 @@ class FinalizeReadActionHandler:
 
             now_ms = self._now_ms()
             if existing_receipt is None:
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="FinalizeReadAction",
                     request_hash=command.request_hash,
@@ -77,7 +78,8 @@ class FinalizeReadActionHandler:
             )
             if (
                 result.applied
-                and unit_of_work.actions.update_if_version_and_status(
+                and update_action_record(
+                    unit_of_work,
                     command.action_id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -97,7 +99,7 @@ class FinalizeReadActionHandler:
             )
             partial = any(
                 ActionStatusV1(item.status) is ActionStatusV1.FAILED
-                for item in unit_of_work.actions.list_by_plan(plan.id)
+                for item in unit_of_work.actions.list_for_plan(plan.id)
             )
             response = ReadActionCommandResponse(
                 **{
@@ -107,7 +109,7 @@ class FinalizeReadActionHandler:
                     "partial": partial,
                 }
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=command.action_id,
@@ -121,7 +123,7 @@ class FinalizeReadActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=plan.run_id,
                     action_id=command.action_id,

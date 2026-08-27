@@ -61,8 +61,20 @@ class _ByIdRepo:
     def get(self, value_id: str) -> object | None:
         return self.values.get(value_id)
 
+    def load_bundle(self, value_id: str) -> object | None:
+        return self.values.get(value_id)
+
+    def get_active_for_approval(self, value_id: str) -> object | None:
+        return self.values.get(value_id)
+
     def list_by_run(self, run_id: str) -> list[object]:
         return [item for item in self.values.values() if getattr(item, "run_id", None) == run_id]
+
+    def get_current(self, run_id: str) -> object | None:
+        return next(
+            (item for item in self.values.values() if getattr(item, "run_id", None) == run_id),
+            None,
+        )
 
     def update_if_version_and_status(
         self, value_id: str, *args: object, **kwargs: object
@@ -88,22 +100,24 @@ class _CommandReceipts:
     def get_by_command_id(self, _command_id: str) -> None:
         return None
 
-    def add_received(self, *, command_id: str, **_kwargs: object) -> None:
+    def reserve_or_replay(self, *, command_id: str, **_kwargs: object) -> None:
         self.received.append(command_id)
 
-    def finish_json(self, *, command_id: str, **_kwargs: object) -> None:
+    def store_result(self, *, command_id: str, **_kwargs: object) -> None:
         self.finished.append(command_id)
-
-    def has_applied_request_cancel(self, _run_id: str) -> bool:
-        return False
 
 
 class _Sink:
     def __init__(self) -> None:
         self.items: list[object] = []
 
-    def add(self, item: object) -> None:
+    def append(self, item: object) -> None:
         self.items.append(item)
+
+
+class _CancelIntents:
+    def has_durable_intent(self, _run_id: str) -> bool:
+        return False
 
 
 class _VerificationRepo:
@@ -113,13 +127,11 @@ class _VerificationRepo:
     def list_by_attempt(self, _attempt_id: str) -> list[object]:
         return list(self.items)
 
+    def get_latest_for_attempt(self, _attempt_id: str) -> object | None:
+        return self.items[-1] if self.items else None
+
     def insert(self, item: object) -> None:
         self.items.append(item)
-
-
-class _Dependencies:
-    def list_dependents(self, _action_id: str) -> list[str]:
-        return []
 
 
 class _Actions(_ByIdRepo):
@@ -129,13 +141,25 @@ class _Actions(_ByIdRepo):
         super().__init__(values)
         self.verification_status = verification_status
 
-    def update_if_version_and_status(self, value_id: str, **kwargs: object) -> object | None:
+    def list_dependents(self, _action_id: str) -> tuple[str, ...]:
+        return ()
+
+    def is_dependency_ready(self, _action_id: str) -> bool:
+        return True
+
+    def update_if_version_and_status(
+        self, value_id: str, *args: object, **kwargs: object
+    ) -> bool:
         item = self.values.get(value_id)
         if item is None:
-            return None
-        item.status = (self.verification_status or kwargs["next_status"]).value
-        item.version += 1
-        return item
+            return False
+        values = args[-1] if args and isinstance(args[-1], dict) else kwargs
+        status = self.verification_status or values.get("status")
+        if status is not None:
+            item.status = status.value if isinstance(status, ActionStatusV1) else status
+        if "version" in values:
+            item.version = values["version"]
+        return True
 
 
 class _Runs(_ByIdRepo):
@@ -173,8 +197,9 @@ class _Uow:
         self.runs = _Runs({} if run is None else {run.id: run})
         self.resource_refs = _ByIdRepo({})
         self.command_receipts = _CommandReceipts()
+        self.cancel_intents = _CancelIntents()
         self.verifications = _VerificationRepo()
-        self.action_dependencies = _Dependencies()
+        self.approval_history = self.approvals
         self.traces = _Sink()
         self.audits = _Sink()
         self.commits = 0
@@ -373,7 +398,7 @@ def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> No
     assert connector3.execute_calls == 1
 
     bound_uow, bound_token, connector4 = _execution_fixture()
-    action = bound_uow.actions.get_by_id("action-1")
+    action = bound_uow.actions.get("action-1")
     action.tool_name = "tasks_update_task"
     with pytest.raises(PermissionError, match="binding mismatch"):
         _execute_handler(bound_uow, connector4)(ExecuteActionCommand("action-1", bound_token))

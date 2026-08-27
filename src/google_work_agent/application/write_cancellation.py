@@ -23,6 +23,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +87,7 @@ class RequestRunCancellationService:
                     now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RequestRunCancellation",
                 request_hash=command.request_hash,
@@ -95,7 +96,7 @@ class RequestRunCancellationService:
                 created_at_ms=now_ms,
             )
             run = _require_run(unit_of_work, command.run_id)
-            plans = unit_of_work.plans.list_by_run(run.id)
+            plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
             cancel_result = _apply_run_transition(
                 unit_of_work, run, command.expected_run_version, transition_request_cancel
@@ -126,7 +127,7 @@ class RequestRunCancellationService:
                 plan_status=None if plan is None else plan.status.value,
                 result_kind="CANCEL_REQUESTED",
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run.id,
                     action_id=None,
@@ -139,7 +140,7 @@ class RequestRunCancellationService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=run.id,
                     action_id=None,

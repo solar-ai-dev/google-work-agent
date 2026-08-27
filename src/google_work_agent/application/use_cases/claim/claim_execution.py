@@ -13,14 +13,15 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
 )
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.feasibility import (
     approval_feasibility_authority,
     feasibility_authority,
     feasibility_change_requires_reapproval,
+)
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_approval_status,
 )
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -68,6 +69,8 @@ from google_work_agent.ports.connector.claim_context_contract import (
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +136,7 @@ class ClaimExecutionHandler:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ClaimExecution",
                 request_hash=command.request_hash,
@@ -145,7 +148,7 @@ class ClaimExecutionHandler:
             action = require_action(unit_of_work, command.action_id)
             plan = require_plan(unit_of_work, action.plan_id)
             run = require_run(unit_of_work, plan.run_id)
-            approval = unit_of_work.approvals.get_active_by_action(action.id)
+            approval = unit_of_work.approvals.get_active_for_action(action.id)
             if approval is None:
                 return self._reject(
                     unit_of_work=unit_of_work,
@@ -158,15 +161,14 @@ class ClaimExecutionHandler:
                 )
 
             entry = self._registry.require(action.tool_name)
-            cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
             active_attempt_exists = (
-                unit_of_work.execution_attempts.get_active_by_approval(approval.id) is not None
+                unit_of_work.execution_attempts.get_active_for_approval(approval.id) is not None
             )
             predecessor_verified = self._predecessors_verified(
                 unit_of_work=unit_of_work,
                 action_id=action.id,
             )
-            plans = tuple(unit_of_work.plans.list_by_run(run.id))
+            plans = tuple(current_plan_tuple(unit_of_work.plans, run.id))
             current_plan = max(
                 plans,
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
@@ -200,7 +202,9 @@ class ClaimExecutionHandler:
                     run_status=run.status,
                     plan_status=plan.status,
                     plan_is_current=current_plan is not None and current_plan.id == plan.id,
-                    durable_cancel_intent=has_durable_cancel_intent(cancel_reader, run.id),
+                    durable_cancel_intent=has_durable_cancel_intent(
+                        unit_of_work.cancel_intents, run.id
+                    ),
                     predecessor_verified=predecessor_verified,
                     active_attempt_exists=active_attempt_exists,
                 )
@@ -244,7 +248,8 @@ class ClaimExecutionHandler:
 
             # Order is intentional: executable DB invariant 0005 forbids moving an
             # Action away from APPROVED while its Approval remains ACTIVE.
-            if not unit_of_work.approvals.update_if_status(
+            if not update_approval_status(
+                unit_of_work,
                 approval.id,
                 expected_status=approval.status,
                 next_status=ApprovalStatusV1.CONSUMED,
@@ -252,7 +257,8 @@ class ClaimExecutionHandler:
             ):
                 raise RuntimeError("validated ConsumeApproval CAS failed")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -267,7 +273,10 @@ class ClaimExecutionHandler:
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
                 approval_id=approval.id,
-                attempt_no=len(unit_of_work.execution_attempts.list_by_approval(approval.id)) + 1,
+                attempt_no=len(
+                    active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
+                )
+                + 1,
                 status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,
                 result_resource_ref_id=None,
@@ -295,7 +304,7 @@ class ClaimExecutionHandler:
                 signing_secret=self._signing_secret,
             )
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -309,7 +318,7 @@ class ClaimExecutionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 self._audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -318,7 +327,7 @@ class ClaimExecutionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 self._audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -392,11 +401,7 @@ class ClaimExecutionHandler:
 
     @staticmethod
     def _predecessors_verified(*, unit_of_work: UnitOfWork, action_id: str) -> bool:
-        for predecessor_id in unit_of_work.action_dependencies.list_dependencies(action_id):
-            predecessor = unit_of_work.actions.get_by_id(predecessor_id)
-            if predecessor is None or predecessor.status != ActionStatusV1.VERIFIED.value:
-                return False
-        return True
+        return unit_of_work.actions.is_dependency_ready(action_id)
 
     @staticmethod
     def _audit_event(
@@ -515,7 +520,7 @@ class ClaimExecutionHandler:
         result_version: int,
         completed_at_ms: int,
     ) -> None:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command_id,
             applied=result.applied,
             result_code=result.result_code,

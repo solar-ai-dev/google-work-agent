@@ -32,6 +32,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
+from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
 from google_work_agent.application.read_contracts import (
     PublishReadOnlyPlanCommand,
     ReadActionDraft,
@@ -471,7 +472,8 @@ class PlanPersistenceMixin:
                 snapshot=snapshot,
                 captured_at_ms=self._now_ms(),
             )
-            persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
+            persisted = upsert_registered_resource_ref(
+                unit_of_work,resource_ref)
             unit_of_work.commit()
             return persisted.id
 

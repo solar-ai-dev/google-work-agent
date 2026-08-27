@@ -21,6 +21,7 @@ from google_work_agent.application.feasibility import (
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.task_duplicates import (
@@ -64,6 +65,7 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -154,7 +156,7 @@ class ModifyActionHandler:
             if existing is not None:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
             snapshot = self._require_action(unit_of_work, command.action_id)
-            snapshot_plan = unit_of_work.plans.get_by_id(snapshot.plan_id)
+            snapshot_plan = unit_of_work.plans.load_bundle(snapshot.plan_id)
             if snapshot_plan is None:
                 raise LookupError(f"plan not found: {snapshot.plan_id}")
             plan_superseded = snapshot_plan.status is PlanStatusV1.SUPERSEDED
@@ -204,7 +206,7 @@ class ModifyActionHandler:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ModifyAction",
                 request_hash=command.request_hash,
@@ -214,11 +216,11 @@ class ModifyActionHandler:
             )
             action = self._require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -287,7 +289,7 @@ class ModifyActionHandler:
 
             validate_evidence_policy(
                 EvidencePolicyInput(
-                    evidence_count=len(unit_of_work.evidence.list_by_action(action.id)),
+                    evidence_count=len(unit_of_work.evidence.list_for_action(action.id)),
                     requires_existing_resource=effect_type
                     in {EffectType.UPDATE, EffectType.DELETE},
                     has_user_selected_resource=action.target_resource_ref_id is not None,
@@ -333,7 +335,8 @@ class ModifyActionHandler:
 
             if (
                 preview.applied
-                and unit_of_work.actions.update_if_version_and_status(
+                and update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -387,7 +390,7 @@ class ModifyActionHandler:
                     if item is not ActionCommand.APPROVE_ACTION
                 ),
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=action.id,
@@ -398,7 +401,7 @@ class ModifyActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run_id,
                     action_id=action.id,
@@ -490,7 +493,7 @@ class ModifyActionHandler:
                 action_id=command.action_id,
                 now_ms=self._now_ms(),
             )
-            action = unit_of_work.actions.get_by_id(command.action_id)
+            action = unit_of_work.actions.get(command.action_id)
             if action is None:
                 return ModifyActionResult(
                     applied=False,
@@ -527,7 +530,7 @@ class ModifyActionHandler:
         response: ModifyActionResult,
         now_ms: int,
     ) -> ModifyActionResult:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=response.applied,
             result_code=ResultCode(response.result_code),
@@ -577,7 +580,7 @@ class ModifyActionHandler:
 
     @staticmethod
     def _require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-        action = unit_of_work.actions.get_by_id(action_id)
+        action = unit_of_work.actions.get(action_id)
         if action is None:
             raise LookupError(f"action not found: {action_id}")
         return action
@@ -585,7 +588,7 @@ class ModifyActionHandler:
     @classmethod
     def _run_id_for_action(cls, unit_of_work: UnitOfWork, action_id: str) -> str:
         action = cls._require_action(unit_of_work, action_id)
-        plan = unit_of_work.plans.get_by_id(action.plan_id)
+        plan = unit_of_work.plans.load_bundle(action.plan_id)
         if plan is None:
             raise LookupError(f"plan not found for action: {action_id}")
         return plan.run_id
@@ -599,8 +602,8 @@ class ModifyActionHandler:
         command_id: str,
         now_ms: int,
     ) -> None:
-        for dependent_id in unit_of_work.action_dependencies.list_dependents(modified_action_id):
-            dependent = unit_of_work.actions.get_by_id(dependent_id)
+        for dependent_id in unit_of_work.actions.list_dependents(modified_action_id):
+            dependent = unit_of_work.actions.get(dependent_id)
             if dependent is None or dependent.status != ActionStatusV1.APPROVED.value:
                 continue
             revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
@@ -614,7 +617,7 @@ class ModifyActionHandler:
                 command_id=command_id,
                 created_at_ms=now_ms,
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=dependent_id,
@@ -632,7 +635,7 @@ class ModifyActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run_id,
                     action_id=dependent_id,
@@ -661,7 +664,7 @@ class ModifyActionHandler:
     ) -> None:
         authority = duplicate_authority(updated_risk) if fresh_duplicate_risk is not None else None
         if authority is not None:
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run_id,
                     action_id=action.id,
@@ -680,7 +683,7 @@ class ModifyActionHandler:
         )
         if calendar_authority is not None:
             risk_value = updated_risk.get("calendar_conflict")
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run_id,
                     action_id=action.id,
@@ -703,7 +706,7 @@ class ModifyActionHandler:
         )
         if feasibility is not None:
             value = updated_risk.get("feasibility")
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=run_id,
                     action_id=action.id,

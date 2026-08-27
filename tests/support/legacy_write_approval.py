@@ -16,6 +16,7 @@ from google_work_agent.application.feasibility import (
     feasibility_authority,
     require_feasibility_approval,
 )
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -70,6 +71,8 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class ApproveWriteActionService:
@@ -95,7 +98,7 @@ class ApproveWriteActionService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ApproveWriteAction",
                 request_hash=command.request_hash,
@@ -107,7 +110,7 @@ class ApproveWriteActionService:
             entry = self._registry.require(action.tool_name)
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
-            plans = tuple(unit_of_work.plans.list_by_run(run.id))
+            plans = tuple(current_plan_tuple(unit_of_work.plans, run.id))
             current_plan = max(
                 plans,
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
@@ -143,7 +146,7 @@ class ApproveWriteActionService:
                     next_allowed_commands=(),
                     conflict_detail="plan review must pass after the latest action modification",
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _audit_event(
                         run_id=plan.run_id,
                         action_id=action.id,
@@ -188,7 +191,7 @@ class ApproveWriteActionService:
                         ),
                         conflict_detail=str(error),
                     )
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         _audit_event(
                             run_id=plan.run_id,
                             action_id=action.id,
@@ -242,7 +245,7 @@ class ApproveWriteActionService:
                         ),
                         conflict_detail=str(error),
                     )
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         _audit_event(
                             run_id=plan.run_id,
                             action_id=action.id,
@@ -282,7 +285,7 @@ class ApproveWriteActionService:
                         ),
                         conflict_detail=str(error),
                     )
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         _audit_event(
                             run_id=plan.run_id,
                             action_id=action.id,
@@ -334,7 +337,8 @@ class ApproveWriteActionService:
                 unit_of_work.commit()
                 return response
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -348,7 +352,7 @@ class ApproveWriteActionService:
             approval = ApprovalRecord(
                 id=command.approval_id,
                 action_id=action.id,
-                approval_no=len(unit_of_work.approvals.list_by_action(action.id)) + 1,
+                approval_no=len(active_approval_tuple(unit_of_work.approvals, action.id)) + 1,
                 action_version=approval_result.current_version,
                 status=ApprovalStatusV1.ACTIVE,
                 approved_by_account_id=command.approved_by_account_id,
@@ -369,12 +373,12 @@ class ApproveWriteActionService:
                 expires_at_ms=now_ms + command.ttl_ms,
                 consumed_at_ms=None,
             )
-            unit_of_work.approvals.insert(approval)
+            unit_of_work.approvals.insert_active_snapshot(approval)
 
             plan = _require_plan(unit_of_work, action.plan_id)
             # Write Plans remain WAITING_APPROVAL while approved Actions execute.
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -388,7 +392,7 @@ class ApproveWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -403,7 +407,7 @@ class ApproveWriteActionService:
                 and duplicate_decision is not None
                 and duplicate_decision.value != "NOT_DUPLICATE"
             ):
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _audit_event(
                         run_id=plan.run_id,
                         action_id=action.id,
@@ -421,7 +425,7 @@ class ApproveWriteActionService:
                 and calendar_decision is not None
                 and calendar_decision is not CalendarConflictDecision.NO_CONFLICT
             ):
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _audit_event(
                         run_id=plan.run_id,
                         action_id=action.id,

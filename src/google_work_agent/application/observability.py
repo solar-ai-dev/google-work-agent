@@ -9,7 +9,6 @@ from pathlib import Path
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    MaintenanceGate,
     MaintenanceWindow,
     OperationalLogRecord,
     OperationalLogSink,
@@ -27,10 +26,7 @@ from google_work_agent.ports.observability_events import (
     serialize_event_envelope,
 )
 
-TRACE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
-AUDIT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
 OPERATIONAL_LOG_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
-MAX_PURGE_BATCH = 500
 MAX_LOG_FILE_BYTES = 10 * 1024 * 1024
 MAX_LOG_DIR_BYTES = 200 * 1024 * 1024
 
@@ -45,10 +41,6 @@ class AuditWriteError(ObservabilityError):
 
 class OperationalLogWriteError(ObservabilityError):
     """Raised when operational JSONL persistence fails."""
-
-
-class PurgeBlockedError(ObservabilityError):
-    """Raised when retention purge is blocked by maintenance state."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,74 +235,3 @@ class StaticMaintenanceGate:
             migration_running=self.migration_running,
             restore_running=self.restore_running,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class PurgeObservabilityDataCommand:
-    now_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class PurgeResult:
-    trace_deleted: int
-    audit_deleted: int
-    audit_event_written: bool
-
-
-class PurgeObservabilityDataService:
-    """Purge retained trace and audit rows in bounded batches."""
-
-    def __init__(
-        self,
-        *,
-        unit_of_work_factory: Callable[[], UnitOfWork],
-        maintenance_gate: MaintenanceGate,
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._maintenance_gate = maintenance_gate
-
-    def __call__(self, command: PurgeObservabilityDataCommand) -> PurgeResult:
-        snapshot = self._maintenance_gate.snapshot()
-        if snapshot.has_active_write or snapshot.migration_running or snapshot.restore_running:
-            raise PurgeBlockedError("purge is blocked by maintenance state")
-        with self._unit_of_work_factory() as unit_of_work:
-            trace_deleted = unit_of_work.traces.purge_before_cutoff(
-                cutoff_ms=command.now_ms - TRACE_RETENTION_MS,
-                limit=MAX_PURGE_BATCH,
-            )
-            audit_deleted = unit_of_work.audits.purge_before_cutoff(
-                cutoff_ms=command.now_ms - AUDIT_RETENTION_MS,
-                limit=MAX_PURGE_BATCH,
-            )
-            audit_event_written = False
-            if trace_deleted > 0 or audit_deleted > 0:
-                emit_audit_event(
-                    unit_of_work,
-                    correlation=ObservabilityContext(),
-                    account_id=None,
-                    actor_type="SYSTEM",
-                    actor_id="purge_observability_data",
-                    actor_display="PurgeObservabilityDataService",
-                    event_name="PURGE_COMPLETED",
-                    event_category=EventCategory.PERSISTENCE,
-                    occurred_at_ms=command.now_ms,
-                    severity=Severity.INFO,
-                    component="retention",
-                    environment="test",
-                    release_version="dev",
-                    attributes={
-                        "trace_deleted": trace_deleted,
-                        "audit_deleted": audit_deleted,
-                        "batch_limit": MAX_PURGE_BATCH,
-                    },
-                    result_code="TRANSITION_APPLIED",
-                    status="COMPLETED",
-                    required=False,
-                )
-                audit_event_written = True
-            unit_of_work.commit()
-            return PurgeResult(
-                trace_deleted=trace_deleted,
-                audit_deleted=audit_deleted,
-                audit_event_written=audit_event_written,
-            )

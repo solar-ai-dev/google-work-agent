@@ -87,12 +87,9 @@ from google_work_agent.ports.observability import (
     OperationalLogRecord,
     OperationalLogSink,
 )
-from google_work_agent.ports.persistence.action_dependency_repository import (
-    ActionDependencyRepository,
-)
 from google_work_agent.ports.persistence.action_repository import ActionRepository
 from google_work_agent.ports.persistence.approval_repository import ApprovalRepository
-from google_work_agent.ports.persistence.audit_repository import AuditRepository
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventRepository
 from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
 from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
 from google_work_agent.ports.persistence.evidence_repository import EvidenceRepository
@@ -103,7 +100,7 @@ from google_work_agent.ports.persistence.message_repository import MessageReposi
 from google_work_agent.ports.persistence.plan_repository import PlanRepository
 from google_work_agent.ports.persistence.resource_ref_repository import ResourceRefRepository
 from google_work_agent.ports.persistence.run_repository import RunRepository
-from google_work_agent.ports.persistence.trace_repository import TraceRepository
+from google_work_agent.ports.persistence.trace_event_repository import TraceEventRepository
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.verification_repository import VerificationRepository
 from google_work_agent.ports.query import QueryConnectionFactory
@@ -158,7 +155,6 @@ from google_work_agent.ports.workflow_runtime import (
 
 __all__ = [
     "AccessDecision",
-    "ActionDependencyRepository",
     "ActionRepository",
     "ApprovalRepository",
     "ApiAccessGuard",
@@ -169,7 +165,7 @@ __all__ = [
     "AttachmentDescriptorVerifier",
     "AttachmentStagingPort",
     "AttachmentStagingError",
-    "AuditRepository",
+    "AuditEventRepository",
     "BufferStatus",
     "ClockPort",
     "CommandReceiptRepository",
@@ -257,7 +253,7 @@ __all__ = [
     "ToolCallSchemaRepairer",
     "ToolDefinition",
     "LLMToolCall",
-    "TraceRepository",
+    "TraceEventRepository",
     "UnitOfWork",
     "VerificationRepository",
     "WorkflowCancelRequest",

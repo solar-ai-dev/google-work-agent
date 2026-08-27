@@ -41,6 +41,8 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 def persist_reserved_corrective_write_plan(
@@ -84,10 +86,10 @@ def persist_reserved_corrective_write_plan(
     # empty RunScopedEvidenceStore and without acquisition rehydration.
     with runtime._unit_of_work_factory() as unit_of_work:
         current_run = unit_of_work.runs.get(run_id)
-        current_plan = unit_of_work.plans.get_by_id(reserved_plan.id)
+        current_plan = unit_of_work.plans.load_bundle(reserved_plan.id)
         if current_run is None or current_plan is None:
             raise LookupError("corrective Run/Plan disappeared during persistence")
-        current_plans = unit_of_work.plans.list_by_run(run_id)
+        current_plans = current_plan_tuple(unit_of_work.plans, run_id)
         if not current_plans:
             raise LookupError(f"no plans found for corrective run: {run_id}")
         current_latest = max(
@@ -99,7 +101,7 @@ def persist_reserved_corrective_write_plan(
             or current_latest.revision_no != reserved_plan.revision_no
         ):
             raise ValueError("corrective destination is no longer the latest Plan revision")
-        existing_actions = unit_of_work.actions.list_by_plan(reserved_plan.id)
+        existing_actions = unit_of_work.actions.list_for_plan(reserved_plan.id)
         save_command_id = _corrective_command_id(kind="save", plan_id=reserved_plan.id)
         publish_command_id = _corrective_command_id(kind="publish", plan_id=reserved_plan.id)
         save_receipt = unit_of_work.command_receipts.get_by_command_id(save_command_id)
@@ -327,10 +329,10 @@ def _build_durable_materialization_proof(
 
     with runtime._unit_of_work_factory() as unit_of_work:
         current_run = unit_of_work.runs.get(run_id)
-        current_plan = unit_of_work.plans.get_by_id(reserved_plan.id)
+        current_plan = unit_of_work.plans.load_bundle(reserved_plan.id)
         if current_run is None or current_plan is None:
             raise LookupError("corrective Run/Plan disappeared during durable proof")
-        plans = unit_of_work.plans.list_by_run(run_id)
+        plans = current_plan_tuple(unit_of_work.plans, run_id)
         if not plans:
             raise LookupError(f"no plans found for corrective run: {run_id}")
         latest = max(plans, key=lambda item: (item.revision_no, item.created_at_ms))
@@ -346,7 +348,7 @@ def _build_durable_materialization_proof(
                 "WAITING_APPROVAL/WAITING_APPROVAL"
             )
 
-        persisted_actions = unit_of_work.actions.list_by_plan(reserved_plan.id)
+        persisted_actions = unit_of_work.actions.list_for_plan(reserved_plan.id)
         if not persisted_actions:
             raise ValueError("durable corrective proof requires materialized Action children")
 
@@ -355,12 +357,6 @@ def _build_durable_materialization_proof(
         }
         if {action.id for action in persisted_actions} != set(expected_actions):
             raise ValueError("persisted corrective Action identity set drifted")
-
-        action_connector_reader = getattr(unit_of_work.actions, "connector_id_for_action", None)
-        if not callable(action_connector_reader):
-            raise RuntimeError(
-                "corrective durable proof requires persisted Action connector identity"
-            )
 
         persisted_connector_ids: dict[str, str] = {}
         target_resource_ids: dict[str, str | None] = {}
@@ -374,7 +370,7 @@ def _build_durable_materialization_proof(
                 raise ValueError(
                     f"checkpoint route lacks connector identity for {logical_action_id}"
                 )
-            actual_connector_id = action_connector_reader(persisted_action.id)
+            actual_connector_id = persisted_action.connector_id
             if actual_connector_id != expected_connector_id:
                 raise ValueError("persisted corrective Action connector identity drifted")
             persisted_connector_ids[persisted_action.id] = actual_connector_id
@@ -403,7 +399,7 @@ def _build_durable_materialization_proof(
                     )
 
             expected_evidence_ids = {evidence_id_map[item] for item in candidate["evidence_refs"]}
-            linked_evidence = unit_of_work.evidence.list_by_action(persisted_action.id)
+            linked_evidence = unit_of_work.evidence.list_for_action(persisted_action.id)
             if {item.id for item in linked_evidence} != expected_evidence_ids:
                 raise ValueError("persisted corrective Action-Evidence links drifted")
             for evidence in linked_evidence:
@@ -717,7 +713,7 @@ def _validate_persisted_materialization(
     ):
         raise ValueError("persisted corrective Plan identity/summary drifted")
 
-    persisted_actions = unit_of_work.actions.list_by_plan(plan.id)
+    persisted_actions = unit_of_work.actions.list_for_plan(plan.id)
     expected_actions = {
         action_id_map[action["action_id"]]: action for action in deterministic_plan["actions"]
     }
@@ -725,10 +721,6 @@ def _validate_persisted_materialization(
         raise ValueError("persisted corrective Action identity set drifted")
 
     registry = build_p0_tool_registry()
-    connector_reader = getattr(unit_of_work.actions, "connector_id_for_action", None)
-    if not callable(connector_reader):
-        raise RuntimeError("corrective persistence requires durable connector identity reader")
-
     seen_evidence: dict[str, Any] = {}
     for persisted_action in persisted_actions:
         candidate = expected_actions[persisted_action.id]
@@ -753,13 +745,16 @@ def _validate_persisted_materialization(
             != calculate_canonical_json_hash(candidate["arguments"])
             or persisted_action.arguments_json != canonicalize_json_value(candidate["arguments"])
             or persisted_action.expected_json != canonicalize_json_value(candidate["expected"])
-            or connector_reader(persisted_action.id) != persisted_connector_ids[persisted_action.id]
-            or set(unit_of_work.action_dependencies.list_dependencies(persisted_action.id))
-            != set(expected_dependencies)
+            or persisted_action.connector_id != persisted_connector_ids[persisted_action.id]
+            or set(
+                dependency_ids_for_action(
+                    unit_of_work.actions, persisted_actions, persisted_action.id
+                )
+            ) != set(expected_dependencies)
         ):
             raise ValueError("persisted corrective Action projection drifted")
 
-        linked_evidence = unit_of_work.evidence.list_by_action(persisted_action.id)
+        linked_evidence = unit_of_work.evidence.list_for_action(persisted_action.id)
         if {item.id for item in linked_evidence} != set(expected_evidence_ids):
             raise ValueError("persisted corrective Action-Evidence links drifted")
         for evidence in linked_evidence:

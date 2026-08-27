@@ -22,6 +22,7 @@ from google_work_agent.application.feasibility import (
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
+from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
 from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.run_command_receipts import (
@@ -77,6 +78,7 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
     {ActionStatusV1.PROPOSED.value, ActionStatusV1.MODIFIED.value, ActionStatusV1.APPROVED.value}
@@ -220,7 +222,7 @@ class ModifyWriteActionService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ModifyWriteAction",
                 request_hash=command.request_hash,
@@ -230,11 +232,11 @@ class ModifyWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -321,7 +323,7 @@ class ModifyWriteActionService:
             # Evidence/target linkage cannot change through a Modify patch, so
             # this reuses the exact inputs already satisfied when the action
             # was first planned -- a defensive re-check, not a new gate.
-            evidence_count = len(unit_of_work.evidence.list_by_action(action.id))
+            evidence_count = len(unit_of_work.evidence.list_for_action(action.id))
             validate_evidence_policy(
                 EvidencePolicyInput(
                     evidence_count=evidence_count,
@@ -359,7 +361,8 @@ class ModifyWriteActionService:
             if preview.applied:
                 revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
                 if (
-                    unit_of_work.actions.update_if_version_and_status(
+                    update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -416,7 +419,7 @@ class ModifyWriteActionService:
                     if item is not ActionCommand.APPROVE_ACTION
                 ),
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=action.id,
@@ -427,7 +430,7 @@ class ModifyWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _modify_audit_event(
                     run_id=run_id,
                     action_id=action.id,
@@ -445,7 +448,7 @@ class ModifyWriteActionService:
                 duplicate_authority(updated_risk) if fresh_duplicate_risk is not None else None
             )
             if authority is not None:
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _modify_audit_event(
                         run_id=run_id,
                         action_id=action.id,
@@ -466,7 +469,7 @@ class ModifyWriteActionService:
             )
             if calendar_authority is not None:
                 risk_value = updated_risk.get("calendar_conflict")
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _modify_audit_event(
                         run_id=run_id,
                         action_id=action.id,
@@ -491,7 +494,7 @@ class ModifyWriteActionService:
             )
             if feasibility is not None:
                 value = updated_risk.get("feasibility")
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _modify_audit_event(
                         run_id=run_id,
                         action_id=action.id,
@@ -607,14 +610,14 @@ def _revoke_stale_dependent_approvals(
     `depends_on_action_ids` has been saved.
     """
 
-    for dependent_id in unit_of_work.action_dependencies.list_dependents(modified_action_id):
-        dependent = unit_of_work.actions.get_by_id(dependent_id)
+    for dependent_id in unit_of_work.actions.list_dependents(modified_action_id):
+        dependent = unit_of_work.actions.get(dependent_id)
         if dependent is None or dependent.status != ActionStatusV1.APPROVED.value:
             continue
         revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
         if not revoked_ids:
             continue
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id=run_id,
                 action_id=dependent_id,
@@ -632,7 +635,7 @@ def _revoke_stale_dependent_approvals(
                 created_at_ms=now_ms,
             )
         )
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             _modify_audit_event(
                 run_id=run_id,
                 action_id=dependent_id,
@@ -683,14 +686,14 @@ def _block_rejected_action_dependents(
     """Block every still-pending transitive dependent in the persisted DAG."""
 
     blocked_action_ids: list[str] = []
-    pending = list(unit_of_work.action_dependencies.list_dependents(rejected_action_id))
+    pending = list(unit_of_work.actions.list_dependents(rejected_action_id))
     visited: set[str] = set()
     while pending:
         dependent_id = pending.pop(0)
         if dependent_id in visited:
             continue
         visited.add(dependent_id)
-        dependent = unit_of_work.actions.get_by_id(dependent_id)
+        dependent = unit_of_work.actions.get(dependent_id)
         if dependent is None or dependent.status not in {
             ActionStatusV1.PROPOSED.value,
             ActionStatusV1.MODIFIED.value,
@@ -699,7 +702,8 @@ def _block_rejected_action_dependents(
             continue
         revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
         if (
-            unit_of_work.actions.update_if_version_and_status(
+            update_action_record(
+                unit_of_work,
                 dependent_id,
                 expected_version=dependent.version,
                 expected_status=ActionStatusV1(dependent.status),
@@ -717,7 +721,7 @@ def _block_rejected_action_dependents(
             "new_status": ActionStatusV1.DEPENDENCY_BLOCKED.value,
             "revoked_approval_ids": list(revoked_ids),
         }
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id=run_id,
                 action_id=dependent_id,
@@ -734,7 +738,7 @@ def _block_rejected_action_dependents(
                 created_at_ms=now_ms,
             )
         )
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             _reject_audit_event(
                 run_id=run_id,
                 action_id=dependent_id,
@@ -744,7 +748,7 @@ def _block_rejected_action_dependents(
                 created_at_ms=now_ms,
             )
         )
-        pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_id))
+        pending.extend(unit_of_work.actions.list_dependents(dependent_id))
     return tuple(blocked_action_ids)
 
 
@@ -787,7 +791,7 @@ class RejectWriteActionService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RejectWriteAction",
                 request_hash=command.request_hash,
@@ -796,14 +800,14 @@ class RejectWriteActionService:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             run = unit_of_work.runs.get(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -819,7 +823,8 @@ class RejectWriteActionService:
             if preview.applied:
                 revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
                 if (
-                    unit_of_work.actions.update_if_version_and_status(
+                    update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -866,7 +871,7 @@ class RejectWriteActionService:
                 }
                 if command.reason_code is not None:
                     audit_metadata["reason_code"] = command.reason_code
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=action.id,
@@ -877,7 +882,7 @@ class RejectWriteActionService:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _reject_audit_event(
                         run_id=run.id,
                         action_id=action.id,
@@ -887,7 +892,7 @@ class RejectWriteActionService:
                         created_at_ms=now_ms,
                     )
                 )
-                current_actions = unit_of_work.actions.list_by_plan(plan.id)
+                current_actions = unit_of_work.actions.list_for_plan(plan.id)
                 terminal_statuses = {
                     ActionStatusV1.REJECTED.value,
                     ActionStatusV1.VERIFIED.value,
@@ -924,7 +929,8 @@ class RejectWriteActionService:
                         PlanStatusV1.WAITING_APPROVAL,
                         PlanStatusV1.ACTIVE,
                     } and (
-                        unit_of_work.plans.update_if_status(
+                        update_plan_record(
+                            unit_of_work,
                             plan.id,
                             expected_status=plan.status,
                             next_status=PlanStatusV1.COMPLETED,
@@ -976,7 +982,7 @@ def _mutate_write_action(
             )
 
         updated_at_ms = now_ms()
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command_id,
             command_type=command_type,
             request_hash=request_hash,
@@ -1003,7 +1009,7 @@ def _mutate_write_action(
         )
         if result.applied:
             run_id = _run_id_for_action(unit_of_work, action_id)
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=action_id,
@@ -1027,14 +1033,14 @@ def _mutate_write_action(
 
 def _run_id_for_action(unit_of_work: UnitOfWork, action_id: str) -> str:
     action = _require_action(unit_of_work, action_id)
-    plan = unit_of_work.plans.get_by_id(action.plan_id)
+    plan = unit_of_work.plans.load_bundle(action.plan_id)
     if plan is None:
         raise LookupError(f"plan not found for action: {action_id}")
     return plan.run_id
 
 
 def _require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-    action = unit_of_work.actions.get_by_id(action_id)
+    action = unit_of_work.actions.get(action_id)
     if action is None:
         raise LookupError(f"action not found: {action_id}")
     return action

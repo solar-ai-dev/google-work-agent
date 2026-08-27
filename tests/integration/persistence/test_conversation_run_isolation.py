@@ -180,8 +180,8 @@ def test_start_run_rejects_second_open_run_in_same_conversation(tmp_path: Path) 
     assert conflict.conflict_detail == "conversation already has an open run"
 
     with unit_of_work_factory() as unit_of_work:
-        stored_run_a = unit_of_work.runs.get_by_id(run_a.run_id)
-        stored_run_b = unit_of_work.runs.get_by_id(conflict.run_id)
+        stored_run_a = unit_of_work.runs.get(run_a.run_id)
+        stored_run_b = unit_of_work.runs.get(conflict.run_id)
     assert stored_run_a is not None
     assert stored_run_a.status.value == "CREATED"
     assert stored_run_b is None

@@ -107,8 +107,8 @@ def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) ->
     )
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-risk-default")
-        listed = unit_of_work.actions.list_by_plan("plan-risk-default")
+        action = unit_of_work.actions.get("action-risk-default")
+        listed = unit_of_work.actions.list_for_plan("plan-risk-default")
 
     assert action is not None
     assert action.risk == {}
@@ -135,8 +135,8 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     )
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-risk-roundtrip")
-        listed = unit_of_work.actions.list_by_plan("plan-risk-roundtrip")
+        action = unit_of_work.actions.get("action-risk-roundtrip")
+        listed = unit_of_work.actions.list_for_plan("plan-risk-roundtrip")
         ready = unit_of_work.actions.list_ready_actions("plan-risk-roundtrip")
 
     assert action is not None
@@ -232,4 +232,4 @@ def test_repository_rejects_corrupt_persisted_action_risk(write_database: Path) 
         sqlite_unit_of_work_factory(write_database)() as unit_of_work,
         pytest.raises(InvariantViolationError, match="not valid JSON"),
     ):
-        unit_of_work.actions.get_by_id("action-risk-corrupt")
+        unit_of_work.actions.get("action-risk-corrupt")

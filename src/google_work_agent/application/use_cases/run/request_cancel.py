@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -19,6 +20,7 @@ from google_work_agent.domain.run.transitions.finalize_cancel import transition_
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UUIDPort
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -89,10 +91,10 @@ class RequestCancelHandler:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
-            plans = unit_of_work.plans.list_by_run(run.id)
+            plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
-            actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
-            unit_of_work.command_receipts.add_received(
+            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RequestRunCancellation",
                 request_hash=command.request_hash,
@@ -139,7 +141,8 @@ class RequestCancelHandler:
                         updated_at_ms=now_ms,
                     )
                     if (
-                        unit_of_work.plans.update_if_status(
+                        update_plan_record(
+                            unit_of_work,
                             plan.id,
                             expected_status=plan.status,
                             next_status=PlanStatusV1.CANCELLED,
@@ -169,7 +172,7 @@ class RequestCancelHandler:
                 )
             if result.applied:
                 metadata = {"plan_id": None if plan is None else plan.id}
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
@@ -180,7 +183,7 @@ class RequestCancelHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     audit_event(
                         run_id=run.id,
                         action_id=None,
@@ -190,7 +193,7 @@ class RequestCancelHandler:
                         created_at_ms=now_ms,
                     )
                 )
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=ResultCode(result.result_code),

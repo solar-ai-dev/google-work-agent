@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from re import fullmatch
 
+from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
 from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.application.write_persistence import (
     append_approval_revoked_audits,
@@ -32,6 +33,9 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     SseEventBufferPort,
 )
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -81,7 +85,7 @@ class RejectActionHandler:
             if existing is not None:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RejectAction",
                 request_hash=command.request_hash,
@@ -90,14 +94,14 @@ class RejectActionHandler:
                 created_at_ms=now_ms,
             )
             action = self._require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             run = unit_of_work.runs.get(plan.run_id)
             if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -126,7 +130,8 @@ class RejectActionHandler:
                     created_at_ms=now_ms,
                 )
                 if (
-                    unit_of_work.actions.update_if_version_and_status(
+                    update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -172,7 +177,7 @@ class RejectActionHandler:
                 }
                 if command.reason_code is not None:
                     metadata["reason_code"] = command.reason_code
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=action.id,
@@ -183,7 +188,7 @@ class RejectActionHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     self._audit_event(
                         run_id=run.id,
                         action_id=action.id,
@@ -202,17 +207,21 @@ class RejectActionHandler:
                     ActionStatusV1.MISMATCH.value,
                     ActionStatusV1.CANCELLED.value,
                 }
-                current_actions = unit_of_work.actions.list_by_plan(plan.id)
+                current_actions = unit_of_work.actions.list_for_plan(plan.id)
                 if current_actions and all(item.status in terminal for item in current_actions):
                     approvals = tuple(
                         approval
                         for current_action in current_actions
-                        for approval in unit_of_work.approvals.list_by_action(current_action.id)
+                        for approval in active_approval_tuple(
+                            unit_of_work.approvals, current_action.id
+                        )
                     )
                     attempts = tuple(
                         attempt
                         for approval in approvals
-                        for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                        for attempt in active_attempt_tuple(
+                            unit_of_work.execution_attempts, approval.id
+                        )
                     )
                     completed_status = transition_complete_write_run(
                         run.status,
@@ -245,7 +254,8 @@ class RejectActionHandler:
                         PlanStatusV1.WAITING_APPROVAL,
                         PlanStatusV1.ACTIVE,
                     } and (
-                        unit_of_work.plans.update_if_status(
+                        update_plan_record(
+                            unit_of_work,
                             plan.id,
                             expected_status=plan.status,
                             next_status=PlanStatusV1.COMPLETED,
@@ -275,7 +285,7 @@ class RejectActionHandler:
                 action_id=command.action_id,
                 now_ms=self._now_ms(),
             )
-            action = unit_of_work.actions.get_by_id(command.action_id)
+            action = unit_of_work.actions.get(command.action_id)
             if action is None:
                 return RejectActionResult(
                     False,
@@ -311,7 +321,7 @@ class RejectActionHandler:
         response: RejectActionResult,
         now_ms: int,
     ) -> RejectActionResult:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=response.applied,
             result_code=ResultCode(response.result_code),
@@ -376,14 +386,14 @@ class RejectActionHandler:
         now_ms: int,
     ) -> tuple[str, ...]:
         blocked: list[str] = []
-        pending = list(unit_of_work.action_dependencies.list_dependents(rejected_action_id))
+        pending = list(unit_of_work.actions.list_dependents(rejected_action_id))
         visited: set[str] = set()
         while pending:
             dependent_id = pending.pop(0)
             if dependent_id in visited:
                 continue
             visited.add(dependent_id)
-            dependent = unit_of_work.actions.get_by_id(dependent_id)
+            dependent = unit_of_work.actions.get(dependent_id)
             if dependent is None or dependent.status not in {
                 ActionStatusV1.PROPOSED.value,
                 ActionStatusV1.MODIFIED.value,
@@ -400,7 +410,8 @@ class RejectActionHandler:
                 created_at_ms=now_ms,
             )
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     dependent_id,
                     expected_version=dependent.version,
                     expected_status=ActionStatusV1(dependent.status),
@@ -418,7 +429,7 @@ class RejectActionHandler:
                 "new_status": ActionStatusV1.DEPENDENCY_BLOCKED.value,
                 "revoked_approval_ids": list(revoked),
             }
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=dependent_id,
@@ -432,7 +443,7 @@ class RejectActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 cls._audit_event(
                     run_id=run_id,
                     action_id=dependent_id,
@@ -442,12 +453,12 @@ class RejectActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            pending.extend(unit_of_work.action_dependencies.list_dependents(dependent_id))
+            pending.extend(unit_of_work.actions.list_dependents(dependent_id))
         return tuple(blocked)
 
     @staticmethod
     def _require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-        action = unit_of_work.actions.get_by_id(action_id)
+        action = unit_of_work.actions.get(action_id)
         if action is None:
             raise LookupError(f"action not found: {action_id}")
         return action

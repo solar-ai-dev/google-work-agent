@@ -1,9 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
+)
+from google_work_agent.application.persistence_admissibility import (
+    upsert_registered_resource_ref,
 )
 from google_work_agent.application.read_contracts import (
     CompletedResourceRef,
@@ -55,7 +60,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
     action = ActionRecord(
         id="action-1",
         plan_id="plan-1",
-        connector_id="github",
+        connector_id="google_workspace",
         position=1,
         tool_name="github_create_issue",
         effect_type="CREATE",
@@ -75,7 +80,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
     resource_ref = ResourceRefRecord(
         id="resource-ref-1",
         run_id="run-1",
-        connector_id="github",
+        connector_id="google_workspace",
         source=ResourceSource.TASKS,
         resource_type="TASK",
         resource_id="issue-1",
@@ -89,7 +94,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
     )
 
     with SqliteUnitOfWork(database_path) as unit_of_work:
-        unit_of_work.actions.insert_write_action(action)
+        unit_of_work.actions.insert_for_plan(action)
         persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
         assert persisted is not None
         assert persisted.id == "resource-ref-1"
@@ -101,13 +106,13 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
             connection.execute(
                 "SELECT connector_id FROM actions WHERE id = 'action-1';"
             ).fetchone()[0]
-            == "github"
+            == "google_workspace"
         )
         assert (
             connection.execute(
                 "SELECT connector_id FROM resource_refs WHERE id = 'resource-ref-1';"
             ).fetchone()[0]
-            == "github"
+            == "google_workspace"
         )
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
@@ -121,7 +126,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
     action = ActionRecord(
         id="read-action-1",
         plan_id="plan-1",
-        connector_id="github",
+        connector_id="google_workspace",
         position=1,
         tool_name="tasks_list_tasks",
         effect_type="READ",
@@ -139,7 +144,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
         updated_at_ms=2,
     )
     with SqliteUnitOfWork(database_path) as unit_of_work:
-        unit_of_work.actions.insert_read_action(action)
+        unit_of_work.actions.insert_for_plan(action)
         unit_of_work.commit()
 
     factory = sqlite_unit_of_work_factory(database_path)
@@ -176,14 +181,39 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
             connection.execute(
                 "SELECT connector_id FROM actions WHERE id = 'read-action-1';"
             ).fetchone()[0]
-            == "github"
+            == "google_workspace"
         )
         assert (
             connection.execute(
                 "SELECT connector_id FROM resource_refs WHERE id = 'read-resource-1';"
             ).fetchone()[0]
-            == "github"
+            == "google_workspace"
         )
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
         connection.close()
+
+
+def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path: Path) -> None:
+    database_path = tmp_path / "unregistered-connector.db"
+    _seed_plan(database_path)
+    resource_ref = ResourceRefRecord(
+        id="unregistered-ref",
+        run_id="run-1",
+        connector_id="github",
+        source=ResourceSource.TASKS,
+        resource_type="TASK",
+        resource_id="issue-1",
+        parent_resource_id=None,
+        canonical_url=None,
+        title="Issue",
+        event_time_ms=None,
+        version_token="v1",
+        metadata_json="{}",
+        captured_at_ms=3,
+    )
+    with (
+        SqliteUnitOfWork(database_path) as unit_of_work,
+        pytest.raises(LookupError, match="connector tool registry not registered"),
+    ):
+        upsert_registered_resource_ref(unit_of_work, resource_ref)

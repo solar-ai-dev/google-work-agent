@@ -7,21 +7,32 @@ from google_work_agent.domain.action.model import ActionStatusV1
 
 
 class ActionRepository(Protocol):
-    def get_by_id(self, action_id: str) -> ActionRecord | None: ...
-    def insert_read_action(self, action: ActionRecord) -> None: ...
-    def insert_write_action(self, action: ActionRecord) -> None: ...
+    def get(self, action_id: str) -> ActionRecord | None: ...
+    def insert_for_plan(
+        self,
+        action: ActionRecord,
+        *,
+        dependency_ids: tuple[str, ...] = (),
+        evidence_ids: tuple[str, ...] = (),
+    ) -> None: ...
+    def list_dependents(self, action_id: str) -> tuple[str, ...]: ...
+    def is_dependency_ready(self, action_id: str) -> bool: ...
     def update_if_version_and_status(
         self,
         action_id: str,
-        *,
         expected_version: int,
-        expected_status: ActionStatusV1,
-        next_status: ActionStatusV1,
-        updated_at_ms: int,
-        arguments_json: str | None = None,
-        arguments_hash: str | None = None,
-        risk: dict[str, object] | None = None,
-    ) -> ActionRecord | None: ...
-    def list_by_plan(self, plan_id: str) -> tuple[ActionRecord, ...]: ...
-    def list_ready_actions(self, plan_id: str) -> tuple[ActionRecord, ...]: ...
-    def connector_id_for_action(self, action_id: str) -> str: ...
+        expected_statuses: frozenset[ActionStatusV1],
+        values: dict[str, object],
+    ) -> bool: ...
+    def list_for_plan(self, plan_id: str) -> tuple[ActionRecord, ...]: ...
+
+
+def dependency_ids_for_action(
+    repository: ActionRepository,
+    actions: tuple[ActionRecord, ...],
+    action_id: str,
+) -> tuple[str, ...]:
+    """Derive reverse dependency membership from the canonical public query."""
+    return tuple(
+        action.id for action in actions if action_id in repository.list_dependents(action.id)
+    )

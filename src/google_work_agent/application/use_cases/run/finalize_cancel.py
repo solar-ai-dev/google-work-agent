@@ -5,12 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 from types import SimpleNamespace
-from typing import cast
 
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -35,6 +32,8 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 FinalizeCancelCommand = FinalizeRunCancellationCommand
 FinalizeCancelResult = WriteRunResponse
@@ -61,7 +60,7 @@ class FinalizeCancelHandler:
                     now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="FinalizeRunCancellation",
                 request_hash=command.request_hash,
@@ -70,13 +69,13 @@ class FinalizeCancelHandler:
                 created_at_ms=now_ms,
             )
             run = require_run(unit_of_work, command.run_id)
-            plans = unit_of_work.plans.list_by_run(run.id)
+            plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(
                 plans,
                 key=lambda item: (item.revision_no, item.created_at_ms),
                 default=None,
             )
-            actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             if command.expected_run_version != run.version:
                 response = WriteRunResponse(
                     applied=False,
@@ -137,8 +136,12 @@ class FinalizeCancelHandler:
                 )
                 unknown_attempt = next(
                     attempt
-                    for approval in unit_of_work.approvals.list_by_action(unknown_action.id)
-                    for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                    for approval in unit_of_work.approval_history.list_for_action(
+                        unknown_action.id
+                    )
+                    for attempt in active_attempt_tuple(
+                        unit_of_work.execution_attempts, approval.id
+                    )
                     if attempt.status.value == "UNKNOWN_RESULT"
                 )
                 recovery_payload = {
@@ -217,9 +220,10 @@ class FinalizeCancelHandler:
                         plan_id=plan.id,
                         updated_at_ms=now_ms,
                     )
-                    actions = unit_of_work.actions.list_by_plan(plan.id)
+                    actions = unit_of_work.actions.list_for_plan(plan.id)
                     if (
-                        unit_of_work.plans.update_if_status(
+                        update_plan_record(
+                            unit_of_work,
                             plan.id,
                             expected_status=plan.status,
                             next_status=PlanStatusV1.CANCELLED,
@@ -230,7 +234,7 @@ class FinalizeCancelHandler:
                             f"validated Plan cancellation CAS failed: {plan.id}"
                         )
                     plan = max(
-                        unit_of_work.plans.list_by_run(run.id),
+                        current_plan_tuple(unit_of_work.plans, run.id),
                         key=lambda item: (item.revision_no, item.created_at_ms),
                     )
                 final_result = _apply_run_transition(
@@ -264,7 +268,7 @@ class FinalizeCancelHandler:
                     ),
                 )
             if response.applied and response.run_status == RunStatusV1.CANCELLED.value:
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
@@ -275,7 +279,7 @@ class FinalizeCancelHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     audit_event(
                         run_id=run.id,
                         action_id=None,
@@ -293,9 +297,7 @@ class FinalizeCancelHandler:
 
 
 def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    return has_durable_cancel_intent(
-        cast(CancelIntentReceiptReader, unit_of_work.command_receipts), run_id
-    )
+    return has_durable_cancel_intent(unit_of_work.cancel_intents, run_id)
 
 
 def _finalize_transition(
@@ -303,18 +305,18 @@ def _finalize_transition(
 ) -> Callable[[RunStatusV1], RunStatusV1]:
     current_plans = tuple(
         candidate
-        for candidate in unit_of_work.plans.list_by_run(run_id)
+        for candidate in current_plan_tuple(unit_of_work.plans, run_id)
         if candidate.status is not PlanStatusV1.SUPERSEDED
     )
     approvals = tuple(
         approval
         for action in actions
-        for approval in unit_of_work.approvals.list_by_action(action.id)
+        for approval in unit_of_work.approval_history.list_for_action(action.id)
     )
     attempts = tuple(
         attempt
         for approval in approvals
-        for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+        for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
     )
 
     def apply(current_status: RunStatusV1) -> RunStatusV1:

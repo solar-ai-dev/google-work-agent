@@ -167,7 +167,7 @@ def get_latest_conversation_run(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    run = GetLatestRunHandler(unit_of_work_factory=dependencies.unit_of_work_factory)(
+    run = GetLatestRunHandler(query_service=dependencies.query_service)(
         GetLatestRunQuery(conversation_id=conversation_id)
     )
     return LatestConversationRunResponse(

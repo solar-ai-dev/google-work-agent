@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
+)
 from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
@@ -75,7 +79,7 @@ class StoreWriteActionSuccessService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="StoreWriteActionSuccess",
                 request_hash=command.request_hash,
@@ -121,7 +125,8 @@ class StoreWriteActionSuccessService:
                 )
                 unit_of_work.commit()
                 return response
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -136,7 +141,8 @@ class StoreWriteActionSuccessService:
                 finished_at_ms=now_ms,
             )
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -148,7 +154,7 @@ class StoreWriteActionSuccessService:
                 raise RuntimeError("validated StoreSuccess Action CAS failed")
             result = preview
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -162,7 +168,7 @@ class StoreWriteActionSuccessService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -212,7 +218,7 @@ class MarkWriteActionFailedService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="MarkWriteActionFailed",
                 request_hash=command.request_hash,
@@ -263,7 +269,8 @@ class MarkWriteActionFailedService:
                 )
                 if not preview.applied:
                     raise RuntimeError(preview.conflict_detail or "MarkFailed rejected")
-                unit_of_work.execution_attempts.update_if_version_and_status(
+                update_execution_attempt_record(
+                    unit_of_work,
                     attempt.id,
                     expected_version=command.expected_attempt_version,
                     expected_status=attempt.status,
@@ -275,7 +282,8 @@ class MarkWriteActionFailedService:
                     finished_at_ms=now_ms,
                 )
                 if (
-                    unit_of_work.actions.update_if_version_and_status(
+                    update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -294,7 +302,7 @@ class MarkWriteActionFailedService:
                 updated_at_ms=now_ms,
             )
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -308,7 +316,7 @@ class MarkWriteActionFailedService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,

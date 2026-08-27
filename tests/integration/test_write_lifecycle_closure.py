@@ -15,8 +15,8 @@ from google_work_agent.adapters.langgraph.main.state import ParentGraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.adapters.persistence.corrective_plan_repository import (
-    CorrectiveAwareSQLitePlanRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
+    SqlitePlanRepository,
 )
 
 
@@ -72,7 +72,7 @@ def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -
     ordinary_source = inspect.getsource(plan_persistence.PlanPersistenceMixin._persist_write_plan)
     corrective_source = inspect.getsource(corrective_persistence)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)
-    repository_source = inspect.getsource(CorrectiveAwareSQLitePlanRepository.insert_draft)
+    repository_source = inspect.getsource(SqlitePlanRepository.insert_revision)
 
     # Ordinary replan semantics remain untouched.
     assert "reserved_plan" not in ordinary_source

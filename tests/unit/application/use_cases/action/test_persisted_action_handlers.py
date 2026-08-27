@@ -34,8 +34,8 @@ def _uow() -> MagicMock:
     unit_of_work = MagicMock()
     unit_of_work.__enter__.return_value = unit_of_work
     unit_of_work.__exit__.return_value = None
-    unit_of_work.plans.list_by_run.side_effect = lambda _run_id: (
-        unit_of_work.plans.get_by_id.return_value,
+    unit_of_work.plans.get_current.side_effect = lambda _run_id: (
+        unit_of_work.plans.load_bundle.return_value
     )
     return unit_of_work
 
@@ -84,23 +84,23 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.APPROVED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.evidence.list_by_action.return_value = [object()]
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.evidence.list_for_action.return_value = [object()]
     approval = SimpleNamespace(id="approval-1", status=ApprovalStatusV1.ACTIVE)
-    unit_of_work.approvals.list_by_action.return_value = [approval]
+    unit_of_work.approvals.get_active_for_action.return_value = approval
     unit_of_work.approvals.update_if_status.return_value = True
-    unit_of_work.actions.update_if_version_and_status.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
         status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=6,
     )
-    unit_of_work.plans.update_review_if_version_and_status.return_value = SimpleNamespace(
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
         review_version=7
     )
-    unit_of_work.action_dependencies.list_dependents.return_value = ()
+    unit_of_work.actions.list_dependents.return_value = ()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
@@ -126,10 +126,10 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
     unit_of_work.actions.update_if_version_and_status.assert_called_once()
     unit_of_work.approvals.update_if_status.assert_called_once()
-    unit_of_work.plans.update_review_if_version_and_status.assert_called_once()
-    unit_of_work.command_receipts.finish_json.assert_called_once()
-    unit_of_work.traces.add.assert_called()
-    unit_of_work.audits.add.assert_called()
+    unit_of_work.plans.record_review_result.assert_called_once()
+    unit_of_work.command_receipts.store_result.assert_called_once()
+    unit_of_work.traces.append.assert_called()
+    unit_of_work.audits.append.assert_called()
     unit_of_work.commit.assert_called_once()
     unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
 
@@ -143,23 +143,23 @@ def _assert_terminal_modify_regression(
     unit_of_work = _uow()
     action = _action(status=initial_status, version=initial_version)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.evidence.list_by_action.return_value = [object()]
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.evidence.list_for_action.return_value = [object()]
     approval = SimpleNamespace(id="stale-approval", status=ApprovalStatusV1.ACTIVE)
-    unit_of_work.approvals.list_by_action.return_value = [approval]
+    unit_of_work.approvals.get_active_for_action.return_value = approval
     unit_of_work.approvals.update_if_status.return_value = True
-    unit_of_work.actions.update_if_version_and_status.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
         status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=11,
     )
-    unit_of_work.plans.update_review_if_version_and_status.return_value = SimpleNamespace(
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
         review_version=12
     )
-    unit_of_work.action_dependencies.list_dependents.return_value = ()
+    unit_of_work.actions.list_dependents.return_value = ()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1500,
@@ -188,20 +188,25 @@ def _assert_terminal_modify_regression(
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
     unit_of_work.actions.update_if_version_and_status.assert_called_once_with(
         action.id,
-        expected_version=initial_version,
-        expected_status=initial_status,
-        next_status=ActionStatusV1.MODIFIED,
-        updated_at_ms=1500,
-        arguments_json=dumps(expected_arguments, sort_keys=True, separators=(",", ":")),
-        arguments_hash=calculate_canonical_json_hash(expected_arguments),
-        risk=action.risk,
+        initial_version,
+        frozenset({initial_status}),
+        {
+            "status": ActionStatusV1.MODIFIED,
+            "updated_at_ms": 1500,
+            "version": initial_version + 1,
+            "arguments_json": dumps(
+                expected_arguments, sort_keys=True, separators=(",", ":")
+            ),
+            "arguments_hash": calculate_canonical_json_hash(expected_arguments),
+            "risk_json": "{}",
+        },
     )
     unit_of_work.approvals.update_if_status.assert_called_once()
-    unit_of_work.approvals.insert.assert_not_called()
-    unit_of_work.plans.update_review_if_version_and_status.assert_called_once()
-    unit_of_work.command_receipts.finish_json.assert_called_once()
-    unit_of_work.traces.add.assert_called()
-    unit_of_work.audits.add.assert_called()
+    unit_of_work.approvals.insert_active_snapshot.assert_not_called()
+    unit_of_work.plans.record_review_result.assert_called_once()
+    unit_of_work.command_receipts.store_result.assert_called_once()
+    unit_of_work.traces.append.assert_called()
+    unit_of_work.audits.append.assert_called()
     unit_of_work.commit.assert_called_once()
     unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
     assert unit_of_work.execution_attempts.method_calls == []
@@ -228,8 +233,8 @@ def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> Non
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.PROPOSED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
         status=PlanStatusV1.SUPERSEDED,
@@ -266,25 +271,25 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
     action = _action(status=ActionStatusV1.APPROVED, version=2)
     dependent = SimpleNamespace(id="action-2", status=ActionStatusV1.APPROVED.value, version=1)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.side_effect = lambda action_id: (
+    unit_of_work.actions.get.side_effect = lambda action_id: (
         action if action_id == action.id else dependent
     )
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id, run_id="run-1", status=PlanStatusV1.WAITING_APPROVAL
     )
     unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1", version=9, conversation_id="conversation-1", status=RunStatusV1.WAITING_APPROVAL
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
-    unit_of_work.approvals.list_by_action.return_value = [
-        SimpleNamespace(id="approval-1", status=ApprovalStatusV1.ACTIVE)
-    ]
+    unit_of_work.approvals.get_active_for_action.return_value = SimpleNamespace(
+        id="approval-1", status=ApprovalStatusV1.ACTIVE
+    )
     unit_of_work.approvals.update_if_status.return_value = True
-    unit_of_work.actions.update_if_version_and_status.return_value = action
-    unit_of_work.action_dependencies.list_dependents.side_effect = lambda action_id: (
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.actions.list_dependents.side_effect = lambda action_id: (
         ("action-2",) if action_id == "action-1" else ()
     )
-    unit_of_work.actions.list_by_plan.return_value = [SimpleNamespace(status="PROPOSED")]
+    unit_of_work.actions.list_for_plan.return_value = [SimpleNamespace(status="PROPOSED")]
 
     result = RejectActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
@@ -301,9 +306,9 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
 
     assert result.applied is True
     assert unit_of_work.actions.update_if_version_and_status.call_count == 2
-    unit_of_work.command_receipts.finish_json.assert_called_once()
-    unit_of_work.traces.add.assert_called()
-    unit_of_work.audits.add.assert_called()
+    unit_of_work.command_receipts.store_result.assert_called_once()
+    unit_of_work.traces.append.assert_called()
+    unit_of_work.audits.append.assert_called()
     unit_of_work.commit.assert_called_once()
 
 
@@ -311,16 +316,16 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
         status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=10,
     )
-    unit_of_work.actions.update_if_version_and_status.return_value = action
-    unit_of_work.plans.update_review_if_version_and_status.return_value = SimpleNamespace(
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
         review_version=11
     )
 
@@ -342,7 +347,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     assert unit_of_work.approvals.method_calls == []
     assert unit_of_work.execution_attempts.method_calls == []
     assert unit_of_work.verifications.method_calls == []
-    unit_of_work.plans.update_review_if_version_and_status.assert_called_once()
+    unit_of_work.plans.record_review_result.assert_called_once()
     unit_of_work.commit.assert_called_once()
 
 
@@ -350,8 +355,8 @@ def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
         status=PlanStatusV1.SUPERSEDED,
@@ -383,8 +388,8 @@ def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatusV
     unit_of_work = _uow()
     action = _action(status=status, version=6)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
         status=PlanStatusV1.WAITING_APPROVAL,

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.write_action_arguments import (
     dict_argument as _dict_argument,
 )
@@ -165,7 +166,7 @@ class VerifyWriteActionService:
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             if attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED:
                 now_ms = self._now_ms()
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="VerifyWriteAction",
                     request_hash=command.request_hash,
@@ -241,7 +242,7 @@ class VerifyWriteActionService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="VerifyWriteAction",
                 request_hash=command.request_hash,
@@ -324,7 +325,8 @@ class VerifyWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            verification_no = len(unit_of_work.verifications.list_by_attempt(attempt.id)) + 1
+            latest = unit_of_work.verifications.get_latest_for_attempt(attempt.id)
+            verification_no = 1 if latest is None else latest.verification_no + 1
             verification = VerificationRecord(
                 id=command.verification_id,
                 execution_attempt_id=attempt.id,
@@ -338,7 +340,8 @@ class VerifyWriteActionService:
             )
             unit_of_work.verifications.insert(verification)
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -376,7 +379,7 @@ class VerifyWriteActionService:
             }
             if mcp_request_id is not None:
                 verification_trace_payload["mcp_request_id"] = mcp_request_id
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -394,7 +397,7 @@ class VerifyWriteActionService:
             }
             if mcp_request_id is not None:
                 verification_audit_metadata["mcp_request_id"] = mcp_request_id
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,

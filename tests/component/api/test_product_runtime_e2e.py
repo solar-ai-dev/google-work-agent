@@ -403,6 +403,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
+            query_service=lambda: query_service,
         ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",

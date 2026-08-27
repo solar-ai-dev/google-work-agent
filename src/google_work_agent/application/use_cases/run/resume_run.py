@@ -25,6 +25,7 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UUIDPort
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -147,7 +148,7 @@ class ResumeRunHandler:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResumeRun",
                 request_hash=command.request_hash,
@@ -158,12 +159,12 @@ class ResumeRunHandler:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
-            plans = unit_of_work.plans.list_by_run(command.run_id)
+            plans = current_plan_tuple(unit_of_work.plans, command.run_id)
             latest_plan = max(
                 plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None
             )
             actions = (
-                () if latest_plan is None else unit_of_work.actions.list_by_plan(latest_plan.id)
+                () if latest_plan is None else unit_of_work.actions.list_for_plan(latest_plan.id)
             )
             unknown_result_exists = any(
                 action.status == ActionStatusV1.UNKNOWN_RESULT.value for action in actions
@@ -201,7 +202,7 @@ class ResumeRunHandler:
                     if command.resume_kind == "REAUTH_COMPLETED"
                     else "RUN_RESUMED"
                 )
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
@@ -212,7 +213,7 @@ class ResumeRunHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     AuditEventRecord(
                         account_id=None,
                         run_id=run.id,
@@ -384,10 +385,7 @@ class ResumeRunHandler:
 
 
 def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    checker = getattr(unit_of_work.command_receipts, "has_applied_request_cancel", None)
-    if not callable(checker):
-        return False
-    return has_durable_cancel_intent(unit_of_work.command_receipts, run_id)
+    return has_durable_cancel_intent(unit_of_work.cancel_intents, run_id)
 
 
 __all__ = ["ResumeRunCommand", "ResumeRunHandler", "ResumeRunResult"]

@@ -85,7 +85,7 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
     }
 
     with SqliteUnitOfWork(database_path) as unit_of_work:
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id="run-1",
                 action_id=None,
@@ -96,7 +96,7 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
                 created_at_ms=2,
             )
         )
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             AuditEventRecord(
                 account_id="account-1",
                 run_id="run-1",
@@ -175,7 +175,7 @@ def test_production_trace_boundary_rejects_invalid_json_fail_closed(tmp_path: Pa
     _seed_run(database_path)
 
     with SqliteUnitOfWork(database_path) as unit_of_work, pytest.raises(SanitizationError):
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id="run-1",
                 action_id=None,

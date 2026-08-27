@@ -65,7 +65,7 @@ class CreateConversationHandler:
                     ),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="CreateConversation",
                 request_hash=command.request_hash,

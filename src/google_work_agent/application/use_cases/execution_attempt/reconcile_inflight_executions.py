@@ -22,6 +22,7 @@ from google_work_agent.ports import DeliveryCertainty, UUIDPort
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
@@ -81,8 +82,8 @@ class ReconcileInflightExecutionsHandler:
     def _reconcile(self, candidate: ExecutionReconciliationCandidateV1) -> int:
         if candidate.kind == "POST_BEGIN_ORPHAN":
             with self._unit_of_work_factory() as unit_of_work:
-                action = unit_of_work.actions.get_by_id(candidate.action_id)
-                attempt = unit_of_work.execution_attempts.get_by_id(candidate.execution_attempt_id)
+                action = unit_of_work.actions.get(candidate.action_id)
+                attempt = unit_of_work.execution_attempts.get(candidate.execution_attempt_id)
             if action is None or attempt is None:
                 return 0
             command_id = f"system:execution-attempt-reconcile:{candidate.execution_attempt_id}"
@@ -109,11 +110,11 @@ class ReconcileInflightExecutionsHandler:
         if candidate.kind == "FAILED_AWAITING_CONTINUATION":
             with self._unit_of_work_factory() as unit_of_work:
                 run = unit_of_work.runs.get(candidate.run_id)
-                plans = unit_of_work.plans.list_by_run(candidate.run_id)
+                plans = current_plan_tuple(unit_of_work.plans, candidate.run_id)
                 plan = max(
                     plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None
                 )
-                actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+                actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             stage = (
                 "CANCEL_RESOLUTION"
                 if run is not None and run.status is RunStatusV1.CANCEL_REQUESTED

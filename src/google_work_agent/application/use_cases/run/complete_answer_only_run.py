@@ -19,6 +19,7 @@ from google_work_agent.domain.run.transitions.complete_answer_only_run import (
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +56,7 @@ class CompleteAnswerOnlyRunHandler:
                 return self._handle_existing_receipt(unit_of_work, command, existing_receipt)
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="CompleteAnswerOnlyRun",
                 request_hash=command.request_hash,
@@ -88,8 +89,8 @@ class CompleteAnswerOnlyRunHandler:
                     "expected_version does not match current_version",
                 )
             else:
-                plans = unit_of_work.plans.list_by_run(run.id)
-                has_action = any(unit_of_work.actions.list_by_plan(plan.id) for plan in plans)
+                plans = current_plan_tuple(unit_of_work.plans, run.id)
+                has_action = any(unit_of_work.actions.list_for_plan(plan.id) for plan in plans)
                 next_status = transition_complete_answer_only_run(
                     run.status,
                     has_plan=bool(plans),
@@ -126,7 +127,7 @@ class CompleteAnswerOnlyRunHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=command.run_id,
                         action_id=None,
@@ -146,7 +147,7 @@ class CompleteAnswerOnlyRunHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     AuditEventRecord(
                         account_id=conversation.account_id,
                         run_id=command.run_id,
@@ -178,9 +179,12 @@ class CompleteAnswerOnlyRunHandler:
                     assistant_message_id=assistant_message_id,
                 )
 
-            unit_of_work.command_receipts.finish(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
-                response=response,
+                applied=response.applied,
+                result_code=response.result_code,
+                result_version=response.current_version,
+                response_json=_response_json(response),
                 completed_at_ms=now_ms,
             )
             unit_of_work.commit()
@@ -247,9 +251,12 @@ class CompleteAnswerOnlyRunHandler:
                     next_allowed_commands=next_allowed_run_commands(run.status),
                     assistant_message_id=message.id,
                 )
-                unit_of_work.command_receipts.finish(
+                unit_of_work.command_receipts.store_result(
                     command_id=command.command_id,
-                    response=response,
+                    applied=response.applied,
+                    result_code=response.result_code,
+                    result_version=response.current_version,
+                    response_json=_response_json(response),
                     completed_at_ms=self._now_ms(),
                 )
                 unit_of_work.commit()
@@ -263,9 +270,12 @@ class CompleteAnswerOnlyRunHandler:
             next_allowed_commands=next_allowed_run_commands(run.status),
             conflict_detail="receipt is pending and aggregate state is not safely recoverable",
         )
-        unit_of_work.command_receipts.finish(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
-            response=response,
+            applied=response.applied,
+            result_code=response.result_code,
+            result_version=response.current_version,
+            response_json=_response_json(response),
             completed_at_ms=self._now_ms(),
         )
         unit_of_work.commit()
@@ -273,6 +283,21 @@ class CompleteAnswerOnlyRunHandler:
 
 
 CompleteAnswerOnlyRunResult = AnswerOnlyResponse
+
+
+def _response_json(response: AnswerOnlyResponse) -> str:
+    return dumps(
+        {
+            "applied": response.applied,
+            "result_code": response.result_code.value,
+            "current_status": response.current_status.value,
+            "current_version": response.current_version,
+            "next_allowed_commands": [item.value for item in response.next_allowed_commands],
+            "conflict_detail": response.conflict_detail,
+            "assistant_message_id": response.assistant_message_id,
+        },
+        sort_keys=True,
+    )
 
 __all__ = [
     "CompleteAnswerOnlyRunCommand",

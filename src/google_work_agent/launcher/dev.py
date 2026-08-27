@@ -803,6 +803,7 @@ def build_container(
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
+            query_service=lambda: query_service,
         ),
         get_llm_connection_service=GetLLMConnectionService(
             runtime_status_service=llm_runtime.status_service,

@@ -23,6 +23,7 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class ResumeRunService:
@@ -61,7 +62,7 @@ class ResumeRunService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResumeRun",
                 request_hash=command.request_hash,
@@ -75,7 +76,7 @@ class ResumeRunService:
             if latest_plan is not None:
                 unknown_result_exists = any(
                     action.status == ActionStatusV1.UNKNOWN_RESULT.value
-                    for action in unit_of_work.actions.list_by_plan(latest_plan)
+                    for action in unit_of_work.actions.list_for_plan(latest_plan)
                 )
 
             allowed_statuses = {
@@ -133,7 +134,7 @@ class ResumeRunService:
 
 
 def _latest_plan_id(unit_of_work: UnitOfWork, run_id: str) -> str | None:
-    plans = unit_of_work.plans.list_by_run(run_id)
+    plans = current_plan_tuple(unit_of_work.plans, run_id)
     if not plans:
         return None
     return plans[-1].id

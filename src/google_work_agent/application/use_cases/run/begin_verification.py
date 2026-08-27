@@ -67,7 +67,7 @@ class BeginVerificationHandler:
                     )
                 raise RuntimeError("RECEIVED BeginVerification receipt requires reconciliation")
 
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="BeginVerification",
                 request_hash=command.request_hash,
@@ -103,7 +103,7 @@ class BeginVerificationHandler:
                         {"status": next_status.value, "version": run.version + 1},
                     ):
                         raise RuntimeError("validated BeginVerification CAS failed")
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         AuditEvent(
                             account_id=None,
                             run_id=run.id,
@@ -126,7 +126,7 @@ class BeginVerificationHandler:
             payload = asdict(result)
             payload["result_code"] = result.result_code.value
             payload["current_status"] = result.current_status.value
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=result.result_code,

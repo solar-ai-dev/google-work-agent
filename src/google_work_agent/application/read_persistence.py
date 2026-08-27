@@ -34,6 +34,7 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     UnitOfWork,
 )
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 
 READ_ACTION_TERMINAL_STATUSES = frozenset(
     {
@@ -62,14 +63,14 @@ def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
 
 
 def require_plan(unit_of_work: UnitOfWork, plan_id: str) -> PlanRecord:
-    plan = unit_of_work.plans.get_by_id(plan_id)
+    plan = unit_of_work.plans.load_bundle(plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     return plan
 
 
 def require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-    action = unit_of_work.actions.get_by_id(action_id)
+    action = unit_of_work.actions.get(action_id)
     if action is None:
         raise LookupError(f"action not found: {action_id}")
     return action
@@ -133,7 +134,7 @@ def finish_json_receipt(
 ) -> None:
     applied = bool(response.applied)
     result_code = ResultCode(str(response.result_code))
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=applied,
         result_code=result_code,
@@ -218,7 +219,7 @@ def handle_existing_save_receipt(
         )
 
     run = require_run(unit_of_work, run_id)
-    plan = unit_of_work.plans.get_by_id(command.plan_id)
+    plan = unit_of_work.plans.load_bundle(command.plan_id)
     if plan is None:
         if run.status is RunStatusV1.PLANNING and run.version == command.expected_run_version:
             return _PendingReceiptResolution(should_return=False)
@@ -658,7 +659,7 @@ def _saved_plan_matches(
 ) -> bool:
     if plan.run_id != command.run_id or plan.revision_no != command.revision_no:
         return False
-    persisted_actions = unit_of_work.actions.list_by_plan(plan.id)
+    persisted_actions = unit_of_work.actions.list_for_plan(plan.id)
     if len(persisted_actions) != len(command.actions):
         return False
     action_by_id = {action.id: action for action in persisted_actions}
@@ -675,11 +676,11 @@ def _saved_plan_matches(
             or action.expected_json != canonicalize_json_value(draft.expected)
         ):
             return False
-        if tuple(unit_of_work.action_dependencies.list_dependencies(action.id)) != tuple(
+        if dependency_ids_for_action(unit_of_work.actions, persisted_actions, action.id) != tuple(
             sorted(draft.depends_on_action_ids)
         ):
             return False
-        linked_evidence = {item.id for item in unit_of_work.evidence.list_by_action(action.id)}
+        linked_evidence = {item.id for item in unit_of_work.evidence.list_for_action(action.id)}
         if not set(draft.evidence_ids).issubset(linked_evidence):
             return False
 
@@ -691,7 +692,7 @@ def _saved_plan_matches(
             and item.excerpt == evidence.excerpt
             and item.locator_json == evidence.locator_json
             for action in persisted_actions
-            for item in unit_of_work.evidence.list_by_action(action.id)
+            for item in unit_of_work.evidence.list_for_action(action.id)
         ):
             return False
     return True
@@ -766,7 +767,7 @@ def _complete_projection_matches(
             return False
 
     linked_evidence = {
-        item.id: item for item in unit_of_work.evidence.list_by_action(command.action_id)
+        item.id: item for item in unit_of_work.evidence.list_for_action(command.action_id)
     }
     for evidence in command.evidence:
         persisted_evidence = linked_evidence.get(evidence.id)
@@ -784,9 +785,9 @@ def _complete_projection_matches(
 
 
 def _inspect_read_plan_state(unit_of_work: UnitOfWork, plan_id: str) -> _AggregateState:
-    actions = unit_of_work.actions.list_by_plan(plan_id)
+    actions = unit_of_work.actions.list_for_plan(plan_id)
     dependencies = {
-        action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
+        action.id: dependency_ids_for_action(unit_of_work.actions, actions, action.id)
         for action in actions
     }
     action_statuses = {action.id: ActionStatusV1(action.status) for action in actions}

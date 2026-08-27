@@ -10,17 +10,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.adapters.persistence.sqlite.repositories.action_dependency_repository import (  # noqa: E501
-    SQLiteActionDependencyRepository,
-)
 from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
-    SQLiteActionRepository,
+    SqliteActionRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.approval_repository import (
-    SQLiteApprovalRepository,
+    SqliteApprovalRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
-    SQLiteAuditRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repository import (
+    SqliteAuditEventRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
     SqliteCommandReceiptRepository,
@@ -29,28 +26,28 @@ from google_work_agent.adapters.persistence.sqlite.repositories.conversation_rep
     SqliteConversationRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
-    SQLiteEvidenceRepository,
+    SqliteEvidenceRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SQLiteExecutionAttemptRepository,
+    SqliteExecutionAttemptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
     SqliteMessageRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
-    SQLitePlanRepository,
+    SqlitePlanRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_repository import (
     SqliteResourceRefRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import (
-    SQLiteRunRepository,
+    SqliteRunRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.trace_repository import (
-    SQLiteTraceRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repository import (
+    SqliteTraceEventRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.verification_repository import (
-    SQLiteVerificationRepository,
+    SqliteVerificationRepository,
 )
 from google_work_agent.ports import UnitOfWork
 
@@ -158,19 +155,18 @@ class FaultInjectingSqliteUnitOfWork:
         self._connection = connection
         sqlite_connection = cast(sqlite3.Connection, connection)
         self.conversations = SqliteConversationRepository(sqlite_connection)
-        self.runs = SQLiteRunRepository(sqlite_connection)
+        self.runs = SqliteRunRepository(sqlite_connection)
         self.messages = SqliteMessageRepository(sqlite_connection)
         self.command_receipts = SqliteCommandReceiptRepository(sqlite_connection)
-        self.plans = SQLitePlanRepository(sqlite_connection)
-        self.actions = SQLiteActionRepository(sqlite_connection)
+        self.plans = SqlitePlanRepository(sqlite_connection)
+        self.actions = SqliteActionRepository(sqlite_connection)
         self.resource_refs = SqliteResourceRefRepository(sqlite_connection)
-        self.evidence = SQLiteEvidenceRepository(sqlite_connection)
-        self.action_dependencies = SQLiteActionDependencyRepository(sqlite_connection)
-        self.approvals = SQLiteApprovalRepository(sqlite_connection)
-        self.execution_attempts = SQLiteExecutionAttemptRepository(sqlite_connection)
-        self.verifications = SQLiteVerificationRepository(sqlite_connection)
-        self.audits = SQLiteAuditRepository(sqlite_connection)
-        self.traces = SQLiteTraceRepository(sqlite_connection)
+        self.evidence = SqliteEvidenceRepository(sqlite_connection)
+        self.approvals = SqliteApprovalRepository(sqlite_connection)
+        self.execution_attempts = SqliteExecutionAttemptRepository(sqlite_connection)
+        self.verifications = SqliteVerificationRepository(sqlite_connection)
+        self.audits = SqliteAuditEventRepository(sqlite_connection)
+        self.traces = SqliteTraceEventRepository(sqlite_connection)
         return self
 
     def commit(self) -> None:

@@ -130,7 +130,7 @@ def finish_json_receipt(
     result_version: int,
     completed_at_ms: int,
 ) -> None:
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=bool(response.applied),
         result_code=ResultCode(str(response.result_code)),

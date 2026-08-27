@@ -8,17 +8,12 @@ write semantics.
 
 from __future__ import annotations
 
-from typing import Protocol
-
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 
 REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
 RUN_AGGREGATE_TYPE = "Run"
-
-
-class CancelIntentReceiptReader(Protocol):
-    def has_applied_request_cancel(self, run_id: str) -> bool: ...
 
 
 def is_applied_request_cancel_receipt(
@@ -40,6 +35,6 @@ def is_applied_request_cancel_receipt(
     )
 
 
-def has_durable_cancel_intent(reader: CancelIntentReceiptReader, run_id: str) -> bool:
-    """Read durable cancel intent through the single receipt-backed port."""
-    return reader.has_applied_request_cancel(run_id)
+def has_durable_cancel_intent(reader: CancelIntentReader, run_id: str) -> bool:
+    """Read durable cancel intent through the owner-correct receipt projection."""
+    return reader.has_durable_intent(run_id)

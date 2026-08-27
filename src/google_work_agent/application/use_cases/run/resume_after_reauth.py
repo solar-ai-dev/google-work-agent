@@ -22,6 +22,8 @@ from google_work_agent.domain.run.model import RunCommand, RunStatusV1, RunTrans
 from google_work_agent.domain.run.transitions.resume_after_reauth import (
     transition_resume_after_reauth,
 )
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 ResumeAfterReauthCommand = ResumeRunCommand
@@ -74,19 +76,19 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
         target = None if checkpoint is None else checkpoint.registered_resume_target
         plans = tuple(
             plan
-            for plan in unit_of_work.plans.list_by_run(command.run_id)
+            for plan in current_plan_tuple(unit_of_work.plans, command.run_id)
             if getattr(getattr(plan, "status", None), "value", None) != "SUPERSEDED"
         )
         plan = plans[0] if len(plans) == 1 else None
-        actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
-        approval_repository = getattr(unit_of_work, "approvals", None)
+        actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
+        approval_history = getattr(unit_of_work, "approval_history", None)
         approvals = (
             ()
-            if approval_repository is None
+            if approval_history is None
             else tuple(
                 approval
                 for action in actions
-                for approval in approval_repository.list_by_action(action.id)
+                for approval in approval_history.list_for_action(action.id)
             )
         )
         attempt_repository = getattr(unit_of_work, "execution_attempts", None)
@@ -96,7 +98,7 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
             for attempt in (
                 ()
                 if attempt_repository is None
-                else attempt_repository.list_by_approval(approval.id)
+                else active_attempt_tuple(attempt_repository, approval.id)
             )
         )
         binding_is_current = bool(
@@ -257,10 +259,7 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
 
 
 def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    checker = getattr(unit_of_work.command_receipts, "has_applied_request_cancel", None)
-    if not callable(checker):
-        return False
-    return has_durable_cancel_intent(unit_of_work.command_receipts, run_id)
+    return has_durable_cancel_intent(unit_of_work.cancel_intents, run_id)
 
 
 __all__ = [

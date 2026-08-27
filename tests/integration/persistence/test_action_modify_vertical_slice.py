@@ -16,6 +16,10 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
+)
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
@@ -47,6 +51,8 @@ from google_work_agent.domain.execution_attempt.model import ExecutionAttemptSta
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from tests.support.fakes import FakeClockPort
 from tests.support.legacy_write_action_mutation import ModifyWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
@@ -193,7 +199,7 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
     assert "APPROVE_ACTION" not in next_allowed_commands
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     expected_arguments = {
         "task_list_id": "task-list-default",
@@ -203,7 +209,7 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
     assert action.arguments_hash == calculate_canonical_json_hash(expected_arguments)
 
     with unit_of_work_factory() as unit_of_work:
-        plan = unit_of_work.plans.get_by_id("plan-1")
+        plan = unit_of_work.plans.load_bundle("plan-1")
     assert plan is not None
     assert plan.review_status is PlanReviewStatus.REQUIRED
     assert plan.review_version == 1
@@ -253,7 +259,7 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
 
     with unit_of_work_factory() as unit_of_work:
         assert (
-            unit_of_work.plans.update_review_if_version_and_status(
+            unit_of_work.plans.record_review_result(
                 "plan-1",
                 expected_review_version=1,
                 expected_review_statuses=frozenset(PlanReviewStatus),
@@ -315,7 +321,7 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
     assert second["applied"] is True
 
     with unit_of_work_factory() as unit_of_work:
-        stale_applied = unit_of_work.plans.update_review_if_version_and_status(
+        stale_applied = unit_of_work.plans.record_review_result(
             "plan-1",
             expected_review_version=1,
             expected_review_statuses=frozenset(PlanReviewStatus),
@@ -324,7 +330,7 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
                 "review_disposition": "PASS",
             },
         )
-        plan = unit_of_work.plans.get_by_id("plan-1")
+        plan = unit_of_work.plans.load_bundle("plan-1")
     assert stale_applied is None
     assert plan is not None
     assert plan.review_status is PlanReviewStatus.REQUIRED
@@ -381,8 +387,8 @@ def test_approved_action_modify_revokes_active_approval(modify_database: Path) -
     assert result["action_status"] == "MODIFIED"
 
     with unit_of_work_factory() as unit_of_work:
-        stale_approval = unit_of_work.approvals.get_by_id("approval-1")
-        active_approval = unit_of_work.approvals.get_active_by_action("action-1")
+        stale_approval = unit_of_work.approval_history.get("approval-1")
+        active_approval = unit_of_work.approvals.get_active_for_action("action-1")
     assert stale_approval is not None
     assert stale_approval.status is ApprovalStatusV1.REVOKED
     assert active_approval is None
@@ -486,7 +492,7 @@ def test_task_modify_rechecks_duplicates_and_persists_arguments_with_risk_atomic
     assert result["applied"] is True
     assert gateway.calls == 1
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-fresh-modify")
+        action = unit_of_work.actions.get("action-fresh-modify")
     assert action is not None
     assert loads(action.arguments_json)["payload"]["title"] == "Updated title"
     assert action.risk["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
@@ -541,8 +547,8 @@ def test_task_modify_source_failure_changes_no_action_or_approval(
         )
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-failed-modify")
-        approval = unit_of_work.approvals.get_active_by_action("action-failed-modify")
+        action = unit_of_work.actions.get("action-failed-modify")
+        approval = unit_of_work.approvals.get_active_for_action("action-failed-modify")
         receipt = unit_of_work.command_receipts.get_by_command_id("modify-failed-source")
     assert action is not None
     assert action.status == "APPROVED" and action.version == 1
@@ -581,7 +587,7 @@ def test_modify_rejects_a_field_the_tool_schema_does_not_allow(modify_database: 
     assert result["action_version"] == 0
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.status == "PROPOSED"
     assert action.version == 0
@@ -618,7 +624,7 @@ def test_modify_version_conflict_changes_nothing(modify_database: Path) -> None:
     assert result["result_code"] == ResultCode.VERSION_CONFLICT.value
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.status == "PROPOSED"
     assert action.version == 0
@@ -651,7 +657,7 @@ def test_modify_command_replay_returns_the_cached_result_without_reapplying(
     assert second["action_version"] == 1
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.version == 1
 
@@ -668,7 +674,7 @@ def test_modify_command_replay_returns_the_cached_result_without_reapplying(
     assert conflicting["result_code"] == ResultCode.DUPLICATE_COMMAND.value
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.version == 1
 
@@ -697,7 +703,9 @@ def test_modify_records_an_action_modified_audit_event(modify_database: Path) ->
     assert result["applied"] is True
 
     with unit_of_work_factory() as unit_of_work:
-        audit_events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id="action-1")
+        audit_events = unit_of_work.audits.list_page(
+            AuditEventCursor(run_id="run-1", action_id="action-1"), 100
+        )
     modified_events = [event for event in audit_events if event.event_type == "ACTION_MODIFIED"]
     assert len(modified_events) == 1
     assert modified_events[0].outcome == ResultCode.TRANSITION_APPLIED.value
@@ -745,7 +753,8 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
     )
     assert claimed.applied is True
     with unit_of_work_factory() as unit_of_work:
-        unit_of_work.execution_attempts.update_if_version_and_status(
+        update_execution_attempt_record(
+            unit_of_work,
             "attempt-failed-modify",
             expected_version=0,
             expected_status=ExecutionAttemptStatusV1.CLAIMED,
@@ -756,7 +765,8 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
             response_metadata_json=None,
             finished_at_ms=clock.now_ms(),
         )
-        unit_of_work.actions.update_if_version_and_status(
+        update_action_record(
+            unit_of_work,
             "action-1",
             expected_version=2,
             expected_status=ActionStatusV1.EXECUTING,
@@ -784,7 +794,7 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
     assert result["result_code"] == ResultCode.STATE_CONFLICT.value
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.status == "FAILED"
     assert action.version == 3
@@ -818,7 +828,7 @@ def test_empty_patch_on_proposed_action_applies_nothing(modify_database: Path) -
     assert result["action_version"] == 0
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
     assert action is not None
     assert action.status == "PROPOSED"
     assert action.version == 0
@@ -890,9 +900,9 @@ def test_semantically_identical_patch_on_approved_action_does_not_revoke_approva
     assert identical_result["action_version"] == 1
 
     with unit_of_work_factory() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
-        approval = unit_of_work.approvals.get_by_id("approval-noop-1")
-        active_approval = unit_of_work.approvals.get_active_by_action("action-1")
+        action = unit_of_work.actions.get("action-1")
+        approval = unit_of_work.approval_history.get("approval-noop-1")
+        active_approval = unit_of_work.approvals.get_active_for_action("action-1")
     assert action is not None
     assert action.status == "APPROVED"
     assert action.version == 1
@@ -994,9 +1004,10 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     assert publish_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        assert unit_of_work.action_dependencies.list_dependencies("action-dependent") == (
-            "action-upstream",
-        )
+        persisted_actions = unit_of_work.actions.list_for_plan("plan-dep")
+        assert dependency_ids_for_action(
+            unit_of_work.actions, persisted_actions, "action-dependent"
+        ) == ("action-upstream",)
 
     for action_id, approval_id in (
         ("action-upstream", "approval-upstream"),
@@ -1031,11 +1042,11 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     assert modify_result["action_status"] == "MODIFIED"
 
     with unit_of_work_factory() as unit_of_work:
-        dependent_action = unit_of_work.actions.get_by_id("action-dependent")
-        dependent_active_approval = unit_of_work.approvals.get_active_by_action("action-dependent")
-        dependent_stale_approval = unit_of_work.approvals.get_by_id("approval-dependent")
-        dependent_audit_events = unit_of_work.audits.list_by_aggregate(
-            run_id="run-1", action_id="action-dependent"
+        dependent_action = unit_of_work.actions.get("action-dependent")
+        dependent_active_approval = unit_of_work.approvals.get_active_for_action("action-dependent")
+        dependent_stale_approval = unit_of_work.approval_history.get("approval-dependent")
+        dependent_audit_events = unit_of_work.audits.list_page(
+            AuditEventCursor(run_id="run-1", action_id="action-dependent"), 100
         )
     assert dependent_action is not None
     # The dependent's own status/version is untouched -- there is no Domain

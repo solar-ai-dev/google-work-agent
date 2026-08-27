@@ -152,9 +152,9 @@ def _insert_active_approval(database_path: Path) -> None:
                 reason_code="OUTPUT_SCHEMA_INVALID",
             ),
             "ANALYZING",
-            "FAILED",
-            "RUN_FAILED",
-            1000,
+            "RECOVERY_REQUIRED",
+            "RUN_RECOVERY_REQUIRED",
+            None,
         ),
     ),
 )

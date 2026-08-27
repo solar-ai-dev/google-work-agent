@@ -30,6 +30,9 @@ from google_work_agent.domain.run.model import RunTransitionRejected
 from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class RequireReauthHandler:
@@ -53,7 +56,7 @@ class RequireReauthHandler:
                     now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RequireWriteReauth",
                 request_hash=command.request_hash,
@@ -64,20 +67,20 @@ class RequireReauthHandler:
             run = _require_run(unit_of_work, command.run_id)
             plans = tuple(
                 plan
-                for plan in unit_of_work.plans.list_by_run(command.run_id)
+                for plan in current_plan_tuple(unit_of_work.plans, command.run_id)
                 if plan.status is not PlanStatusV1.SUPERSEDED
             )
             plan = plans[0] if len(plans) == 1 else None
-            actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             approvals = tuple(
                 approval
                 for action in actions
-                for approval in unit_of_work.approvals.list_by_action(action.id)
+                for approval in active_approval_tuple(unit_of_work.approvals, action.id)
             )
             attempts = tuple(
                 attempt
                 for approval in approvals
-                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             )
             binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
             checkpoint = (
@@ -127,7 +130,7 @@ class RequireReauthHandler:
                         for attempt in attempts
                     ),
                     cancel_intent_active=has_durable_cancel_intent(
-                        unit_of_work.command_receipts, run.id
+                        unit_of_work.cancel_intents, run.id
                     ),
                 )
             except RunTransitionRejected as error:
@@ -170,7 +173,7 @@ class RequireReauthHandler:
                 if command.mcp_request_id is not None:
                     trace_payload["mcp_request_id"] = command.mcp_request_id
                     audit_metadata["mcp_request_id"] = command.mcp_request_id
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=command.run_id,
                         action_id=command.action_id,
@@ -181,7 +184,7 @@ class RequireReauthHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     _audit_event(
                         run_id=command.run_id,
                         action_id=command.action_id,

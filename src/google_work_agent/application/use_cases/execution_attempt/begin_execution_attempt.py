@@ -5,12 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from json import dumps
-from typing import cast
 
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.persistence_cas import update_execution_attempt_record
 from google_work_agent.application.write_persistence import (
     audit_event,
     require_action,
@@ -31,6 +28,7 @@ from google_work_agent.domain.execution_attempt.transitions.begin_execution_atte
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -75,13 +73,11 @@ class BeginExecutionAttemptHandler:
         run = require_run(unit_of_work, plan.run_id)
         approval = require_approval(unit_of_work, str(payload["approval_id"]))
         attempt = require_attempt(unit_of_work, str(payload["attempt_id"]))
-        plans = unit_of_work.plans.list_by_run(run.id)
+        plans = current_plan_tuple(unit_of_work.plans, run.id)
         if not plans:
             raise PermissionError("claim owner Run has no published Plan")
         current_plan = max(plans, key=lambda candidate: candidate.revision_no)
-        cancel_intent = has_durable_cancel_intent(
-            cast(CancelIntentReceiptReader, unit_of_work.command_receipts), run.id
-        )
+        cancel_intent = has_durable_cancel_intent(unit_of_work.cancel_intents, run.id)
         if cancel_intent or run.status is RunStatusV1.CANCEL_REQUESTED:
             raise PermissionError("cancellation forbids connector Write dispatch")
         if (
@@ -114,7 +110,7 @@ class BeginExecutionAttemptHandler:
             raise PermissionError("BeginExecutionAttempt request_hash mismatch")
         if unit_of_work.command_receipts.get_by_command_id(command.command_id) is not None:
             raise PermissionError("BeginExecutionAttempt was already recorded")
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="BeginExecutionAttempt",
             request_hash=command.request_hash,
@@ -122,7 +118,8 @@ class BeginExecutionAttemptHandler:
             aggregate_id=attempt.id,
             created_at_ms=now_ms,
         )
-        updated_attempt = unit_of_work.execution_attempts.update_if_version_and_status(
+        updated_attempt = update_execution_attempt_record(
+            unit_of_work,
             attempt.id,
             expected_version=attempt.version,
             expected_status=attempt.status,
@@ -135,7 +132,7 @@ class BeginExecutionAttemptHandler:
         )
         if updated_attempt is None:
             raise RuntimeError("validated BeginExecutionAttempt CAS failed")
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             audit_event(
                 run_id=run.id,
                 action_id=action.id,
@@ -145,7 +142,7 @@ class BeginExecutionAttemptHandler:
                 created_at_ms=now_ms,
             )
         )
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=True,
             result_code=ResultCode.TRANSITION_APPLIED,

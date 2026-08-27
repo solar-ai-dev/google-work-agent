@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from tests.integration.langgraph.test_runtime import (
+    _SYNTHESIZE_RETRIEVAL_QUERY_PLAN,
     FIXTURE_ROOT,
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -28,7 +29,6 @@ from tests.integration.langgraph.test_runtime import (
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _selection_output,
-    _SYNTHESIZE_RETRIEVAL_QUERY_PLAN,
     _sole_persisted_action_id,
     _sole_persisted_plan_id,
     _start_write_request,
@@ -38,6 +38,9 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 
 
 def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Path) -> None:
@@ -210,8 +213,8 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
 
         assert resumed.outcome is WorkflowOutcome.ACCEPTED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
-            action = unit_of_work.actions.get_by_id(action_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
+            action = unit_of_work.actions.get(action_id)
         assert plan is not None and plan.review_status.value == "PASSED"
         assert action is not None and action.status == "MODIFIED"
         assert llm_transaction_checks
@@ -376,9 +379,9 @@ def test_modify_review_branches_use_existing_supervisor_routes(
 
         assert reviewed["__target__"] == expected_target
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
-            run = unit_of_work.runs.get_by_id("run-1")
-            approvals = unit_of_work.approvals.list_by_action(action_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
+            run = unit_of_work.runs.get("run-1")
+            approvals = active_approval_tuple(unit_of_work.approvals, action_id)
         assert plan is not None and plan.review_status.value == expected_review_status
         assert plan.status.value == expected_plan_status
         assert run is not None and run.status.value == expected_run_status
@@ -475,9 +478,9 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
         assert reviewed["__target__"] == "end"
         assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
-            run = unit_of_work.runs.get_by_id("run-1")
-            approvals = unit_of_work.approvals.list_by_action(action_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
+            run = unit_of_work.runs.get("run-1")
+            approvals = active_approval_tuple(unit_of_work.approvals, action_id)
         assert plan is not None and plan.review_status.value == "REQUIRED"
         assert plan.review_disposition == "ROUTE_RECONSIDERATION"
         assert plan.status.value == "SUPERSEDED"
@@ -609,12 +612,19 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
         )
 
         assert resumed.outcome is WorkflowOutcome.ACCEPTED
+        connection = connect_sqlite(database_path)
+        try:
+            plan_rows = connection.execute(
+                "SELECT id, revision_no, status FROM plans "
+                "WHERE run_id='run-1' ORDER BY revision_no"
+            ).fetchall()
+        finally:
+            connection.close()
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plans = unit_of_work.plans.list_by_run("run-1")
-            run = unit_of_work.runs.get_by_id("run-1")
-            old_actions = unit_of_work.actions.list_by_plan(plan_id)
-            new_actions = unit_of_work.actions.list_by_plan(plans[-1].id)
-        assert [(plan.revision_no, plan.status.value) for plan in plans] == [
+            run = unit_of_work.runs.get("run-1")
+            old_actions = unit_of_work.actions.list_for_plan(plan_id)
+            new_actions = unit_of_work.actions.list_for_plan(str(plan_rows[-1]["id"]))
+        assert [(row["revision_no"], row["status"]) for row in plan_rows] == [
             (1, "SUPERSEDED"),
             (2, "WAITING_APPROVAL"),
         ]
@@ -687,13 +697,13 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
 
         assert resumed.outcome is WorkflowOutcome.COMPLETED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            run = unit_of_work.runs.get_by_id("run-1")
-            plan = unit_of_work.plans.get_by_id(plan_id)
-            approvals = unit_of_work.approvals.list_by_action(action_id)
+            run = unit_of_work.runs.get("run-1")
+            plan = unit_of_work.plans.load_bundle(plan_id)
+            approvals = active_approval_tuple(unit_of_work.approvals, action_id)
             attempts = [
                 attempt
                 for approval in approvals
-                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             ]
         assert run is not None and run.status.value == "BLOCKED"
         assert plan is not None and plan.review_status.value == "BLOCKED"
@@ -773,7 +783,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         assert stale_domain_result["__target__"] == "end"
         assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
         assert plan is not None and plan.review_status.value == "REQUIRED"
         assert plan.review_version == 2
     finally:

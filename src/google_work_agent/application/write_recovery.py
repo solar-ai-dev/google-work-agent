@@ -6,6 +6,10 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
+)
 from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
@@ -113,6 +117,7 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class MarkWriteActionUnknownResultService:
@@ -138,7 +143,7 @@ class MarkWriteActionUnknownResultService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="MarkWriteActionUnknownResult",
                 request_hash=command.request_hash,
@@ -159,7 +164,8 @@ class MarkWriteActionUnknownResultService:
             )
             if not result.applied:
                 raise RuntimeError(result.conflict_detail or "MarkUnknownResult rejected")
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -171,7 +177,8 @@ class MarkWriteActionUnknownResultService:
                 finished_at_ms=now_ms,
             )
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -224,7 +231,7 @@ class MarkWriteActionUnknownResultService:
             if command.mcp_request_id is not None:
                 unknown_result_trace_payload["mcp_request_id"] = command.mcp_request_id
                 unknown_result_audit_metadata["mcp_request_id"] = command.mcp_request_id
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -235,7 +242,7 @@ class MarkWriteActionUnknownResultService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -286,7 +293,7 @@ class RecoverExistingWriteResultService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RecoverExistingWriteResult",
                 request_hash=command.request_hash,
@@ -337,7 +344,8 @@ class RecoverExistingWriteResultService:
                 unit_of_work=unit_of_work,
                 resource_ref=resource_ref,
             )
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -362,7 +370,8 @@ class RecoverExistingWriteResultService:
             if not result.applied:
                 raise RuntimeError(result.conflict_detail or "RecoverExistingResult rejected")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -392,7 +401,7 @@ class RecoverExistingWriteResultService:
                 raise RuntimeError(
                     f"RecoverExistingResult cannot continue Run from {run.status.value}"
                 )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -406,7 +415,7 @@ class RecoverExistingWriteResultService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -455,7 +464,7 @@ class ResolveUnknownWriteAsFailedService:
                     now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResolveUnknownWriteAsFailed",
                 request_hash=command.request_hash,
@@ -496,7 +505,8 @@ class ResolveUnknownWriteAsFailedService:
                 )
                 unit_of_work.commit()
                 return response
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -519,7 +529,8 @@ class ResolveUnknownWriteAsFailedService:
             if not result.applied:
                 raise RuntimeError(result.conflict_detail or "ResolveAsFailed rejected")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -535,7 +546,7 @@ class ResolveUnknownWriteAsFailedService:
                 run_id=plan.run_id,
                 updated_at_ms=now_ms,
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -549,7 +560,7 @@ class ResolveUnknownWriteAsFailedService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -841,7 +852,7 @@ class PrepareWriteRetryService:
                     now_ms=self._now_ms(),
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="PrepareWriteRetry",
                 request_hash=command.request_hash,
@@ -852,7 +863,7 @@ class PrepareWriteRetryService:
             action = _require_action(unit_of_work, command.action_id)
             plan = _require_plan(unit_of_work, action.plan_id)
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -866,7 +877,8 @@ class PrepareWriteRetryService:
             )
             if (
                 result.applied
-                and unit_of_work.actions.update_if_version_and_status(
+                and update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -887,7 +899,7 @@ class PrepareWriteRetryService:
                 )
                 unit_of_work.commit()
                 return response
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -898,7 +910,7 @@ class PrepareWriteRetryService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -928,7 +940,7 @@ class PrepareWriteRetryService:
 
 
 def _revoke_active_approvals_for_plan(*, unit_of_work: UnitOfWork, plan_id: str) -> None:
-    for action in unit_of_work.actions.list_by_plan(plan_id):
+    for action in unit_of_work.actions.list_for_plan(plan_id):
         revoke_active_approvals(unit_of_work, action.id)
 
 

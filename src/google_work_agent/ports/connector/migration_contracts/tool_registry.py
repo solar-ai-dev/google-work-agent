@@ -15,6 +15,7 @@ from google_work_agent.domain.action.model import (
 
 DEFAULT_POLICY_VERSION = "2026-08-06.p0"
 DEFAULT_TOOL_SCHEMA_VERSION = "v1"
+P0_GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,3 +149,13 @@ def build_p0_tool_registry() -> SignedToolRegistry:
     )
 
     return google_workspace_tool_registry.build_google_workspace_tool_registry()
+
+
+def build_p0_tool_catalog() -> ConnectorToolCatalog:
+    """Build the closed P0 connector/tool admission authority."""
+    catalog = ConnectorToolCatalog()
+    catalog.register(
+        connector_id=P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
+        registry=build_p0_tool_registry(),
+    )
+    return catalog

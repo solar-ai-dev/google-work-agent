@@ -25,7 +25,7 @@ class _CancelReader:
     def __init__(self, active: bool = False) -> None:
         self.active = active
 
-    def has_applied_request_cancel(self, _run_id: str) -> bool:
+    def has_durable_intent(self, _run_id: str) -> bool:
         return self.active
 
 
@@ -33,14 +33,24 @@ class _ListRepo:
     def __init__(self, values: tuple[object, ...]) -> None:
         self.values = values
 
-    def list_by_action(self, _action_id: str):
+    def list_for_action(self, _action_id: str):
         return self.values
 
-    def list_by_approval(self, _approval_id: str):
-        return self.values
-
-    def list_by_attempt(self, _attempt_id: str):
-        return self.values
+    def get_active_for_approval(self, approval_id: str):
+        return next(
+            (
+                item
+                for item in self.values
+                if getattr(item, "approval_id", None) == approval_id
+                and getattr(item, "status", None)
+                in {
+                    ExecutionAttemptStatusV1.CLAIMED,
+                    ExecutionAttemptStatusV1.EXECUTING,
+                    ExecutionAttemptStatusV1.UNKNOWN_RESULT,
+                }
+            ),
+            None,
+        )
 
 
 class _GuardUow:
@@ -52,6 +62,7 @@ class _GuardUow:
         verifications: tuple[VerificationRecord, ...],
     ) -> None:
         self.approvals = _ListRepo(cast(tuple[object, ...], approvals))
+        self.approval_history = self.approvals
         self.execution_attempts = _ListRepo(cast(tuple[object, ...], attempts))
         self.verifications = _ListRepo(cast(tuple[object, ...], verifications))
 

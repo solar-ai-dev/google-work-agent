@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
+)
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import (
     audit_event,
@@ -91,7 +95,7 @@ class ResolveAsFailedHandler:
                     )
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResolveAsFailed",
                 request_hash=command.request_hash,
@@ -120,7 +124,8 @@ class ResolveAsFailedHandler:
                     now_ms,
                     "expected_attempt_version does not match current_version",
                 )
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -143,7 +148,8 @@ class ResolveAsFailedHandler:
             if not transition.applied:
                 raise RuntimeError(transition.conflict_detail or "ResolveAsFailed rejected")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -159,7 +165,7 @@ class ResolveAsFailedHandler:
                 run_id=plan.run_id,
                 updated_at_ms=now_ms,
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -173,7 +179,7 @@ class ResolveAsFailedHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.get_conversation_history import (
     GetConversationHistoryHandler,
     GetConversationHistoryQuery,
@@ -22,8 +23,14 @@ class _UnusedRuntimeStatusProvider:
 
 
 def _history_handler(database_path: Path) -> GetConversationHistoryHandler:
+    query_service = QueryService(
+        database_path=database_path,
+        connection_factory=connect_sqlite,
+        runtime_status_provider=_UnusedRuntimeStatusProvider(),
+    )
     return GetConversationHistoryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        query_service=lambda: query_service,
     )
 
 

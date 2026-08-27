@@ -17,8 +17,8 @@ def test_normal_write_success_persists_only_bounded_resource_ref(tmp_path: Path)
         database_path,
         action_status="EXECUTING",
         action_version=2,
-        attempt_status="CLAIMED",
-        attempt_version=0,
+        attempt_status="EXECUTING",
+        attempt_version=1,
         run_status="EXECUTING",
     )
 
@@ -32,7 +32,7 @@ def test_normal_write_success_persists_only_bounded_resource_ref(tmp_path: Path)
             action_id="action-1",
             attempt_id="attempt-1",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=_provider_canary_snapshot(),
         )
     )
@@ -103,7 +103,7 @@ def _assert_only_bounded_projection(database_path: Path) -> None:
         ).fetchall()
         assert len(rows) == 1
         connector_id, title, metadata_json = tuple(rows[0])
-        assert connector_id == "connector-a"
+        assert connector_id == "google_workspace"
         assert title == "Safe title"
         assert metadata_json == (
             '{"event_kind": "default", "status": "confirmed", "transparency": "busy"}'
@@ -164,7 +164,8 @@ def _seed_write_state(
                 target_resource_ref_id, status, arguments_json, arguments_hash,
                 expected_json, risk_json, version, created_at_ms, updated_at_ms
             ) VALUES (
-                'action-1', 'plan-1', 'connector-a', 1, 'calendar_create_event', 'CREATE',
+                'action-1', 'plan-1', 'google_workspace', 1,
+                'calendar_create_event', 'CREATE',
                 'REQUIRED', 'GET_COMPARE', 'RESOURCE_SEARCH', NULL, ?, '{}', ?,
                 '{}', '{}', ?, 1, 1
             );

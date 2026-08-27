@@ -35,6 +35,7 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 def _seed_recovery_aggregate(database_path: Path) -> None:
@@ -136,10 +137,10 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
     )
     with SqliteUnitOfWork(database_path) as unit_of_work:
         for evidence in old_evidence:
-            unit_of_work.evidence.insert(evidence)
+            unit_of_work.evidence.insert_bounded(evidence)
         for action in old_actions:
-            unit_of_work.actions.insert_write_action(action)
-        unit_of_work.action_dependencies.add(
+            unit_of_work.actions.insert_for_plan(action)
+        unit_of_work.actions.add(
             action_id="old-action-2",
             depends_on_action_id="old-action-1",
         )
@@ -188,7 +189,7 @@ class _CorrectivePersistenceHarness:
 
     def _plans_for_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         with self._unit_of_work_factory() as unit_of_work:
-            return unit_of_work.plans.list_by_run(run_id)
+            return current_plan_tuple(unit_of_work.plans, run_id)
 
     @staticmethod
     def _resolve_target_resource_ref_for_connector(**_: Any) -> None:

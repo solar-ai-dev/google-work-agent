@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.get_conversation import (
     GetConversationResult,
 )
@@ -44,8 +45,10 @@ class GetConversationHistoryHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        query_service: Callable[[], QueryService],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._query_service = query_service
         self._list_messages = ListConversationMessagesHandler(
             unit_of_work_factory=unit_of_work_factory
         )
@@ -65,14 +68,13 @@ class GetConversationHistoryHandler:
         message_result = self._list_messages(
             ListConversationMessagesQuery(conversation_id=query.conversation_id)
         )
-        with self._unit_of_work_factory() as unit_of_work:
-            run_records = unit_of_work.runs.list_by_conversation_bounded(
-                query.conversation_id, limit=MAX_HISTORY_RUNS
-            )
+        run_records = self._query_service().list_runs_for_conversation_bounded(
+            query.conversation_id, limit=MAX_HISTORY_RUNS
+        )
         runs = tuple(
             ConversationHistoryRunItem(
-                run_id=record.id,
-                status=record.status.value,
+                run_id=record.run_id,
+                status=record.status,
                 started_at_ms=record.started_at_ms,
                 finished_at_ms=record.finished_at_ms,
             )

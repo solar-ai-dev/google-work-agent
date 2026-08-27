@@ -13,7 +13,7 @@ from google_work_agent.ports.persistence.execution_attempt_repository import (
 )
 
 
-class SQLiteExecutionAttemptRepository:
+class SqliteExecutionAttemptRepository:
     _SELECT = (
         "SELECT id, approval_id, attempt_no, status, version, result_resource_ref_id, "
         "response_metadata_json, error_code, error_detail_json, started_at_ms, "
@@ -45,11 +45,11 @@ class SQLiteExecutionAttemptRepository:
             finished_at_ms=None if r["finished_at_ms"] is None else int(r["finished_at_ms"]),
         )
 
-    def get_by_id(self, attempt_id: str) -> ExecutionAttemptRecord | None:
+    def get(self, attempt_id: str) -> ExecutionAttemptRecord | None:
         r = self._connection.execute(self._SELECT + " WHERE id=?;", (attempt_id,)).fetchone()
         return None if r is None else self._record(r)
 
-    def get_active_by_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
+    def get_active_for_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
         r = self._connection.execute(
             self._SELECT + " WHERE approval_id=? AND status IN "
             "('CLAIMED','EXECUTING','UNKNOWN_RESULT') "
@@ -83,55 +83,40 @@ class SQLiteExecutionAttemptRepository:
     def update_if_version_and_status(
         self,
         attempt_id: str,
-        *,
         expected_version: int,
-        expected_status: ExecutionAttemptStatusV1,
-        status: ExecutionAttemptStatusV1,
-        error_code: str | None,
-        error_detail_json: str | None,
-        result_resource_ref_id: str | None,
-        response_metadata_json: str | None,
-        finished_at_ms: int | None,
-    ) -> ExecutionAttemptRecord:
-        current = self.get_by_id(attempt_id)
-        if current is None:
-            raise LookupError(f"execution attempt not found: {attempt_id}")
-        if current.version != expected_version:
-            raise sqlite3.IntegrityError("execution attempt version conflict")
-        c = self._connection.execute(
-            """UPDATE execution_attempts SET
-                status=?, version=version+1, result_resource_ref_id=?,
-                response_metadata_json=?, error_code=?, error_detail_json=?, finished_at_ms=?
-            WHERE id=? AND version=? AND status=?;""",
-            (
-                status.value,
-                result_resource_ref_id,
-                response_metadata_json,
-                error_code,
-                error_detail_json,
-                finished_at_ms,
+        expected_statuses: frozenset[ExecutionAttemptStatusV1],
+        values: dict[str, object],
+    ) -> bool:
+        if not values or not expected_statuses:
+            raise ValueError("ExecutionAttempt CAS requires values and expected statuses")
+        allowed_columns = {
+            "status",
+            "version",
+            "result_resource_ref_id",
+            "response_metadata_json",
+            "error_code",
+            "error_detail_json",
+            "finished_at_ms",
+        }
+        if not set(values).issubset(allowed_columns):
+            raise ValueError("ExecutionAttempt CAS contains an unsupported column")
+        normalized = {
+            key: value.value if isinstance(value, ExecutionAttemptStatusV1) else value
+            for key, value in values.items()
+        }
+        set_clause = ", ".join(f"{column}=?" for column in normalized)
+        placeholders = ", ".join("?" for _ in expected_statuses)
+        cursor = self._connection.execute(
+            f"UPDATE execution_attempts SET {set_clause} "
+            f"WHERE id=? AND version=? AND status IN ({placeholders});",
+            [
+                *normalized.values(),
                 attempt_id,
                 expected_version,
-                expected_status.value,
-            ),
+                *(status.value for status in expected_statuses),
+            ],
         )
-        if c.rowcount != 1:
-            raise sqlite3.IntegrityError(
-                "execution attempt update affected an unexpected row count"
-            )
-        updated = self.get_by_id(attempt_id)
-        if updated is None:
-            raise LookupError(f"execution attempt not found after update: {attempt_id}")
-        return updated
-
-    def list_by_approval(self, approval_id: str) -> tuple[ExecutionAttemptRecord, ...]:
-        return tuple(
-            self._record(r)
-            for r in self._connection.execute(
-                self._SELECT + " WHERE approval_id=? ORDER BY attempt_no ASC;",
-                (approval_id,),
-            ).fetchall()
-        )
+        return cursor.rowcount == 1
 
     def list_reconciliation_candidates(
         self, limit: int

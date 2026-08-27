@@ -53,7 +53,7 @@ class BeginRetrievalHandler:
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="BeginRetrieval",
                 request_hash=command.request_hash,
@@ -63,7 +63,7 @@ class BeginRetrievalHandler:
             )
             result = self._apply(unit_of_work, command, run.status, run.version)
             if result.applied:
-                unit_of_work.audits.add(_audit(command.run_id, command.command_id, now_ms))
+                unit_of_work.audits.append(_audit(command.run_id, command.command_id, now_ms))
             _finish_receipt(unit_of_work, command.command_id, result, now_ms)
             unit_of_work.commit()
             return result
@@ -154,7 +154,7 @@ def _audit(run_id: str, command_id: str, now_ms: int) -> AuditEventRecord:
 def _finish_receipt(
     unit_of_work: UnitOfWork, command_id: str, result: BeginRetrievalResult, now_ms: int
 ) -> None:
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=result.applied,
         result_code=ResultCode(result.result_code),

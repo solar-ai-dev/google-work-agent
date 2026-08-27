@@ -37,6 +37,7 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +207,7 @@ def _apply_run_transition(
                 completed_at_ms=completed_at_ms,
             )
 
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command_id,
             command_type=command_type,
             request_hash=request_hash,
@@ -257,7 +258,7 @@ def _apply_run_transition(
             conflict_detail=result.conflict_detail,
         )
         if result.applied:
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=run_id,
                     action_id=None,
@@ -275,7 +276,7 @@ def _apply_run_transition(
                     created_at_ms=completed_at_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 AuditEventRecord(
                     account_id=conversation.account_id,
                     run_id=run_id,
@@ -421,7 +422,7 @@ def _finish_json_receipt(
     response: RunTransitionResponse,
     completed_at_ms: int,
 ) -> None:
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=response.applied,
         result_code=ResultCode(response.result_code),
@@ -461,8 +462,8 @@ def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> Con
 
 
 def _revoke_active_approvals_for_run(*, unit_of_work: UnitOfWork, run_id: str) -> None:
-    for plan in unit_of_work.plans.list_by_run(run_id):
-        for action in unit_of_work.actions.list_by_plan(plan.id):
+    for plan in current_plan_tuple(unit_of_work.plans, run_id):
+        for action in unit_of_work.actions.list_for_plan(plan.id):
             revoke_active_approvals(unit_of_work, action.id)
 
 

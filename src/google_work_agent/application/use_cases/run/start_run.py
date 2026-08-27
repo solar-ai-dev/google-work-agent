@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
 )
@@ -22,9 +23,15 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.start_run import transition_start_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import SelectedResourceRef
-from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
+from google_work_agent.ports.persistence.audit_event_repository import (
+    AuditEventCursor,
+    PersistedAuditEventRecord,
+)
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
-from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
+from google_work_agent.ports.persistence.trace_event_repository import (
+    PersistedTraceEventRecord,
+    TraceEventCursor,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
@@ -131,7 +138,7 @@ class StartRunHandler:
         workflow_key = self._id_factory()
         handoff_id = self._id_factory()
 
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="StartRun",
             request_hash=command.request_hash,
@@ -255,7 +262,7 @@ class StartRunHandler:
             )
         )
 
-        unit_of_work.traces.add(
+        unit_of_work.traces.append(
             TraceEventRecord(
                 run_id=run_id,
                 action_id=None,
@@ -277,7 +284,7 @@ class StartRunHandler:
                 created_at_ms=now_ms,
             )
         )
-        unit_of_work.audits.add(
+        unit_of_work.audits.append(
             AuditEventRecord(
                 account_id=conversation.account_id,
                 run_id=run_id,
@@ -345,7 +352,8 @@ class StartRunHandler:
             seen.add(key)
             source = _resource_source(identity.resource_type)
             resource_ref_id = self._id_factory()
-            persisted = unit_of_work.resource_refs.upsert_bound_ref(
+            persisted = upsert_registered_resource_ref(
+                unit_of_work,
                 ResourceRefRecord(
                     id=resource_ref_id,
                     run_id=run_id,
@@ -635,11 +643,9 @@ class StartRunHandler:
         collected: list[PersistedAuditEventRecord] = []
         cursor_after: int | None = None
         while True:
-            batch = unit_of_work.audits.list_by_aggregate(
-                run_id=run_id,
-                action_id=None,
-                cursor_after=cursor_after,
-                limit=self._EVIDENCE_PAGE_SIZE,
+            batch = unit_of_work.audits.list_page(
+                AuditEventCursor(run_id=run_id, after_id=cursor_after),
+                self._EVIDENCE_PAGE_SIZE,
             )
             if not batch:
                 break
@@ -661,10 +667,9 @@ class StartRunHandler:
         collected: list[PersistedTraceEventRecord] = []
         cursor_after: int | None = None
         while True:
-            batch = unit_of_work.traces.list_by_run_after_cursor(
-                run_id=run_id,
-                cursor_after=cursor_after,
-                limit=self._EVIDENCE_PAGE_SIZE,
+            batch = unit_of_work.traces.list_page(
+                TraceEventCursor(run_id=run_id, after_id=cursor_after),
+                self._EVIDENCE_PAGE_SIZE,
             )
             if not batch:
                 break
@@ -815,7 +820,7 @@ class StartRunHandler:
         result_version: int,
         completed_at_ms: int,
     ) -> None:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command_id,
             applied=response.applied,
             result_code=ResultCode(response.result_code),

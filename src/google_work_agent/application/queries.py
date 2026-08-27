@@ -96,6 +96,7 @@ class ConversationRunRecord:
     status: str
     version: int
     started_at_ms: int
+    finished_at_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,6 +416,33 @@ class QueryService:
             status=str(row["status"]),
             version=int(row["version"]),
             started_at_ms=int(row["started_at_ms"]),
+        )
+
+    def list_runs_for_conversation_bounded(
+        self, conversation_id: str, *, limit: int
+    ) -> tuple[ConversationRunRecord, ...]:
+        if limit < 1 or limit > 200:
+            raise ValueError("conversation run limit must be between 1 and 200")
+        with self._connection_factory(self._database_path) as connection:
+            rows = connection.execute(
+                """SELECT id, status, version, started_at_ms, finished_at_ms
+                   FROM runs
+                   WHERE conversation_id=?
+                   ORDER BY started_at_ms DESC, id DESC
+                   LIMIT ?;""",
+                (conversation_id, limit),
+            ).fetchall()
+        return tuple(
+            ConversationRunRecord(
+                run_id=str(row["id"]),
+                status=str(row["status"]),
+                version=int(row["version"]),
+                started_at_ms=int(row["started_at_ms"]),
+                finished_at_ms=(
+                    None if row["finished_at_ms"] is None else int(row["finished_at_ms"])
+                ),
+            )
+            for row in rows
         )
 
     def get_runtime_summary(self) -> RuntimeSummary:

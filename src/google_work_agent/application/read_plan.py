@@ -33,8 +33,8 @@ from google_work_agent.ports import (
     UnitOfWork,
 )
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
+    ConnectorToolCatalog,
+    build_p0_tool_catalog,
 )
 
 
@@ -46,7 +46,7 @@ class SaveReadOnlyPlanService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._registry = build_p0_tool_registry()
+        self._catalog = build_p0_tool_catalog()
 
     def __call__(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -67,7 +67,7 @@ class SaveReadOnlyPlanService:
 
             now_ms = self._now_ms()
             if existing_receipt is None:
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="SaveReadOnlyPlan",
                     request_hash=command.request_hash,
@@ -106,7 +106,7 @@ class SaveReadOnlyPlanService:
                 unit_of_work.commit()
                 return response
 
-            _validate_read_only_plan(command, self._registry)
+            _validate_read_only_plan(command, self._catalog)
 
             plan = PlanRecord(
                 id=command.plan_id,
@@ -116,11 +116,11 @@ class SaveReadOnlyPlanService:
                 summary_text=command.summary_text,
                 created_at_ms=now_ms,
             )
-            unit_of_work.plans.insert_draft(plan)
+            unit_of_work.plans.insert_revision(plan)
 
             evidence_by_id = {item.evidence_id: item for item in command.evidence}
             for evidence in command.evidence:
-                unit_of_work.evidence.insert(
+                unit_of_work.evidence.insert_bounded(
                     EvidenceRecord(
                         id=evidence.evidence_id,
                         run_id=command.run_id,
@@ -135,8 +135,10 @@ class SaveReadOnlyPlanService:
                 )
 
             for action in command.actions:
-                registry_entry = self._registry.require(action.tool_name)
-                unit_of_work.actions.insert_read_action(
+                registry_entry = self._catalog.require(
+                    connector_id=action.connector_id, tool_id=action.tool_name
+                )
+                unit_of_work.actions.insert_for_plan(
                     ActionRecord(
                         id=action.action_id,
                         plan_id=command.plan_id,
@@ -156,22 +158,15 @@ class SaveReadOnlyPlanService:
                         version=0,
                         created_at_ms=now_ms,
                         updated_at_ms=now_ms,
-                    )
+                    ),
+                    dependency_ids=action.depends_on_action_ids,
+                    evidence_ids=action.evidence_ids,
                 )
-                for depends_on_action_id in action.depends_on_action_ids:
-                    unit_of_work.action_dependencies.add(
-                        action_id=action.action_id,
-                        depends_on_action_id=depends_on_action_id,
-                    )
                 for evidence_id in action.evidence_ids:
                     if evidence_id not in evidence_by_id:
                         raise LookupError(f"evidence not found for action link: {evidence_id}")
-                    unit_of_work.evidence.link_to_action(
-                        action_id=action.action_id,
-                        evidence_id=evidence_id,
-                    )
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=command.run_id,
                     action_id=None,
@@ -189,7 +184,7 @@ class SaveReadOnlyPlanService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=command.run_id,
                     action_id=None,
@@ -219,7 +214,7 @@ class SaveReadOnlyPlanService:
 
 
 def _validate_read_only_plan(
-    command: SaveReadOnlyPlanCommand, registry: SignedToolRegistry
+    command: SaveReadOnlyPlanCommand, catalog: ConnectorToolCatalog
 ) -> None:
     validate_plan_structure(
         actions=command.actions, evidence=command.evidence, plan_label="read-only plan"
@@ -227,9 +222,7 @@ def _validate_read_only_plan(
     for action in command.actions:
         if not action.connector_id:
             raise ValueError("read action connector_id is required")
-        entry = registry.get(action.tool_name)
-        if entry is None:
-            raise LookupError(f"tool not registered: {action.tool_name}")
+        entry = catalog.require(connector_id=action.connector_id, tool_id=action.tool_name)
         if entry.effect_type is not EffectType.READ:
             raise ValueError(f"read-only plan cannot include non-read action: {action.tool_name}")
         if entry.approval_requirement.value != "NONE":

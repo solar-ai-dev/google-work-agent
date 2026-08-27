@@ -22,12 +22,16 @@ class _ByIdRepo:
     def get_by_id(self, value_id: str) -> object | None:
         return self.values.get(value_id)
 
+    def get(self, value_id: str) -> object | None:
+        return self.values.get(value_id)
+
 
 class _Uow:
     def __init__(self, *, action: object, attempt: object, approval: object) -> None:
         self.actions = _ByIdRepo({action.id: action})
         self.execution_attempts = _ByIdRepo({attempt.id: attempt})
         self.approvals = _ByIdRepo({approval.id: approval})
+        self.approval_history = self.approvals
         self.resource_refs = _ByIdRepo({})
 
     def __enter__(self) -> _Uow:

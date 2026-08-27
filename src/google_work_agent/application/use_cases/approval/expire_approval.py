@@ -4,6 +4,10 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_approval_status,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.transitions.expire_approval import transition_expire_approval
 from google_work_agent.domain.audit_event.model import AuditEvent
@@ -11,6 +15,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +58,7 @@ class ExpireApprovalHandler:
                 ):
                     return ExpireApprovalResult(**loads(receipt.response_json))
                 raise RuntimeError("RECEIVED ExpireApproval receipt requires reconciliation")
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ExpireApproval",
                 request_hash=command.request_hash,
@@ -61,18 +66,18 @@ class ExpireApprovalHandler:
                 aggregate_id=command.approval_id,
                 created_at_ms=now_ms,
             )
-            approval = unit_of_work.approvals.get_by_id(command.approval_id)
+            approval = unit_of_work.approval_history.get(command.approval_id)
             if approval is None:
                 raise LookupError(f"approval not found: {command.approval_id}")
-            action = unit_of_work.actions.get_by_id(approval.action_id)
+            action = unit_of_work.actions.get(approval.action_id)
             if action is None:
                 raise LookupError(f"action not found: {approval.action_id}")
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current = tuple(
                 candidate
-                for candidate in unit_of_work.plans.list_by_run(plan.run_id)
+                for candidate in current_plan_tuple(unit_of_work.plans, plan.run_id)
                 if candidate.status is not PlanStatusV1.SUPERSEDED
             )
             if action.version != command.expected_action_version:
@@ -84,13 +89,15 @@ class ExpireApprovalHandler:
                     plan_status=plan.status,
                     plan_is_current=len(current) == 1 and current[0].id == plan.id,
                 )
-                if not unit_of_work.approvals.update_if_status(
+                if not update_approval_status(
+                    unit_of_work,
                     approval.id,
                     expected_status=approval.status,
                     next_status=next_approval,
                 ):
                     raise RuntimeError("validated ExpireApproval Approval CAS failed")
-                updated = unit_of_work.actions.update_if_version_and_status(
+                updated = update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -109,7 +116,7 @@ class ExpireApprovalHandler:
                     updated.version,
                 )
                 for event_type in ("ACTION_EXPIRED", "APPROVAL_EXPIRED"):
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         AuditEvent(
                             account_id=approval.approved_by_account_id,
                             run_id=plan.run_id,
@@ -129,7 +136,7 @@ class ExpireApprovalHandler:
                             created_at_ms=now_ms,
                         )
                     )
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=ResultCode(result.result_code),
@@ -146,10 +153,10 @@ def _current(
     command: ExpireApprovalCommand,
     code: ResultCode,
 ) -> ExpireApprovalResult:
-    approval = unit_of_work.approvals.get_by_id(command.approval_id)
+    approval = unit_of_work.approval_history.get(command.approval_id)
     if approval is None:
         raise LookupError(f"approval not found: {command.approval_id}")
-    action = unit_of_work.actions.get_by_id(approval.action_id)
+    action = unit_of_work.actions.get(approval.action_id)
     if action is None:
         raise LookupError(f"action not found: {approval.action_id}")
     return ExpireApprovalResult(

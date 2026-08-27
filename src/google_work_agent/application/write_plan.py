@@ -51,8 +51,8 @@ from google_work_agent.ports import (
     UnitOfWork,
 )
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
+    ConnectorToolCatalog,
+    build_p0_tool_catalog,
 )
 
 
@@ -62,7 +62,7 @@ class SaveWritePlanService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._registry = build_p0_tool_registry()
+        self._catalog = build_p0_tool_catalog()
 
     def __call__(self, command: SaveWritePlanCommand) -> SaveWritePlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -79,7 +79,7 @@ class SaveWritePlanService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="SaveWritePlan",
                 request_hash=command.request_hash,
@@ -121,7 +121,7 @@ class SaveWritePlanService:
                 unit_of_work.commit()
                 return response
 
-            validate_write_plan(command, self._registry)
+            validate_write_plan(command, self._catalog)
             plan = PlanRecord(
                 id=command.plan_id,
                 run_id=command.run_id,
@@ -130,11 +130,11 @@ class SaveWritePlanService:
                 summary_text=command.summary_text,
                 created_at_ms=now_ms,
             )
-            unit_of_work.plans.insert_draft(plan)
+            unit_of_work.plans.insert_revision(plan)
 
             evidence_by_id = {item.evidence_id: item for item in command.evidence}
             for evidence in command.evidence:
-                unit_of_work.evidence.insert(
+                unit_of_work.evidence.insert_bounded(
                     EvidenceRecord(
                         id=evidence.evidence_id,
                         run_id=command.run_id,
@@ -149,8 +149,10 @@ class SaveWritePlanService:
                 )
 
             for action in command.actions:
-                entry = self._registry.require(action.tool_name)
-                unit_of_work.actions.insert_write_action(
+                entry = self._catalog.require(
+                    connector_id=action.connector_id, tool_id=action.tool_name
+                )
+                unit_of_work.actions.insert_for_plan(
                     ActionRecord(
                         id=action.action_id,
                         plan_id=command.plan_id,
@@ -170,7 +172,9 @@ class SaveWritePlanService:
                         version=0,
                         created_at_ms=now_ms,
                         updated_at_ms=now_ms,
-                    )
+                    ),
+                    dependency_ids=action.depends_on_action_ids,
+                    evidence_ids=action.evidence_ids,
                 )
                 authority = (
                     duplicate_authority(action.risk)
@@ -178,7 +182,7 @@ class SaveWritePlanService:
                     else None
                 )
                 if authority is not None:
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         _audit_event(
                             run_id=command.run_id,
                             action_id=action.action_id,
@@ -192,19 +196,11 @@ class SaveWritePlanService:
                             created_at_ms=now_ms,
                         )
                     )
-                for depends_on_action_id in action.depends_on_action_ids:
-                    unit_of_work.action_dependencies.add(
-                        action_id=action.action_id,
-                        depends_on_action_id=depends_on_action_id,
-                    )
                 for evidence_id in action.evidence_ids:
                     if evidence_id not in evidence_by_id:
                         raise LookupError(f"evidence not found for action link: {evidence_id}")
-                    unit_of_work.evidence.link_to_action(
-                        action_id=action.action_id, evidence_id=evidence_id
-                    )
 
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=command.run_id,
                     action_id=None,
@@ -218,7 +214,7 @@ class SaveWritePlanService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=command.run_id,
                     action_id=None,
@@ -242,7 +238,7 @@ class SaveWritePlanService:
             return response
 
 
-def validate_write_plan(command: SaveWritePlanCommand, registry: SignedToolRegistry) -> None:
+def validate_write_plan(command: SaveWritePlanCommand, catalog: ConnectorToolCatalog) -> None:
     validate_plan_structure(
         actions=command.actions, evidence=command.evidence, plan_label="write plan"
     )
@@ -250,7 +246,7 @@ def validate_write_plan(command: SaveWritePlanCommand, registry: SignedToolRegis
         if not action.connector_id:
             raise ValueError("write action connector_id is required")
         canonicalize_action_risk(action.risk)
-        entry = registry.require(action.tool_name)
+        entry = catalog.require(connector_id=action.connector_id, tool_id=action.tool_name)
         if entry.effect_type is EffectType.READ:
             raise ValueError(f"write plan cannot contain read-only tool: {action.tool_name}")
         validate_evidence_policy(

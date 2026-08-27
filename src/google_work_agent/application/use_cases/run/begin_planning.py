@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.write_persistence import revoke_active_approvals
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -87,7 +88,7 @@ class BeginPlanningHandler:
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="BeginPlanning",
                 request_hash=command.request_hash,
@@ -97,7 +98,7 @@ class BeginPlanningHandler:
             )
             result = self._apply(unit_of_work, command, run.status, run.version, now_ms)
             if result.applied:
-                unit_of_work.audits.add(_audit(command, result, now_ms))
+                unit_of_work.audits.append(_audit(command, result, now_ms))
             _finish_receipt(unit_of_work, command.command_id, result, now_ms)
             unit_of_work.commit()
             return result
@@ -120,12 +121,12 @@ class BeginPlanningHandler:
             if published_reentry or context_adjustment
             else None
         )
-        actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+        actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
         action_statuses = tuple(ActionStatusV1(action.status) for action in actions)
         active_approvals = sum(
             1
             for action in actions
-            if (approval := unit_of_work.approvals.get_active_by_action(action.id)) is not None
+            if (approval := unit_of_work.approvals.get_active_for_action(action.id)) is not None
             and approval.status is ApprovalStatusV1.ACTIVE
         )
         unresolved_effects = sum(
@@ -176,7 +177,8 @@ class BeginPlanningHandler:
             for action in actions:
                 revoke_active_approvals(unit_of_work, action.id)
             if (
-                unit_of_work.plans.update_if_status(
+                update_plan_record(
+                    unit_of_work,
                     plan.id,
                     expected_status=plan.status,
                     next_status=PlanStatusV1.SUPERSEDED,
@@ -203,7 +205,7 @@ class BeginPlanningHandler:
     def _current_plan(unit_of_work: UnitOfWork, command: BeginPlanningCommand) -> PlanRecord | None:
         if command.plan_id is None:
             return None
-        plan = unit_of_work.plans.get_by_id(command.plan_id)
+        plan = unit_of_work.plans.load_bundle(command.plan_id)
         return (
             plan
             if plan is not None
@@ -350,7 +352,7 @@ def _audit(
 def _finish_receipt(
     unit_of_work: UnitOfWork, command_id: str, result: BeginPlanningResult, now_ms: int
 ) -> None:
-    unit_of_work.command_receipts.finish_json(
+    unit_of_work.command_receipts.store_result(
         command_id=command_id,
         applied=result.applied,
         result_code=ResultCode(result.result_code),

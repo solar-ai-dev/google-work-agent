@@ -3,12 +3,11 @@
 from contextlib import AbstractContextManager
 from typing import Protocol
 
-from google_work_agent.ports.persistence.action_dependency_repository import (
-    ActionDependencyRepository,
-)
 from google_work_agent.ports.persistence.action_repository import ActionRepository
+from google_work_agent.ports.persistence.approval_history_reader import ApprovalHistoryReader
 from google_work_agent.ports.persistence.approval_repository import ApprovalRepository
-from google_work_agent.ports.persistence.audit_repository import AuditRepository
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventRepository
+from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
 from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
 from google_work_agent.ports.persistence.evidence_repository import EvidenceRepository
@@ -19,8 +18,9 @@ from google_work_agent.ports.persistence.message_repository import MessageReposi
 from google_work_agent.ports.persistence.plan_repository import PlanRepository
 from google_work_agent.ports.persistence.recovery_repository import RecoveryRepository
 from google_work_agent.ports.persistence.resource_ref_repository import ResourceRefRepository
+from google_work_agent.ports.persistence.retention_repository import RetentionRepository
 from google_work_agent.ports.persistence.run_repository import RunRepository
-from google_work_agent.ports.persistence.trace_repository import TraceRepository
+from google_work_agent.ports.persistence.trace_event_repository import TraceEventRepository
 from google_work_agent.ports.persistence.verification_repository import VerificationRepository
 from google_work_agent.ports.persistence.workflow_handoff_repository import (
     WorkflowHandoffRepository,
@@ -33,18 +33,20 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     runs: RunRepository
     messages: MessageRepository
     command_receipts: CommandReceiptRepository
+    cancel_intents: CancelIntentReader
     plans: PlanRepository
     actions: ActionRepository
     resource_refs: ResourceRefRepository
     evidence: EvidenceRepository
-    action_dependencies: ActionDependencyRepository
     approvals: ApprovalRepository
+    approval_history: ApprovalHistoryReader
     execution_attempts: ExecutionAttemptRepository
     verifications: VerificationRepository
-    audits: AuditRepository
-    traces: TraceRepository
+    audits: AuditEventRepository
+    traces: TraceEventRepository
     workflow_handoffs: WorkflowHandoffRepository
     recovery_contexts: RecoveryRepository
+    retention: RetentionRepository
     checkpoints: CheckpointPort
 
     def commit(self) -> None: ...

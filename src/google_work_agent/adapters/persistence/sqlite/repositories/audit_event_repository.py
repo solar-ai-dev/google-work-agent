@@ -14,17 +14,17 @@ from google_work_agent.ports.observability_events import (
     sanitize_persistent_event_json,
     serialize_event_envelope,
 )
-from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
+from google_work_agent.ports.persistence.audit_event_repository import (
+    AuditEventCursor,
+    PersistedAuditEventRecord,
+)
 
 
-class SQLiteAuditRepository:
+class SqliteAuditEventRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
     def append(self, event: AuditEventRecord) -> None:
-        self.add(event)
-
-    def add(self, event: AuditEventRecord) -> None:
         event = replace(event, metadata_json=sanitize_persistent_event_json(event.metadata_json))
         raw = event.metadata_json
         try:
@@ -45,7 +45,7 @@ class SQLiteAuditRepository:
                     event_category=EventCategory.DOMAIN,
                     occurred_at_ms=event.created_at_ms,
                     severity=Severity.INFO,
-                    component="audit_repository",
+                    component="audit_event_repository",
                     environment="test",
                     release_version="dev",
                     correlation=ObservabilityContext(
@@ -58,7 +58,7 @@ class SQLiteAuditRepository:
                 )
             )
         self._connection.execute(
-            "INSERT INTO audit_events (account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            "INSERT INTO audit_events (account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
             (
                 event.account_id,
                 event.run_id,
@@ -89,42 +89,23 @@ class SQLiteAuditRepository:
             created_at_ms=int(r["created_at_ms"]),
         )
 
-    def list_by_aggregate(
-        self,
-        *,
-        run_id: str | None,
-        action_id: str | None = None,
-        cursor_after: int | None = None,
-        limit: int = 100,
+    def list_page(
+        self, cursor: AuditEventCursor | None, limit: int
     ) -> tuple[PersistedAuditEventRecord, ...]:
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        run_id = None if cursor is None else cursor.run_id
+        action_id = None if cursor is None else cursor.action_id
+        cursor_after = None if cursor is None else cursor.after_id
         rows = self._connection.execute(
-            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms FROM audit_events WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR action_id=?) AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",
+            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms FROM audit_events WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR action_id=?) AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",  # noqa: E501
             (run_id, run_id, action_id, action_id, cursor_after, cursor_after, limit),
         ).fetchall()
         return tuple(self._record(r) for r in rows)
 
-    def list_after_cursor(
-        self, *, cursor_after: int | None, limit: int = 100
-    ) -> tuple[PersistedAuditEventRecord, ...]:
-        rows = self._connection.execute(
-            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms FROM audit_events WHERE (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",
-            (cursor_after, cursor_after, limit),
-        ).fetchall()
-        return tuple(self._record(r) for r in rows)
-
-    def list_before_retention_cutoff(
-        self, *, cutoff_ms: int, limit: int
-    ) -> tuple[PersistedAuditEventRecord, ...]:
-        rows = self._connection.execute(
-            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms FROM audit_events WHERE created_at_ms < ? ORDER BY id ASC LIMIT ?;",
-            (cutoff_ms, limit),
-        ).fetchall()
-        return tuple(self._record(r) for r in rows)
-
-    def purge_before_cutoff(self, *, cutoff_ms: int, limit: int) -> int:
+    def purge_before(self, timestamp_ms: int) -> int:
         return int(
             self._connection.execute(
-                "DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE created_at_ms < ? ORDER BY id ASC LIMIT ?);",
-                (cutoff_ms, limit),
+                "DELETE FROM audit_events WHERE created_at_ms < ?;", (timestamp_ms,)
             ).rowcount
         )

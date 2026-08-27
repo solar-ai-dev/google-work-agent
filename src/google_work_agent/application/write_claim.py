@@ -12,14 +12,15 @@ from google_work_agent.application.calendar_conflicts import (
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
 )
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.feasibility import (
     approval_feasibility_authority,
     feasibility_authority,
     feasibility_change_requires_reapproval,
+)
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_approval_status,
 )
 from google_work_agent.application.policy import ApprovalIntegrityInput, validate_approval_integrity
 from google_work_agent.application.task_duplicates import (
@@ -83,6 +84,8 @@ from google_work_agent.ports.connector.claim_context_contract import (
 from google_work_agent.ports.connector.migration_contracts.tool_registry import (
     build_p0_tool_registry,
 )
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class ClaimWriteActionService:
@@ -118,7 +121,7 @@ class ClaimWriteActionService:
                 )
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ClaimWriteAction",
                 request_hash=command.request_hash,
@@ -144,14 +147,13 @@ class ClaimWriteActionService:
                 return response
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
-            plans = tuple(unit_of_work.plans.list_by_run(run.id))
+            plans = tuple(current_plan_tuple(unit_of_work.plans, run.id))
             current_plan = max(
                 plans,
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
-            cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
-            if has_durable_cancel_intent(cancel_reader, run.id):
+            if has_durable_cancel_intent(unit_of_work.cancel_intents, run.id):
                 response = WriteActionResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
@@ -189,7 +191,7 @@ class ClaimWriteActionService:
                 )
                 unit_of_work.commit()
                 return response
-            approval = unit_of_work.approvals.get_active_by_action(action.id)
+            approval = unit_of_work.approvals.get_active_for_action(action.id)
             if approval is None:
                 response = WriteActionResponse(
                     applied=False,
@@ -310,7 +312,7 @@ class ClaimWriteActionService:
                 )
                 unit_of_work.commit()
                 return response
-            if unit_of_work.execution_attempts.get_active_by_approval(approval.id) is not None:
+            if unit_of_work.execution_attempts.get_active_for_approval(approval.id) is not None:
                 response = WriteActionResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
@@ -340,7 +342,9 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            if not unit_of_work.approvals.update_if_status(
+            if not update_approval_status(
+
+                unit_of_work,
                 approval.id,
                 expected_status=approval.status,
                 next_status=ApprovalStatusV1.CONSUMED,
@@ -348,7 +352,8 @@ class ClaimWriteActionService:
             ):
                 raise RuntimeError("validated ConsumeApproval CAS failed")
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -363,7 +368,10 @@ class ClaimWriteActionService:
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
                 approval_id=approval.id,
-                attempt_no=len(unit_of_work.execution_attempts.list_by_approval(approval.id)) + 1,
+                attempt_no=len(
+                    active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
+                )
+                + 1,
                 status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,
                 result_resource_ref_id=None,
@@ -389,7 +397,7 @@ class ClaimWriteActionService:
                 },
                 signing_secret=self._signing_secret,
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -402,7 +410,7 @@ class ClaimWriteActionService:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 _audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,

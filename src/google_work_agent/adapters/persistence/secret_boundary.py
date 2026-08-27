@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
-    SQLiteAuditRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repository import (
+    SqliteAuditEventRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.trace_repository import (
-    SQLiteTraceRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repository import (
+    SqliteTraceEventRepository,
 )
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.observability_events import sanitize_persistent_event_json
 
 
-class SecretBoundaryAuditRepository(SQLiteAuditRepository):
+class SecretBoundaryAuditEventRepository(SqliteAuditEventRepository):
     """Audit repository that sanitizes event JSON immediately before SQLite persistence."""
 
     def add(self, event: AuditEventRecord) -> None:
@@ -27,7 +27,7 @@ class SecretBoundaryAuditRepository(SQLiteAuditRepository):
         )
 
 
-class SecretBoundaryTraceRepository(SQLiteTraceRepository):
+class SecretBoundaryTraceEventRepository(SqliteTraceEventRepository):
     """Trace repository that sanitizes event JSON immediately before SQLite persistence."""
 
     def add(self, event: TraceEventRecord) -> None:

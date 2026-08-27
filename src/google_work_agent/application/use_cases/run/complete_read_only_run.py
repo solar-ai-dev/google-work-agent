@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -14,6 +15,7 @@ from google_work_agent.domain.run.transitions.complete_read_only_run import (
     transition_complete_read_only_run,
 )
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +63,7 @@ class CompleteReadOnlyRunHandler:
         now_ms: int,
     ) -> CompleteReadOnlyRunResult | None:
         statuses = tuple(
-            ActionStatusV1(action.status) for action in unit_of_work.actions.list_by_plan(plan_id)
+            ActionStatusV1(action.status) for action in unit_of_work.actions.list_for_plan(plan_id)
         )
         if not statuses or any(
             status not in {ActionStatusV1.VERIFIED, ActionStatusV1.FAILED} for status in statuses
@@ -103,7 +105,7 @@ class CompleteReadOnlyRunHandler:
                 return CompleteReadOnlyRunResult(**loads(receipt.response_json))
             raise RuntimeError("RECEIVED CompleteReadOnlyRun receipt requires reconciliation")
 
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="CompleteReadOnlyRun",
             request_hash=command.request_hash,
@@ -112,16 +114,16 @@ class CompleteReadOnlyRunHandler:
             created_at_ms=now_ms,
         )
         run = unit_of_work.runs.get(command.run_id)
-        plan = unit_of_work.plans.get_by_id(command.plan_id)
+        plan = unit_of_work.plans.load_bundle(command.plan_id)
         if run is None or plan is None or plan.run_id != run.id:
             raise LookupError("CompleteReadOnlyRun aggregate not found")
         current_plans = tuple(
             candidate
-            for candidate in unit_of_work.plans.list_by_run(run.id)
+            for candidate in current_plan_tuple(unit_of_work.plans, run.id)
             if candidate.status is not PlanStatusV1.SUPERSEDED
         )
         statuses = tuple(
-            ActionStatusV1(action.status) for action in unit_of_work.actions.list_by_plan(plan.id)
+            ActionStatusV1(action.status) for action in unit_of_work.actions.list_for_plan(plan.id)
         )
         if run.version != command.expected_version:
             result = _current_result(
@@ -139,7 +141,8 @@ class CompleteReadOnlyRunHandler:
             if len(current_plans) != 1 or current_plans[0].id != plan.id:
                 raise RuntimeError("CompleteReadOnlyRun requires current Plan authority")
             if (
-                unit_of_work.plans.update_if_status(
+                update_plan_record(
+                    unit_of_work,
                     plan.id, expected_status=plan.status, next_status=next_plan
                 )
                 is None
@@ -167,7 +170,7 @@ class CompleteReadOnlyRunHandler:
                 next_plan.value,
                 result_kind,
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 AuditEvent(
                     account_id=None,
                     run_id=run.id,
@@ -188,7 +191,7 @@ class CompleteReadOnlyRunHandler:
                     created_at_ms=now_ms,
                 )
             )
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=result.applied,
             result_code=ResultCode(result.result_code),
@@ -219,7 +222,7 @@ def _current_result(
     detail: str,
 ) -> CompleteReadOnlyRunResult:
     run = unit_of_work.runs.get(command.run_id)
-    plan = unit_of_work.plans.get_by_id(command.plan_id)
+    plan = unit_of_work.plans.load_bundle(command.plan_id)
     if run is None or plan is None:
         raise LookupError("CompleteReadOnlyRun aggregate not found")
     return CompleteReadOnlyRunResult(

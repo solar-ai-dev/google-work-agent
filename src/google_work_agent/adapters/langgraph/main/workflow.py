@@ -142,6 +142,7 @@ from google_work_agent.application.orchestration.supervisor import (
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
+from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.read_contracts import (
     ClaimReadActionCommand,
@@ -273,6 +274,11 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
 )
 from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 
 JsonObject = dict[str, object]
@@ -1016,7 +1022,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         review_version: int,
     ) -> GraphState:
         with self._unit_of_work_factory() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {plan_id}")
             if (
@@ -1028,9 +1034,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                     "__target__": "end",
                     "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
                 }
-            actions = unit_of_work.actions.list_by_plan(plan_id)
+            actions = unit_of_work.actions.list_for_plan(plan_id)
             dependencies = {
-                action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
+                action.id: dependency_ids_for_action(unit_of_work.actions, actions, action.id)
                 for action in actions
             }
 
@@ -1197,11 +1203,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         if plan_id is None or review_version is None:
             return False
         with self._unit_of_work_factory() as unit_of_work:
-            plan = unit_of_work.plans.get_by_id(plan_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
             if plan is None:
                 return False
             action_versions = {
-                action.id: action.version for action in unit_of_work.actions.list_by_plan(plan_id)
+                action.id: action.version for action in unit_of_work.actions.list_for_plan(plan_id)
             }
         result = RecordReviewResultHandler(
             unit_of_work_factory=self._unit_of_work_factory,
@@ -1227,7 +1233,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             return False
         with self._unit_of_work_factory() as unit_of_work:
             canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
-            plan = unit_of_work.plans.get_by_id(plan_id)
+            plan = unit_of_work.plans.load_bundle(plan_id)
             if plan is None or plan.review_version != review_version:
                 return False
             run = canonical_uow.runs.get(plan.run_id)
@@ -1556,7 +1562,8 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 metadata_json=dumps(payload, sort_keys=True),
                 captured_at_ms=self._now_ms(),
             )
-            persisted = unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
+            persisted = upsert_registered_resource_ref(
+                unit_of_work,resource_ref)
             unit_of_work.commit()
             return persisted.id
 
@@ -1800,12 +1807,12 @@ class WorkflowRuntimeCore(WorkflowRuntime):
     def _list_actions(self, plan_id: str) -> tuple[ActionRecord, ...]:
         with self._unit_of_work_factory() as unit_of_work:
             return tuple(
-                sorted(unit_of_work.actions.list_by_plan(plan_id), key=lambda item: item.position)
+                sorted(unit_of_work.actions.list_for_plan(plan_id), key=lambda item: item.position)
             )
 
     def _plans_for_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         with self._unit_of_work_factory() as unit_of_work:
-            return unit_of_work.plans.list_by_run(run_id)
+            return current_plan_tuple(unit_of_work.plans, run_id)
 
     def _has_executed_action(self, run_id: str) -> bool:
         return any(
@@ -1819,11 +1826,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _latest_attempt(self, action_id: str) -> ExecutionAttemptRecord:
         with self._unit_of_work_factory() as unit_of_work:
-            approvals = unit_of_work.approvals.list_by_action(action_id)
+            approvals = active_approval_tuple(unit_of_work.approvals, action_id)
             attempts = [
                 attempt
                 for approval in approvals
-                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             ]
             if not attempts:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
@@ -1902,10 +1909,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         with self._unit_of_work_factory() as unit_of_work:
             cursor: int | None = None
             while True:
-                events = unit_of_work.audits.list_by_aggregate(
-                    run_id=run_id,
-                    cursor_after=cursor,
-                    limit=100,
+                events = unit_of_work.audits.list_page(
+                    AuditEventCursor(run_id=run_id, after_id=cursor),
+                    100,
                 )
                 if any(
                     event.event_type == "RUN_CANCELLATION_REQUESTED"
@@ -1919,16 +1925,16 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:
-            plans = unit_of_work.plans.list_by_run(run_id)
+            plans = current_plan_tuple(unit_of_work.plans, run_id)
             if not plans:
                 return None
             latest_plan = sorted(plans, key=lambda item: (item.revision_no, item.created_at_ms))[-1]
-            for action in unit_of_work.actions.list_by_plan(latest_plan.id):
+            for action in unit_of_work.actions.list_for_plan(latest_plan.id):
                 if action.status != ActionStatusV1.UNKNOWN_RESULT.value:
                     continue
-                approvals = unit_of_work.approvals.list_by_action(action.id)
+                approvals = active_approval_tuple(unit_of_work.approvals, action.id)
                 for approval in sorted(approvals, key=lambda item: item.approval_no, reverse=True):
-                    attempts = unit_of_work.execution_attempts.list_by_approval(approval.id)
+                    attempts = active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
                     if not attempts:
                         continue
                     latest_attempt = sorted(attempts, key=lambda item: item.attempt_no)[-1]

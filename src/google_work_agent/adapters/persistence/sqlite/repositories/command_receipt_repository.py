@@ -1,7 +1,7 @@
 """SQLite command-receipt repository including durable cancel intent."""
 
 import sqlite3
-from json import dumps, loads
+from json import loads
 
 from google_work_agent.domain.command_receipt.model import AnswerOnlyResponse, CommandReceiptStatus
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
@@ -53,24 +53,6 @@ class SqliteCommandReceiptRepository:
             completed_at_ms=None if r["completed_at_ms"] is None else int(r["completed_at_ms"]),
         )
 
-    def add_received(
-        self,
-        *,
-        command_id: str,
-        command_type: str,
-        request_hash: str,
-        aggregate_type: str,
-        aggregate_id: str | None,
-        created_at_ms: int,
-    ) -> None:
-        self._connection.execute(
-            """INSERT INTO command_receipts (
-                   command_id, command_type, request_hash, aggregate_type,
-                   aggregate_id, status, created_at_ms
-               ) VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?);""",
-            (command_id, command_type, request_hash, aggregate_type, aggregate_id, created_at_ms),
-        )
-
     def reserve_or_replay(
         self,
         *,
@@ -84,41 +66,16 @@ class SqliteCommandReceiptRepository:
         existing = self.get_by_command_id(command_id)
         if existing is not None:
             return existing
-        self.add_received(
-            command_id=command_id,
-            command_type=command_type,
-            request_hash=request_hash,
-            aggregate_type=aggregate_type,
-            aggregate_id=aggregate_id,
-            created_at_ms=created_at_ms,
+        self._connection.execute(
+            """INSERT INTO command_receipts (
+                   command_id, command_type, request_hash, aggregate_type,
+                   aggregate_id, status, created_at_ms
+               ) VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?);""",
+            (command_id, command_type, request_hash, aggregate_type, aggregate_id, created_at_ms),
         )
         return None
 
-    def finish(
-        self, *, command_id: str, response: AnswerOnlyResponse, completed_at_ms: int
-    ) -> None:
-        raw = dumps(
-            {
-                "applied": response.applied,
-                "result_code": response.result_code.value,
-                "current_status": response.current_status.value,
-                "current_version": response.current_version,
-                "next_allowed_commands": [c.value for c in response.next_allowed_commands],
-                "conflict_detail": response.conflict_detail,
-                "assistant_message_id": response.assistant_message_id,
-            },
-            sort_keys=True,
-        )
-        self.finish_json(
-            command_id=command_id,
-            applied=response.applied,
-            result_code=response.result_code,
-            result_version=response.current_version,
-            response_json=raw,
-            completed_at_ms=completed_at_ms,
-        )
-
-    def finish_json(
+    def store_result(
         self,
         *,
         command_id: str,
@@ -144,37 +101,3 @@ class SqliteCommandReceiptRepository:
         )
         if c.rowcount != 1:
             raise sqlite3.IntegrityError("receipt finalize affected an unexpected row count")
-
-    def store_result(
-        self,
-        *,
-        command_id: str,
-        applied: bool,
-        result_code: ResultCode,
-        result_version: int,
-        response_json: str,
-        completed_at_ms: int,
-    ) -> None:
-        self.finish_json(
-            command_id=command_id,
-            applied=applied,
-            result_code=result_code,
-            result_version=result_version,
-            response_json=response_json,
-            completed_at_ms=completed_at_ms,
-        )
-
-    def has_applied_request_cancel(self, run_id: str) -> bool:
-        row = self._connection.execute(
-            """SELECT 1 FROM command_receipts
-               WHERE command_type=? AND aggregate_type=? AND aggregate_id=?
-                 AND status=? AND result_code=? LIMIT 1;""",
-            (
-                _REQUEST_CANCEL_COMMAND_TYPE,
-                _RUN_AGGREGATE_TYPE,
-                run_id,
-                CommandReceiptStatus.APPLIED.value,
-                ResultCode.TRANSITION_APPLIED.value,
-            ),
-        ).fetchone()
-        return row is not None

@@ -116,7 +116,7 @@ class ResumeConfirmationHandler:
                 )
             )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResumeConfirmation",
                 request_hash=command.request_hash,
@@ -147,7 +147,7 @@ class ResumeConfirmationHandler:
                 )
             else:
                 result = self._apply(unit_of_work, command, run.status, run.version, now_ms)
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=ResultCode(result.result_code),
@@ -242,9 +242,9 @@ class ResumeConfirmationHandler:
             version + 1,
             handoff_id,
         )
-        unit_of_work.audits.add(_audit(command, result, now_ms))
+        unit_of_work.audits.append(_audit(command, result, now_ms))
         if command.policy_confirmation_receipt is not None:
-            unit_of_work.audits.add(_policy_audit(command, now_ms))
+            unit_of_work.audits.append(_policy_audit(command, now_ms))
         return result
 
     @staticmethod

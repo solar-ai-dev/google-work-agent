@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 
 from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.write_persistence import (
     cancel_pending_actions,
     revoke_active_approvals,
@@ -23,6 +24,7 @@ from google_work_agent.domain.recovery.transitions.resolve_recovery import (
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -114,7 +116,7 @@ class ResolveRecoveryHandler:
                 context=context,
                 now_ms=now_ms,
             )
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="ResolveRecovery",
                 request_hash=command.request_hash,
@@ -171,7 +173,7 @@ class ResolveRecoveryHandler:
                     },
                     sort_keys=True,
                 )
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=command.run_id,
                         action_id=None
@@ -184,7 +186,7 @@ class ResolveRecoveryHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     AuditEventRecord(
                         account_id=None,
                         run_id=command.run_id,
@@ -200,7 +202,7 @@ class ResolveRecoveryHandler:
                         created_at_ms=now_ms,
                     )
                 )
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=persisted.result_code,
@@ -284,7 +286,7 @@ class ResolveRecoveryHandler:
         action_id = context.get("action_id")
         if action_id is None:
             return None
-        action = unit_of_work.actions.get_by_id(str(action_id))
+        action = unit_of_work.actions.get(str(action_id))
         return None if action is None else ActionStatusV1(action.status)
 
     def _apply_resolution_effects(
@@ -296,7 +298,7 @@ class ResolveRecoveryHandler:
         now_ms: int,
     ) -> tuple[PlanRecord | None, str | None]:
         """Preserve mismatch recovery effects at the canonical writer boundary."""
-        plans = unit_of_work.plans.list_by_run(command.run_id)
+        plans = current_plan_tuple(unit_of_work.plans, command.run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
         if command.resolution not in {
             RecoveryResolution.ACCEPT_PARTIAL,
@@ -306,14 +308,14 @@ class ResolveRecoveryHandler:
         if plan is None:
             raise LookupError(f"plan not found for recovery run: {command.run_id}")
         action_id = context.get("action_id")
-        action = None if action_id is None else unit_of_work.actions.get_by_id(str(action_id))
+        action = None if action_id is None else unit_of_work.actions.get(str(action_id))
         if (
             action is None
             or action.plan_id != plan.id
             or action.status != ActionStatusV1.MISMATCH.value
         ):
             raise RuntimeError("mismatch recovery requires the current MISMATCH action")
-        if has_durable_cancel_intent(unit_of_work.command_receipts, command.run_id):
+        if has_durable_cancel_intent(unit_of_work.cancel_intents, command.run_id):
             raise RuntimeError("mismatch recovery is forbidden while cancel intent is active")
         if command.resolution is RecoveryResolution.ACCEPT_PARTIAL:
             cancel_pending_actions(
@@ -323,7 +325,8 @@ class ResolveRecoveryHandler:
                 updated_at_ms=now_ms,
             )
             if (
-                unit_of_work.plans.update_if_status(
+                update_plan_record(
+                    unit_of_work,
                     plan.id, expected_status=plan.status, next_status=PlanStatusV1.COMPLETED
                 )
                 is None
@@ -331,10 +334,11 @@ class ResolveRecoveryHandler:
                 raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             return plan, "PARTIAL"
 
-        for candidate in unit_of_work.actions.list_by_plan(plan.id):
+        for candidate in unit_of_work.actions.list_for_plan(plan.id):
             revoke_active_approvals(unit_of_work, candidate.id)
         if (
-            unit_of_work.plans.update_if_status(
+            update_plan_record(
+                unit_of_work,
                 plan.id, expected_status=plan.status, next_status=PlanStatusV1.SUPERSEDED
             )
             is None
@@ -350,7 +354,7 @@ class ResolveRecoveryHandler:
             summary_text=f"Corrective plan for mismatch action {action.id}",
             created_at_ms=now_ms,
         )
-        unit_of_work.plans.insert_draft(corrective)
+        unit_of_work.plans.insert_revision(corrective)
         return corrective, "CORRECTIVE_PLAN_REQUIRED"
 
     @staticmethod
@@ -382,7 +386,7 @@ class ResolveRecoveryHandler:
         result: ResolveRecoveryResult,
         now_ms: int,
     ) -> None:
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="ResolveRecovery",
             request_hash=command.request_hash,
@@ -390,7 +394,7 @@ class ResolveRecoveryHandler:
             aggregate_id=command.run_id,
             created_at_ms=now_ms,
         )
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=False,
             result_code=ResultCode(result.result_code),

@@ -41,10 +41,20 @@ from google_work_agent.application.write_result_persistence import (
     MarkWriteActionFailedService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.trace_event_repository import TraceEventCursor
 from tests.support.fakes import FakeClockPort
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}
+
+
+def _dependency_ids(unit_of_work: UnitOfWork, action_id: str) -> tuple[str, ...]:
+    action = unit_of_work.actions.get(action_id)
+    assert action is not None
+    actions = unit_of_work.actions.list_for_plan(action.plan_id)
+    return dependency_ids_for_action(unit_of_work.actions, actions, action_id)
 
 
 @pytest.fixture()
@@ -135,10 +145,10 @@ def test_save_write_plan_persists_a_single_dependency_edge(dependency_database: 
     assert save_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        b_dependencies = unit_of_work.action_dependencies.list_dependencies("action-b")
-        a_dependents = unit_of_work.action_dependencies.list_dependents("action-a")
-        a_dependencies = unit_of_work.action_dependencies.list_dependencies("action-a")
-        b_dependents = unit_of_work.action_dependencies.list_dependents("action-b")
+        b_dependencies = _dependency_ids(unit_of_work, "action-b")
+        a_dependents = unit_of_work.actions.list_dependents("action-a")
+        a_dependencies = _dependency_ids(unit_of_work, "action-a")
+        b_dependents = unit_of_work.actions.list_dependents("action-b")
 
     assert b_dependencies == ("action-a",)
     assert a_dependents == ("action-b",)
@@ -173,12 +183,12 @@ def test_save_write_plan_persists_a_chain_of_dependencies(dependency_database: P
     assert save_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        a_dependencies = unit_of_work.action_dependencies.list_dependencies("action-a")
-        b_dependencies = unit_of_work.action_dependencies.list_dependencies("action-b")
-        c_dependencies = unit_of_work.action_dependencies.list_dependencies("action-c")
-        a_dependents = unit_of_work.action_dependencies.list_dependents("action-a")
-        b_dependents = unit_of_work.action_dependencies.list_dependents("action-b")
-        c_dependents = unit_of_work.action_dependencies.list_dependents("action-c")
+        a_dependencies = _dependency_ids(unit_of_work, "action-a")
+        b_dependencies = _dependency_ids(unit_of_work, "action-b")
+        c_dependencies = _dependency_ids(unit_of_work, "action-c")
+        a_dependents = unit_of_work.actions.list_dependents("action-a")
+        b_dependents = unit_of_work.actions.list_dependents("action-b")
+        c_dependents = unit_of_work.actions.list_dependents("action-c")
 
     assert a_dependencies == ()
     assert b_dependencies == ("action-a",)
@@ -211,10 +221,10 @@ def test_save_write_plan_without_dependencies_persists_no_rows(dependency_databa
     assert save_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        x_dependencies = unit_of_work.action_dependencies.list_dependencies("action-x")
-        y_dependencies = unit_of_work.action_dependencies.list_dependencies("action-y")
-        x_dependents = unit_of_work.action_dependencies.list_dependents("action-x")
-        y_dependents = unit_of_work.action_dependencies.list_dependents("action-y")
+        x_dependencies = _dependency_ids(unit_of_work, "action-x")
+        y_dependencies = _dependency_ids(unit_of_work, "action-y")
+        x_dependents = unit_of_work.actions.list_dependents("action-x")
+        y_dependents = unit_of_work.actions.list_dependents("action-y")
 
     assert x_dependencies == ()
     assert y_dependencies == ()
@@ -328,9 +338,9 @@ def test_mark_write_action_failed_propagates_dependency_blocked_through_persiste
     assert fail_result.action_status == "FAILED"
 
     with unit_of_work_factory() as unit_of_work:
-        dependent_action = unit_of_work.actions.get_by_id("action-dependent")
-        dependent_trace_events = unit_of_work.traces.list_by_run_after_cursor(
-            run_id="run-1", cursor_after=None
+        dependent_action = unit_of_work.actions.get("action-dependent")
+        dependent_trace_events = unit_of_work.traces.list_page(
+            TraceEventCursor(run_id="run-1"), 100
         )
 
     assert dependent_action is not None

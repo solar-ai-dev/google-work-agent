@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import connect_sqlite, sqlite_unit_of_work_factory
-from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository import (
-    SQLiteAuditRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repository import (
+    SqliteAuditEventRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
     SqliteCommandReceiptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SQLiteExecutionAttemptRepository,
+    SqliteExecutionAttemptRepository,
 )
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
@@ -276,8 +276,8 @@ def test_active_attempt_guard_fails_before_mutation(
     suffix = "c2-active-attempt"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     monkeypatch.setattr(
-        SQLiteExecutionAttemptRepository,
-        "get_active_by_approval",
+        SqliteExecutionAttemptRepository,
+        "get_active_for_approval",
         lambda self, approval_id: object(),
     )
 
@@ -320,9 +320,9 @@ def test_transaction_failure_rolls_back_claim_children_and_observability(
         raise RuntimeError(f"injected {failure_point} failure")
 
     if failure_point == "audit":
-        monkeypatch.setattr(SQLiteAuditRepository, "add", fail)
+        monkeypatch.setattr(SqliteAuditEventRepository, "append", fail)
     else:
-        monkeypatch.setattr(SqliteCommandReceiptRepository, "finish_json", fail)
+        monkeypatch.setattr(SqliteCommandReceiptRepository, "store_result", fail)
 
     with pytest.raises(RuntimeError, match=f"injected {failure_point} failure"):
         _handler(write_database, clock)(_command(suffix))

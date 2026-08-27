@@ -18,13 +18,15 @@ class PersistedTraceEventRecord:
     created_at_ms: int
 
 
-class TraceRepository(Protocol):
+@dataclass(frozen=True, slots=True)
+class TraceEventCursor:
+    run_id: str | None = None
+    after_id: int | None = None
+
+
+class TraceEventRepository(Protocol):
     def append(self, event: TraceEventRecord) -> None: ...
-    def add(self, event: TraceEventRecord) -> None: ...
-    def list_by_run_after_cursor(
-        self, *, run_id: str, cursor_after: int | None, limit: int = 100
+    def list_page(
+        self, cursor: TraceEventCursor | None, limit: int
     ) -> tuple[PersistedTraceEventRecord, ...]: ...
-    def list_before_retention_cutoff(
-        self, *, cutoff_ms: int, limit: int
-    ) -> tuple[PersistedTraceEventRecord, ...]: ...
-    def purge_before_cutoff(self, *, cutoff_ms: int, limit: int) -> int: ...
+    def purge_before(self, timestamp_ms: int) -> int: ...

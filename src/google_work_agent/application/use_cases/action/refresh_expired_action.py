@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.write_persistence import require_plan_review
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.refresh_expired_action import (
@@ -14,6 +15,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +75,7 @@ class RefreshExpiredActionHandler:
                 ):
                     return RefreshExpiredActionResult(**loads(receipt.response_json))
                 raise RuntimeError("RECEIVED RefreshExpiredAction receipt requires reconciliation")
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RefreshExpiredAction",
                 request_hash=command.request_hash,
@@ -82,15 +84,15 @@ class RefreshExpiredActionHandler:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current = tuple(
                 candidate
-                for candidate in unit_of_work.plans.list_by_run(plan.run_id)
+                for candidate in current_plan_tuple(unit_of_work.plans, plan.run_id)
                 if candidate.status is not PlanStatusV1.SUPERSEDED
             )
-            if unit_of_work.approvals.get_active_by_action(action.id) is not None:
+            if unit_of_work.approvals.get_active_for_action(action.id) is not None:
                 result = RefreshExpiredActionResult(
                     False,
                     ResultCode.STATE_CONFLICT.value,
@@ -115,7 +117,8 @@ class RefreshExpiredActionHandler:
                         "policy_version": command.fresh_policy_version,
                         "tool_schema_version": command.fresh_tool_schema_version,
                     }
-                    updated = unit_of_work.actions.update_if_version_and_status(
+                    updated = update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -126,7 +129,7 @@ class RefreshExpiredActionHandler:
                     if updated is None:
                         raise RuntimeError("validated RefreshExpiredAction CAS failed")
                     require_plan_review(unit_of_work, plan.id)
-                    unit_of_work.audits.add(
+                    unit_of_work.audits.append(
                         AuditEvent(
                             account_id=None,
                             run_id=plan.run_id,
@@ -156,7 +159,7 @@ class RefreshExpiredActionHandler:
                     decision.current_version,
                     decision.conflict_detail,
                 )
-            unit_of_work.command_receipts.finish_json(
+            unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,
                 result_code=ResultCode(result.result_code),
@@ -169,7 +172,7 @@ class RefreshExpiredActionHandler:
 
 
 def _require_action(unit_of_work: UnitOfWork, action_id: str):
-    action = unit_of_work.actions.get_by_id(action_id)
+    action = unit_of_work.actions.get(action_id)
     if action is None:
         raise LookupError(f"action not found: {action_id}")
     return action

@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.persistence_cas import (
+    update_action_record,
+    update_execution_attempt_record,
+)
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -97,7 +101,7 @@ class MarkUnknownResultHandler:
                     )
                 )
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="MarkUnknownResult",
                 request_hash=command.request_hash,
@@ -118,7 +122,8 @@ class MarkUnknownResultHandler:
             )
             if not transition.applied:
                 raise RuntimeError(transition.conflict_detail or "MarkUnknownResult rejected")
-            unit_of_work.execution_attempts.update_if_version_and_status(
+            update_execution_attempt_record(
+                unit_of_work,
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
@@ -130,7 +135,8 @@ class MarkUnknownResultHandler:
                 finished_at_ms=now_ms,
             )
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -186,7 +192,7 @@ class MarkUnknownResultHandler:
             if command.mcp_request_id is not None:
                 trace_payload["mcp_request_id"] = command.mcp_request_id
                 audit_metadata["mcp_request_id"] = command.mcp_request_id
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -197,7 +203,7 @@ class MarkUnknownResultHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,

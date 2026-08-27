@@ -5,12 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
-from typing import cast
 
-from google_work_agent.application.cancel_intent import (
-    CancelIntentReceiptReader,
-    has_durable_cancel_intent,
-)
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.run_terminal import (
     RunTransitionResponse,
     _finish_json_receipt,
@@ -36,6 +33,9 @@ from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports import (
     UnitOfWork,
 )
+from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +88,7 @@ class CompleteWriteRunHandler:
                     completed_at_ms=completed_at_ms,
                 )
 
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="CompleteWriteRun",
                 request_hash=command.request_hash,
@@ -100,12 +100,12 @@ class CompleteWriteRunHandler:
             conversation = _require_conversation(unit_of_work, run.conversation_id)
             relevant_plans = tuple(
                 plan
-                for plan in unit_of_work.plans.list_by_run(run.id)
+                for plan in current_plan_tuple(unit_of_work.plans, run.id)
                 if plan.status is not PlanStatusV1.SUPERSEDED
             )
             plan = relevant_plans[0] if len(relevant_plans) == 1 else None
-            actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
-            cancel_reader = cast(CancelIntentReceiptReader, unit_of_work.command_receipts)
+            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
+            cancel_reader = unit_of_work.cancel_intents
 
             conflict_detail = self._aggregate_conflict(
                 unit_of_work=unit_of_work,
@@ -182,13 +182,14 @@ class CompleteWriteRunHandler:
             )
             if response.applied:
                 if (
-                    unit_of_work.plans.update_if_status(
+                    update_plan_record(
+                        unit_of_work,
                         plan.id, expected_status=plan.status, next_status=PlanStatusV1.COMPLETED
                     )
                     is None
                 ):
                     raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
@@ -208,7 +209,7 @@ class CompleteWriteRunHandler:
                         created_at_ms=completed_at_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     AuditEventRecord(
                         account_id=conversation.account_id,
                         run_id=run.id,
@@ -247,7 +248,7 @@ class CompleteWriteRunHandler:
         relevant_plans: tuple[PlanRecord, ...],
         plan: PlanRecord | None,
         actions: tuple[ActionRecord, ...],
-        cancel_reader: CancelIntentReceiptReader,
+        cancel_reader: CancelIntentReader,
     ) -> str | None:
         if has_durable_cancel_intent(cancel_reader, run_id):
             return "durable cancel intent forbids CompleteWriteRun"
@@ -280,37 +281,27 @@ class CompleteWriteRunHandler:
             }:
                 return f"action {action.id} is not VERIFIED or otherwise closed"
 
-            approvals = unit_of_work.approvals.list_by_action(action.id)
+            approvals = unit_of_work.approval_history.list_for_action(action.id)
             if any(approval.status is ApprovalStatusV1.ACTIVE for approval in approvals):
                 return f"action {action.id} has an illegal ACTIVE approval"
 
             attempts = tuple(
                 attempt
                 for approval in approvals
-                for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             )
             if any(attempt.status in _UNRESOLVED_ATTEMPT_STATUSES for attempt in attempts):
                 return f"action {action.id} has an unresolved execution attempt"
             if status is not ActionStatusV1.VERIFIED:
                 continue
-            succeeded = tuple(
-                attempt
-                for attempt in attempts
-                if attempt.status is ExecutionAttemptStatusV1.SUCCEEDED
-            )
-            if not succeeded:
-                return f"action {action.id} has no successful execution attempt"
-            latest_attempt = max(
-                succeeded,
-                key=lambda item: (item.attempt_no, item.started_at_ms),
-            )
-            verifications = unit_of_work.verifications.list_by_attempt(latest_attempt.id)
-            if not verifications:
-                return f"action {action.id} has no verification result"
+            verifications = unit_of_work.verifications.list_for_action(action.id)
             latest_verification = max(
                 verifications,
-                key=lambda item: (item.verification_no, item.verified_at_ms),
+                key=lambda item: (item.verified_at_ms, item.verification_no, item.id),
+                default=None,
             )
+            if latest_verification is None:
+                return f"action {action.id} has no verification result"
             if latest_verification.status is not VerificationStatus.VERIFIED:
                 return f"action {action.id} verification is unresolved"
         return None
@@ -322,8 +313,8 @@ class CompleteWriteRunHandler:
         return tuple(
             attempt.status
             for action in actions
-            for approval in unit_of_work.approvals.list_by_action(action.id)
-            for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+            for approval in unit_of_work.approval_history.list_for_action(action.id)
+            for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
         )
 
     @staticmethod

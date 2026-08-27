@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.write_persistence import (
     audit_event,
     emit_command_rejected_hash_mismatch,
@@ -21,6 +22,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -67,7 +69,7 @@ class PrepareWriteRetryHandler:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="PrepareWriteRetry",
                 request_hash=command.request_hash,
@@ -76,11 +78,11 @@ class PrepareWriteRetryHandler:
                 created_at_ms=now_ms,
             )
             action = self._require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            plan = unit_of_work.plans.load_bundle(action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
-                unit_of_work.plans.list_by_run(plan.run_id),
+                current_plan_tuple(unit_of_work.plans, plan.run_id),
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
@@ -119,7 +121,8 @@ class PrepareWriteRetryHandler:
                 return self._finish(unit_of_work, command, response, now_ms)
 
             if (
-                unit_of_work.actions.update_if_version_and_status(
+                update_action_record(
+                    unit_of_work,
                     action.id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -157,7 +160,7 @@ class PrepareWriteRetryHandler:
                     if item is not ActionCommand.APPROVE_ACTION
                 ),
             )
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -175,7 +178,7 @@ class PrepareWriteRetryHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=plan.run_id,
                     action_id=action.id,
@@ -208,7 +211,7 @@ class PrepareWriteRetryHandler:
                 action_id=command.action_id,
                 now_ms=self._now_ms(),
             )
-            action = unit_of_work.actions.get_by_id(command.action_id)
+            action = unit_of_work.actions.get(command.action_id)
             if action is None:
                 return PrepareWriteRetryResult(
                     applied=False,
@@ -249,7 +252,7 @@ class PrepareWriteRetryHandler:
         response: PrepareWriteRetryResult,
         now_ms: int,
     ) -> PrepareWriteRetryResult:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=response.applied,
             result_code=ResultCode(response.result_code),
@@ -286,7 +289,7 @@ class PrepareWriteRetryHandler:
 
     @staticmethod
     def _require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
-        action = unit_of_work.actions.get_by_id(action_id)
+        action = unit_of_work.actions.get(action_id)
         if action is None:
             raise LookupError(f"action not found: {action_id}")
         return action

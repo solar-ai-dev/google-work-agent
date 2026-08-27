@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -79,7 +81,7 @@ def test_task_duplicate_approval_matrix(
 
     assert response.applied is expected_applied
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        approvals = unit_of_work.approvals.list_by_action("action-dup-approval")
+        approvals = active_approval_tuple(unit_of_work.approvals, "action-dup-approval")
     assert len(approvals) == int(expected_applied)
     if approvals:
         snapshot = loads(approvals[0].source_snapshot_json)
@@ -116,8 +118,8 @@ def test_task_duplicate_approval_replay_does_not_duplicate_override_audit(
 
     assert service(command) == service(command)
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        events = unit_of_work.audits.list_by_aggregate(
-            run_id="run-1", action_id="action-dup-replay"
+        events = unit_of_work.audits.list_page(
+            AuditEventCursor(run_id="run-1", action_id="action-dup-replay"), 100
         )
     assert sum(event.event_type == "TASK_DUPLICATE_OVERRIDE_ACKNOWLEDGED" for event in events) == 1
 
@@ -146,8 +148,8 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
-        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        action = unit_of_work.actions.get(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
     assert action is not None
     assert action.status == "MODIFIED"
     assert action.version == 2
@@ -179,8 +181,8 @@ def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
     )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
-        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        action = unit_of_work.actions.get(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
     assert action is not None
     assert action.status == "APPROVED"
     assert action.version == 1
@@ -229,9 +231,11 @@ def test_task_duplicate_preflight_source_failure_is_fail_closed(
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
-        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
-        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+        action = unit_of_work.actions.get(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_page(
+            AuditEventCursor(run_id="run-1", action_id=f"action-{suffix}"), 100
+        )
     assert action is not None and action.status == "APPROVED" and action.version == 1
     assert approval is not None
     assert any(event.event_type == "TASK_DUPLICATE_PREFLIGHT_BLOCKED" for event in events)
@@ -249,8 +253,10 @@ def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
     assert response.applied is False
     assert response.conflict_detail == "work is infeasible before the business deadline"
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
-        events = unit_of_work.audits.list_by_aggregate(run_id="run-1", action_id=f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+        events = unit_of_work.audits.list_page(
+            AuditEventCursor(run_id="run-1", action_id=f"action-{suffix}"), 100
+        )
     assert approval is None
     assert any(event.event_type == "FEASIBILITY_APPROVAL_BLOCKED" for event in events)
 
@@ -292,8 +298,8 @@ def test_feasibility_preflight_change_revokes_approval_before_claim(
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id(f"action-{suffix}")
-        approval = unit_of_work.approvals.get_active_by_action(f"action-{suffix}")
+        action = unit_of_work.actions.get(f"action-{suffix}")
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
     connection = connect_sqlite(write_database)
     try:
         attempt_count = connection.execute(

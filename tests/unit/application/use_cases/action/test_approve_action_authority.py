@@ -70,16 +70,16 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     )
     resource_ref = SimpleNamespace(id="resource-ref-1")
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.return_value = action
-    unit_of_work.plans.get_by_id.return_value = plan
-    unit_of_work.plans.list_by_run.return_value = [plan]
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = plan
+    unit_of_work.plans.get_current.return_value = plan
     unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1", conversation_id="conversation-1", status=RunStatusV1.WAITING_APPROVAL
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.resource_refs.get.return_value = resource_ref
-    unit_of_work.actions.update_if_version_and_status.return_value = action
-    unit_of_work.approvals.list_by_action.return_value = []
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.approvals.get_active_for_action.return_value = None
     id_generator = MagicMock()
     id_generator.next_id.side_effect = ["approval-1", "handoff-1"]
     snapshot = {"source_kind": "RESOURCE_REF", "resource_ref_id": "resource-ref-1"}
@@ -109,22 +109,25 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     )
     unit_of_work.actions.update_if_version_and_status.assert_called_once_with(
         "action-1",
-        expected_version=1,
-        expected_status=ActionStatusV1.PROPOSED,
-        next_status=ActionStatusV1.APPROVED,
-        updated_at_ms=1000,
+        1,
+        frozenset({ActionStatusV1.PROPOSED}),
+        {
+            "status": ActionStatusV1.APPROVED,
+            "updated_at_ms": 1000,
+            "version": 2,
+        },
     )
-    approval = unit_of_work.approvals.insert.call_args.args[0]
+    approval = unit_of_work.approvals.insert_active_snapshot.call_args.args[0]
     assert approval.id == "approval-1"
     assert approval.approved_by_account_id == "acct-1"
     assert approval.action_version == 2
     assert approval.source_snapshot_hash == calculate_canonical_json_hash(snapshot)
     assert approval.canonical_arguments_hash == action.arguments_hash
     assert approval.recovery_fingerprint
-    unit_of_work.command_receipts.add_received.assert_called_once()
-    unit_of_work.command_receipts.finish_json.assert_called_once()
-    unit_of_work.traces.add.assert_called_once()
-    unit_of_work.audits.add.assert_called_once()
+    unit_of_work.command_receipts.reserve_or_replay.assert_called_once()
+    unit_of_work.command_receipts.store_result.assert_called_once()
+    unit_of_work.traces.append.assert_called_once()
+    unit_of_work.audits.append.assert_called_once()
     unit_of_work.commit.assert_called_once()
     unit_of_work.workflow_handoffs.stage_pending.assert_called_once()
 
@@ -142,14 +145,14 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
         version=1,
     )
     unit_of_work.command_receipts.get_by_command_id.return_value = None
-    unit_of_work.actions.get_by_id.return_value = action
+    unit_of_work.actions.get.return_value = action
     plan = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
         status=PlanStatusV1.SUPERSEDED,
     )
-    unit_of_work.plans.get_by_id.return_value = plan
-    unit_of_work.plans.list_by_run.return_value = [plan]
+    unit_of_work.plans.load_bundle.return_value = plan
+    unit_of_work.plans.get_current.return_value = plan
     unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1",
         conversation_id="conversation-1",
@@ -176,4 +179,4 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
     assert result.result_code == ResultCode.STATE_CONFLICT.value
     assert result.conflict_detail == "superseded Plan children are history-only"
     unit_of_work.actions.update_if_version_and_status.assert_not_called()
-    unit_of_work.approvals.insert.assert_not_called()
+    unit_of_work.approvals.insert_active_snapshot.assert_not_called()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.persistence_cas import update_plan_record
 from google_work_agent.application.read_contracts import (
     PublishReadOnlyPlanCommand,
     PublishReadOnlyPlanResponse,
@@ -57,7 +58,7 @@ class PublishReadOnlyPlanHandler:
 
             now_ms = self._now_ms()
             if existing_receipt is None:
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="PublishReadOnlyPlan",
                     request_hash=command.request_hash,
@@ -68,7 +69,7 @@ class PublishReadOnlyPlanHandler:
 
             plan = require_plan(unit_of_work, command.plan_id)
             run = require_run(unit_of_work, command.run_id)
-            actions = unit_of_work.actions.list_by_plan(command.plan_id)
+            actions = unit_of_work.actions.list_for_plan(command.plan_id)
 
             if plan.run_id != command.run_id:
                 raise LookupError(f"plan {command.plan_id} does not belong to run {command.run_id}")
@@ -126,7 +127,8 @@ class PublishReadOnlyPlanHandler:
             ):
                 raise RuntimeError("validated PublishReadOnlyPlan Run CAS failed")
             if (
-                unit_of_work.plans.update_if_status(
+                update_plan_record(
+                    unit_of_work,
                     plan.id,
                     expected_status=plan.status,
                     next_status=next_plan_status,
@@ -134,7 +136,7 @@ class PublishReadOnlyPlanHandler:
                 is None
             ):
                 raise RuntimeError("validated PublishReadOnlyPlan Plan CAS failed")
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=command.run_id,
                     action_id=None,
@@ -147,7 +149,7 @@ class PublishReadOnlyPlanHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=command.run_id,
                     action_id=None,

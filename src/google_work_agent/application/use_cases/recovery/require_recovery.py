@@ -91,7 +91,7 @@ class RequireRecoveryHandler:
 
         run = unit_of_work.runs.get(command.run_id)
         pre_recovery_status = run.status.value if run else "UNKNOWN"
-        unit_of_work.command_receipts.add_received(
+        unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="RequireRecovery",
             request_hash=command.request_hash,
@@ -144,10 +144,10 @@ class RequireRecoveryHandler:
                 now_ms=now_ms,
             )
             unit_of_work.recovery_contexts.store_context(context)
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 build_recovery_required_audit_event(command, result.result_code, now_ms)
             )
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command.command_id,
             applied=result.applied,
             result_code=result_code,

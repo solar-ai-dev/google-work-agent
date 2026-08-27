@@ -23,13 +23,10 @@ class _Receipts:
     def get_by_command_id(self, _command_id: str):
         return None
 
-    def add_received(self, **_kwargs: object) -> None:
+    def reserve_or_replay(self, **_kwargs: object) -> None:
         return None
 
-    def has_applied_request_cancel(self, _run_id: str) -> bool:
-        return False
-
-    def finish_json(self, **_kwargs: object) -> None:
+    def store_result(self, **_kwargs: object) -> None:
         self.finished += 1
 
 
@@ -51,8 +48,8 @@ class _Plans:
         self.plan = plan
         self.complete_calls = 0
 
-    def list_by_run(self, _run_id: str) -> tuple[PlanRecord, ...]:
-        return (self.plan,)
+    def get_current(self, _run_id: str) -> PlanRecord:
+        return self.plan
 
     def complete(self, _plan_id: str) -> None:
         self.complete_calls += 1
@@ -62,8 +59,18 @@ class _Actions:
     def __init__(self, action: ActionRecord) -> None:
         self.action = action
 
-    def list_by_plan(self, _plan_id: str) -> tuple[ActionRecord, ...]:
+    def list_for_plan(self, _plan_id: str) -> tuple[ActionRecord, ...]:
         return (self.action,)
+
+
+class _CancelIntents:
+    def has_durable_intent(self, _run_id: str) -> bool:
+        return False
+
+
+class _EmptyHistory:
+    def list_for_action(self, _action_id: str) -> tuple[object, ...]:
+        return ()
 
 
 class _Conversations:
@@ -77,6 +84,8 @@ class _Conversations:
 class _Uow:
     def __init__(self) -> None:
         self.command_receipts = _Receipts()
+        self.cancel_intents = _CancelIntents()
+        self.approval_history = _EmptyHistory()
         self.runs = _Runs(
             RunRecord(
                 id="run-1",

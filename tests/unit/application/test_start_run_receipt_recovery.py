@@ -21,8 +21,14 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
-from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
+from google_work_agent.ports.persistence.audit_event_repository import (
+    AuditEventCursor,
+    PersistedAuditEventRecord,
+)
+from google_work_agent.ports.persistence.trace_event_repository import (
+    PersistedTraceEventRecord,
+    TraceEventCursor,
+)
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
@@ -35,17 +41,15 @@ class _AuditCollector:
     def __init__(self) -> None:
         self.items: list[AuditEventRecord] = []
 
-    def add(self, item: AuditEventRecord) -> None:
+    def append(self, item: AuditEventRecord) -> None:
         self.items.append(item)
 
-    def list_by_aggregate(
-        self,
-        *,
-        run_id: str | None,
-        action_id: str | None = None,
-        cursor_after: int | None = None,
-        limit: int = 100,
+    def list_page(
+        self, cursor: AuditEventCursor | None, limit: int
     ) -> tuple[PersistedAuditEventRecord, ...]:
+        run_id = None if cursor is None else cursor.run_id
+        action_id = None if cursor is None else cursor.action_id
+        cursor_after = None if cursor is None else cursor.after_id
         records = tuple(
             PersistedAuditEventRecord(
                 id=index,
@@ -72,16 +76,14 @@ class _TraceCollector:
     def __init__(self) -> None:
         self.items: list[TraceEventRecord] = []
 
-    def add(self, item: TraceEventRecord) -> None:
+    def append(self, item: TraceEventRecord) -> None:
         self.items.append(item)
 
-    def list_by_run_after_cursor(
-        self,
-        *,
-        run_id: str,
-        cursor_after: int | None,
-        limit: int = 100,
+    def list_page(
+        self, cursor: TraceEventCursor | None, limit: int
     ) -> tuple[PersistedTraceEventRecord, ...]:
+        run_id = None if cursor is None else cursor.run_id
+        cursor_after = None if cursor is None else cursor.after_id
         records = tuple(
             PersistedTraceEventRecord(
                 id=index,
@@ -94,7 +96,8 @@ class _TraceCollector:
                 created_at_ms=item.created_at_ms,
             )
             for index, item in enumerate(self.items, start=1)
-            if item.run_id == run_id and (cursor_after is None or index > cursor_after)
+            if (run_id is None or item.run_id == run_id)
+            and (cursor_after is None or index > cursor_after)
         )
         return records[:limit]
 
@@ -172,7 +175,7 @@ class _MessageRepo:
 class _ReceiptRepo:
     def __init__(self) -> None:
         self.record: CommandReceiptRecord | None = None
-        self.add_received_count = 0
+        self.reserve_count = 0
         self.finish_count = 0
 
     def get_by_command_id(self, command_id: str) -> CommandReceiptRecord | None:
@@ -182,8 +185,10 @@ class _ReceiptRepo:
             else None
         )
 
-    def add_received(self, **kwargs: object) -> None:
-        self.add_received_count += 1
+    def reserve_or_replay(self, **kwargs: object) -> CommandReceiptRecord | None:
+        if self.record is not None:
+            return self.record
+        self.reserve_count += 1
         self.record = CommandReceiptRecord(
             command_id=str(kwargs["command_id"]),
             command_type=str(kwargs["command_type"]),
@@ -198,8 +203,9 @@ class _ReceiptRepo:
             created_at_ms=int(kwargs["created_at_ms"]),
             completed_at_ms=None,
         )
+        return None
 
-    def finish_json(self, **kwargs: object) -> None:
+    def store_result(self, **kwargs: object) -> None:
         assert self.record is not None
         self.finish_count += 1
         self.record = replace(
@@ -551,7 +557,7 @@ def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None
     assert len(uow.checkpoints.bindings) == 1
     assert len(uow.traces.items) == 1
     assert len(uow.audits.items) == 1
-    assert uow.command_receipts.add_received_count == 1
+    assert uow.command_receipts.reserve_count == 1
     assert uow.command_receipts.finish_count == 1
     assert uow.commit_count == 1
 
@@ -622,8 +628,8 @@ def test_received_receipt_with_applied_aggregate_finishes_receipt_without_duplic
     command = _command()
     uow.command_receipts.record = _received(command)
     _seed_complete_aggregate(uow, command)
-    uow.audits.add(_run_created_audit(command))
-    uow.traces.add(_run_created_trace(command))
+    uow.audits.append(_run_created_audit(command))
+    uow.traces.append(_run_created_trace(command))
 
     result = _handler(uow)(command)
 
@@ -652,7 +658,7 @@ def test_received_receipt_without_aggregate_and_without_prior_evidence_fails_clo
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.traces.items) == 0
     assert len(uow.audits.items) == 0
@@ -663,14 +669,14 @@ def test_received_receipt_without_aggregate_command_received_only_fails_closed()
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.audits.add(_command_received_audit(command))
+    uow.audits.append(_command_received_audit(command))
 
     with pytest.raises(RuntimeError, match="no canonical proof of non-application"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.audits.items) == 1
     assert len(uow.traces.items) == 0
@@ -681,14 +687,14 @@ def test_received_receipt_without_aggregate_with_prior_run_created_audit_fails_c
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.audits.add(_run_created_audit(command))
+    uow.audits.append(_run_created_audit(command))
 
     with pytest.raises(RuntimeError, match="prior RUN_STARTED Audit evidence without aggregate"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.audits.items) == 1
     assert len(uow.traces.items) == 0
@@ -698,7 +704,7 @@ def test_received_receipt_without_aggregate_with_prior_command_applied_fails_clo
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.audits.add(_command_applied_audit(command))
+    uow.audits.append(_command_applied_audit(command))
 
     with pytest.raises(
         RuntimeError, match="prior COMMAND_APPLIED Audit evidence without aggregate"
@@ -707,7 +713,7 @@ def test_received_receipt_without_aggregate_with_prior_command_applied_fails_clo
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.audits.items) == 1
     assert len(uow.traces.items) == 0
@@ -717,14 +723,14 @@ def test_received_receipt_without_aggregate_with_prior_run_created_trace_fails_c
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.traces.add(_run_created_trace(command))
+    uow.traces.append(_run_created_trace(command))
 
     with pytest.raises(RuntimeError, match="prior RUN_CREATED Trace evidence without aggregate"):
         _handler(uow)(command)
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.audits.items) == 0
     assert len(uow.traces.items) == 1
@@ -736,7 +742,7 @@ def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_f
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
-    uow.audits.add(_run_created_audit(command, command_id="other-command"))
+    uow.audits.append(_run_created_audit(command, command_id="other-command"))
 
     with pytest.raises(RuntimeError, match="conflicting RUN_STARTED Audit evidence"):
         _handler(uow)(command)
@@ -765,7 +771,7 @@ def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None
 
     assert uow.runs.add_count == 0
     assert uow.messages.add_count == 0
-    assert uow.command_receipts.add_received_count == 0
+    assert uow.command_receipts.reserve_count == 0
     assert uow.command_receipts.finish_count == 0
     assert len(uow.audits.items) == 0
     assert len(uow.traces.items) == 0
@@ -776,9 +782,9 @@ def test_received_receipt_with_duplicate_run_created_audit_fails_closed() -> Non
     command = _command()
     uow.command_receipts.record = _received(command)
     _seed_complete_aggregate(uow, command)
-    uow.audits.add(_run_created_audit(command))
-    uow.audits.add(_run_created_audit(command))
-    uow.traces.add(_run_created_trace(command))
+    uow.audits.append(_run_created_audit(command))
+    uow.audits.append(_run_created_audit(command))
+    uow.traces.append(_run_created_trace(command))
 
     with pytest.raises(RuntimeError, match="duplicate RUN_STARTED Audit evidence"):
         _handler(uow)(command)

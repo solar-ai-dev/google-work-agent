@@ -6,7 +6,7 @@ from google_work_agent.domain.run.model import Run, RunCreate, RunStatusV1
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
-class SQLiteRunRepository:
+class SqliteRunRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
@@ -42,22 +42,6 @@ class SQLiteRunRepository:
             (conversation_id,),
         ).fetchone()
         return None if row is None else self.get(str(row["id"]))
-
-    def get_latest_by_conversation(self, conversation_id: str) -> Run | None:
-        row = self._connection.execute(
-            "SELECT id FROM runs WHERE conversation_id=? "
-            "ORDER BY started_at_ms DESC, id DESC LIMIT 1;",
-            (conversation_id,),
-        ).fetchone()
-        return None if row is None else self.get(str(row["id"]))
-
-    def list_by_conversation_bounded(self, conversation_id: str, *, limit: int) -> tuple[Run, ...]:
-        rows = self._connection.execute(
-            "SELECT id FROM runs WHERE conversation_id=? "
-            "ORDER BY started_at_ms DESC, id DESC LIMIT ?;",
-            (conversation_id, limit),
-        ).fetchall()
-        return tuple(run for row in rows if (run := self.get(str(row["id"]))) is not None)
 
     def create(self, run: RunCreate) -> None:
         try:

@@ -543,5 +543,5 @@ class WriteExecutionPhaseCoordinator:
 
     def _action_status(self, action_id: str) -> str | None:
         with self._unit_of_work_factory() as unit_of_work:
-            action = unit_of_work.actions.get_by_id(action_id)
+            action = unit_of_work.actions.get(action_id)
             return None if action is None else action.status

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.read_contracts import (
     ClaimReadActionCommand,
     ReadActionCommandResponse,
@@ -57,7 +58,7 @@ class ClaimReadActionHandler:
 
             now_ms = self._now_ms()
             if existing_receipt is None:
-                unit_of_work.command_receipts.add_received(
+                unit_of_work.command_receipts.reserve_or_replay(
                     command_id=command.command_id,
                     command_type="ClaimReadAction",
                     request_hash=command.request_hash,
@@ -78,11 +79,7 @@ class ClaimReadActionHandler:
                 )
                 unit_of_work.commit()
                 return response
-            if len(unit_of_work.action_dependencies.list_dependencies(action.id)) > 0:
-                ready_ids = {
-                    item.id for item in unit_of_work.actions.list_ready_actions(action.plan_id)
-                }
-                if action.id not in ready_ids:
+            if not unit_of_work.actions.is_dependency_ready(action.id):
                     response = action_conflict_response(
                         action=action,
                         result_code=ResultCode.STATE_CONFLICT,
@@ -102,7 +99,8 @@ class ClaimReadActionHandler:
             )
             if (
                 result.applied
-                and unit_of_work.actions.update_if_version_and_status(
+                and update_action_record(
+                    unit_of_work,
                     command.action_id,
                     expected_version=action.version,
                     expected_status=ActionStatusV1(action.status),
@@ -113,7 +111,7 @@ class ClaimReadActionHandler:
             ):
                 raise RuntimeError("validated ClaimReadAction CAS failed")
             response = action_result_response(command.action_id, result)
-            unit_of_work.traces.add(
+            unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=require_plan(unit_of_work, action.plan_id).run_id,
                     action_id=command.action_id,
@@ -124,7 +122,7 @@ class ClaimReadActionHandler:
                     created_at_ms=now_ms,
                 )
             )
-            unit_of_work.audits.add(
+            unit_of_work.audits.append(
                 audit_event(
                     run_id=require_plan(unit_of_work, action.plan_id).run_id,
                     action_id=command.action_id,

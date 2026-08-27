@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
 from google_work_agent.application.write_persistence import revoke_active_approvals
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
@@ -24,6 +25,9 @@ from google_work_agent.domain.run.model import (
 from google_work_agent.domain.run.transitions.block_run import transition_block_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +73,7 @@ class BlockRunHandler:
                     completed_at_ms=completed_at_ms,
                 )
 
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="BlockRun",
                 request_hash=command.request_hash,
@@ -108,7 +112,7 @@ class BlockRunHandler:
                     )
             response = self._response(command, result)
             if result.applied:
-                unit_of_work.traces.add(
+                unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=command.run_id,
                         action_id=None,
@@ -126,7 +130,7 @@ class BlockRunHandler:
                         created_at_ms=completed_at_ms,
                     )
                 )
-                unit_of_work.audits.add(
+                unit_of_work.audits.append(
                     AuditEventRecord(
                         account_id=conversation.account_id,
                         run_id=command.run_id,
@@ -167,16 +171,20 @@ class BlockRunHandler:
             )
         plans = tuple(
             plan
-            for plan in unit_of_work.plans.list_by_run(run.id)
+            for plan in current_plan_tuple(unit_of_work.plans, run.id)
             if plan.status is not PlanStatusV1.SUPERSEDED
         )
         current_plan = plans[0] if len(plans) == 1 else None
-        actions = () if current_plan is None else unit_of_work.actions.list_by_plan(current_plan.id)
+        actions = (
+            ()
+            if current_plan is None
+            else unit_of_work.actions.list_for_plan(current_plan.id)
+        )
         attempts = tuple(
             attempt
             for action in actions
-            for approval in unit_of_work.approvals.list_by_action(action.id)
-            for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+            for approval in active_approval_tuple(unit_of_work.approvals, action.id)
+            for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
         )
         try:
             next_status = transition_block_run(
@@ -216,21 +224,22 @@ class BlockRunHandler:
             ActionStatusV1.APPROVED.value,
             ActionStatusV1.EXPIRED.value,
         }
-        for plan in unit_of_work.plans.list_by_run(run_id):
+        for plan in current_plan_tuple(unit_of_work.plans, run_id):
             if plan.status in {
                 PlanStatusV1.SUPERSEDED,
                 PlanStatusV1.COMPLETED,
                 PlanStatusV1.CANCELLED,
             }:
                 continue
-            actions = unit_of_work.actions.list_by_plan(plan.id)
+            actions = unit_of_work.actions.list_for_plan(plan.id)
             for action in actions:
                 revoke_active_approvals(unit_of_work, action.id)
             for action in actions:
                 if action.status not in pending:
                     continue
                 if (
-                    unit_of_work.actions.update_if_version_and_status(
+                    update_action_record(
+                        unit_of_work,
                         action.id,
                         expected_version=action.version,
                         expected_status=ActionStatusV1(action.status),
@@ -243,7 +252,8 @@ class BlockRunHandler:
                         f"BlockRun could not terminalize pending action {action.id}"
                     )
             if (
-                unit_of_work.plans.update_if_status(
+                update_plan_record(
+                    unit_of_work,
                     plan.id,
                     expected_status=plan.status,
                     next_status=PlanStatusV1.CANCELLED,
@@ -339,7 +349,7 @@ class BlockRunHandler:
         response: BlockRunResult,
         completed_at_ms: int,
     ) -> None:
-        unit_of_work.command_receipts.finish_json(
+        unit_of_work.command_receipts.store_result(
             command_id=command_id,
             applied=response.applied,
             result_code=ResultCode(response.result_code),

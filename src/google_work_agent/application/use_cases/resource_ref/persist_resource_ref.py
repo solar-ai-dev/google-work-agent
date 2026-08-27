@@ -3,6 +3,9 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.persistence_admissibility import (
+    upsert_registered_resource_ref,
+)
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -23,6 +26,6 @@ class PersistResourceRefHandler:
 
     def __call__(self, command: PersistResourceRefCommand) -> PersistResourceRefResult:
         with self._unit_of_work_factory() as unit_of_work:
-            persisted = unit_of_work.resource_refs.upsert_bound_ref(command.resource_ref)
+            persisted = upsert_registered_resource_ref(unit_of_work, command.resource_ref)
             unit_of_work.commit()
         return PersistResourceRefResult(persisted)

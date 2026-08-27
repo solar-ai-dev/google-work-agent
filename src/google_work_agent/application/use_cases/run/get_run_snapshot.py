@@ -15,6 +15,8 @@ from google_work_agent.domain.action.model import (
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.verification.model import VerificationStatus
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -67,9 +69,9 @@ class GetRunSnapshotHandler:
             run = unit_of_work.runs.get_snapshot(query.run_id)
             if run is None:
                 return None
-            plans = unit_of_work.plans.list_by_run(run.id)
+            plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.id), default=None)
-            action_records = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
+            action_records = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             actions = tuple(
                 _action_snapshot(
                     action,
@@ -83,7 +85,7 @@ class GetRunSnapshotHandler:
             verified_count = 0
             mismatch_count = 0
             for action in action_records:
-                for approval in unit_of_work.approvals.list_by_action(action.id):
+                for approval in active_approval_tuple(unit_of_work.approvals, action.id):
                     approvals.append(
                         {
                             "approval_id": approval.id,
@@ -93,10 +95,9 @@ class GetRunSnapshotHandler:
                             "expires_at_ms": approval.expires_at_ms,
                         }
                     )
-                    for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id):
-                        for verification in unit_of_work.verifications.list_by_attempt(attempt.id):
-                            verified_count += verification.status is VerificationStatus.VERIFIED
-                            mismatch_count += verification.status is VerificationStatus.MISMATCH
+                for verification in unit_of_work.verifications.list_for_action(action.id):
+                    verified_count += verification.status is VerificationStatus.VERIFIED
+                    mismatch_count += verification.status is VerificationStatus.MISMATCH
 
         run_status = run.status
         terminal_statuses = {

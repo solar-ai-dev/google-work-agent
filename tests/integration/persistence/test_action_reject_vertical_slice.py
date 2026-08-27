@@ -31,6 +31,9 @@ from google_work_agent.application.write_plan_contracts import (
 )
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,
 )
@@ -132,16 +135,16 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
     assert result.applied is True
     assert result.action_status == "REJECTED"
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
-        plan = unit_of_work.plans.get_by_id("plan-1")
+        action = unit_of_work.actions.get("action-1")
+        plan = unit_of_work.plans.load_bundle("plan-1")
         run = unit_of_work.runs.get("run-1")
-        approvals = unit_of_work.approvals.list_by_action("action-1")
+        approvals = active_approval_tuple(unit_of_work.approvals, "action-1")
         attempts = tuple(
             attempt
             for approval in approvals
-            for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+            for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
         )
-        audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
+        audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
     assert action is not None and action.status == "REJECTED"
     assert plan is not None and plan.status.value == "COMPLETED"
     assert run is not None and run.status.value == "COMPLETED"
@@ -204,9 +207,9 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
 
     assert result.applied is True
     with factory() as unit_of_work:
-        action_a = unit_of_work.actions.get_by_id("action-a")
-        action_b = unit_of_work.actions.get_by_id("action-b")
-        plan = unit_of_work.plans.get_by_id("plan-independent")
+        action_a = unit_of_work.actions.get("action-a")
+        action_b = unit_of_work.actions.get("action-b")
+        plan = unit_of_work.plans.load_bundle("plan-independent")
         run = unit_of_work.runs.get("run-1")
     assert action_a is not None and action_a.status == "REJECTED"
     assert action_b is not None and action_b.status == "PROPOSED"
@@ -244,8 +247,8 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
     assert result.applied is False
     assert result.result_code == ResultCode.STATE_CONFLICT.value
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
-        audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
+        action = unit_of_work.actions.get("action-1")
+        audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
     assert action is not None and action.status == status and action.version == version
     assert [event for event in audits if event.event_type == "ACTION_REJECTED"] == []
 
@@ -290,8 +293,8 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
     assert mismatch.result_code == ResultCode.DUPLICATE_COMMAND.value
     assert stale.result_code == ResultCode.VERSION_CONFLICT.value
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
-        audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
+        action = unit_of_work.actions.get("action-1")
+        audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
     assert action is not None and action.version == 1
     assert len([event for event in audits if event.event_type == "ACTION_REJECTED"]) == 1
 
@@ -318,7 +321,7 @@ def test_reject_rejects_unsafe_reason_codes_before_receipt(
             )
         )
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
         receipt = unit_of_work.command_receipts.get_by_command_id("reject-invalid-reason")
     assert action is not None and action.status == "PROPOSED"
     assert receipt is None
@@ -383,7 +386,7 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
     assert claim.applied is False
     assert claim.attempt_id is None
     with factory() as unit_of_work:
-        dependent = unit_of_work.actions.get_by_id("action-b")
+        dependent = unit_of_work.actions.get("action-b")
     with connect_sqlite(modify_database) as connection:
         attempt_count = connection.execute("SELECT COUNT(*) FROM execution_attempts;").fetchone()[0]
     assert dependent is not None and dependent.status == "DEPENDENCY_BLOCKED"
@@ -436,15 +439,23 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
     assert rejected.applied is True
 
     with factory() as unit_of_work:
-        actions = {item.id: item for item in unit_of_work.actions.list_by_plan("plan-chain")}
-        approvals = {
-            action_id: unit_of_work.approvals.list_by_action(action_id)[-1] for action_id in actions
-        }
-        audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
+        actions = {item.id: item for item in unit_of_work.actions.list_for_plan("plan-chain")}
+        audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
+    connection = connect_sqlite(modify_database)
+    try:
+        approval_statuses = tuple(
+            str(row["status"])
+            for row in connection.execute(
+                "SELECT status FROM approvals WHERE action_id IN "
+                "('action-a', 'action-b', 'action-c');"
+            ).fetchall()
+        )
+    finally:
+        connection.close()
     assert actions["action-a"].status == "REJECTED"
     assert actions["action-b"].status == "DEPENDENCY_BLOCKED"
     assert actions["action-c"].status == "DEPENDENCY_BLOCKED"
-    assert all(item.status is ApprovalStatusV1.REVOKED for item in approvals.values())
+    assert approval_statuses == (ApprovalStatusV1.REVOKED.value,) * 3
     assert {
         event.action_id for event in audits if event.event_type == "ACTION_DEPENDENCY_BLOCKED"
     } == {"action-b", "action-c"}
@@ -524,7 +535,7 @@ def test_reject_preserves_verified_actions(
 
     assert result.applied is True
     with factory() as unit_of_work:
-        preserved = unit_of_work.actions.get_by_id(preserved_action_id)
+        preserved = unit_of_work.actions.get(preserved_action_id)
     assert (
         preserved is not None
         and preserved.status == "VERIFIED"
@@ -633,7 +644,7 @@ def test_reject_audit_failure_rolls_back_domain_mutation(modify_database: Path) 
         )
 
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
-        action = unit_of_work.actions.get_by_id("action-1")
+        action = unit_of_work.actions.get("action-1")
         receipt = unit_of_work.command_receipts.get_by_command_id("reject-audit-failure")
     assert action is not None and action.status == "PROPOSED" and action.version == 0
     assert receipt is None

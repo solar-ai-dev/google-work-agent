@@ -14,6 +14,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.request_confirmation import (
     transition_request_confirmation,
 )
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
@@ -99,7 +100,7 @@ class RequestConfirmationHandler:
                 raise ValueError("confirmation target does not match the workflow binding")
 
             now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
+            unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.interrupt_id,
                 command_type="RequestConfirmation",
                 request_hash=command.request_hash,
@@ -167,8 +168,8 @@ class RequestConfirmationHandler:
                         checkpoint.checkpoint_id,
                         checkpoint.checkpoint_generation,
                     )
-                    unit_of_work.audits.add(_audit(command, result, now_ms))
-            unit_of_work.command_receipts.finish_json(
+                    unit_of_work.audits.append(_audit(command, result, now_ms))
+            unit_of_work.command_receipts.store_result(
                 command_id=command.interrupt_id,
                 applied=result.applied,
                 result_code=ResultCode(result.result_code),
@@ -194,11 +195,11 @@ class RequestConfirmationHandler:
 
 
 def _published_review_facts(unit_of_work: UnitOfWork, run_id: str) -> tuple[str | None, int]:
-    plans = unit_of_work.plans.list_by_run(run_id)
+    plans = current_plan_tuple(unit_of_work.plans, run_id)
     plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
     if plan is None:
         return None, 0
-    actions = unit_of_work.actions.list_by_plan(plan.id)
+    actions = unit_of_work.actions.list_for_plan(plan.id)
     unresolved = sum(1 for action in actions if ActionStatusV1(action.status) in _UNRESOLVED)
     return plan.review_disposition, unresolved
 

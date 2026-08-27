@@ -29,7 +29,7 @@ class _Sink:
     def __init__(self) -> None:
         self.items = []
 
-    def add(self, item) -> None:
+    def append(self, item) -> None:
         self.items.append(item)
 
 
@@ -40,9 +40,11 @@ class _Receipts:
     def get_by_command_id(self, command_id):
         return self.items.get(command_id)
 
-    def add_received(
+    def reserve_or_replay(
         self, *, command_id, command_type, request_hash, aggregate_type, aggregate_id, created_at_ms
     ):
+        if command_id in self.items:
+            return self.items[command_id]
         self.items[command_id] = CommandReceiptRecord(
             command_id,
             command_type,
@@ -57,8 +59,9 @@ class _Receipts:
             created_at_ms,
             None,
         )
+        return None
 
-    def finish_json(
+    def store_result(
         self, *, command_id, applied, result_code, result_version, response_json, completed_at_ms
     ):
         old = self.items[command_id]
@@ -76,6 +79,11 @@ class _Receipts:
             old.created_at_ms,
             completed_at_ms,
         )
+
+
+class _CancelIntents:
+    def has_durable_intent(self, _run_id: str) -> bool:
+        return False
 
 
 class _Runs:
@@ -173,14 +181,17 @@ class _Uow:
     def __init__(self, status, action_statuses=()):
         self.runs = _Runs(status)
         self.command_receipts = _Receipts()
+        self.cancel_intents = _CancelIntents()
         self.traces = _Sink()
         self.audits = _Sink()
         self.recovery_contexts = _RecoveryContexts()
         self.commits = 0
-        plan = SimpleNamespace(id="plan-1", revision_no=1, created_at_ms=1)
-        self.plans = SimpleNamespace(list_by_run=lambda run_id: [plan] if action_statuses else [])
+        plan = SimpleNamespace(id="plan-1", run_id="run-1", revision_no=1, created_at_ms=1)
+        self.plans = SimpleNamespace(
+            get_current=lambda run_id: plan if action_statuses else None
+        )
         self.actions = SimpleNamespace(
-            list_by_plan=lambda plan_id: [SimpleNamespace(status=item) for item in action_statuses]
+            list_for_plan=lambda plan_id: [SimpleNamespace(status=item) for item in action_statuses]
         )
         target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
         self.checkpoints = SimpleNamespace(
