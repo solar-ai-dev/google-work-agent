@@ -1,0 +1,85 @@
+{
+  "head": "a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a",
+  "historical_mapping_shas": [
+    "453e7f0c3fb5305775f709d91fe001673b5e0651",
+    "6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d"
+  ],
+  "expected": {
+    "CAP": 142,
+    "STR": 473,
+    "NPA": 85,
+    "TOTAL": 700
+  },
+  "actual": {
+    "CAP": 142,
+    "STR": 473,
+    "NPA": 85,
+    "TOTAL": 700
+  },
+  "missing": [],
+  "extra": [],
+  "duplicates": [],
+  "str_455_formal_owner": "launcher-installer-release-canonical-current-mapping-6ec3ff49.md",
+  "current_delta_file": "phase2-mapping-delta-reconciliation-a03432c8.md",
+  "current_global_closure_file": "global-caller-import-duplicate-authority-closure-a03432c8.md",
+  "domain_issue_104_bounded_core": {
+    "models": "15/15",
+    "transitions": "39/39",
+    "total": "54/54",
+    "evidence_sha": "c495c12dc919369990440c56efd9fc2fdd8b0c86"
+  },
+  "per_file_formal_counts": {
+    "domain-canonical-current-mapping-453e7f0c.md": {
+      "CAP": 0,
+      "STR": 61,
+      "NPA": 0
+    },
+    "persistence-canonical-current-mapping-453e7f0c.md": {
+      "CAP": 0,
+      "STR": 49,
+      "NPA": 14
+    },
+    "application-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 99,
+      "STR": 1,
+      "NPA": 0
+    },
+    "agent-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 43,
+      "STR": 2,
+      "NPA": 0
+    },
+    "langgraph-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 139,
+      "NPA": 0
+    },
+    "ports-connectors-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 99,
+      "NPA": 3
+    },
+    "api-composition-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 22,
+      "NPA": 0
+    },
+    "frontend-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 28,
+      "NPA": 0
+    },
+    "launcher-installer-release-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 28,
+      "NPA": 9
+    },
+    "observability-evaluation-structural-canonical-current-mapping-6ec3ff49.md": {
+      "CAP": 0,
+      "STR": 44,
+      "NPA": 59
+    }
+  },
+  "verification_method": "Lines beginning with formal table row `| CAP-* |`, `| STR-* |`, or `| NPA-* |`; unique union compared against Phase-1 Ledger effective sets; cross-file formal-owner multiplicity checked.",
+  "cross_file_formal_duplicates": 0
+}

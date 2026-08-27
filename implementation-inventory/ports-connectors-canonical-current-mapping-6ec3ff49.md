@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Domain-record imports and a small MCP/stdio slice changed after `93f03a91`, but the major repaired OPEN rows remain open. `application/tool_registry/` is still absent; the exact LLM provider/Ollama leaf package files required by `STR-459..462,464` are still not materialized; and `McpConnectorWriteAdapter` still composes provider operations through `GoogleWorkspaceGateway`, so Registry → `MCPClientPort` is not yet the sole production connector seam. The historical 6ec dispositions remain preservation evidence.
 **Mode:** `READ_ONLY_MAPPING`
 
 ## 1. Bounded universe
@@ -10,7 +13,9 @@
 - `STR-062..109`: 24 non-persistence Port↔Adapter pairs = **48 rows**
 - `STR-110..144`: Signed Tool Registry / Connector Runtime / Google Workspace MCP / provider operations = **35 rows**
 - Adjacent contract/runtime rows `STR-302,304,314,328,329,333,334` = **7 rows**
-- **Total = 90 rows**
+- Previously omitted repository roots `STR-003,004` + installed-manifest rows `STR-303,305` + LLM leaf rows `STR-459,460,461,462,464` = **9 rows**
+- **Corrected structural total = 99 rows**
+- Required non-Python artifact rows assigned to this layer: `NPA-003,004,011` = **3 rows**
 
 Exact canonical-path presence at the frozen SHA:
 
@@ -19,7 +24,7 @@ Port/Adapter rows                 48 / 48
 Registry/MCP/provider rows        20 / 35
 Adjacent contract/runtime rows     4 / 7
 -----------------------------------------
-Exact structural paths            72 / 90
+Exact structural paths            72 / 99  (new omitted rows are mostly non-exact/misplaced)
 ```
 
 Exact-path presence is not a behavioral PASS. In particular the current Connector read/write adapters use `GoogleWorkspaceGateway` directly instead of the canonical `ValidatedConnectorToolBindingV1 → ConnectorRuntimeRegistry → MCPClientPort` boundary.
@@ -129,6 +134,29 @@ Exact-path presence is not a behavioral PASS. In particular the current Connecto
 | STR-333 | retrieval head | `ports/system/contracts/retrieval_head.py` → `RetrievalHeadV1` | ports/system/contracts/retrieval_head.py exact | **FULL** | **FULL** | **KEEP** | Keep RetrievalHeadV1 typed metadata contract. |
 | STR-334 | non-Domain operational replay | `ports/system/contracts/operational_command_replay.py` → `OperationalCommandContextV1 / OperationalReplayDecisionV2 / OperationalReconcileResultV1` | OperationalCommandContextV1/OperationalReplayDecisionV2 live inside operational_command_replay_port.py; contract file absent | **PARTIAL** | **PATH** | **SPLIT + MOVE + TARGETED_CORRECTION** | Move typed values into canonical contracts/operational_command_replay.py and add OperationalReconcileResultV1; Port imports the contract. |
 
+
+## 4.1 Previously omitted structural/runtime rows — 9/9
+
+| ID | Canonical responsibility | Canonical target | Snapshot/current evidence | Coverage | Disposition | Required action |
+|---|---|---|---|---|---|---|
+| STR-003 | Repository root / abstract boundaries | `ports/` | `src/google_work_agent/ports/` exists. | **FULL_ROOT** | **KEEP** | Preserve root ownership; close child contract ownership and concrete-export negatives separately. |
+| STR-004 | Repository root / outbound-runtime adapters | `adapters/` | `src/google_work_agent/adapters/` exists. | **FULL_ROOT** | **KEEP** | Preserve root ownership; adapters must not own Core semantics. |
+| STR-303 | Tool Registry implementation mirror / `SignedToolRegistryManifestV1` | `application/tool_registry/tool_registry_manifest.json` | Exact Application package/manifest absent; strong reusable registry semantics remain in `domain/tool_registry.py` and Google Workspace registry material. | **PARTIAL_MATERIAL / WRONG_OWNER** | **SPLIT + MOVE + TARGETED_CORRECTION** | Move registry semantics to canonical Application owner and materialize deterministic implementation manifest; do not rewrite working lookup/hash policy. |
+| STR-305 | Connector MCP descriptor projection | release-generated connector subset → installed `tool-descriptor-projection-v1.json` | Exact projection artifact/generator absent; reusable tool descriptor/registry/MCP metadata exists in stdio client and broad Google MCP server material. | **PARTIAL_MATERIAL** | **SPLIT + TARGETED_CORRECTION** | Generate exact connector subset from the implementation Tool manifest at release packaging; loader/consumer remains connector MCP project registry. |
+| STR-459 | API-provider structured-inference leaf family | `adapters/llm/<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter` | Exact leaf absent; reusable API-provider abstraction in `api_provider.py` and Gemini transport in `gemini.py`; router already exists. | **NEAR_FULL_MATERIAL / BROAD_FILE** | **SPLIT + MOVE_RENAME** | Split provider-private leaf from broad provider/transport modules; only `StructuredInferenceRuntimeRouter` binds the Port. |
+| STR-460 | API-provider credential leaf family | `adapters/llm/<provider>/credential.py → <Provider>LlmCredentialAdapter` | Exact provider leaf absent; API-key/probe/credential semantics are distributed across `api_provider.py`, provider transport and `llm_credential_router.py`. | **PARTIAL_MATERIAL** | **SPLIT + MOVE_RENAME** | Extract provider-private credential leaf; preserve secret-boundary/probe behavior and keep router as sole binding authority. |
+| STR-461 | API-provider runtime-status leaf family | `adapters/llm/<provider>/runtime_status.py → <Provider>LlmRuntimeStatusAdapter` | Exact provider leaf absent; reusable availability/probe semantics live in provider modules plus `llm_runtime_status_router.py`. | **PARTIAL_MATERIAL** | **SPLIT + MOVE_RENAME** | Extract provider-private runtime-status leaf without duplicating router policy. |
+| STR-462 | Local Ollama structured-inference leaf | `adapters/llm/ollama/structured_inference.py → OllamaStructuredInferenceAdapter` | Broad `adapters/llm/ollama.py` already owns local structured inference and transport behavior. | **NEAR_FULL_MATERIAL / BROAD_FILE** | **SPLIT + MOVE_RENAME** | Split exact Ollama structured leaf; preserve loopback/tool/structured inference behavior. |
+| STR-464 | Local Ollama runtime-status leaf | `adapters/llm/ollama/runtime_status.py → OllamaLlmRuntimeStatusAdapter` | Broad `ollama.py` + probe material already owns local availability/status behavior. | **NEAR_FULL_MATERIAL / BROAD_FILE** | **SPLIT + MOVE_RENAME** | Split exact status leaf; `adapters/llm/ollama/credential.py` remains forbidden. |
+
+## 4.2 Non-Python / runtime artifact rows — 3/3
+
+| ID | Required artifact | Current realization/evidence | Coverage | Disposition / closure |
+|---|---|---|---|---|
+| NPA-003 | `application/tool_registry/tool_registry_manifest.json` | Exact manifest absent; reusable registry semantics exist in broad/misplaced Domain registry. | **PARTIAL_MATERIAL** | **CREATE ARTIFACT BY SPLITTING/MOVING EXISTING AUTHORITY**; link STR-303. |
+| NPA-004 | `adapters/connectors/runtime/installed_connector_manifest.json` | Exact implementation mirror absent; current stdio descriptor/process config contains reusable installed-connector metadata. | **PARTIAL_MATERIAL** | **SPLIT + MATERIALIZE**; link STR-302, do not invent second manifest semantics. |
+| NPA-011 | `%LOCALAPPDATA%/GoogleWorkAgent/settings/app-settings.json` | `SettingsPort` + `JsonSettingsAdapter` exact pair exists. | **FULL/PATH_REVALIDATE** | **KEEP** adapter behavior and verify canonical runtime path/ACL; link STR-085. |
+
 ## 5. Current → Canonical reverse mapping — hidden / broad authority
 
 | Current authority | Finding | Disposition |
@@ -159,11 +187,11 @@ Exact-path presence is not a behavioral PASS. In particular the current Connecto
 **PORTS / OUTBOUND ADAPTERS / CONNECTOR MAPPING COMPLETE @ `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`**
 
 ```text
-BOUNDED CANONICAL ROWS             = 90
-CANONICAL -> CURRENT               = 90 / 90 mapped
+BOUNDED CANONICAL ROWS             = 99 STR + 3 NPA
+CANONICAL -> CURRENT               = 99 STR + 3 NPA mapped
 CURRENT -> CANONICAL               = CLOSED for inspected Port/connector/runtime scope
 AMBIGUOUS DISPOSITION              = 0
-EXACT STRUCTURAL PATHS             = 72 / 90
+EXACT STRUCTURAL PATHS             = 72 / 99
 
 IMPLEMENTATION COMPLETE            = NO
 SINGLE PRODUCTION AUTHORITY CLOSED = NO

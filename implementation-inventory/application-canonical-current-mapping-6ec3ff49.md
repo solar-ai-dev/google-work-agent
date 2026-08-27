@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Application changed materially after `93f03a91`. Domain transition calls were cut over into owner-local operations, broad Run use-case wrappers and the duplicate approval use-case were removed, ExecutionAttempt begin/abort authorities were added, and the previously open approval-gated Plan activation defect is closed: `ApproveActionHandler` now invokes `transition_approve_action()` and leaves Write Plans `WAITING_APPROVAL`. Historical 6ec capability dispositions remain preservation evidence; the `a03432c8` delta supplies current overrides.
 **Branch HEAD observed after investigation:** `72ae3871d2b96d5d61c261988756210128875b11`  
 **HEAD moved during investigation:** **YES**  
 **Drift classification:** `6ec3ff49... → 72ae3871...` was reconciled as documentation/mapping-only for this Application snapshot; Application production/test evidence remains frozen at `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`.  
@@ -157,6 +160,13 @@ Mapping interpretation:
 | CAP-APP-098 | sse_event.project_run_event | application/use_cases/sse_event/project_run_event.py → ProjectRunEventCommand / RunSseEventV1 / ProjectRunEventHandler | Projection/event-publish logic is dispersed in application/projections.py / event publisher paths. | PARTIAL | NONE | NONE | api/routes/events.py + post-commit projection publisher | OPEN — production caller/cut-over proof not closed | YES — broad projection authority | SPLIT + MOVE | Extract exact typed Run fact→RunSseEventV1 projection and SseEventBufferPort append; post-commit only. | OPEN |
 | CAP-APP-099 | trace_event.emit_trace_event | application/use_cases/trace_event/emit_trace_event.py → EmitTraceEventCommand / EmitTraceEventResult / EmitTraceEventHandler | application/observability.py contains trace append/sanitization helpers. | NEAR_FULL | NONE | NONE | post-commit Application/observability callers | OPEN — production caller/cut-over proof not closed | YES — broad observability root authority | SPLIT + MOVE | Extract exact trace_event handler; preserve sanitization/post-commit semantics and leave Audit/retention to their canonical owners. | OPEN |
 
+
+## 2.1 Repository-root structural ownership — 1/1
+
+| ID | Canonical responsibility | Canonical target | Current evidence | Structural | Disposition | Required action |
+|---|---|---|---|---|---|---|
+| STR-002 | Repository root / Application semantic ownership | `application/` | `src/google_work_agent/application/` exists at snapshot/current HEAD; broad root modules still require owner-local cut-over. | **FULL_ROOT / PARTIAL_CHILD_CLOSURE** | **KEEP ROOT + SPLIT/MOVE CHILD AUTHORITY** | Preserve the Application root; continue moving broad/root semantic authorities into exact use-case/agent owners and prove old imports/exports zero. |
+
 ## 3. Current → Canonical reverse mapping
 
 The following current Application authorities are not allowed to remain as independent final-production owners. The disposition is preservation-first: reuse behavior, move/split/merge, cut callers over, then delete obsolete authority.
@@ -283,7 +293,7 @@ These are **not** grounds for wholesale rewrite: each row above identifies reusa
 
 ```text
 APPLICATION CANONICAL UNIVERSE        = 99 / 99 FIXED
-CANONICAL -> CURRENT                  = CLOSED (99/99 have explicit evidence/disposition)
+CANONICAL -> CURRENT                  = CLOSED (99 CAP + STR-002 root row mapped)
 CURRENT -> CANONICAL                  = CLOSED for Application use-case/root semantic scope
 AMBIGUOUS DISPOSITION                 = 0
 EXACT CANONICAL TEST OWNERSHIP        = 18 / 99

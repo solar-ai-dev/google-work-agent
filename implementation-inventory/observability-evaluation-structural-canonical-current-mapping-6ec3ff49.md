@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Domain architecture enforcement improved materially (`tests/architecture/test_domain_closure.py` was added and Domain broad authorities were removed), while Evaluation/Prompt-runtime/diagnostics artifact families did not receive a comparable production cut-over in the observed delta. The repaired NPA rows remain formal coverage requirements and global architecture freeze remains OPEN.
 **Mode:** `READ_ONLY_MAPPING`
 
 ## 1. Scope closure
@@ -12,7 +15,9 @@
 - Architecture-enforcement rows: **25** (`STR-374..398`)
 - Retention maintenance row: **1** (`STR-458`)
 - **Structural total = 44/44 bounded rows**
-- Non-Python coverage index additionally mapped here: Observability logs 3, Evaluation 22, Prompt runtime 24 = **49 NPA coverage rows**. Family+instance NPA rows remain a coverage index and do not create duplicate implementation authorities.
+- Existing non-Python coverage index: Observability logs 3, Evaluation 22, Prompt runtime 24 = **49 NPA rows**.
+- Added Diagnostics bundle members `NPA-023..031` + static fixture grammar `NPA-054` = **10 NPA rows**.
+- **Corrected NPA subtotal for this file = 59**. Family+instance NPA rows remain coverage/artifact rows and do not create duplicate behavior authorities.
 
 ## 2. Structural mapping — 44/44
 
@@ -117,6 +122,22 @@
 | NPA-076 | ``application/prompt_runtime/sources/review.inspect_constraints_and_policy_summary.md`` | Exact `application/prompt_runtime/...` artifact absent; runtime PromptRef/input metadata exists in current Agent/LangGraph/orchestration code. | CREATE exact data/source artifact while MERGING/MOVING current prompt semantics; source count must equal current 21 caller/slot set. |
 | NPA-077 | ``application/prompt_runtime/sources/review.recheck_affected_dimensions.md`` | Exact `application/prompt_runtime/...` artifact absent; runtime PromptRef/input metadata exists in current Agent/LangGraph/orchestration code. | CREATE exact data/source artifact while MERGING/MOVING current prompt semantics; source count must equal current 21 caller/slot set. |
 
+
+### Additional Diagnostics / fixture NPA rows — 10/10
+
+| ID | Canonical artifact | Current evidence | Disposition / closure |
+|---|---|---|---|
+| NPA-023 | `%LOCALAPPDATA%/GoogleWorkAgent/diagnostics/.../diagnostic-manifest.json` | `DiagnosticsPort` / filesystem diagnostics material exists; exact bundle member set is not fully closed. | **KEEP reusable bundle plumbing + TARGETED_CORRECTION**; include required member. |
+| NPA-024 | `.../system-summary.json` | Same diagnostics boundary. | **MATERIALIZE REQUIRED MEMBER** under one diagnostic_bundle authority. |
+| NPA-025 | `.../health-snapshot.json` | Health/readiness projections are reusable inputs. | **MERGE INPUT + MATERIALIZE MEMBER**. |
+| NPA-026 | `.../sanitized-launcher-log.jsonl` | Logging/sanitization material exists but exact bundle export set is not closed. | **MATERIALIZE SANITIZED MEMBER**; no raw secret-bearing logs. |
+| NPA-027 | `.../sanitized-service-log.jsonl` | Same diagnostics/logging boundary. | **MATERIALIZE SANITIZED MEMBER**. |
+| NPA-028 | `.../sanitized-mcp-log.jsonl` | MCP logging material is reusable. | **MATERIALIZE SANITIZED MEMBER**. |
+| NPA-029 | `.../trace-summary.json` | Trace persistence/projection material exists. | **PROJECT/MATERIALIZE** through diagnostics boundary; no second Trace authority. |
+| NPA-030 | `.../audit-summary.json` | Audit persistence/projection material exists. | **PROJECT/MATERIALIZE** through diagnostics boundary; no second Audit authority. |
+| NPA-031 | `.../migration-summary.json` | Migration engine/history is reusable input. | **PROJECT/MATERIALIZE** through diagnostics boundary; migrations remain persistence-owned. |
+| NPA-054 | `tests/fixtures/data/<provider>/<resource>/<scenario>.json` | Current tests contain fixture/data material under several legacy/grouped locations; canonical exact grammar is a test-structure concern. | **MOVE/MERGE fixtures into canonical grammar**; UTF-8 strict JSON; do not create runtime authority. |
+
 ## 4. Current → Canonical reverse mapping
 
 | Current authority/material | Finding | Disposition |
@@ -139,7 +160,7 @@
 
 ```text
 LAYER-10 STRUCTURAL MAPPING       = COMPLETE (44/44)
-NON-PYTHON COVERAGE INDEX         = COMPLETE (49/49 mapped)
+NON-PYTHON COVERAGE INDEX         = COMPLETE (59/59 mapped in this layer)
 CURRENT -> CANONICAL              = CLOSED for inspected layer scope
 AMBIGUOUS DISPOSITION             = 0
 

@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Launcher changed only marginally after `93f03a91`; `launcher/dev.py` remains a broad concrete bootstrap that directly composes API, LLM, LangGraph, persistence and connector pieces. The repaired Installer/Release NPA rows therefore remain required migration/artifact work. `STR-455` remains the one formal Bootstrap Secret producer row in this file.
 **Mode:** `READ_ONLY_MAPPING`  
 **Canonical documents modified:** **NO**
 
@@ -53,6 +56,21 @@ At the fixed SHA, top-level canonical roots `launcher/`, `installer/`, `release/
 | STR-061 | `sign_release_artifacts()` | No code-signing/timestamp release operation found. | NONE | NONE | **CREATE** | Apply production signing/timestamp policy to required artifacts; signing private material remains outside product runtime. |
 | STR-455 | Bootstrap Secret production → `launcher/bootstrap_secret.py` | Same current finding as STR-044; API-side bootstrap consumption exists, launcher producer absent. | PARTIAL_BOUNDARY | NONE | **CREATE + REUSE CONSUMER CONTRACT** | Same artifact as STR-044; do not create a duplicate bootstrap-secret producer. |
 
+
+## 2.1 Non-Python / installed/runtime artifact rows — 9/9
+
+| ID | Required artifact | Snapshot/current realization | Coverage | Disposition / closure |
+|---|---|---|---|---|
+| NPA-005 | `%INSTALL_ROOT%/manifests/installed-connectors-v1.json` | No canonical release/installer generator found; reusable connector descriptor metadata exists. | **PARTIAL_MATERIAL** | **CREATE GENERATED ARTIFACT + MERGE INPUTS**; link STR-302. |
+| NPA-006 | `%INSTALL_ROOT%/manifests/signed-tool-registry-v1.json` | No canonical release artifact generator found; registry semantics exist in misplaced Domain implementation. | **PARTIAL_MATERIAL** | **MATERIALIZE AFTER STR-303 MOVE**; authenticate by release manifest hash. |
+| NPA-007 | `%INSTALL_ROOT%/manifests/connectors/<connector_id>/tool-descriptor-projection-v1.json` | Exact projection absent; reusable tool/descriptor metadata exists. | **PARTIAL_MATERIAL** | **GENERATE FROM EXACT CONNECTOR SUBSET**; link STR-305. |
+| NPA-008 | `release-manifest.json` | No canonical release manifest generator exists. | **MISSING** | **CREATE via STR-059**, using assembled bundle hashes. |
+| NPA-009 | `release-manifest.sig` | No canonical signing/timestamp authority exists. | **MISSING** | **CREATE via STR-061**; signing private material stays outside product runtime. |
+| NPA-010 | `%INSTALL_ROOT%/manifests/model-manifest-v1.json` | Runtime local-model diagnostics exist; release-time allowlist generator absent. | **PARTIAL_MATERIAL** | **CREATE/MERGE via STR-060**. |
+| NPA-012 | `%LOCALAPPDATA%/GoogleWorkAgent/runtime/service-instance.json` | Dev launcher has service-instance identity material; exact production metadata artifact lifecycle not closed. | **PARTIAL_MATERIAL** | **SPLIT + MOVE + MATERIALIZE**; link STR-045. |
+| NPA-013 | `%LOCALAPPDATA%/GoogleWorkAgent/runtime/service.lock` | Single-instance lock implementation absent. | **MISSING** | **CREATE with STR-039**; current-user scope only. |
+| NPA-014 | `%LOCALAPPDATA%/GoogleWorkAgent/runtime/shutdown.marker` | Shutdown boundary/callback material exists, but exact crash/next-start marker authority is not closed. | **PARTIAL_MATERIAL** | **SPLIT + MATERIALIZE with STR-051**. |
+
 ## 3. Current → Canonical reverse mapping
 
 | Current implementation/material | Canonical destination | Disposition / closure |
@@ -93,7 +111,7 @@ The three repository-root rows and duplicate STR-455 do not add independent test
 
 ```text
 LAUNCHER / INSTALLER / RELEASE MAPPING = COMPLETE
-CANONICAL -> CURRENT                  = CLOSED (28/28 mapped)
+CANONICAL -> CURRENT                  = CLOSED (28 STR + 9 NPA mapped)
 CURRENT -> CANONICAL                  = CLOSED for inspected layer scope
 AMBIGUOUS DISPOSITION                 = 0
 

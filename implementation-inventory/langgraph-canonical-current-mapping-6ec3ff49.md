@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** LangGraph changed materially again after `93f03a91`, including state/workflow, planning persistence, corrective-plan handling, write execution/recovery and tool-routing subgraph nodes. `registry/checkpoint_target_resolver.py` was not removed by this delta and remains a compatibility translation bridge to track. The 139-row snapshot universe is unchanged; use the `a03432c8` delta for current overrides.
 **Observed branch HEAD after investigation:** `72ae3871d2b96d5d61c261988756210128875b11`  
 **Head moved during investigation:** YES — `72ae...` is a docs-only mapping commit over `6ec3...`; no production/test delta mixed into this snapshot.  
 **Mode:** `READ_ONLY_MAPPING`

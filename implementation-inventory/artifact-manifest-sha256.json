@@ -1,0 +1,22 @@
+{
+  "head": "a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a",
+  "sha256": {
+    "README-CORRECTIONS.md": "1925118005f8c67cd379c11bc834fc86b81f4111cee123399bcbd373934c7f22",
+    "REVALIDATION-REPORT.md": "8b76a3aa32bd22b3a05e5fc7b0c0dfe3ae1b4769dca9477bcddb2eb0a6087002",
+    "agent-canonical-current-mapping-6ec3ff49.md": "138b291c91b4feb5958f55e476a591efc9b66f250d444e6248264a36f154c2d6",
+    "api-composition-canonical-current-mapping-6ec3ff49.md": "1790b2000f80d318deab214cd727387fa10e4e8c6e1545548b8b86101913baa7",
+    "application-canonical-current-mapping-6ec3ff49.md": "ccf893054dae195da4843a8fe0d36cec1345986e41f90b31fb2cb86f80bb5999",
+    "domain-canonical-current-mapping-453e7f0c.md": "f5ebe47b7c01d6683b738426797c75cc35c0c29a1ca094fc5a3c0f7a9ad39de9",
+    "exact-set-audit.json": "0f8ecca801458b0690c8a1310095946baddc9b76c75cf789c89305bb993aabe2",
+    "frontend-canonical-current-mapping-6ec3ff49.md": "f766ffdf07437a6563581a8754a908c1a9ba2095d6dcf5417410ce4c92534757",
+    "global-caller-import-duplicate-authority-closure-a03432c8.md": "87aa16a4c24bf0c6567208a96bbe1954260bc0588de386fdaca0a76712de82d1",
+    "langgraph-canonical-current-mapping-6ec3ff49.md": "eb631bc5a8e9987186aa40ac5a763e980ca0159e3c688d410db2478c80bd54cf",
+    "launcher-installer-release-canonical-current-mapping-6ec3ff49.md": "82d54d61346a1a9725e9a4afb8fe578c9a7f619dcd5425f040bee47b48cc1edb",
+    "observability-evaluation-structural-canonical-current-mapping-6ec3ff49.md": "62735e8d24d84f0ff05ac8b88788a5d8562c08e6066df6dfdf47e0146bc80e4b",
+    "persistence-canonical-current-mapping-453e7f0c.md": "5858b497393ea9f2c72b6a4f90599b53b35c6baddfb31899847c99b1f0301970",
+    "persistence-delta-reconciliation-6ec3ff49.md": "18c4f9d8f353595143ab31474535760686516793320bdbb903baf718e13c9c8f",
+    "phase2-canonical-current-mapping-index-a03432c8.md": "a8fc03bfc8825c1be24a8263ed873c6fba47f3254b87bf8087cc3fd761151202",
+    "phase2-mapping-delta-reconciliation-a03432c8.md": "cd40da6cd3f221fe860c5a5046878be005fb154f770c55bf7e32bb438940810e",
+    "ports-connectors-canonical-current-mapping-6ec3ff49.md": "682a2ca8937aac1f60abc87712d7f5e10f884b58df75f1c0c0ca247b9464c84d"
+  }
+}

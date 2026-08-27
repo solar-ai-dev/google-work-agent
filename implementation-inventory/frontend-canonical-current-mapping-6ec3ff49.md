@@ -1,6 +1,9 @@
 # Google Work Agent — Frontend Canonical ↔ Current Mapping
 
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** No frontend production files changed in `6ec3ff49 → a03432c8`; the historical snapshot mapping remains current-head applicable.
 **Mode:** `READ_ONLY_MAPPING`
 
 ## 1. Canonical universe

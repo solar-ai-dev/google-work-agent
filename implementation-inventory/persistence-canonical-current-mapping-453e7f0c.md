@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `453e7f0c3fb5305775f709d91fe001673b5e0651`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Persistence changed materially after the snapshot. At current HEAD, `ports/models.py` is removed and SQLite repositories import owner-local Domain records; `SQLiteRunRepository` and `SQLiteActionRepository` are narrowed to persistence/query/CAS surfaces rather than owning command-specific lifecycle transitions. This is a material improvement over the 453e evidence, but the historical mapping remains the preservation source and the `a03432c8` delta owns current-status overrides. NPA migration/artifact rows remain formal inventory rows, not implementation-complete claims.
 **Mode:** `READ_ONLY_MAPPING`  
 **Canonical documents modified:** **NO**
 
@@ -71,6 +74,28 @@ Current mapping coverage: **49/49**.
 | STR-371 | Persistent invariant | `DBI-012` — Audit/Receipt + mutation in one short tx; external I/O excluded | schema/migrations + repository/UoW + integration regression evidence | **PARTIAL** | **N/A** | N/A | **TARGETED_CORRECTION** | UoW is short and core Claim proves the pattern, but this is a repository-wide caller property; Persistence-only inspection cannot close all Application handlers. Preserve boundary and add architecture/behavior coverage. |
 | STR-372 | Persistent invariant | `DBI-013` — SUPERSEDED Plan has no child execution authority | schema/migrations + repository/UoW + integration regression evidence | **PARTIAL** | **N/A** | N/A | **TARGETED_CORRECTION** | DB blocks supersede with ACTIVE Approval and Claim guard rejects superseded Plan, but broad Action repository mutation aliases do not all enforce parent-currentness; generic CAS/caller cut-over must close it. |
 | STR-373 | Migration grammar | `migrations/NNNN_<semantic_change>.sql`; applied migrations immutable | current 0001..0012 forward history; migration engine checks order/name/checksum; populated 0011→0012 upgrade test | **FULL** | **FULL** | NO | **KEEP** | Keep applied files immutable; future persistent invariant changes use new numeric migrations. |
+
+
+## 2.1 Non-Python / runtime persistence artifacts — 14/14
+
+These NPA entries are part of the Phase-1 closed artifact universe and are linked to the existing persistence structural authorities rather than treated as new business authorities.
+
+| ID | Required artifact | Current realization/evidence | Coverage | Disposition / closure |
+|---|---|---|---|---|
+| NPA-015 | `%LOCALAPPDATA%/GoogleWorkAgent/data/google_work_agent.db` | SQLite connection/UoW/migration stack is live; product DB path is the canonical runtime artifact. | **PARTIAL/FULL_RUNTIME** | **KEEP + VERIFY PATH/ACL**; no second DB authority. |
+| NPA-016 | `%LOCALAPPDATA%/GoogleWorkAgent/data/google_work_agent.db-wal` | WAL mode is explicitly configured by SQLite connection infrastructure. | **FULL_RUNTIME_COMPANION** | **KEEP** as SQLite companion artifact. |
+| NPA-017 | `%LOCALAPPDATA%/GoogleWorkAgent/data/google_work_agent.db-shm` | SQLite WAL runtime companion. | **FULL_RUNTIME_COMPANION** | **KEEP**; never model as independent persistence authority. |
+| NPA-018 | `%LOCALAPPDATA%/GoogleWorkAgent/backups/pre-migration-<timestamp>.db` | `BackupPort`/filesystem backup material exists; exact pre-migration production invocation remains subject to installer/upgrade closure. | **PARTIAL** | **KEEP REUSABLE BACKUP + REWIRE** to canonical upgrade flow. |
+| NPA-019 | `%LOCALAPPDATA%/GoogleWorkAgent/backups/manifest.json` | Backup adapter/metadata material exists; exact manifest lifecycle is not a second Domain authority. | **PARTIAL** | **KEEP + TARGETED_CORRECTION** for canonical backup inventory semantics. |
+| NPA-045 | `migrations/0001_<implementation-history-suffix>.sql` | Current immutable file is `0001_initial.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**; numeric slot is canonical, historical suffix is implementation history. |
+| NPA-046 | `migrations/0002_<implementation-history-suffix>.sql` | Current immutable file is `0002_action_effect_send_delete.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-047 | `migrations/0003_<implementation-history-suffix>.sql` | Current immutable file is `0003_action_cancelled.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-048 | `migrations/0004_<implementation-history-suffix>.sql` | Current immutable file is `0004_plan_review_gate.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-049 | `migrations/0005_<implementation-history-suffix>.sql` | Current immutable file is `0005_cross_aggregate_invariants.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-050 | `migrations/0006_<implementation-history-suffix>.sql` | Current immutable file is `0006_plan_aggregate_invariants.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-051 | `migrations/0007_<implementation-history-suffix>.sql` | Current immutable file is `0007_connector_neutral_persistence.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-052 | `migrations/0008_<implementation-history-suffix>.sql` | Current immutable file is `0008_resource_ref_connector_identity.sql`. | **FULL_HISTORY** | **KEEP IMMUTABLE**. |
+| NPA-053 | `migrations/0009_workflow_handoff_outbox.sql` | Exact current file remains present; later migrations extend history without superseding it. | **FULL_HISTORY** | **KEEP IMMUTABLE**; link STR-373/STR-332. |
 
 ## 3. Current → Canonical reverse mapping — extra / compatibility persistence authority
 
@@ -142,11 +167,11 @@ Current mapping coverage: **49/49**.
 
 **PERSISTENCE MAPPING COMPLETE @ `453e7f0c3fb5305775f709d91fe001673b5e0651`**
 
-Meaning: all 49 source-closed Persistence/Repository/UoW/DB rows have a current-code mapping and an explicit preservation-first disposition, and the inspected extra persistence authorities have reverse dispositions.
+Meaning: all **49 source-closed Persistence structural rows plus 14 required persistence NPA artifacts** have a mapping and explicit preservation-first disposition; the companion delta documents reconcile changed repository/runtime evidence through current HEAD.
 
 ```text
 PERSISTENCE MAPPING              = COMPLETE
-CANONICAL -> CURRENT             = CLOSED (49/49 mapped)
+CANONICAL -> CURRENT             = CLOSED (49 STR + 14 NPA mapped)
 CURRENT -> CANONICAL             = CLOSED for inspected persistence authority scope
 
 PERSISTENCE IMPLEMENTATION       = NOT COMPLETE

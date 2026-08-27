@@ -30,3 +30,13 @@ PERSISTENCE IMPLEMENTATION         = NOT COMPLETE
 PERSISTENCE SINGLE AUTHORITY       = NOT CLOSED
 PERSISTENCE FROZEN                 = NO
 ```
+## Current-head continuation to 93f03a91
+
+`6ec3ff49 → 93f03a91` further strengthens ExecutionAttempt reconciliation, WorkflowHandoff settlement/CAS and SQLite checkpoint behavior. No preservation-first disposition reversal is required. The base Persistence mapping now also formally owns `NPA-015..019` and `NPA-045..053`. Current migration history includes later forward migrations (including `0013_resource_ref_registry_type.sql`) without changing the immutability/disposition of NPA-045..053.
+
+
+## Current-head continuation to a03432c8
+
+`93f03a91 → a03432c8` materially executes the Domain/Persistence side of #104. `ports/models.py` is removed and SQLite repositories now import owner-local Domain records. `SQLiteRunRepository` is narrowed to create/read/query/generic CAS instead of command-specific lifecycle mutation, and `SQLiteActionRepository` similarly exposes persistence/query/CAS rather than owning Approve/Modify/Reject transition semantics. This **supersedes** the 6ec statement that Run/Action repository lifecycle authority remains a blocker for the #104 path.
+
+The base 453e preservation evidence remains useful for migration history, but current implementation status must be read through `phase2-mapping-delta-reconciliation-a03432c8.md`. Persistence-wide closure is still not declared here because CommandReceipt/Retention/UoW/NPA and full caller/import/test negative proof are separate bounded concerns.

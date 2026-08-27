@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Final investigation SHA:** `453e7f0c3fb5305775f709d91fe001673b5e0651`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** The historical `453e7f0c` disposition table remains the preservation source, but Issue #104 materially executed the Domain cut-over after `93f03a91`: the bounded 15 model + 39 transition closure is reported `54/54`, `ports/models.py` and broad `domain/enums.py` were removed, concrete Domain barrel exports were eliminated, and exact owner-local model/transition modules now carry production authority. The six added closed-vocabulary rows below are separately rechecked against current HEAD; `STR-354..358` now have owner-local semantic authorities but still use unversioned symbols (`RunStatus`, `ActionStatus`, etc.) rather than the Ledger’s exact `*StatusV1` symbols, while `STR-359 RecoveryReasonV1` is exact. Use the `a03432c8` delta document for current status overrides.
 **Mode:** `READ_ONLY_MAPPING`  
 **Canonical documents modified:** **NO**
 
@@ -21,7 +24,7 @@
 
 Authority order used: `00 Project Source Guide → 04 Domain·Database → 04-A Domain State Transition Contract → applicable 03/06/07/09/11 → 16 Repository Architecture + subordinates → 12-A/12 Test → Phase 1 Ledger → current code/tests`.
 
-This mapping's **primary model/transition universe contains 54 rows**: **15 canonical Domain model rows + 39 canonical Domain lifecycle-transition rows**. Closed Domain vocabulary rows (for example RunStatusV1 / ActionStatusV1 / PlanStatusV1) and related Repository/enforcement structural rows are tracked separately and are **not included in this 54-row subtotal**. This mapping is bidirectional: every row in this bounded model/transition universe has a current disposition, and current Domain semantic/broad files are reverse-mapped below.
+This mapping closes **61 formal Domain structural rows**: **STR-001 repository-root ownership + 15 canonical Domain model rows + 39 canonical lifecycle-transition rows + 6 closed-vocabulary rows (STR-354..359)**. The historical model/transition subtotal remains **54**, but the closed vocabularies are now formal mapping rows rather than prose-only side coverage. This mapping is bidirectional: every row in the Domain bounded universe has a current disposition, and current Domain semantic/broad files are reverse-mapped below.
 
 ## 2.1 Coverage-field interpretation
 
@@ -115,6 +118,21 @@ This distinction is preservation-first: `OWNER_PARTIAL` is not permission to rew
 | Verification durable outcome | VERIFIED, MISMATCH | current `VerificationStatus` also contains NOT_FOUND, ERROR | **MIXED** — split observation outcomes from durable Verification status; `StoreVerification` must reject non-durable outcomes |
 | RunCommand / ActionCommand | owner-local lifecycle commands only | current enums mix other owners and include noncanonical `FAIL_RUN` / `FINALIZE_ACTION_OUTCOMES` | **SPLIT + CLEANUP** |
 
+
+## 5.1 Formal Domain root + closed-vocabulary rows — 7/7
+
+These rows were present in the Phase-1 Ledger but were previously only implied by prose. They are now first-class mapping rows.
+
+| ID | Canonical responsibility | Canonical target | Snapshot/current evidence | Behavior | Structural | Disposition | Required action |
+|---|---|---|---|---|---|---|---|
+| STR-001 | Repository root / Domain semantic ownership | `domain/` | `src/google_work_agent/domain/` exists at snapshot and current HEAD. | N/A | **FULL** | **KEEP** | Preserve top-level Domain ownership; child semantic closure is tracked by the owner-local rows below. |
+| STR-354 | `RunStatusV1` closed vocabulary | owner-local Domain contract → `RunStatusV1` | 453e: `domain/enums.py::RunStatus`; a034: `domain/run/model.py::RunStatus` owns the exact values after `domain/enums.py` removal. | **FULL** | **OWNER_FULL / SYMBOL_PARTIAL** | **MOVE_RENAME EXECUTED; TARGETED_RENAME REMAINS** | Preserve the current owner-local values and close the Ledger’s exact `RunStatusV1` symbol contract without creating a second authority. |
+| STR-355 | `ActionStatusV1` closed vocabulary | owner-local Domain contract → `ActionStatusV1` | 453e: `domain/enums.py::ActionStatus`; a034: `domain/action/model.py::ActionStatus` owns the exact values after root-enum removal. | **FULL** | **OWNER_FULL / SYMBOL_PARTIAL** | **MOVE_RENAME EXECUTED; TARGETED_RENAME REMAINS** | Preserve values and close the exact `ActionStatusV1` symbol contract in the Action owner. |
+| STR-356 | `PlanStatusV1` closed vocabulary | owner-local Domain contract → `PlanStatusV1` | 453e: `ports/models.py::PlanStatus`; a034: `domain/plan/model.py::PlanStatus`, while `ports/models.py` is removed. | **FULL** | **OWNER_FULL / SYMBOL_PARTIAL** | **MOVE_RENAME EXECUTED; TARGETED_RENAME REMAINS** | Preserve the owner-local Plan status values and close the exact `PlanStatusV1` symbol contract. |
+| STR-357 | `ApprovalStatusV1` closed vocabulary | owner-local Domain contract → `ApprovalStatusV1` | 453e: `domain/enums.py::ApprovalStatus`; a034: `domain/approval/model.py::ApprovalStatus`. | **FULL** | **OWNER_FULL / SYMBOL_PARTIAL** | **MOVE_RENAME EXECUTED; TARGETED_RENAME REMAINS** | Preserve values and close the exact `ApprovalStatusV1` symbol contract. |
+| STR-358 | `ExecutionAttemptStatusV1` closed vocabulary | owner-local Domain contract → `ExecutionAttemptStatusV1` | 453e: `domain/enums.py::ExecutionAttemptStatus`; a034: `domain/execution_attempt/model.py::ExecutionAttemptStatus`. | **FULL** | **OWNER_FULL / SYMBOL_PARTIAL** | **MOVE_RENAME EXECUTED; TARGETED_RENAME REMAINS** | Preserve values and close the exact `ExecutionAttemptStatusV1` symbol contract. |
+| STR-359 | `RecoveryReasonV1` closed vocabulary | owner-local recovery contract → `RecoveryReasonV1` | 453e and a034: `domain/recovery/model.py::RecoveryReasonV1` carries the exact four-value contract. | **FULL** | **FULL** | **KEEP** | Keep the exact owner-local type; do not reintroduce broad barrel or duplicate vocabulary authority. |
+
 ## 6. Current → Canonical reverse map: Domain root / broad / misplaced authority
 
 | Current path | Current responsibility | Canonical destination/meaning | Disposition | Required action |
@@ -204,12 +222,27 @@ Primary disposition count (compound dispositions counted by their first action):
 
 ### Mapping verdict
 
-**DOMAIN PHASE-2 MODEL/TRANSITION INVENTORY COVERAGE = COMPLETE @ `453e7f0c3fb5305775f709d91fe001673b5e0651`**
+**DOMAIN PHASE-2 STRUCTURAL INVENTORY COVERAGE = COMPLETE @ `453e7f0c3fb5305775f709d91fe001673b5e0651`**
 
-Meaning: the bounded **54-row model + lifecycle-transition inventory** and the inspected current Domain semantic/broad authorities are mapped to explicit preservation-first dispositions with no intentional unmapped row in that universe. Closed Domain vocabulary and related Repository/enforcement structural rows are tracked separately.
+Meaning: the corrected bounded **61-row Domain structural inventory** (1 repository root + 15 models + 39 lifecycle transitions + 6 closed vocabularies) and the inspected current Domain semantic/broad authorities are mapped to explicit preservation-first dispositions with no intentional unmapped Domain row in that universe.
 
 **DOMAIN IMPLEMENTATION CLOSURE = NOT COMPLETE**
 
 **DOMAIN SINGLE-PRODUCTION-AUTHORITY CLOSURE = NOT COMPLETE**
 
 Current production still has duplicate/broad lifecycle authority, missing exact canonical operations/models, live repository transition shims and incomplete test/caller cut-over. Therefore **DOMAIN FROZEN = NO** at this SHA.
+
+## 12. Current-head override — Issue #104 Domain closure @ `a03432c8`
+
+The historical mapping above remains the preservation record for `453e7f0c`. Current code materially supersedes its implementation-status findings. At implementation evidence `c495c12dc919369990440c56efd9fc2fdd8b0c86` (recorded in repository at `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`), the repository reports the bounded Domain model/transition closure as **15/15 models + 39/39 transitions = 54/54**, with zero remaining `OPEN | PARTIAL | OWNER_PARTIAL` rows in that bounded #104 set.
+
+Current reverse-authority facts independently rechecked at `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`:
+
+- `ports/models.py` is removed; owner-local Domain records are imported by Persistence/Application.
+- `domain/enums.py` is removed; status vocabularies live under their aggregate models.
+- `domain/__init__.py` exposes no concrete authority (`__all__ = ()`).
+- broad `domain/run/transitions/run.py` and `domain/action/transitions/action.py` are removed.
+- canonical owner-local model/transition files exist for the #104 54-row bounded set.
+- the repaired vocabulary rows remain distinct from the #104 54-row closure: `STR-354..358` have correct owner-local values but still require the Ledger’s exact `*StatusV1` symbol closure; `STR-359` is exact.
+
+**Current Domain interpretation:** #104 core model/transition migration is **CLOSED**; the corrected 61-row mapping inventory is **CLOSED**, but the full 61-row implementation should not be called structurally frozen until the five exact `*StatusV1` vocabulary symbols and cross-layer negative proof are closed.

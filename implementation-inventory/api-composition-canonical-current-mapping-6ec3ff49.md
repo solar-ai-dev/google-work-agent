@@ -1,13 +1,18 @@
 # Google Work Agent — API / Composition Canonical ↔ Current Mapping
 
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** API/composition was not the main #104 cut-over surface; only narrow API files changed after `93f03a91`. The formal `STR-455` row remains owned by Launcher and API retains only a consumer-side cross-reference. Broad concrete development composition is still visible in `launcher/dev.py`, so global single-root closure remains OPEN.
 **Mode:** `READ_ONLY_MAPPING`
 
 ## 1. Canonical universe
 
+- Repository root: `STR-005` = 1
 - Composition roots: `STR-325..326` = 2
-- Local API / security transport: `STR-438..457` = 20
-- **Total = 22 rows**
+- Local API / security transport formally owned here: `STR-438..454,456..457` = 19
+- `STR-455` is a **cross-layer reference only** here; its one formal row is owned by Launcher because the canonical producer target is `launcher/bootstrap_secret.py`.
+- **Total formal API rows = 22**
 
 Exact complete canonical target paths at the frozen SHA: **13 / 22**.
 
@@ -15,6 +20,7 @@ Exact complete canonical target paths at the frozen SHA: **13 / 22**.
 
 | ID | Canonical responsibility | Canonical target | Current implementation | Behavior | Structural | Disposition | Required action |
 |---|---|---|---|---|---|---|---|
+| STR-005 | API repository root / FastAPI transport ownership | `api/` | `src/google_work_agent/api/` exists at snapshot/current HEAD. | **N/A** | **FULL_ROOT** | **KEEP** | Preserve API root and keep business semantics in Application/Domain; concrete composition converges on `api/composition.py`. |
 | STR-325 | FastAPI app construction | `api/app.py` → `create_app()` | `api/app.py → create_app(container)` exact; route/middleware assembly is substantial | **PARTIAL** | **FULL** | **KEEP + TARGETED_CORRECTION** | Preserve FastAPI assembly, but make create_app consume the single production runtime composition instead of requiring a preassembled broad ApiContainer. |
 | STR-326 | production runtime wiring | `api/composition.py` → `build_production_runtime()` | `api/composition.py → build_production_runtime()` exact; currently builds checkpoint/background handoff slice only | **PARTIAL** | **FULL** | **KEEP + EXPAND CANONICAL COMPOSITION** | Preserve 24-pair binding knowledge and handoff composition; make this the actual single concrete wiring root for connector/LLM/system/profile/handlers. |
 | STR-438 | GET /api/v1/conversations | `api/routes/conversations.py + api/schemas/conversations/list_conversations.py` | `api/routes/conversations.py` + exact conversation schema file present | **NEAR_FULL** | **FULL** | **KEEP + CALLER NORMALIZATION** | Preserve transport behavior; ensure routes depend only on canonical conversation handlers and no broad service aliases. |
@@ -34,9 +40,13 @@ Exact complete canonical target paths at the frozen SHA: **13 / 22**.
 | STR-452 | POST /api/v1/actions/{action_id}/prepare-retry | `api/routes/actions.py + api/schemas/actions/prepare_retry.py` | actions route exists; schema is `prepare_retry_action.py`, not canonical `prepare_retry.py` | **PARTIAL** | **PATH** | **MOVE_RENAME + REWIRE** | Rename schema and point route at canonical action.prepare_write_retry handler. |
 | STR-453 | GET /health/live + GET /health/ready | `api/routes/health.py + launcher/readiness.py` | current route is `api/routes/health_checks.py`; canonical `health.py` absent; launcher/readiness.py absent | **PARTIAL** | **NONE** | **MOVE_RENAME + CREATE** | Move existing health route behavior to health.py; materialize canonical launcher readiness projection separately. |
 | STR-454 | POST /api/v1/session/bootstrap | `api/routes/session.py + api/security/bootstrap_session.py` | current route `api/routes/sessions.py`; bootstrap establishment in `api/security/bootstrap.py`; canonical names absent | **NEAR_FULL** | **NONE** | **MOVE_RENAME + SPLIT** | Preserve bootstrap grant/session semantics; move establishment-only authority to api/security/bootstrap_session.py and canonical session route. |
-| STR-455 | Bootstrap Secret production | `launcher/bootstrap_secret.py` | canonical `launcher/bootstrap_secret.py` absent; bootstrap secret/grant handling exists on API security side | **PARTIAL_REUSE** | **NONE** | **CREATE + MOVE/SPLIT** | Create launcher-owned one-time secret generation/lifetime using current bootstrap security semantics; do not duplicate session establishment. |
 | STR-456 | Protected Local Session validation | `api/dependencies/local_session.py` | canonical `api/dependencies/local_session.py` absent; established-session validation spread through access_control/security session helpers | **PARTIAL** | **NONE** | **SPLIT + MOVE** | Extract established Local Session validation to canonical dependency; keep bootstrap establishment separate. |
 | STR-457 | Recovery shared wire identity | `api/schemas/runs/recovery.py` → `RecoveryResolutionKindV1 / RunRecoveryTargetV1 / ActionRecoveryTargetV1 / RecoveryTargetV1 / RecoveryUiProjectionV1` | canonical `schemas/runs/recovery.py` absent; recovery identity duplicated across resume/resolve response/request schemas | **PARTIAL** | **NONE** | **MERGE + MOVE** | Create one shared recovery wire identity by merging existing discriminants/fields; other schemas reference it. |
+
+
+### STR-455 cross-layer reference (not a second formal row)
+
+`STR-455` is formally mapped once in `launcher-installer-release-canonical-current-mapping-6ec3ff49.md`. API owns bootstrap-session **consumption/establishment** (`STR-454`), while Launcher owns Bootstrap Secret **production** (`STR-044`/`STR-455`). Current API bootstrap/security code is reusable consumer-side material only and must not become a second secret producer.
 
 ## 3. Current → Canonical reverse mapping
 

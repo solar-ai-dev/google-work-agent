@@ -3,6 +3,9 @@
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
 **Investigation SHA:** `6ec3ff49a5f1e98afa5ff1b5a5ac4ff2fa9c5a3d`  
+**Current branch HEAD revalidated:** `a03432c8fa6d722c6ef93b54ff8de5aa16eeac0a`  
+**HEAD moved since this mapping snapshot:** **YES**  
+**Current-head reconciliation:** Tool-routing semantic operations changed materially after `93f03a91` (`determine_io_resources`, `bind_registry_candidates`, `finalize_route`, `validate_route` and their LangGraph callers). The two repaired retrieval-contract rows did not change: current `application/agents/retrieval/contracts/` still contains only `__init__.py`, so `STR-477 SourceSegmentIdentityV1` and `STR-478 QueryAttemptV1` remain OPEN structural migrations. Use the `a03432c8` delta for tool-routing current status.
 **Canonical universe:** 43 Agent owner-local operations (`CAP-AGT-001..043`)  
 **Mode:** `READ_ONLY_MAPPING / PRESERVATION_FIRST`
 
@@ -66,6 +69,16 @@ Current exact production-path coverage at the investigation SHA: **40/43**. Miss
 | CAP-AGT-041 | `review.aggregate_review_findings` | `application/agents/review/aggregate_review_findings.py → aggregate_review_findings()` | exact `application/agents/review/aggregate_review_findings.py`; broad `application/orchestration/**` family still exists | **PARTIAL** | **FULL** | **FULL** | **OPEN** | YES | **KEEP + MERGE + TARGETED_CORRECTION** | Deterministic aggregation handles PASS/REVISE/RETRIEVE_MORE/ROUTE_RECONSIDERATION but cannot produce canonical CONFIRM/BLOCK; merge stronger legacy review decision logic if present and keep aggregation deterministic. | OPEN (grouped/legacy/missing exact mirror) |
 | CAP-AGT-042 | `review.validate_review` | `application/agents/review/validate_review.py → validate_review()` | exact `application/agents/review/validate_review.py`; broad `application/orchestration/**` family still exists | **FULL** | **FULL** | **FULL** | **OPEN** | YES | **KEEP + CALLER_CUTOVER** | Keep exact owner-local operation; cut production callers/tests away from broad orchestration authority, then delete duplicate legacy implementation. Replace legacy orchestration contract/import dependencies during owner-local contract cut-over where applicable. | OPEN (grouped/legacy/missing exact mirror) |
 | CAP-AGT-043 | `review.recheck_affected_dimensions` | `application/agents/review/recheck_affected_dimensions.py → recheck_affected_dimensions()` | exact `application/agents/review/recheck_affected_dimensions.py`; broad `application/orchestration/**` family still exists | **FULL** | **FULL** | **FULL** | **OPEN** | YES | **KEEP + CALLER_CUTOVER** | Keep exact owner-local operation; cut production callers/tests away from broad orchestration authority, then delete duplicate legacy implementation. Replace legacy orchestration contract/import dependencies during owner-local contract cut-over where applicable. | OPEN (grouped/legacy/missing exact mirror) |
+
+
+## 2.1 Owner-local retrieval contracts — 2/2
+
+These structural contracts are not additional Agent operations; they close the typed owner-local contract universe used by the Retrieval operations.
+
+| ID | Canonical responsibility | Canonical target | Snapshot/current evidence | Coverage | Disposition | Required action |
+|---|---|---|---|---|---|---|
+| STR-477 | `SourceSegmentIdentityV1 / segment_id` | `application/agents/retrieval/contracts/segment_identity.py → SourceSegmentIdentityV1` | `contracts/` only had `__init__.py`; reusable identity fields live in `normalize_segments.py → SourceSegment`, but current `segment_id` is ordinal `seg-N`. | **PARTIAL / WRONG_IDENTITY** | **SPLIT + MOVE_RENAME + TARGETED_CORRECTION** | Extract the typed identity contract and construct stable `seg_ + SHA256(SourceSegmentIdentityV1)`; keep deterministic normalization behavior. |
+| STR-478 | `QueryAttemptV1` single schema authority | `application/agents/retrieval/contracts/query_attempt.py → QueryAttemptV1` | Reusable `QueryAttempt` TypedDict and builder live in `application/orchestration/retrieval_attempts.py`, i.e. legacy wrong owner. | **NEAR_FULL / WRONG_OWNER** | **SPLIT + MOVE_RENAME + TARGETED_CORRECTION** | Move the single schema contract into Retrieval owner; rewire planner/failure consumers; delete legacy schema authority only after caller cut-over. |
 
 ## 3. Current → Canonical reverse mapping
 
@@ -167,7 +180,7 @@ Exact canonical mirror tests observed: **10/43**. Request Understanding is 4/4 a
 
 ```text
 AGENT SEMANTIC MAPPING            = COMPLETE
-CANONICAL -> CURRENT              = CLOSED (43/43 mapped)
+CANONICAL -> CURRENT              = CLOSED (43 CAP + 2 STR owner-local contracts mapped)
 CURRENT -> CANONICAL              = CLOSED for Agent semantic/broad scope
 EXACT CANONICAL PROD PATHS        = 40/43
 EXACT CANONICAL TEST OWNERS       = 10/43
