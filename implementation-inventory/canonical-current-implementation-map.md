@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `c3dc799aa52f292274376679bb99a1ecd83171f2`
+**Validation HEAD:** `4d21f3b058cad93392240cde1182c3d8244c5f5d`
 
 ## Purpose
 
@@ -24,7 +24,7 @@ Preservation order:
 
 # Domain
 
-The formal Domain universe was closed at `bc0870aa78540f49472a2549d0ff996e66cc0fe2` and is revalidated unchanged at `c3dc799aa52f292274376679bb99a1ecd83171f2`: **61/61** = repository root 1 + models 15 + closed vocabularies 6 + lifecycle transitions 39. Do not recreate removed broad Domain/Ports authorities. Higher-layer Application/caller/test work is tracked in the owning rows; Domain vocabulary-symbol closure itself is no longer open.
+The formal Domain universe was closed at `bc0870aa78540f49472a2549d0ff996e66cc0fe2` and is revalidated unchanged at `4d21f3b058cad93392240cde1182c3d8244c5f5d`: **61/61** = repository root 1 + models 15 + closed vocabularies 6 + lifecycle transitions 39. Do not recreate removed broad Domain/Ports authorities. Higher-layer Application/caller/test work is tracked in the owning rows; Domain vocabulary-symbol closure itself is no longer open.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
@@ -93,7 +93,7 @@ The formal Domain universe was closed at `bc0870aa78540f49472a2549d0ff996e66cc0f
 
 # Persistence
 
-At validation HEAD `c3dc799aa52f292274376679bb99a1ecd83171f2`, Persistence is **63/63 accounted**: STR **49/49 COMPLETE**, NPA **14/14 accounted**, Persistence-owned gaps **0**. NPA-018/019 retain only their explicit external-owner invocation dependency.
+At validation HEAD `4d21f3b058cad93392240cde1182c3d8244c5f5d`, Persistence is **63/63 accounted**: STR **49/49 COMPLETE**, NPA **14/14 accounted**, Persistence-owned gaps **0**. NPA-018/019 retain only their explicit external-owner invocation dependency.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
@@ -493,7 +493,7 @@ Every formal row assigned to this owner is listed once. The table contains only 
 
 # Ports / Connectors / LLM
 
-At production SHA `c3dc799aa52f292274376679bb99a1ecd83171f2`, the #106-owned scope is **102/102 COMPLETE**. Exact Port callables, adapter bindings, manifests, provider-operation dispatch, focused behavioral tests, and legacy-authority negative proofs are enforced by the #106 architecture/contract suites.
+At production SHA `4d21f3b058cad93392240cde1182c3d8244c5f5d`, the #106-owned scope is **102/102 COMPLETE**. Exact Port callables, adapter bindings, manifests, provider-operation dispatch, focused behavioral tests, and legacy-authority negative proofs are enforced by the #106 architecture/contract suites.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
