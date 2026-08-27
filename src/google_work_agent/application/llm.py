@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.ports import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -37,6 +36,7 @@ from google_work_agent.ports import (
     ToolCallSchemaRepairer,
     ToolDefinition,
 )
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.observability_events import (
     ObservabilityContext,
@@ -236,12 +236,31 @@ class LLMRuntimeService:
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None,
     ) -> StructuredLLMResult:
-        return self.structured_inference.invoke_structured(
-            prompt_ref=prompt_ref,
-            prompt_input=prompt_input,
-            output_schema=output_schema,
-            trace_context=trace_context,
-            semantic_validate=semantic_validate,
+        del trace_context
+        requested_mode = RequestedRuntimeMode(self.settings_service().requested_runtime_mode)
+        result = self.structured_inference.infer(
+            requested_mode.value,
+            prompt_ref,
+            prompt_input,
+            output_schema,
+        )
+        if semantic_validate is not None:
+            semantic_validate(result.structured_output)
+        return StructuredLLMResult(
+            structured_output=result.structured_output,
+            provider=result.provider,
+            model=result.model,
+            requested_mode=requested_mode,
+            actual_runtime=ActualRuntime(result.actual_runtime),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.input_tokens + result.output_tokens,
+            latency_ms=result.latency_ms,
+            estimated_cost_usd=None,
+            fallback_reason=result.fallback_reason,
+            structured_output_attempts=1,
+            provider_request_id=None,
+            safe_error_code=None,
         )
 
     def _invoke_tool_call_locked(

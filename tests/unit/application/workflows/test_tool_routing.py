@@ -21,16 +21,14 @@ from google_work_agent.application.orchestration.tool_routing import (
     output_routes,
     validate_tool_route_plan_v2,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_registry,
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
 )
 
 
-def _catalog() -> ConnectorToolCatalog:
-    catalog = ConnectorToolCatalog()
-    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
-    return catalog
+def _catalog() -> SignedToolRegistry:
+    return load_signed_tool_registry()
 
 
 def _intent(

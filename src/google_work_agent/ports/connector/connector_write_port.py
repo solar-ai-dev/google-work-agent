@@ -1,55 +1,31 @@
-"""Connector execution capabilities required by write safety services."""
+"""Connector-neutral authorized WRITE boundary."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
-from google_work_agent.ports import ResourceSnapshot
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedConnectorWrite:
-    """Exact provider arguments whose hash is bound into ClaimContextV2."""
-
-    tool_name: str
-    arguments: dict[str, object]
+from google_work_agent.ports.connector.connector_read_port import JsonValue
+from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
 
 
 @dataclass(frozen=True, slots=True)
-class ConnectorWriteRequest:
-    """A safety-authorized write request ready for provider dispatch."""
-
-    prepared: PreparedConnectorWrite
-    claim_payload: dict[str, object]
-    approval_arguments_hash: str
-    execution_arguments_hash: str
+class ConnectorWriteResultV1:
+    schema_version: Literal[1]
+    success: bool
+    delivery_certainty: Literal["NOT_SENT", "MAY_HAVE_BEEN_SENT", "SENT_RESPONSE_LOST"] | None
+    provider_request_id: str | None
+    response_metadata: dict[str, str | int | float | bool | None] | None
+    error_code: str | None
 
 
 class ConnectorWritePort(Protocol):
-    """Provider execution and lookup mechanics without safety policy ownership."""
-
-    def prepare_write(
+    def execute_write(
         self,
-        *,
-        tool_name: str,
-        arguments: dict[str, object],
-        recovery_fingerprint: str | None,
-    ) -> PreparedConnectorWrite: ...
+        binding: ValidatedConnectorToolBindingV1,
+        tool_arguments: dict[str, JsonValue],
+        claim_token: dict[str, JsonValue],
+    ) -> ConnectorWriteResultV1: ...
 
-    def execute_write(self, request: ConnectorWriteRequest) -> ResourceSnapshot: ...
 
-    def fetch_verification_snapshot(
-        self,
-        *,
-        tool_name: str,
-        arguments: dict[str, object],
-        fallback_resource_id: str | None,
-    ) -> ResourceSnapshot: ...
-
-    def search_recovery_candidates(
-        self,
-        *,
-        tool_name: str,
-        recovery_fingerprint: str,
-    ) -> tuple[ResourceSnapshot, ...]: ...
+__all__ = ["ConnectorWritePort", "ConnectorWriteResultV1"]

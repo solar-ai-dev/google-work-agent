@@ -5,11 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.ports import (
-    InvalidReplayCursorError,
-    ProjectionEvent,
-    SnapshotRequiredReplayError,
+    RunSseEventV1,
     SseEventBufferPort,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -24,7 +21,7 @@ class GetEventReplayQuery:
 @dataclass(frozen=True, slots=True)
 class GetEventReplayResult:
     run_exists: bool
-    events: tuple[ProjectionEvent, ...]
+    events: tuple[RunSseEventV1, ...]
     terminate_stream: bool
     snapshot_fallback: bool
 
@@ -53,26 +50,10 @@ class GetEventReplayHandler:
                 terminate_stream=True,
                 snapshot_fallback=False,
             )
-        try:
-            events = self._event_publisher.replay(
-                run_id=query.run_id, after_event_id=query.after_event_id
-            )
-            return GetEventReplayResult(
-                run_exists=True,
-                events=events,
-                terminate_stream=False,
-                snapshot_fallback=False,
-            )
-        except (InvalidReplayCursorError, SnapshotRequiredReplayError) as error:
-            fallback = build_snapshot_required_event(
-                run_id=query.run_id,
-                occurred_at_ms=self._now_ms(),
-                reason=str(error),
-            )
-            published = self._event_publisher.publish(fallback)
-            return GetEventReplayResult(
-                run_exists=True,
-                events=(published,),
-                terminate_stream=True,
-                snapshot_fallback=True,
-            )
+        page = self._event_publisher.list_after(query.run_id, query.after_event_id, 128)
+        return GetEventReplayResult(
+            run_exists=True,
+            events=page.events,
+            terminate_stream=page.cursor_status == "CURSOR_EXPIRED",
+            snapshot_fallback=page.cursor_status == "CURSOR_EXPIRED",
+        )

@@ -9,11 +9,11 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 def bind_registry_candidates_node(
-    state: ToolRoutingState, *, tool_catalog: ConnectorToolCatalog, id_factory: Callable[[], str]
+    state: ToolRoutingState, *, tool_catalog: SignedToolRegistry, id_factory: Callable[[], str]
 ) -> ToolRoutingState:
     candidate = project_semantic_candidate_input(state)["candidate"]
     binding = bind_registry_candidates(

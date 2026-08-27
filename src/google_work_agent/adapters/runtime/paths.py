@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,6 +61,13 @@ class ProductDataLayout:
             runtime_dir=base / "runtime",
             cache_dir=base / "cache",
         )
+
+    @classmethod
+    def for_current_user(cls) -> ProductDataLayout:
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if not local_app_data:
+            raise RuntimeError("LOCALAPPDATA is required for the production data layout")
+        return cls.from_root(Path(local_app_data) / "GoogleWorkAgent")
 
     @property
     def settings_file(self) -> Path:

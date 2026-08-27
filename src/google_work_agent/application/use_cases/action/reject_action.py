@@ -8,7 +8,7 @@ from json import dumps, loads
 from re import fullmatch
 
 from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
-from google_work_agent.application.projections import build_snapshot_required_event
+from google_work_agent.application.projections import build_projection_event
 from google_work_agent.application.write_persistence import (
     append_approval_revoked_audits,
     emit_command_rejected_hash_mismatch,
@@ -265,11 +265,13 @@ class RejectActionHandler:
                         raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             response = self._finish(unit_of_work, command, response, now_ms)
             if response.applied and self._event_publisher is not None:
-                self._event_publisher.publish(
-                    build_snapshot_required_event(
+                self._event_publisher.append(
+                    build_projection_event(
                         run_id=run.id,
                         occurred_at_ms=now_ms,
-                        reason="ACTION_REJECTED",
+                        action_id=command.action_id,
+                        event_type="action_status",
+                        payload={"action_status": "REJECTED"},
                     )
                 )
             return response

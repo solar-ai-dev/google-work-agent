@@ -4,7 +4,7 @@ import webbrowser
 
 
 class DefaultBrowserLauncherAdapter:
-    def open(self, url: str) -> None:
+    def open_url(self, url: str) -> None:
         if not url:
             raise ValueError("url must not be blank")
         webbrowser.open(url)

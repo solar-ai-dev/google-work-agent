@@ -33,20 +33,18 @@ from google_work_agent.adapters.runtime.safe_mode import (
 from google_work_agent.adapters.system.filesystem_backup import (
     BackupCreateResult,
     BackupManifestRecord,
-    RestorePlan,
-    RestorePlanner,
 )
-from google_work_agent.adapters.system.json_settings import (
-    AppSettings,
-    FileSettingsStore,
-    SettingsPatch,
-    WorkHours,
-)
+from google_work_agent.adapters.system.json_settings import FileSettingsStore
 from google_work_agent.adapters.system.process_shutdown import (
     ComponentShutdownPort,
     ShutdownPhase,
-    ShutdownReport,
 )
+from google_work_agent.ports import (
+    AppSettings,
+    SettingsPatch,
+    WorkHours,
+)
+from google_work_agent.ports.runtime_contracts import ShutdownReport
 
 __all__ = [
     "AppSettings",
@@ -72,8 +70,6 @@ __all__ = [
     "LauncherStatus",
     "ProductDataLayout",
     "ProductProgramLayout",
-    "RestorePlan",
-    "RestorePlanner",
     "RuntimeOperation",
     "SafeModeController",
     "SafeModeState",

@@ -24,6 +24,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     require_duplicate_acknowledgement,
 )
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_approval_contracts import ApproveWriteActionCommand
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_execution_integrity import (
@@ -68,9 +71,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
-)
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
@@ -81,7 +81,7 @@ class ApproveWriteActionService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
 
     def __call__(self, command: ApproveWriteActionCommand) -> WriteActionResponse:
         if command.ttl_ms <= 0:
@@ -107,7 +107,7 @@ class ApproveWriteActionService:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
-            entry = self._registry.require(action.tool_name)
+            entry = self._registry.get_required("google_workspace", action.tool_name)
             plan = _require_plan(unit_of_work, action.plan_id)
             run = _require_run(unit_of_work, plan.run_id)
             plans = tuple(current_plan_tuple(unit_of_work.plans, run.id))

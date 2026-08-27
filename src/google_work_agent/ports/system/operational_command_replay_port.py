@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
-
-@dataclass(frozen=True, slots=True)
-class OperationalCommandContextV1:
-    command_id: str
-    operation_kind: str
-    request_hash: str
-
-
-@dataclass(frozen=True, slots=True)
-class OperationalReplayDecisionV2:
-    kind: Literal["RESERVED", "COMPLETED", "RECOVER_RESERVED", "CONFLICT"]
-    operation_ref: str
-    result_ref: str | None = None
-    bounded_result: Mapping[str, object] | None = None
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    JsonValue,
+    OperationalCommandContextV1,
+    OperationalReplayDecisionV2,
+)
 
 
 class OperationalCommandReplayPort(Protocol):
@@ -33,5 +22,8 @@ class OperationalCommandReplayPort(Protocol):
         self,
         context: OperationalCommandContextV1,
         result_ref: str,
-        bounded_result: Mapping[str, object],
+        bounded_result: JsonValue,
     ) -> None: ...
+
+
+__all__ = ["OperationalCommandReplayPort"]

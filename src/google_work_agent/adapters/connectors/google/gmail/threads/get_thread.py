@@ -1,13 +1,9 @@
 """Canonical Gmail thread detail connector operation."""
 
-from __future__ import annotations
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    provider_operation_runtime,
+)
 
-from google_work_agent.ports import GoogleWorkspaceGateway
 
-
-class GetThreadOperation:
-    def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
-        self._gateway = gateway
-
-    def execute(self, *, thread_id: str):
-        return self._gateway.get_gmail_thread(thread_id=thread_id)
+class GetThreadOperation(provider_operation_runtime.WorkspaceProviderOperation):
+    tool_id = "gmail_get_thread"

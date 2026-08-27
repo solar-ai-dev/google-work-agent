@@ -28,6 +28,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     require_duplicate_acknowledgement,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -63,9 +66,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
     UUIDPort,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
@@ -117,7 +117,7 @@ class ApproveActionHandler:
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
 
     def __call__(self, command: ApproveActionCommand) -> ApproveActionResult:
         ttl_ms = self._get_approval_ttl_minutes() * 60_000
@@ -165,7 +165,7 @@ class ApproveActionHandler:
                 conversation = unit_of_work.conversations.get(run.conversation_id)
                 if conversation is None:
                     raise LookupError(f"conversation not found: {run.conversation_id}")
-                entry = self._registry.require(action.tool_name)
+                entry = self._registry.get_required(action.connector_id, action.tool_name)
 
                 plans = tuple(current_plan_tuple(unit_of_work.plans, run.id))
                 current_plan = max(
@@ -392,7 +392,7 @@ class ApproveActionHandler:
 
                 source_snapshot_hash = calculate_canonical_json_hash(source_snapshot)
                 approval = ApprovalRecord(
-                    id=self._id_generator.next_id(),
+                    id=self._id_generator.new_uuid(),
                     action_id=action.id,
                     approval_no=len(active_approval_tuple(unit_of_work.approvals, action.id)) + 1,
                     action_version=approval_result.current_version,
@@ -537,7 +537,7 @@ class ApproveActionHandler:
         target = self._resume_target_registry.issue_main_stage(
             binding.graph_profile, "PREFLIGHT", binding.graph_version
         )
-        handoff_id = self._id_generator.next_id()
+        handoff_id = self._id_generator.new_uuid()
         handoff = unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
                 schema_version=1,

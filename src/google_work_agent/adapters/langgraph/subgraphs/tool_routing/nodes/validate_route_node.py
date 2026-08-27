@@ -5,11 +5,11 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.res
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.validate_route import validate_route
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 def validate_route_node(
-    state: ToolRoutingState, *, tool_catalog: ConnectorToolCatalog
+    state: ToolRoutingState, *, tool_catalog: SignedToolRegistry
 ) -> ToolRoutingState:
     result = project_result_input(state)["result"]
     plan = result.get("tool_route_plan")

@@ -13,17 +13,15 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
     validate_route,
 )
-from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_registry,
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
 )
+from google_work_agent.domain.action.model import EffectType
 
 
-def _catalog() -> ConnectorToolCatalog:
-    catalog = ConnectorToolCatalog()
-    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
-    return catalog
+def _catalog() -> SignedToolRegistry:
+    return load_signed_tool_registry()
 
 
 def test_validate_route__mismatched_output_tool__fails_closed() -> None:

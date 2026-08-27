@@ -1,258 +1,253 @@
-"""Settings schema validation and atomic file storage."""
+"""Canonical settings schema validation and atomic JSON storage."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+from threading import RLock
+from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from google_work_agent.ports import AppSettings, SettingsPatch, WorkHours
-
-if TYPE_CHECKING:
-    from google_work_agent.adapters.runtime.build_manifest import BuildProfile
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    OperationalReconcileResultV1,
+)
+from google_work_agent.ports.system.settings_port import (
+    PanelPreferencesV1,
+    SettingsPatchV1,
+    SettingsPort,
+    SettingsViewV1,
+)
 
 _MAX_SETTINGS_BYTES = 32 * 1024
-_SECRET_LIKE_KEYS = {
-    "refresh_token",
-    "access_token",
-    "api_key",
-    "password",
-    "bootstrap",
-    "session",
-    "client_secret",
-    "claim_token",
-}
+_SETTINGS_FIELDS = frozenset(SettingsViewV1.__dataclass_fields__)
+_PATCH_FIELDS = frozenset(SettingsPatchV1.__dataclass_fields__) - {"schema_version"}
+
+
+def _default_settings() -> SettingsViewV1:
+    return SettingsViewV1(
+        schema_version=1,
+        timezone="Asia/Seoul",
+        default_tasklist_id=None,
+        default_calendar_id=None,
+        preferred_llm_mode="AUTO",
+        external_llm_consent=False,
+        retention_days=30,
+        theme="LIGHT",
+        panel_preferences=PanelPreferencesV1(1, True, "CONVERSATIONS"),
+        working_day_start_local="09:00",
+        working_day_end_local="18:00",
+        include_weekends=False,
+        calendar_buffer_minutes=0,
+        max_run_execution_ms=900_000,
+        max_connector_calls_per_run=50,
+        max_source_page_calls_per_run=20,
+        max_detail_fetches_per_run=50,
+        max_context_tokens_per_run=16_000,
+        max_retry_attempts_per_run=2,
+        circuit_failure_threshold=3,
+        circuit_open_duration_ms=30_000,
+    )
 
 
 class FileSettingsStore:
+    """Own the versioned app-settings.json envelope and atomic replacement."""
+
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def load(
-        self,
-        *,
-        deployment_profile: BuildProfile,
-        approved_model_ids: frozenset[str] | None = None,
-    ) -> AppSettings:
+    def load(self) -> tuple[SettingsViewV1, dict[str, str] | None]:
         if not self._path.exists():
-            settings = AppSettings(deployment_profile=str(deployment_profile))
-            self.save(settings)
-            return settings
+            settings = _default_settings()
+            self.save(settings, marker=None)
+            return settings, None
         raw = self._path.read_bytes()
         if len(raw) > _MAX_SETTINGS_BYTES:
             raise ValueError("settings file exceeds size limit")
         payload = json.loads(raw.decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("settings payload must be an object")
-        _reject_secret_keys(payload)
-        _reject_unknown_fields(payload)
-        settings = _settings_from_dict(payload)
-        validate_settings(
-            settings=settings,
-            deployment_profile=deployment_profile,
-            approved_model_ids=approved_model_ids,
-        )
-        return settings
+        if not isinstance(payload, dict) or set(payload) - {
+            "schema_version",
+            "settings",
+            "last_operation",
+        }:
+            raise ValueError("settings envelope contains unknown fields")
+        if payload.get("schema_version") != 1:
+            raise ValueError("unsupported settings schema_version")
+        settings_payload = payload.get("settings")
+        if not isinstance(settings_payload, dict) or set(settings_payload) != _SETTINGS_FIELDS:
+            raise ValueError("settings field set mismatch")
+        settings = _view_from_payload(cast(dict[str, object], settings_payload))
+        marker_payload = payload.get("last_operation")
+        marker = None
+        if marker_payload is not None:
+            if not isinstance(marker_payload, dict) or set(marker_payload) != {
+                "operation_ref",
+                "patch_hash",
+            }:
+                raise ValueError("settings operation marker is invalid")
+            marker = {key: str(value) for key, value in marker_payload.items()}
+        return settings, marker
 
-    def save(self, settings: AppSettings) -> None:
+    def save(self, settings: SettingsViewV1, marker: dict[str, str] | None) -> None:
+        _validate_settings(settings)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self._path.with_suffix(".tmp")
-        payload = json.dumps(asdict(settings), ensure_ascii=False, sort_keys=True, indent=2)
-        data = payload.encode("utf-8")
-        if len(data) > _MAX_SETTINGS_BYTES:
+        temp_path = self._path.with_name(f".{self._path.name}.tmp")
+        payload = json.dumps(
+            {
+                "schema_version": 1,
+                "settings": asdict(settings),
+                "last_operation": marker,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        if len(payload) > _MAX_SETTINGS_BYTES:
             raise ValueError("settings payload exceeds size limit")
         with temp_path.open("wb") as stream:
-            stream.write(data)
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp_path, self._path)
 
 
-class JsonSettingsAdapter:
-    def __init__(
-        self,
-        *,
-        store: FileSettingsStore,
-        deployment_profile: BuildProfile,
-        approved_model_ids: frozenset[str],
-        has_active_runs: Callable[[], bool],
-    ) -> None:
+class JsonSettingsAdapter(SettingsPort):
+    def __init__(self, *, store: FileSettingsStore) -> None:
         self._store = store
-        self._deployment_profile = deployment_profile
-        self._approved_model_ids = approved_model_ids
-        self._has_active_runs = has_active_runs
+        self._lock = RLock()
 
-    def get(self) -> AppSettings:
-        return self._store.load(
-            deployment_profile=self._deployment_profile,
-            approved_model_ids=self._approved_model_ids,
+    def get_settings(self) -> SettingsViewV1:
+        with self._lock:
+            settings, _marker = self._store.load()
+            return settings
+
+    def update_settings(
+        self,
+        settings_patch: SettingsPatchV1,
+        operation_ref: str,
+    ) -> SettingsViewV1:
+        if settings_patch.schema_version != 1 or not operation_ref.strip():
+            raise ValueError("valid settings patch and operation_ref are required")
+        with self._lock:
+            current, marker = self._store.load()
+            patch_hash = _patch_hash(settings_patch)
+            if marker is not None and marker["operation_ref"] == operation_ref:
+                if marker["patch_hash"] != patch_hash:
+                    raise ValueError("operation_ref already applied to a different settings patch")
+                return current
+            changes = {
+                name: value
+                for name in _PATCH_FIELDS
+                if (value := getattr(settings_patch, name)) is not None
+            }
+            updated = replace(current, **changes)
+            _validate_settings(updated)
+            self._store.save(
+                updated,
+                marker={"operation_ref": operation_ref, "patch_hash": patch_hash},
+            )
+            return updated
+
+    def reconcile_settings(
+        self,
+        operation_ref: str,
+        settings_patch: SettingsPatchV1,
+    ) -> OperationalReconcileResultV1:
+        with self._lock:
+            settings, marker = self._store.load()
+        completed = marker == {
+            "operation_ref": operation_ref,
+            "patch_hash": _patch_hash(settings_patch),
+        }
+        return OperationalReconcileResultV1(
+            status="COMPLETED" if completed else "SAFE_TO_RETRY",
+            result_ref=operation_ref if completed else None,
+            bounded_result={"settings_hash": _settings_hash(settings)} if completed else None,
         )
 
-    def patch(self, patch: SettingsPatch) -> AppSettings:
-        current = self.get()
-        if patch.requested_runtime_mode is not None and self._has_active_runs():
-            raise ValueError("requested_runtime_mode cannot change while a run is active")
-        updated = replace(
-            current,
-            setup_completed=patch.setup_completed
-            if patch.setup_completed is not None
-            else current.setup_completed,
-            requested_runtime_mode=patch.requested_runtime_mode
-            if patch.requested_runtime_mode is not None
-            else current.requested_runtime_mode,
-            default_calendar_id=patch.default_calendar_id
-            if patch.default_calendar_id is not None
-            else current.default_calendar_id,
-            default_tasklist_id=patch.default_tasklist_id
-            if patch.default_tasklist_id is not None
-            else current.default_tasklist_id,
-            timezone=patch.timezone if patch.timezone is not None else current.timezone,
-            work_hours=patch.work_hours if patch.work_hours is not None else current.work_hours,
-            approval_ttl_minutes=patch.approval_ttl_minutes
-            if patch.approval_ttl_minutes is not None
-            else current.approval_ttl_minutes,
-            run_retention_days=patch.run_retention_days
-            if patch.run_retention_days is not None
-            else current.run_retention_days,
-            external_llm_consent=patch.external_llm_consent
-            if patch.external_llm_consent is not None
-            else current.external_llm_consent,
-            ollama_endpoint=patch.ollama_endpoint
-            if patch.ollama_endpoint is not None
-            else current.ollama_endpoint,
-            approved_model_id=patch.approved_model_id
-            if patch.approved_model_id is not None
-            else current.approved_model_id,
-            log_level=patch.log_level if patch.log_level is not None else current.log_level,
-        )
-        validate_settings(
-            settings=updated,
-            deployment_profile=self._deployment_profile,
-            approved_model_ids=self._approved_model_ids,
-        )
-        self._store.save(updated)
-        return updated
+
+def _view_from_payload(payload: dict[str, object]) -> SettingsViewV1:
+    panel = cast(dict[str, object], payload["panel_preferences"])
+    return SettingsViewV1(
+        schema_version=cast(int, payload["schema_version"]),  # type: ignore[arg-type]
+        timezone=str(payload["timezone"]),
+        default_tasklist_id=_optional_string(payload["default_tasklist_id"]),
+        default_calendar_id=_optional_string(payload["default_calendar_id"]),
+        preferred_llm_mode=cast(str, payload["preferred_llm_mode"]),  # type: ignore[arg-type]
+        external_llm_consent=cast(bool, payload["external_llm_consent"]),
+        retention_days=int(cast(int, payload["retention_days"])),
+        theme=cast(str, payload["theme"]),  # type: ignore[arg-type]
+        panel_preferences=PanelPreferencesV1(
+            schema_version=cast(int, panel["schema_version"]),  # type: ignore[arg-type]
+            right_panel_default_open=cast(bool, panel["right_panel_default_open"]),
+            right_panel_default_tab=cast(str, panel["right_panel_default_tab"]),  # type: ignore[arg-type]
+        ),
+        working_day_start_local=str(payload["working_day_start_local"]),
+        working_day_end_local=str(payload["working_day_end_local"]),
+        include_weekends=cast(bool, payload["include_weekends"]),
+        calendar_buffer_minutes=int(cast(int, payload["calendar_buffer_minutes"])),
+        max_run_execution_ms=int(cast(int, payload["max_run_execution_ms"])),
+        max_connector_calls_per_run=int(cast(int, payload["max_connector_calls_per_run"])),
+        max_source_page_calls_per_run=int(cast(int, payload["max_source_page_calls_per_run"])),
+        max_detail_fetches_per_run=int(cast(int, payload["max_detail_fetches_per_run"])),
+        max_context_tokens_per_run=int(cast(int, payload["max_context_tokens_per_run"])),
+        max_retry_attempts_per_run=int(cast(int, payload["max_retry_attempts_per_run"])),
+        circuit_failure_threshold=int(cast(int, payload["circuit_failure_threshold"])),
+        circuit_open_duration_ms=int(cast(int, payload["circuit_open_duration_ms"])),
+    )
 
 
-def validate_settings(
-    *,
-    settings: AppSettings,
-    deployment_profile: BuildProfile,
-    approved_model_ids: frozenset[str] | None = None,
-) -> None:
-    if settings.deployment_profile != str(deployment_profile):
-        raise ValueError("deployment_profile is build-fixed")
-    if settings.requested_runtime_mode not in {"API_LLM", "AUTO", "LOCAL_GPU"}:
-        raise ValueError("invalid requested_runtime_mode")
-    if deployment_profile == "API_ONLY" and settings.requested_runtime_mode != "API_LLM":
-        raise ValueError("API_ONLY build cannot enable local runtime modes")
+def _validate_settings(settings: SettingsViewV1) -> None:
+    if settings.schema_version != 1 or settings.panel_preferences.schema_version != 1:
+        raise ValueError("unsupported settings schema_version")
     try:
         ZoneInfo(settings.timezone)
     except ZoneInfoNotFoundError as error:
         raise ValueError("invalid timezone") from error
-    _validate_work_hours(settings.work_hours)
-    if not 5 <= settings.approval_ttl_minutes <= 120:
-        raise ValueError("approval_ttl_minutes out of range")
-    if not 1 <= settings.run_retention_days <= 365:
-        raise ValueError("run_retention_days out of range")
-    if settings.log_level not in {"INFO", "WARNING", "ERROR", "DEBUG"}:
-        raise ValueError("invalid log_level")
-    if deployment_profile == "LOCAL_CAPABLE":
-        if settings.ollama_endpoint is not None:
-            _validate_loopback_url(settings.ollama_endpoint)
-    elif settings.ollama_endpoint is not None:
-        raise ValueError("ollama_endpoint is only allowed for LOCAL_CAPABLE")
-    if settings.approved_model_id is not None and (
-        not approved_model_ids or settings.approved_model_id not in approved_model_ids
-    ):
-        raise ValueError("approved_model_id is not allowed")
-
-
-def _validate_work_hours(value: WorkHours) -> None:
-    if not value.days:
-        raise ValueError("work_hours.days must not be empty")
-    if any(day < 0 or day > 6 for day in value.days):
-        raise ValueError("work_hours.days must be 0..6")
-    for field in (value.start, value.end):
-        _validate_hhmm(field)
+    _validate_hhmm(settings.working_day_start_local)
+    _validate_hhmm(settings.working_day_end_local)
+    if settings.working_day_start_local >= settings.working_day_end_local:
+        raise ValueError("working day start must precede end")
+    if not 1 <= settings.retention_days <= 30:
+        raise ValueError("retention_days must be in 1..30")
+    if settings.calendar_buffer_minutes < 0:
+        raise ValueError("calendar_buffer_minutes must be non-negative")
+    positive = (
+        settings.max_run_execution_ms,
+        settings.max_connector_calls_per_run,
+        settings.max_source_page_calls_per_run,
+        settings.max_detail_fetches_per_run,
+        settings.max_context_tokens_per_run,
+        settings.circuit_failure_threshold,
+        settings.circuit_open_duration_ms,
+    )
+    if any(value <= 0 for value in positive) or settings.max_retry_attempts_per_run < 0:
+        raise ValueError("runtime budgets and circuit settings are invalid")
 
 
 def _validate_hhmm(value: str) -> None:
-    if len(value) != 5 or value[2] != ":":
+    if len(value) != 5 or value[2] != ":" or not value[:2].isdigit() or not value[3:].isdigit():
         raise ValueError("time values must use HH:MM")
-    hour, minute = value.split(":")
-    if not (hour.isdigit() and minute.isdigit()):
-        raise ValueError("time values must use HH:MM")
-    parsed_hour = int(hour)
-    parsed_minute = int(minute)
-    if parsed_hour not in range(24) or parsed_minute not in range(60):
+    if int(value[:2]) not in range(24) or int(value[3:]) not in range(60):
         raise ValueError("time values must be valid clock times")
 
 
-def _validate_loopback_url(value: str) -> None:
-    parsed = urlparse(value)
-    if parsed.scheme != "http":
-        raise ValueError("ollama_endpoint must use http")
-    if parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ValueError("ollama_endpoint must stay on loopback")
-    if parsed.port is None:
-        raise ValueError("ollama_endpoint must include an explicit port")
+def _patch_hash(settings_patch: SettingsPatchV1) -> str:
+    return hashlib.sha256(
+        json.dumps(asdict(settings_patch), separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
 
 
-def _reject_secret_keys(payload: dict[str, object]) -> None:
-    for key in payload:
-        if key.lower() in _SECRET_LIKE_KEYS:
-            raise ValueError(f"secret-like settings key is forbidden: {key}")
+def _settings_hash(settings: SettingsViewV1) -> str:
+    return hashlib.sha256(
+        json.dumps(asdict(settings), separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
 
 
-def _reject_unknown_fields(payload: dict[str, object]) -> None:
-    allowed = set(AppSettings.__dataclass_fields__.keys())
-    unknown = set(payload) - allowed
-    if unknown:
-        raise ValueError(f"unknown settings fields: {sorted(unknown)}")
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
-def _settings_from_dict(payload: dict[str, object]) -> AppSettings:
-    work_hours_payload = payload.get("work_hours", {})
-    if not isinstance(work_hours_payload, dict):
-        raise ValueError("work_hours must be an object")
-    work_hours = WorkHours(
-        days=tuple(_as_int(day) for day in work_hours_payload.get("days", (0, 1, 2, 3, 4))),
-        start=str(work_hours_payload.get("start", "09:00")),
-        end=str(work_hours_payload.get("end", "18:00")),
-    )
-    return AppSettings(
-        config_schema_version=_as_int(payload.get("config_schema_version", 1)),
-        setup_completed=bool(payload.get("setup_completed", False)),
-        deployment_profile=str(payload.get("deployment_profile", "API_ONLY")),
-        requested_runtime_mode=str(payload.get("requested_runtime_mode", "API_LLM")),
-        default_calendar_id=_optional_text(payload.get("default_calendar_id")),
-        default_tasklist_id=_optional_text(payload.get("default_tasklist_id")),
-        timezone=str(payload.get("timezone", "Asia/Seoul")),
-        work_hours=work_hours,
-        approval_ttl_minutes=_as_int(payload.get("approval_ttl_minutes", 30)),
-        run_retention_days=_as_int(payload.get("run_retention_days", 30)),
-        external_llm_consent=bool(payload.get("external_llm_consent", False)),
-        ollama_endpoint=_optional_text(payload.get("ollama_endpoint")),
-        approved_model_id=_optional_text(payload.get("approved_model_id")),
-        log_level=str(payload.get("log_level", "INFO")),
-    )
-
-
-def _optional_text(value: object) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def _as_int(value: object) -> int:
-    return int(str(value))
-
-
-# The existing service is the only JSON-backed settings implementation; this
-# canonical name is its production boundary binding.
+__all__ = ["FileSettingsStore", "JsonSettingsAdapter"]

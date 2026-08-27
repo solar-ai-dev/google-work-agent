@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
+)
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.persistence import connect_sqlite
 from google_work_agent.api.container import API_CONTRACT_VERSION
-from google_work_agent.application.connector_registry import ConnectorRegistry
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
-    MCP_TOOL_REGISTRY_VERSION,
     PROJECT_ROOT,
 )
 from google_work_agent.ports import (
@@ -29,7 +30,7 @@ from google_work_agent.ports import (
 @dataclass(frozen=True, slots=True)
 class DevelopmentReadinessAggregator(ReadinessAggregator):
     database_path: Path
-    connector_registry: ConnectorRegistry
+    connector_registry: ConnectorRuntimeRegistry
     mcp_manifest_path: Path | None = None
     prompt_active: bool = True
 
@@ -37,8 +38,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
     def transport(self) -> Any:
         """Compatibility view of the P0 connector's underlying transport."""
 
-        connector = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID)
-        return cast(Any, connector).transport
+        return cast(Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID))
 
     def evaluate(self) -> ReadinessReport:
         checks = (
@@ -130,7 +130,9 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         )
 
     def _mcp_check(self) -> ReadinessCheckResult:
-        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
+        metadata = cast(
+            Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
+        ).runtime_metadata()
         if metadata.process_status != "READY" or metadata.process_instance_id is None:
             return ReadinessCheckResult(
                 name="mcp_handshake",
@@ -140,12 +142,10 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         return ReadinessCheckResult(name="mcp_handshake", state=ReadinessState.READY)
 
     def _tool_schema_check(self) -> ReadinessCheckResult:
-        metadata = self.connector_registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).health()
-        if (
-            metadata.protocol_version == MCP_MANIFEST_VERSION
-            and metadata.tool_registry_version == MCP_TOOL_REGISTRY_VERSION
-            and metadata.available_tool_count > 0
-        ):
+        metadata = cast(
+            Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
+        ).runtime_metadata()
+        if metadata.protocol_version == MCP_MANIFEST_VERSION and metadata.available_tool_count > 0:
             return ReadinessCheckResult(name="tool_schema", state=ReadinessState.READY)
         return ReadinessCheckResult(
             name="tool_schema", state=ReadinessState.NOT_READY, detail="TOOL_SCHEMA_UNAVAILABLE"

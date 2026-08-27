@@ -48,7 +48,7 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
     SourceFetchPlanBuilder,
 )
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +69,7 @@ def build_pre_analysis_subgraphs(
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
     retrieval_query_planner: RetrievalQueryPlannerAgent,
     context_agent: ContextRetrievalAgent,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     graph_profile: GraphProfile,
     transition_run: Callable[[str, str], None],

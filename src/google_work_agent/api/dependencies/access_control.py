@@ -44,7 +44,7 @@ def _get_request_id(request: Request) -> str:
     if isinstance(existing, str):
         return existing
     container = get_api_container(request)
-    request_id = container.id_generator.next_id()
+    request_id = container.id_generator.new_uuid()
     request.state.request_id = request_id
     return request_id
 

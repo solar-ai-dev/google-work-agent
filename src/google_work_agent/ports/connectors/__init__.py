@@ -1,5 +1,1 @@
-"""Stable connector Port contracts."""
-
-from google_work_agent.ports.connectors.connector_runtime import ConnectorRuntimeHandle
-
-__all__ = ["ConnectorRuntimeHandle"]
+"""Legacy connector support values; canonical Ports live under ports/connector."""

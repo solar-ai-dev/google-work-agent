@@ -1,13 +1,9 @@
 """Canonical Gmail message detail/verification connector operation."""
 
-from __future__ import annotations
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    provider_operation_runtime,
+)
 
-from google_work_agent.ports import GoogleWorkspaceGateway
 
-
-class GetMessageOperation:
-    def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
-        self._gateway = gateway
-
-    def execute(self, *, message_id: str):
-        return self._gateway.get_gmail_message(message_id=message_id)
+class GetMessageOperation(provider_operation_runtime.WorkspaceProviderOperation):
+    tool_id = "gmail_get_message"

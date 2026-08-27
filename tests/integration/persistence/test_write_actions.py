@@ -77,6 +77,7 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownDeleteActionCommand,
     RecoverUnknownSendActionCommand,
     RecoverUnknownUpdateActionCommand,
+    RequireWriteReauthCommand,
 )
 from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
@@ -90,7 +91,6 @@ from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 from google_work_agent.ports import (
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
@@ -105,6 +105,10 @@ from tests.support.fakes import (
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.legacy_write_approval import ApproveWriteActionService
+
+# Test-only compatibility type used by legacy integration fixtures. Production
+# callers are intentionally cut over to the canonical Connector Ports.
+GoogleWorkspaceGateway = FakeGoogleGateway
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 TEST_CONNECTOR_ID = "google_workspace"

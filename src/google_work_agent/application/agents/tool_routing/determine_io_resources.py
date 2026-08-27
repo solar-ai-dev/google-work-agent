@@ -34,9 +34,9 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports.observability_events import ObservabilityContext
 
 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -78,7 +78,7 @@ ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
 def determine_io_resources(
     *,
     llm_runtime: StructuredLLMRuntime,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     request_intent: RequestIntentV2,
     request: WorkflowStartRequest,
     retry_budget: RunBudgetV1,
@@ -223,26 +223,26 @@ def _validate_candidate(value: object) -> Mapping[str, object]:
     return root
 
 
-def _eligible_route_capabilities(tool_catalog: ConnectorToolCatalog) -> list[dict[str, object]]:
+def _eligible_route_capabilities(tool_catalog: SignedToolRegistry) -> list[dict[str, object]]:
     by_key: dict[tuple[str, str], dict[str, object]] = {}
-    for connector_id in tool_catalog.list_connector_ids():
-        for entry in tool_catalog.registry_for(connector_id).list_entries():
-            category = coarse_resource_category(entry.resource_type)
-            capability = by_key.setdefault(
-                (connector_id, category),
-                {
-                    "connector_id": connector_id,
-                    "resource_type": category,
-                    "read_supported": False,
-                    "write_effects": [],
-                },
-            )
-            if entry.effect_type is EffectType.READ:
-                capability["read_supported"] = True
-            else:
-                write_effects = cast(list[str], capability["write_effects"])
-                if entry.effect_type.value not in write_effects:
-                    write_effects.append(entry.effect_type.value)
+    for entry in tool_catalog.entries:
+        connector_id = entry.connector_id
+        category = coarse_resource_category(entry.resource_type)
+        capability = by_key.setdefault(
+            (connector_id, category),
+            {
+                "connector_id": connector_id,
+                "resource_type": category,
+                "read_supported": False,
+                "write_effects": [],
+            },
+        )
+        if entry.effect_type is EffectType.READ:
+            capability["read_supported"] = True
+        else:
+            write_effects = cast(list[str], capability["write_effects"])
+            if entry.effect_type.value not in write_effects:
+                write_effects.append(entry.effect_type.value)
     return list(by_key.values())
 
 

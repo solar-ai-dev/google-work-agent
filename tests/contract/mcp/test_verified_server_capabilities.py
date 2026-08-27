@@ -5,29 +5,37 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.google.mcp import verified_server, workspace_tools
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    internal_capabilities,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    server_runtime as verified_server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as workspace_tools,
+)
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
-from google_work_agent.adapters.mcp import MCPArtifactConfig
-from google_work_agent.adapters.mcp.capabilities import (
-    build_google_workspace_internal_capabilities,
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPArtifactConfig
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
+
+build_google_workspace_internal_capabilities = (
+    internal_capabilities.build_google_workspace_internal_capabilities
 )
 
 
 def test_verified_server_declared_surface_maps_to_handlers() -> None:
     verified_server._validate_declared_surface()  # noqa: SLF001
 
-    public_names = frozenset(entry.tool_name for entry in build_p0_tool_registry().list_entries())
+    public_names = frozenset(entry.tool_name for entry in load_signed_tool_registry().entries)
     internal_names = frozenset(
         capability.tool_name for capability in build_google_workspace_internal_capabilities()
     )
     assert public_names.isdisjoint(internal_names)
     assert internal_names == {
-        "gmail_get_attachment",
         "gmail_get_ui_thread_detail",
         "search_by_recovery_fingerprint",
     }
@@ -50,25 +58,37 @@ def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
 
 
 def test_google_connector_uses_verified_server_for_default_module() -> None:
-    descriptor = build_google_workspace_connector_descriptor(_artifact_config())
+    descriptor = build_google_workspace_connector_descriptor(
+        _artifact_config(),
+        expected_tool_descriptors=tuple(
+            load_signed_tool_registry().descriptor_expectations("google_workspace")
+        ),
+    )
 
     assert (
         descriptor.artifact_config.module_name
-        == "google_work_agent.adapters.connectors.google.mcp.verified_server"
+        == "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
     )
 
 
 def test_google_connector_preserves_explicit_test_module() -> None:
     config = _artifact_config(module_name="tests.fakes.mcp_server")
-    descriptor = build_google_workspace_connector_descriptor(config)
+    descriptor = build_google_workspace_connector_descriptor(
+        config,
+        expected_tool_descriptors=tuple(
+            load_signed_tool_registry().descriptor_expectations("google_workspace")
+        ),
+    )
 
     assert descriptor.artifact_config.module_name == "tests.fakes.mcp_server"
 
 
-def _artifact_config(
-    *,
-    module_name: str = "google_work_agent.adapters.connectors.google.mcp.verified_server",
-) -> MCPArtifactConfig:
+DEFAULT_MCP_MODULE = (
+    "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
+)
+
+
+def _artifact_config(*, module_name: str = DEFAULT_MCP_MODULE) -> MCPArtifactConfig:
     return MCPArtifactConfig(
         executable_path=str(Path("python").resolve()),
         manifest_path=str(Path("manifest.json").resolve()),
@@ -76,7 +96,7 @@ def _artifact_config(
         expected_manifest_sha256="unused",
         expected_manifest_version="2026-08-07.p0",
         expected_protocol_version="2026-08-07.p0",
-        expected_tool_registry_version="2026-08-06.p0",
+        expected_registry_manifest_hash=load_signed_tool_registry().entries_hash,
         startup_timeout_ms=1_000,
         request_timeout_ms=1_000,
         max_restart_count=1,

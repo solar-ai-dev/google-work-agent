@@ -7,13 +7,21 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.claim_context import sign_claim_context
 
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
-    AttachmentDescriptor,
     FilesystemAttachmentStagingAdapter,
 )
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports.system.attachment_staging_port import (
+    StagedAttachmentDescriptorV1,
+)
 
 SESSION_KEY = "33" * 32
 SERVICE_INSTANCE_ID = "svc-attachment-1"
@@ -31,16 +39,15 @@ def _state() -> server._WorkspaceState:
 
 
 class _MemorySecretStorePort:
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        del service, account, secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        del key, secret_bytes
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        del service, account
+    def get(self, key: str) -> bytes | None:
+        del key
         return None
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        del service, account
-        return True
+    def delete(self, key: str) -> None:
+        del key
 
 
 def _build_claim(
@@ -53,15 +60,15 @@ def _build_claim(
         "approval_id": "approval-1",
         "execution_attempt_id": "attempt-1",
         "tool_name": tool_name,
-        "approval_arguments_hash": server._canonical_json_hash(execution_arguments),
-        "execution_arguments_hash": server._canonical_json_hash(execution_arguments),
+        "approval_arguments_hash": calculate_canonical_json_hash(execution_arguments),
+        "execution_arguments_hash": calculate_canonical_json_hash(execution_arguments),
         "service_instance_id": state.service_instance_id,
         "mcp_process_instance_id": state.process_instance_id,
         "issued_at_ms": issued_at_ms,
         "expires_at_ms": issued_at_ms + 30_000,
         "nonce": "nonce-attachment-1",
     }
-    claim["signature"] = server._sign_claim_context(state.session_key, claim)
+    claim["signature"] = sign_claim_context(state.session_key, claim)
     return claim
 
 
@@ -150,7 +157,10 @@ def test_gmail_create_draft_embeds_a_verified_staged_attachment(
     staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
 ) -> None:
     descriptor = staging.stage(
-        data=b"report bytes", filename="report.pdf", mime_type="application/pdf"
+        operation_ref="stage-report",
+        file_bytes=b"report bytes",
+        filename="report.pdf",
+        mime_type="application/pdf",
     )
     captured: dict[str, object] = {}
 
@@ -197,12 +207,14 @@ def test_gmail_create_draft_rejects_missing_staged_attachment(
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
-    fake_descriptor = AttachmentDescriptor(
+    fake_descriptor = StagedAttachmentDescriptorV1(
+        schema_version=1,
         staged_attachment_id="never-staged",
         filename="a.txt",
         mime_type="text/plain",
         size_bytes=1,
         sha256="0" * 64,
+        expires_at_ms=server._now_ms() + 30_000,
     )
     payload: dict[str, object] = {
         "to": ["a@example.com"],
@@ -230,13 +242,20 @@ def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
     staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
-    real_descriptor = staging.stage(data=b"real bytes", filename="a.txt", mime_type="text/plain")
-    tampered_descriptor = AttachmentDescriptor(
+    real_descriptor = staging.stage(
+        operation_ref="stage-real",
+        file_bytes=b"real bytes",
+        filename="a.txt",
+        mime_type="text/plain",
+    )
+    tampered_descriptor = StagedAttachmentDescriptorV1(
+        schema_version=1,
         staged_attachment_id=real_descriptor.staged_attachment_id,
         filename=real_descriptor.filename,
         mime_type=real_descriptor.mime_type,
         size_bytes=real_descriptor.size_bytes,
         sha256="f" * 64,
+        expires_at_ms=real_descriptor.expires_at_ms,
     )
     state = _state()
     payload: dict[str, object] = {
@@ -264,8 +283,15 @@ def test_gmail_create_draft_rejects_expired_staged_attachment(monkeypatch, tmp_p
     clock = {"now": 1_000_000}
     staging_dir = tmp_path / "attachments"
     monkeypatch.setenv(server.ATTACHMENT_STAGING_DIR_ENV, str(staging_dir))
-    expiring_staging = FilesystemAttachmentStagingAdapter(staging_dir=staging_dir, now_ms=lambda: clock["now"])
-    descriptor = expiring_staging.stage(data=b"bytes", filename="a.txt", mime_type="text/plain")
+    expiring_staging = FilesystemAttachmentStagingAdapter(
+        staging_dir=staging_dir, now_ms=lambda: clock["now"]
+    )
+    descriptor = expiring_staging.stage(
+        operation_ref="stage-expiring",
+        file_bytes=b"bytes",
+        filename="a.txt",
+        mime_type="text/plain",
+    )
     clock["now"] += 20 * 60 * 1000  # advance past the 15 minute TTL
 
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)

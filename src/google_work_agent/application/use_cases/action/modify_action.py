@@ -31,6 +31,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     merge_duplicate_risk,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -61,9 +64,6 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UUIDPort,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -125,7 +125,7 @@ class ModifyActionHandler:
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
         self._task_duplicates = TaskDuplicateValidator(
             gateway=cast(TaskListGateway, gateway), now_ms=now_ms
         )
@@ -166,7 +166,7 @@ class ModifyActionHandler:
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
-                entry = self._registry.require(snapshot.tool_name)
+                entry = self._registry.get_required(snapshot.connector_id, snapshot.tool_name)
                 if not (set(command.arguments_patch) - entry.modify_patchable_fields):
                     proposed = self._apply_arguments_patch(
                         loads(snapshot.arguments_json), command.arguments_patch
@@ -179,7 +179,7 @@ class ModifyActionHandler:
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
-                entry = self._registry.require(snapshot.tool_name)
+                entry = self._registry.get_required(snapshot.connector_id, snapshot.tool_name)
                 if not (set(command.arguments_patch) - entry.modify_patchable_fields):
                     proposed = self._apply_arguments_patch(
                         loads(snapshot.arguments_json), command.arguments_patch
@@ -253,7 +253,7 @@ class ModifyActionHandler:
                     now_ms,
                 )
 
-            entry = self._registry.require(action.tool_name)
+            entry = self._registry.get_required(action.connector_id, action.tool_name)
             unknown_fields = sorted(set(command.arguments_patch) - entry.modify_patchable_fields)
             if unknown_fields:
                 return self._finish(
@@ -458,7 +458,7 @@ class ModifyActionHandler:
         handoff = unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
                 schema_version=1,
-                handoff_id=self._id_generator.next_id(),
+                handoff_id=self._id_generator.new_uuid(),
                 trigger_command_id=trigger_command_id,
                 execution=RunExecutionRefV1(
                     schema_version=1,

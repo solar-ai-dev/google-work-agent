@@ -36,6 +36,6 @@ def _request_id(request: Request) -> str:
     request_id = getattr(request.state, "request_id", None)
     if isinstance(request_id, str):
         return request_id
-    request_id = get_api_container(request).id_generator.next_id()
+    request_id = get_api_container(request).id_generator.new_uuid()
     request.state.request_id = request_id
     return request_id

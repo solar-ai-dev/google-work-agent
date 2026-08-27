@@ -9,6 +9,12 @@ from typing import cast
 from google_work_agent.application.plan_invariants import validate_plan_structure
 from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, duplicate_authority
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    SignedToolRegistry,
+)
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
 )
@@ -50,10 +56,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_catalog,
-)
 
 
 class SaveWritePlanService:
@@ -62,7 +64,7 @@ class SaveWritePlanService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._catalog = build_p0_tool_catalog()
+        self._catalog = load_signed_tool_registry()
 
     def __call__(self, command: SaveWritePlanCommand) -> SaveWritePlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -149,9 +151,7 @@ class SaveWritePlanService:
                 )
 
             for action in command.actions:
-                entry = self._catalog.require(
-                    connector_id=action.connector_id, tool_id=action.tool_name
-                )
+                entry = self._catalog.get_required(action.connector_id, action.tool_name)
                 unit_of_work.actions.insert_for_plan(
                     ActionRecord(
                         id=action.action_id,
@@ -238,7 +238,7 @@ class SaveWritePlanService:
             return response
 
 
-def validate_write_plan(command: SaveWritePlanCommand, catalog: ConnectorToolCatalog) -> None:
+def validate_write_plan(command: SaveWritePlanCommand, catalog: SignedToolRegistry) -> None:
     validate_plan_structure(
         actions=command.actions, evidence=command.evidence, plan_label="write plan"
     )
@@ -246,7 +246,7 @@ def validate_write_plan(command: SaveWritePlanCommand, catalog: ConnectorToolCat
         if not action.connector_id:
             raise ValueError("write action connector_id is required")
         canonicalize_action_risk(action.risk)
-        entry = catalog.require(connector_id=action.connector_id, tool_id=action.tool_name)
+        entry = catalog.get_required(action.connector_id, action.tool_name)
         if entry.effect_type is EffectType.READ:
             raise ValueError(f"write plan cannot contain read-only tool: {action.tool_name}")
         validate_evidence_policy(

@@ -22,6 +22,9 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
     resolve_evidence_projection,
 )
 from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -38,9 +41,6 @@ from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
-)
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
@@ -720,15 +720,17 @@ def _validate_persisted_materialization(
     if {action.id for action in persisted_actions} != set(expected_actions):
         raise ValueError("persisted corrective Action identity set drifted")
 
-    registry = build_p0_tool_registry()
+    registry = load_signed_tool_registry()
     seen_evidence: dict[str, Any] = {}
     for persisted_action in persisted_actions:
         candidate = expected_actions[persisted_action.id]
-        entry = registry.require(candidate["tool_name"])
+        entry = registry.get_required(
+            persisted_connector_ids[persisted_action.id], candidate["tool_name"]
+        )
         expected_dependencies = tuple(
             action_id_map[item] for item in candidate.get("depends_on_action_ids", [])
         )
-        expected_evidence_ids = tuple(evidence_id_map[item] for item in candidate["evidence_refs"])
+        action_evidence_ids = tuple(evidence_id_map[item] for item in candidate["evidence_refs"])
         if (
             persisted_action.plan_id != plan.id
             or persisted_action.position != candidate["position"]
@@ -750,12 +752,13 @@ def _validate_persisted_materialization(
                 dependency_ids_for_action(
                     unit_of_work.actions, persisted_actions, persisted_action.id
                 )
-            ) != set(expected_dependencies)
+            )
+            != set(expected_dependencies)
         ):
             raise ValueError("persisted corrective Action projection drifted")
 
         linked_evidence = unit_of_work.evidence.list_for_action(persisted_action.id)
-        if {item.id for item in linked_evidence} != set(expected_evidence_ids):
+        if {item.id for item in linked_evidence} != set(action_evidence_ids):
             raise ValueError("persisted corrective Action-Evidence links drifted")
         for evidence in linked_evidence:
             existing = seen_evidence.get(evidence.id)

@@ -12,11 +12,13 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
 from google_work_agent.application.orchestration.contracts import (
     RunBudgetV1,
     build_default_run_budget,
     consume_llm_provider_calls,
+)
+from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
+    PromptInputGuardedProvider,
 )
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     provider_dispatch_execution_scope,

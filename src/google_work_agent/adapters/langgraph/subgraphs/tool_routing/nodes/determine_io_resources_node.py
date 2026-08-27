@@ -12,15 +12,15 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
 )
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.ports import PromptReference
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def determine_io_resources_node(
     state: ToolRoutingState,
     *,
     llm_runtime: StructuredLLMRuntime,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     prompt_ref: PromptReference | None,
     revision_prompt_ref: PromptReference | None,
 ) -> ToolRoutingState:

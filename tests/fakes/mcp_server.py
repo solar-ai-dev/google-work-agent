@@ -7,15 +7,19 @@ import os
 import sys
 from typing import cast
 
-from google_work_agent.adapters.mcp.capabilities import (
-    INTERNAL_CAPABILITY_REGISTRY_VERSION,
-    build_google_workspace_internal_capabilities,
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    internal_capabilities,
 )
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_contracts import (
     google_workspace_tool_contract,
 )
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
+from google_work_agent.application.tool_registry import load_signed_tool_registry
+
+build_google_workspace_internal_capabilities = (
+    internal_capabilities.build_google_workspace_internal_capabilities
+)
+INTERNAL_CAPABILITY_REGISTRY_VERSION = (
+    internal_capabilities.INTERNAL_CAPABILITY_REGISTRY_VERSION
 )
 
 
@@ -33,14 +37,12 @@ def main() -> None:
             payload = {
                 "protocol_version": "2026-08-07.p0",
                 "manifest_version": request["manifest_version"],
-                "tool_registry_version": request["tool_registry_version"],
-                "internal_capability_registry_version": (INTERNAL_CAPABILITY_REGISTRY_VERSION),
+                "registry_manifest_hash": request["registry_manifest_hash"],
             }
         elif message_type == "list_tools":
             payload = {
                 "tool_names": sorted(
-                    entry.tool_name
-                    for entry in build_google_workspace_tool_registry().list_entries()
+                    entry.tool_name for entry in load_signed_tool_registry().entries
                 )
             }
         elif message_type == "control_call":
@@ -88,9 +90,9 @@ def _control_payload(method: str) -> dict[str, object]:
             capability.tool_name: capability.category.value
             for capability in build_google_workspace_internal_capabilities()
         }
-        names = {
-            entry.tool_name for entry in build_google_workspace_tool_registry().list_entries()
-        } | set(internal_categories)
+        names = {entry.tool_name for entry in load_signed_tool_registry().entries} | set(
+            internal_categories
+        )
         return {
             "contracts": [
                 {

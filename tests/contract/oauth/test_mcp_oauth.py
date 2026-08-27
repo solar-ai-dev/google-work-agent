@@ -3,8 +3,13 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, build_opener
 
-from google_work_agent.adapters.connectors.google.mcp.workspace_tools import _control_call, _WorkspaceState
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.workspace_runtime import (
+    _control_call,
+    _WorkspaceState,
+)
 
 
 def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:
@@ -13,7 +18,9 @@ def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage(
         google_oauth_client_id="test-desktop-client-id",
         google_oauth_client_secret="compatibility-client-secret",
     )
-    started = _control_call(state, method="google.oauth.start")
+    started = _control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
     callback_url = str(started["callback_url"])
     authorization_url = str(started["authorization_url"])
     assert callback_url.startswith("http://127.0.0.1:")
@@ -44,16 +51,16 @@ def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage(
 
 class _FakeSecretStorePort:
     def __init__(self) -> None:
-        self.values: dict[tuple[str, str], str] = {}
+        self.values: dict[str, bytes] = {}
 
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        self.values[(service, account)] = secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        self.values[key] = secret_bytes
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        return self.values.get((service, account))
+    def get(self, key: str) -> bytes | None:
+        return self.values.get(key)
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        return self.values.pop((service, account), None) is not None
+    def delete(self, key: str) -> None:
+        self.values.pop(key, None)
 
 
 class _NoRedirect(HTTPRedirectHandler):

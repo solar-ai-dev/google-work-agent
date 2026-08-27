@@ -1,5 +1,21 @@
-"""LLM runtime-status boundary."""
+"""LLM provider runtime-status boundary."""
 
-from google_work_agent.ports.llm.contracts import LLMRuntimeStatusReader as LlmRuntimeStatusPort
+from dataclasses import dataclass
+from typing import Literal, Protocol
 
-__all__ = ["LlmRuntimeStatusPort"]
+
+@dataclass(frozen=True, slots=True)
+class LlmRuntimeStatusV1:
+    schema_version: Literal[1]
+    provider: str
+    configured: bool
+    availability: Literal["READY", "UNAVAILABLE", "DISABLED"]
+    model_id: str | None
+    error_code: str | None
+
+
+class LlmRuntimeStatusPort(Protocol):
+    def get_status(self, provider: str) -> LlmRuntimeStatusV1: ...
+
+
+__all__ = ["LlmRuntimeStatusPort", "LlmRuntimeStatusV1"]

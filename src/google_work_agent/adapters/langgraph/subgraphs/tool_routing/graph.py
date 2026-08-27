@@ -63,7 +63,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ScopeExpansionRequiredV1,
     ToolRouteCoordinator,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
@@ -414,7 +414,7 @@ class ToolRoutingSubgraph:
 
 def build_tool_routing_subgraph(
     *,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     merge_decision: MergeDecision,
     semantic_agent: ToolRouteAgent,

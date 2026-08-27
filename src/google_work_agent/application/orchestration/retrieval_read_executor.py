@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.ports.connector.connector_read_port import (
-    ConnectorReadPort,
-    ConnectorReadRequest,
-    ConnectorReadResult,
+from google_work_agent.application.orchestration.connector_read_models import (
+    NormalizedConnectorRead,
+    PlannedConnectorRead,
+)
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
 from google_work_agent.application.orchestration.retrieval_read_cache import (
@@ -32,7 +34,7 @@ class RetrievalReadExecutor:
     def __init__(
         self,
         *,
-        connector_reader: ConnectorReadPort,
+        connector_reader: ConnectorReadProjection,
         read_result_cache: RunScopedReadResultCache,
         now_ms: Callable[[], int],
         timezone_provider: Callable[[], str],
@@ -61,7 +63,7 @@ class RetrievalReadExecutor:
         query_hash: str,
         read_result_handle: str,
         context: RetrievalReadContext,
-    ) -> ConnectorReadResult:
+    ) -> NormalizedConnectorRead:
         """Resolve the opaque continuation and execute one validated page read."""
         page_token = self._read_result_cache.resolve_next_page(
             run_id=run_id,
@@ -70,7 +72,7 @@ class RetrievalReadExecutor:
             query_hash=query_hash,
         )
         return self._connector_reader.read(
-            ConnectorReadRequest(
+            PlannedConnectorRead(
                 plan=plan,
                 selected_resources=(),
                 prefer_selected_resources=False,
@@ -87,10 +89,10 @@ class RetrievalReadExecutor:
         *,
         plan: SourceFetchPlanV1,
         context: RetrievalReadContext,
-    ) -> ConnectorReadResult:
+    ) -> NormalizedConnectorRead:
         """Execute a validator-approved normalized SEARCH plan."""
         return self._connector_reader.read(
-            ConnectorReadRequest(
+            PlannedConnectorRead(
                 plan=plan,
                 selected_resources=(),
                 prefer_selected_resources=False,
@@ -107,11 +109,11 @@ class RetrievalReadExecutor:
         plan: SourceFetchPlanV1,
         target: DetailTargetCacheEntry,
         context: RetrievalReadContext,
-    ) -> ConnectorReadResult:
+    ) -> NormalizedConnectorRead:
         if target.detail_tool_id not in context.allowed_read_tool_ids:
             raise PermissionError("detail tool is outside the frozen input route")
         return self._connector_reader.read(
-            ConnectorReadRequest(
+            PlannedConnectorRead(
                 plan=plan,
                 selected_resources=(
                     SelectedResourceRef(

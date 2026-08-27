@@ -84,7 +84,9 @@ def test_google_connector_operations_do_not_import_provider_sdk() -> None:
 def test_connector_runtime_uses_canonical_subject_specific_module() -> None:
     connector_root = SRC / "adapters" / "connectors"
     assert not (connector_root / "runtime.py").exists()
-    assert (connector_root / "connector_mcp_runtime.py").is_file()
+    assert not (connector_root / "connector_mcp_runtime.py").exists()
+    assert (connector_root / "runtime" / "connector_runtime_registry.py").is_file()
+    assert (connector_root / "runtime" / "stdio_mcp_client.py").is_file()
 
 
 def test_connector_adapter_package_does_not_reexport_owner_implementations() -> None:
@@ -111,10 +113,11 @@ def test_production_callers_do_not_import_connector_adapter_barrel() -> None:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == package_name:
-                violations.append(str(path.relative_to(ROOT)))
-            elif isinstance(node, ast.Import) and any(
-                alias.name == package_name for alias in node.names
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == package_name
+                or isinstance(node, ast.Import)
+                and any(alias.name == package_name for alias in node.names)
             ):
                 violations.append(str(path.relative_to(ROOT)))
 

@@ -47,6 +47,12 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    SignedToolRegistry,
+)
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -54,10 +60,6 @@ from google_work_agent.ports import (
     ToolCallProviderResponse,
     ToolDefinition,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -358,7 +360,7 @@ class PlanReviewAgent:
         self._recheck_prompt_ref = recheck_prompt_ref or load_plan_review_recheck_prompt_reference(
             manifest_path
         )
-        self._tool_registry = tool_registry or build_p0_tool_registry()
+        self._tool_registry = tool_registry or load_signed_tool_registry()
 
     @property
     def inspect_prompt_ref(self) -> PromptReference:
@@ -709,8 +711,8 @@ def build_policy_review_context_v1(
     *,
     tool_registry: SignedToolRegistry | None = None,
 ) -> PolicyReviewContextV1:
-    registry = tool_registry or build_p0_tool_registry()
-    entries = registry.list_entries()
+    registry = tool_registry or load_signed_tool_registry()
+    entries = registry.entries
     tool_policies: list[ToolPolicySummaryV1] = [
         {
             "tool_name": entry.tool_name,
@@ -760,7 +762,7 @@ def _shortlisted_policy_review_context_v1(
     same turn (confirmed via isolated real-model probes). Only the tools
     actually referenced by the draft under review are relevant to Rule 1's
     "Tool/effect/target correctness" check, so nothing the reviewer needs
-    is dropped -- the source of truth is still ``tool_registry.list_entries()``,
+    is dropped -- the source of truth is still ``tool_registry.entries``,
     never a hardcoded tool-name list, and the deterministic
     ``validate_plan_review_result_v1``/registry checks are unaffected either
     way since they run in Python against the real registry regardless of

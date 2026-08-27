@@ -26,6 +26,10 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteValidationError,
     output_routes,
 )
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -34,11 +38,6 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    SignedToolRegistry,
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -89,23 +88,16 @@ def _llm_result(payload: object) -> StructuredLLMResult:
     )
 
 
-def _catalog() -> ConnectorToolCatalog:
-    catalog = ConnectorToolCatalog()
-    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
-    return catalog
+def _catalog() -> SignedToolRegistry:
+    return load_signed_tool_registry()
 
 
-def _catalog_with_duplicate_task_create() -> ConnectorToolCatalog:
-    base = build_p0_tool_registry()
-    entries = list(base.list_entries())
+def _catalog_with_duplicate_task_create() -> SignedToolRegistry:
+    base = load_signed_tool_registry()
+    entries = list(base.entries)
     original = next(entry for entry in entries if entry.tool_name == "tasks_create_task")
-    duplicate = replace(original, tool_name="tasks_create_task_v2")
-    catalog = ConnectorToolCatalog()
-    catalog.register(
-        connector_id="google_workspace",
-        registry=SignedToolRegistry((*entries, duplicate)),
-    )
-    return catalog
+    duplicate = replace(original, tool_id="tasks_create_task_v2")
+    return SignedToolRegistry((*entries, duplicate))
 
 
 def _intent() -> RequestIntentV2:
@@ -142,7 +134,7 @@ def _request() -> WorkflowStartRequest:
 
 
 def _agent(
-    runtime: FakeLLMRuntime, *, tool_catalog: ConnectorToolCatalog | None = None
+    runtime: FakeLLMRuntime, *, tool_catalog: SignedToolRegistry | None = None
 ) -> ToolRouteAgent:
     return ToolRouteAgent(
         llm_runtime=runtime,

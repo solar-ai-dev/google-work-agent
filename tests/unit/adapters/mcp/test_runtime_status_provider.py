@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.mcp import MCPRuntimeStatusProvider
+from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
 from google_work_agent.ports import (
     DeliveryCertainty,
-    MCPRuntimeMetadata,
     MCPClientPortError,
     MCPClientPortErrorCode,
+    MCPRuntimeMetadata,
 )
 
 

@@ -12,9 +12,6 @@ from typing import Any, cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
-    McpConnectorReadAdapter,
-)
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
@@ -72,6 +69,9 @@ from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     load_acquisition_plan_sources_prompt_reference,
+)
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextRetrievalAgent,
@@ -167,6 +167,7 @@ from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,
@@ -218,6 +219,8 @@ from google_work_agent.application.write_actions import (
     ClaimWriteActionService,
     ExecuteWriteActionService,
 )
+from google_work_agent.application.write_claim import AttachmentDescriptorVerifier
+from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
 from google_work_agent.application.write_plan import (
     SaveWritePlanService,
 )
@@ -257,8 +260,6 @@ from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
-    AttachmentDescriptorVerifier,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     PromptReference,
     UnitOfWork,
@@ -270,10 +271,6 @@ from google_work_agent.ports import (
     WorkflowRuntime,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
@@ -306,9 +303,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         llm_runtime: Any,
-        gateway: GoogleWorkspaceGateway,
-        connector_execution: ConnectorWritePort,
-        tool_catalog: ConnectorToolCatalog,
+        connector_reader: ConnectorReadProjection,
+        connector_execution: WriteResultMaterializer,
+        tool_catalog: SignedToolRegistry,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         signing_secret: str,
@@ -326,7 +323,6 @@ class WorkflowRuntimeCore(WorkflowRuntime):
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._llm_runtime = llm_runtime
-        self._gateway = gateway
         self._now_ms = now_ms
         self._id_factory = id_factory
         self._signing_secret = signing_secret
@@ -382,7 +378,6 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             manifest_path=prompt_manifest_path,
         )
         self._read_result_cache = RunScopedReadResultCache()
-        connector_reader = McpConnectorReadAdapter(gateway=gateway)
         self._acquisition = ApiDiscoveryAcquisitionAgent(
             llm_runtime=llm_runtime,
             connector_reader=connector_reader,
@@ -506,7 +501,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         )
         self._execute_read = ExecuteReadActionService(
             unit_of_work_factory=unit_of_work_factory,
-            gateway=gateway,
+            gateway=connector_reader,
         )
         self._complete_read = CompleteReadActionHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -533,7 +528,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         )
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
-            gateway=gateway,
+            gateway=connector_reader,
             now_ms=now_ms,
             work_hours_provider=self._work_hours_provider,
         )
@@ -1562,8 +1557,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 metadata_json=dumps(payload, sort_keys=True),
                 captured_at_ms=self._now_ms(),
             )
-            persisted = upsert_registered_resource_ref(
-                unit_of_work,resource_ref)
+            persisted = upsert_registered_resource_ref(unit_of_work, resource_ref)
             unit_of_work.commit()
             return persisted.id
 

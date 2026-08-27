@@ -1,87 +1,37 @@
-"""Run event publisher contracts for SSE projections."""
+"""Bounded process-local SSE projection replay boundary."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectionEvent:
-    """Sanitized SSE projection event."""
-
+class RunSseEventV1:
+    schema_version: Literal[1]
     event_id: str
     run_id: str
+    action_id: str | None
     occurred_at_ms: int
     event_type: str
     payload: dict[str, object]
     projection_version: int
-    schema_version: int
-    action_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class PendingProjectionEvent:
-    """Projection event before a publisher assigns a monotonic event id."""
-
-    run_id: str
-    occurred_at_ms: int
-    event_type: str
-    payload: dict[str, object]
-    projection_version: int
-    schema_version: int
-    action_id: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class BufferStatus:
-    """Runtime view of one run-scoped event buffer."""
-
-    run_id: str
-    service_instance_id: str
-    newest_event_id: str | None
-    event_count: int
-    capacity: int
-
-
-class EventReplayError(RuntimeError):
-    """Base class for replay cursor failures."""
-
-
-class InvalidReplayCursorError(EventReplayError):
-    """Raised when the caller supplied an invalid cursor."""
-
-
-class SnapshotRequiredReplayError(EventReplayError):
-    """Raised when replay cannot continue and the client must fetch a snapshot."""
-
-
-class RunEventSubscription(Protocol):
-    """Polling subscription used by the SSE route."""
-
-    def poll(self, timeout_seconds: float) -> ProjectionEvent | None:
-        """Return the next event if available."""
+class SseEventPageV1:
+    schema_version: Literal[1]
+    events: tuple[RunSseEventV1, ...]
+    next_event_id: str | None
+    cursor_status: Literal["OK", "CURSOR_EXPIRED"]
 
 
 class SseEventBufferPort(Protocol):
-    """Publish and replay run-scoped projection events."""
+    def append(self, event: RunSseEventV1) -> None: ...
 
-    def publish(self, event: PendingProjectionEvent) -> ProjectionEvent:
-        """Publish one event and return the assigned event id."""
+    def list_after(self, run_id: str, last_event_id: str | None, limit: int) -> SseEventPageV1: ...
 
-    def replay(
-        self,
-        *,
-        run_id: str,
-        after_event_id: str | None,
-    ) -> tuple[ProjectionEvent, ...]:
-        """Replay buffered events after one cursor."""
+    def clear_run(self, run_id: str) -> None: ...
 
-    def subscribe(self, run_id: str) -> RunEventSubscription:
-        """Subscribe to future events for one run."""
 
-    def get_buffer_status(self, run_id: str) -> BufferStatus:
-        """Return buffer status for one run."""
-
-    def close_subscription(self, subscription: RunEventSubscription) -> None:
-        """Release a subscription."""
+__all__ = ["RunSseEventV1", "SseEventBufferPort", "SseEventPageV1"]

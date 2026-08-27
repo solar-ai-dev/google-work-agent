@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import pytest
 
 from google_work_agent.application.plan_invariants import validate_plan_structure
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.application.write_plan import validate_write_plan
 from google_work_agent.application.write_plan_contracts import (
     SaveWritePlanCommand,
@@ -11,9 +12,6 @@ from google_work_agent.application.write_plan_contracts import (
 )
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_catalog,
-)
 
 
 @dataclass(frozen=True)
@@ -98,7 +96,7 @@ def test_write_plan_evidence_policy_counts_each_actions_links_not_plan_total() -
         PolicyViolationError,
         match="existing resource updates require a user-selected target, two evidences",
     ):
-        validate_write_plan(command, build_p0_tool_catalog())
+        validate_write_plan(command, load_signed_tool_registry())
 
 
 def test_write_plan_accepts_two_action_linked_evidences_for_unselected_update() -> None:
@@ -138,4 +136,4 @@ def test_write_plan_accepts_two_action_linked_evidences_for_unselected_update() 
         evidence=evidence,
     )
 
-    validate_write_plan(command, build_p0_tool_catalog())
+    validate_write_plan(command, load_signed_tool_registry())

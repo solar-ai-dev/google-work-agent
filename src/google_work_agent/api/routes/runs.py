@@ -99,7 +99,7 @@ def start_run(
     handler = StartRunHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        id_factory=dependencies.id_generator.next_id,
+        id_factory=dependencies.id_generator.new_uuid,
         graph_profile=dependencies.graph_profile,
         graph_version=dependencies.graph_version,
     )
@@ -326,7 +326,7 @@ def confirm_run(
     resume_handler = ResumeConfirmationHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        id_factory=dependencies.id_generator.next_id,
+        id_factory=dependencies.id_generator.new_uuid,
         resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
     )
     handler = ConfirmRunHandler(
@@ -334,7 +334,7 @@ def confirm_run(
         resume_confirmation=resume_handler,
         resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
         schedule_run_execution=dependencies.schedule_run_execution,
-        id_factory=dependencies.id_generator.next_id,
+        id_factory=dependencies.id_generator.new_uuid,
     )
     result = handler(
         ConfirmRunCommand(
@@ -373,7 +373,7 @@ def resolve_recovery(
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        next_id=dependencies.id_generator.next_id,
+        next_id=dependencies.id_generator.new_uuid,
     )
     result = handler(
         ResolveRecoveryCommand(

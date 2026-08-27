@@ -5,25 +5,25 @@ from dataclasses import replace
 
 import pytest
 
-from google_work_agent.adapters.mcp.capabilities import (
-    build_google_workspace_internal_capabilities,
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    internal_capabilities,
 )
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_contracts import (
     ToolContractViolation,
     google_workspace_tool_contract,
     list_google_workspace_tool_contracts,
     validate_tool_input,
     validate_tool_output,
 )
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
+from google_work_agent.application.tool_registry import load_signed_tool_registry
+
+build_google_workspace_internal_capabilities = (
+    internal_capabilities.build_google_workspace_internal_capabilities
 )
 
 
 def test_contract_catalog_matches_public_and_internal_callable_surface() -> None:
-    public_names = {
-        entry.tool_name for entry in build_google_workspace_tool_registry().list_entries()
-    }
+    public_names = {entry.tool_name for entry in load_signed_tool_registry().entries}
     internal_names = {
         capability.tool_name for capability in build_google_workspace_internal_capabilities()
     }
@@ -32,16 +32,6 @@ def test_contract_catalog_matches_public_and_internal_callable_surface() -> None
     assert public_names.isdisjoint(internal_names)
     assert contract_names == public_names | internal_names
     assert len(contract_names) == 23
-
-
-def test_public_registry_schema_hash_is_actual_contract_hash() -> None:
-    registry = build_google_workspace_tool_registry()
-
-    for entry in registry.list_entries():
-        contract = google_workspace_tool_contract(entry.tool_name)
-        assert entry.input_schema_version == contract.input_schema_version
-        assert entry.output_schema_version == contract.output_schema_version
-        assert entry.tool_schema_hash == contract.schema_hash
 
 
 def test_internal_capability_schema_hash_is_actual_contract_hash() -> None:

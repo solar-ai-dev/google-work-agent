@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.use_cases.resource_ref.count_resources import (
     CountResourcesHandler,
     CountResourcesQuery,
@@ -24,12 +27,7 @@ from google_work_agent.application.use_cases.resource_ref.list_resources import 
     ResourceListItem,
     ResourceListPage,
 )
-from google_work_agent.ports import (
-    GmailThreadDetail,
-    GmailUiReadGateway,
-    GoogleWorkspaceGateway,
-    ResourcePage,
-)
+from google_work_agent.ports import GmailAttachmentMetadata, GmailThreadDetail, ResourcePage
 
 __all__ = (
     "GMAIL_PRIMARY_QUERY",
@@ -41,6 +39,10 @@ __all__ = (
     "ResourceQueryService",
     "_gmail_search_permalink",
 )
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 class ResourceQueryService:
@@ -55,24 +57,48 @@ class ResourceQueryService:
     def __init__(
         self,
         *,
-        gateway: GoogleWorkspaceGateway,
-        gmail_detail_gateway: GmailUiReadGateway | None = None,
+        gateway: ConnectorReadProjection,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
         timezone_provider: Callable[[], str] | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._gateway = gateway
-        self._gmail_detail_gateway = gmail_detail_gateway
         self._default_calendar_id_provider = default_calendar_id_provider
         self._default_tasklist_id_provider = default_tasklist_id_provider
         self._now = now or (lambda: datetime.now(UTC))
         self._timezone_provider = timezone_provider or (lambda: "UTC")
 
     def get_gmail_thread_detail_raw(self, *, resource_id: str) -> GmailThreadDetail:
-        if self._gmail_detail_gateway is None:
-            raise RuntimeError("Gmail detail provider is not configured")
-        return self._gmail_detail_gateway.get_thread_detail(thread_id=resource_id)
+        snapshot = self._gateway.get_gmail_thread(thread_id=resource_id)
+        payload = snapshot.payload
+        attachments = tuple(
+            GmailAttachmentMetadata(
+                message_id=str(item.get("message_id", "")),
+                attachment_id=str(item.get("attachment_id", "")),
+                filename=str(item.get("filename", "")),
+                mime_type=str(item.get("mime_type", "application/octet-stream")),
+                size_bytes=item.get("size_bytes")
+                if isinstance(item.get("size_bytes"), int)
+                else None,
+            )
+            for item in payload.get("attachments", [])
+            if isinstance(item, dict)
+        )
+        return GmailThreadDetail(
+            thread_id=resource_id,
+            message_id=str(payload.get("message_id", "")),
+            rfc822_message_id=_optional_text(payload.get("rfc822_message_id")),
+            sender_name=_optional_text(payload.get("sender_name")),
+            sender_email=_optional_text(payload.get("sender_email")),
+            recipients=tuple(str(item) for item in payload.get("recipients", [])),
+            cc=tuple(str(item) for item in payload.get("cc", [])),
+            subject=_optional_text(payload.get("subject")),
+            received_at=_optional_text(payload.get("received_at")),
+            body=_optional_text(payload.get("body")),
+            attachments=attachments,
+            version=snapshot.version,
+        )
 
     def list_gmail_page(
         self,
@@ -299,9 +325,7 @@ class ResourceQueryService:
         ).page
 
     def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
-        return CountResourcesHandler(self)(
-            CountResourcesQuery(source="gmail", query=query)
-        ).count
+        return CountResourcesHandler(self)(CountResourcesQuery(source="gmail", query=query)).count
 
     def count_tasks(self, *, task_list_id: str | None) -> ResourceCount:
         return CountResourcesHandler(self)(

@@ -17,8 +17,8 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 JsonObject = dict[str, object]
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps, loads
-from typing import cast
+from typing import Protocol, cast
 
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -28,6 +28,9 @@ from google_work_agent.application.task_duplicates import (
     approval_duplicate_authority,
     duplicate_authority,
     duplicate_change_requires_reapproval,
+)
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
 )
 from google_work_agent.application.write_action_arguments import dict_argument as _dict_argument
 from google_work_agent.application.write_execution_contracts import (
@@ -72,20 +75,20 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
-    AttachmentDescriptor,
-    AttachmentDescriptorVerifier,
     AttachmentStagingError,
+    StagedAttachmentDescriptorV1,
     UnitOfWork,
 )
 from google_work_agent.ports.connector.claim_context_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
-)
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+
+
+class AttachmentDescriptorVerifier(Protocol):
+    def verify_descriptor(self, descriptor: StagedAttachmentDescriptorV1) -> None: ...
 
 
 class ClaimWriteActionService:
@@ -105,7 +108,7 @@ class ClaimWriteActionService:
         self._service_instance_id = service_instance_id
         self._claim_ttl_ms = validate_claim_ttl_ms(claim_ttl_ms)
         self._attachment_verifier = attachment_verifier
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
 
     def __call__(self, command: ClaimWriteActionCommand) -> WriteActionResponse:
         attachment_error = self._verify_attachments_before_transaction(command.action_id)
@@ -208,7 +211,7 @@ class ClaimWriteActionService:
                 unit_of_work.commit()
                 return response
 
-            entry = self._registry.require(action.tool_name)
+            entry = self._registry.get_required(action.connector_id, action.tool_name)
             current_source_snapshot = command.source_snapshot
             if action.tool_name == TASK_CREATE_TOOL:
                 stored_approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
@@ -343,7 +346,6 @@ class ClaimWriteActionService:
                 return response
 
             if not update_approval_status(
-
                 unit_of_work,
                 approval.id,
                 expected_status=approval.status,
@@ -368,9 +370,7 @@ class ClaimWriteActionService:
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
                 approval_id=approval.id,
-                attempt_no=len(
-                    active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
-                )
+                attempt_no=len(active_attempt_tuple(unit_of_work.execution_attempts, approval.id))
                 + 1,
                 status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,
@@ -457,7 +457,7 @@ class ClaimWriteActionService:
             for value in values:
                 if not isinstance(value, dict):
                     raise AttachmentStagingError("ATTACHMENT_DESCRIPTOR_MALFORMED")
-                descriptor = AttachmentDescriptor.from_json(cast(dict[str, object], value))
+                descriptor = StagedAttachmentDescriptorV1.from_json(cast(dict[str, object], value))
                 self._attachment_verifier.verify_descriptor(descriptor)
         except AttachmentStagingError as error:
             return error.safe_code

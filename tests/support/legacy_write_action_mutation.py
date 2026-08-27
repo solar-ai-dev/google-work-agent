@@ -41,6 +41,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     merge_duplicate_risk,
 )
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
@@ -74,9 +77,6 @@ from google_work_agent.domain.run.transitions.complete_write_run import (
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
@@ -119,7 +119,7 @@ class ModifyWriteActionService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
         self._task_duplicates = TaskDuplicateValidator(
             gateway=cast(TaskListGateway, gateway), now_ms=now_ms
         )
@@ -168,7 +168,7 @@ class ModifyWriteActionService:
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
-                entry = self._registry.require(snapshot.tool_name)
+                entry = self._registry.get_required("google_workspace", snapshot.tool_name)
                 if not (set(command.arguments_patch) - entry.modify_patchable_fields):
                     proposed = _apply_arguments_patch(
                         loads(snapshot.arguments_json), command.arguments_patch
@@ -180,7 +180,7 @@ class ModifyWriteActionService:
                 and snapshot.status in _MODIFIABLE_ACTION_STATUSES
                 and snapshot.version == command.expected_version
             ):
-                entry = self._registry.require(snapshot.tool_name)
+                entry = self._registry.get_required("google_workspace", snapshot.tool_name)
                 if not (set(command.arguments_patch) - entry.modify_patchable_fields):
                     proposed = _apply_arguments_patch(
                         loads(snapshot.arguments_json), command.arguments_patch
@@ -265,7 +265,7 @@ class ModifyWriteActionService:
                     ),
                 )
 
-            entry = self._registry.require(action.tool_name)
+            entry = self._registry.get_required("google_workspace", action.tool_name)
             unknown_fields = sorted(set(command.arguments_patch) - entry.modify_patchable_fields)
             if unknown_fields:
                 return self._finish(

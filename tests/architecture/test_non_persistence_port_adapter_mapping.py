@@ -276,7 +276,8 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
     assert "adapters.connectors.runtime.mcp_oauth_credential import (" in connector
     assert "McpOAuthCredentialAdapter," in connector
     assert "adapters.llm.runtime.structured_inference_router import" in launcher
-    assert "adapters.llm.runtime.llm_credential_router import LlmCredentialRouter" in launcher
+    assert "adapters.llm.runtime.llm_credential_router import (" in launcher
+    assert "LlmCredentialRouter," in launcher
     assert (
         "adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter" in launcher
     )
@@ -294,7 +295,7 @@ def test_structured_inference_router_is_the_only_runtime_selection_authority() -
     assert "def _should_fallback(" in router_source
     assert "ActualRuntime.LOCAL_GPU" in router_source
     assert "ActualRuntime.API_LLM" in router_source
-    assert "self.structured_inference.invoke_structured(" in application_source
+    assert "self.structured_inference.infer(" in application_source
     assert "google_work_agent.adapters" not in application_source
     assert "router.decide" not in application_source
     assert "def _invoke_provider(" not in application_source

@@ -6,13 +6,10 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
-from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
-from google_work_agent.application.orchestration.prompt_input_contract import (
-    PromptRuntimeInputContractValidator,
-)
-from google_work_agent.application.schema_validation import validate_output_schema
+from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.ports import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -21,10 +18,8 @@ from google_work_agent.ports import (
     HardwareCapability,
     HardwareCapabilityStatus,
     LLMCredentialState,
-    LLMCredentialStore,
     LLMErrorCode,
     LLMInvocationError,
-    LLMRuntimeStatusReader,
     OutputSchemaDefinition,
     ProbeResult,
     PromptReference,
@@ -36,7 +31,10 @@ from google_work_agent.ports import (
     StructuredLLMProvider,
     StructuredLLMResult,
 )
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.observability_events import ObservabilityContext, Severity
+from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
 
 
 class LLMEventRecorder(Protocol):
@@ -64,8 +62,10 @@ class StructuredInferenceRuntimeRouter:
     """Select API/Ollama leaves and perform the single permitted AUTO fallback."""
 
     settings_service: Callable[[], AppSettings]
-    status_service: LLMRuntimeStatusReader
-    credential_service: LLMCredentialStore
+    status_service: LlmRuntimeStatusRouter
+    credential_service: LlmCredentialRouter
+    hardware_probe: HardwareProbePort
+    api_provider_name: str
     api_provider: StructuredLLMProvider
     ollama_provider_factory: Callable[[ApprovedModelInfo, AppSettings], StructuredLLMProvider]
     runtime_policy: RuntimePolicy
@@ -75,46 +75,77 @@ class StructuredInferenceRuntimeRouter:
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
-        if self.prompt_manifest_path is not None:
-            self._api_leaf = PromptInputGuardedProvider(
-                delegate=self.api_provider,
-                validator=PromptRuntimeInputContractValidator(
-                    manifest_path=self.prompt_manifest_path
-                ),
-            )
 
-    def invoke_structured(
+    def infer(
         self,
-        *,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
         prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        trace_context: ObservabilityContext,
-        semantic_validate: Callable[[object], object] | None = None,
-    ) -> StructuredLLMResult:
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
         settings = self.settings_service()
-        requested_mode = RequestedRuntimeMode(settings.requested_runtime_mode)
-        status = self.status_service.get_runtime_status(settings)
-        api_provider_summary = cast(dict[str, object], status["api_provider"])
-        ollama_summary = cast(dict[str, object], status["ollama"])
+        requested = RequestedRuntimeMode(requested_mode)
+        api_status = self.status_service.get_status(self.api_provider_name)
+        ollama_status = self.status_service.get_status("ollama")
         approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
-        hardware_capability = _hardware_from_dict(ollama_summary["hardware_capability"])
+        hardware = self.hardware_probe.probe()
+        hardware_capability = HardwareCapability(
+            cpu_arch="unknown",
+            core_summary=str(hardware.cpu_logical_cores),
+            memory_bytes=hardware.ram_total_bytes,
+            gpu_present=hardware.gpu_present,
+            gpu_vendor=None,
+            gpu_name=hardware.gpu_name,
+            gpu_memory_bytes=hardware.vram_total_bytes,
+            capability_status=(
+                HardwareCapabilityStatus.VALIDATED
+                if hardware.local_runtime_eligible
+                else HardwareCapabilityStatus.NOT_VALIDATED
+            ),
+            safe_reason_codes=()
+            if hardware.local_runtime_eligible
+            else ("LOCAL_HARDWARE_NOT_VALIDATED",),
+        )
+        credential = self.credential_service.get_credential_status(self.api_provider_name)
         decision = self.decide(
             RouteDecisionInput(
                 build_profile=settings.deployment_profile,
-                requested_mode=requested_mode,
+                requested_mode=requested,
                 external_llm_consent=settings.external_llm_consent,
-                api_credential_state=self.credential_service.describe_state(),
-                api_probe=_probe_from_dict(api_provider_summary),
+                api_credential_state=(
+                    LLMCredentialState.KEYRING
+                    if credential.storage_mode == "KEYRING"
+                    else LLMCredentialState.SESSION_MEMORY
+                    if credential.storage_mode == "SESSION_ONLY"
+                    else LLMCredentialState.UNAVAILABLE
+                    if credential.validation_status == "UNAVAILABLE"
+                    else LLMCredentialState.NOT_CONFIGURED
+                ),
+                api_probe=ProbeResult(
+                    availability=(
+                        AvailabilityState.AVAILABLE
+                        if api_status.availability == "READY"
+                        else AvailabilityState.UNAVAILABLE
+                    ),
+                    safe_error_code=api_status.error_code,
+                ),
                 hardware_capability=hardware_capability,
-                ollama_probe=_probe_from_dict(ollama_summary),
+                ollama_probe=ProbeResult(
+                    availability=(
+                        AvailabilityState.AVAILABLE
+                        if ollama_status.availability == "READY"
+                        else AvailabilityState.UNAVAILABLE
+                    ),
+                    safe_error_code=ollama_status.error_code,
+                ),
                 approved_model=approved_model,
             )
         )
+        trace_context = ObservabilityContext()
         self._record_selection(
             prompt_ref=prompt_ref,
             trace_context=trace_context,
-            requested_mode=requested_mode,
+            requested_mode=requested,
             decision=decision,
         )
         provider = self._resolve_provider(
@@ -124,27 +155,28 @@ class StructuredInferenceRuntimeRouter:
             hardware_capability=hardware_capability,
         )
         try:
-            return self._invoke_provider(
+            result = self._invoke_provider(
                 provider=provider,
                 prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                requested_mode=requested_mode,
+                prompt_input=input_projection,
+                output_schema=output_schema_ref,
+                requested_mode=requested,
                 trace_context=trace_context,
                 fallback_reason=None,
-                semantic_validate=semantic_validate,
+                semantic_validate=None,
             )
+            return _canonical_result(result)
         except LLMInvocationError as error:
             if not self._should_fallback(
                 error=error,
                 decision=decision,
-                requested_mode=requested_mode,
+                requested_mode=requested,
                 settings=settings,
             ):
                 raise
             self._record_fallback_started(
                 trace_context=trace_context,
-                requested_mode=requested_mode,
+                requested_mode=requested,
                 decision=decision,
                 error=error,
             )
@@ -156,19 +188,19 @@ class StructuredInferenceRuntimeRouter:
                     hardware_capability=hardware_capability,
                 ),
                 prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                requested_mode=requested_mode,
+                prompt_input=input_projection,
+                output_schema=output_schema_ref,
+                requested_mode=requested,
                 trace_context=trace_context,
                 fallback_reason=error.code.value,
-                semantic_validate=semantic_validate,
+                semantic_validate=None,
             )
             self.event_recorder.record(
                 event_name="LLM_FALLBACK_COMPLETED",
                 severity=Severity.INFO,
                 correlation=trace_context,
                 attributes={
-                    "requested_mode": requested_mode.value,
+                    "requested_mode": requested.value,
                     "fallback_reason": error.code.value,
                     "actual_runtime": result.actual_runtime.value,
                     "provider": result.provider,
@@ -177,7 +209,7 @@ class StructuredInferenceRuntimeRouter:
                 result_code="FALLBACK_COMPLETED",
                 status="COMPLETED",
             )
-            return result
+            return _canonical_result(result)
 
     def decide(self, request: RouteDecisionInput) -> RouteDecision:
         """Preserved deterministic requested-mode and availability rules."""
@@ -220,7 +252,7 @@ class StructuredInferenceRuntimeRouter:
                 raise LLMInvocationError(
                     LLMErrorCode.CONSENT_REQUIRED, "external LLM consent is disabled"
                 )
-            if self.credential_service.read_secret() is None:
+            if self.credential_service.read_secret(self.api_provider_name) is None:
                 raise LLMInvocationError(
                     LLMErrorCode.API_KEY_MISSING, "LLM API key is not configured"
                 )
@@ -268,11 +300,12 @@ class StructuredInferenceRuntimeRouter:
             result_code="STARTED",
             status="STARTED",
         )
-        api_key = (
-            self.credential_service.read_secret()
+        api_key_bytes = (
+            self.credential_service.read_secret(self.api_provider_name)
             if provider.runtime is ActualRuntime.API_LLM
             else None
         )
+        api_key = None if api_key_bytes is None else api_key_bytes.decode("utf-8")
         try:
             payload = provider.invoke_structured(
                 prompt_ref=prompt_ref,
@@ -528,3 +561,22 @@ def _sum_tokens(input_tokens: int | None, output_tokens: int | None) -> int | No
     if input_tokens is None and output_tokens is None:
         return None
     return (input_tokens or 0) + (output_tokens or 0)
+
+
+def _canonical_result(result: StructuredLLMResult) -> StructuredInferenceResultV1:
+    if not isinstance(result.structured_output, dict):
+        raise LLMInvocationError(
+            LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+            "structured inference output must be an object",
+        )
+    return StructuredInferenceResultV1(
+        schema_version=1,
+        structured_output=cast(dict[str, object], result.structured_output),
+        provider=result.provider,
+        model=result.model,
+        actual_runtime=cast(Literal["LOCAL_GPU", "API_LLM"], result.actual_runtime.value),
+        input_tokens=result.input_tokens or 0,
+        output_tokens=result.output_tokens or 0,
+        latency_ms=result.latency_ms,
+        fallback_reason=result.fallback_reason,
+    )

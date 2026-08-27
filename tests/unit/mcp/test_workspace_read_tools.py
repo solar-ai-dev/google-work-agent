@@ -4,12 +4,13 @@ import base64
 from typing import cast
 
 import pytest
-from tests.support.fakes.mcp_transport import FakeMCPClientPort
 
-from google_work_agent.adapters.mcp import MCPGmailUiReadGateway, MCPGoogleWorkspaceGateway
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
-from google_work_agent.ports import TimeRange
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
 
 
 def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -85,15 +86,24 @@ def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None: 
     ]
 
 
-def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_order(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_order(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
     thread_ids = [f"thread-{index}" for index in range(20)]
 
     def google_api(
         _state: server._WorkspaceState, _url: str, _params: dict[str, str | list[str]] | None = None
     ) -> dict[str, object]:
-        return {"threads": [{"id": thread_id, "historyId": str(index)} for index, thread_id in enumerate(thread_ids)]}
+        return {
+            "threads": [
+                {"id": thread_id, "historyId": str(index)}
+                for index, thread_id in enumerate(thread_ids)
+            ]
+        }
 
-    def metadata(*, state: server._WorkspaceState, thread_id: str, list_snippet: str | None) -> dict[str, object]:
+    def metadata(
+        *, state: server._WorkspaceState, thread_id: str, list_snippet: str | None
+    ) -> dict[str, object]:
         del state, list_snippet
         return {"subject": f"Subject {thread_id}"}
 
@@ -120,7 +130,9 @@ def test_gmail_metadata_hydration_failure_fails_the_whole_page(monkeypatch) -> N
     ) -> dict[str, object]:
         return {"threads": [{"id": "thread-1"}, {"id": "thread-2"}]}
 
-    def metadata(*, state: server._WorkspaceState, thread_id: str, list_snippet: str | None) -> dict[str, object]:
+    def metadata(
+        *, state: server._WorkspaceState, thread_id: str, list_snippet: str | None
+    ) -> dict[str, object]:
         del state, list_snippet
         if thread_id == "thread-2":
             raise server._WorkspaceToolError("TIMEOUT")
@@ -419,34 +431,6 @@ def test_gmail_ui_detail_omits_rfc822_message_id_when_header_is_absent(monkeypat
     assert detail["rfc822_message_id"] is None
 
 
-def test_gmail_ui_gateway_maps_the_additive_detail_payload() -> None:
-    transport = FakeMCPClientPort()
-    transport.queue_response(
-        {
-            "thread_id": "thread-1",
-            "message_id": "message-1",
-            "rfc822_message_id": "<msg-id@example.com>",
-            "sender_name": "Kim Daeri",
-            "sender_email": "kim@example.com",
-            "recipients": ["user@example.com"],
-            "cc": [],
-            "subject": "Project update",
-            "received_at": "Mon, 10 Aug 2026 09:15:00 +0900",
-            "body": "Actual body",
-            "attachments": [],
-            "version": "12",
-        }
-    )
-
-    detail = MCPGmailUiReadGateway(transport=transport).get_thread_detail(thread_id="thread-1")
-
-    assert detail.thread_id == "thread-1"
-    assert detail.message_id == "message-1"
-    assert detail.rfc822_message_id == "<msg-id@example.com>"
-    assert detail.body == "Actual body"
-    assert transport.call_log[0].tool_name == "gmail_get_ui_thread_detail"
-
-
 def _gmail_message(
     message_id: str,
     internal_date: str,
@@ -602,32 +586,6 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
     assert result["next_page_token"] == "events-page-2"
 
 
-def test_gateway_forwards_calendar_event_list_options_to_mcp() -> None:
-    transport = FakeMCPClientPort()
-    transport.queue_response({"items": [], "next_page_token": None})
-
-    MCPGoogleWorkspaceGateway(transport=transport).list_calendar_events(
-        calendar_id="primary",
-        time_min="2026-08-10T00:00:00Z",
-        time_max="2026-11-08T00:00:00Z",
-        single_events=True,
-        order_by="startTime",
-        page_size=10,
-        page_token="events-page-1",
-    )
-
-    assert transport.call_log[0].tool_name == "calendar_list_events"
-    assert transport.call_log[0].arguments == {
-        "calendar_id": "primary",
-        "page_token": "events-page-1",
-        "page_size": 10,
-        "time_min": "2026-08-10T00:00:00Z",
-        "time_max": "2026-11-08T00:00:00Z",
-        "order_by": "startTime",
-        "single_events": True,
-    }
-
-
 def test_event_snapshot_preserves_resource_id_as_the_untitled_event_fallback() -> None:
     snapshot = server._event_snapshot(
         {
@@ -721,25 +679,6 @@ def test_freebusy_rejects_invalid_range_without_google_request(monkeypatch) -> N
         )
 
 
-def test_gateway_preserves_explicit_freebusy_range_in_mcp_arguments() -> None:
-    transport = FakeMCPClientPort()
-    transport.queue_response({"calendars": []})
-
-    MCPGoogleWorkspaceGateway(transport=transport).query_freebusy(
-        calendar_ids=("primary",),
-        time_range=TimeRange(
-            start="2026-08-10T00:00:00+09:00",
-            end="2026-08-11T00:00:00+09:00",
-        ),
-    )
-
-    assert transport.call_log[0].arguments == {
-        "calendar_ids": ["primary"],
-        "time_min": "2026-08-10T00:00:00+09:00",
-        "time_max": "2026-08-11T00:00:00+09:00",
-    }
-
-
 def _state() -> server._WorkspaceState:
     state = server._WorkspaceState(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
@@ -750,13 +689,12 @@ def _state() -> server._WorkspaceState:
 
 
 class _MemorySecretStorePort:
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        del service, account, secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        del key, secret_bytes
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        del service, account
+    def get(self, key: str) -> bytes | None:
+        del key
         return None
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        del service, account
-        return True
+    def delete(self, key: str) -> None:
+        del key

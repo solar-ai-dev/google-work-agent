@@ -24,16 +24,17 @@ from tests.support.prompt_manifests import (
     write_runtime_active_manifest,
 )
 
-from google_work_agent.adapters.llm import (
-    APIProviderConnectionService,
-    CredentialStorageMode,
-    OllamaStructuredLLMProvider,
+from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiStructuredInferenceAdapter as StructuredInferenceRuntimeRouter,
+)
+from google_work_agent.adapters.llm.ollama.structured_inference import (
+    OllamaStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.runtime.llm_credential_router import (
+    LlmCredentialRouter,
     SessionMemorySecretStore,
 )
-from google_work_agent.adapters.llm.api_provider import (
-    ApiStructuredLLMProvider as StructuredInferenceRuntimeRouter,
-)
-from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
@@ -56,6 +57,7 @@ from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.ports import (
+    CredentialStorageMode,
     LLMErrorCode,
     LLMInvocationError,
     ProviderResponsePayload,
@@ -269,7 +271,7 @@ def _real_llm_runtime(
     status_service = LlmRuntimeStatusRouter(
         build_profile="API_ONLY",
         credential_service=credential_service,
-        api_connection_service=APIProviderConnectionService(api_transport),
+        api_connection_service=GeminiConnectionService(api_transport),
         hardware_probe=FakeHardwareProbe(),
         ollama_probe=type(
             "_Probe",
@@ -288,7 +290,7 @@ def _real_llm_runtime(
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",

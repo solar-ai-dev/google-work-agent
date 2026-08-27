@@ -14,6 +14,7 @@ from google_work_agent.application.write_action_arguments import (
     dict_argument,
     required_argument_string,
 )
+from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
 from google_work_agent.application.write_persistence import require_action, require_attempt
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.results import ResultCode
@@ -23,9 +24,6 @@ from google_work_agent.ports import (
     ResourceSnapshot,
     ResourceType,
     UnitOfWork,
-)
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
 )
 
 DELETE_TARGETS = {
@@ -76,7 +74,7 @@ class RecoverDeleteHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorWritePort,
+        connector_execution: WriteResultMaterializer,
         recover_existing_result: Callable[
             [RecoverExistingResultCommand], RecoverExistingResultResult
         ],

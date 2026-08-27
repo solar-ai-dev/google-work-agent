@@ -1,65 +1,51 @@
-"""Unit tests for FileSettingsStore/JsonSettingsAdapter approved_model_id round-trip.
-
-Regression coverage: `FileSettingsStore.load()` used to call
-`validate_settings(...)` without an `approved_model_ids` allowlist, so it
-always defaulted to None and *any* previously-saved non-null
-`approved_model_id` made every subsequent settings read raise
-`ValueError("approved_model_id is not allowed")` -- even one that
-`JsonSettingsAdapter.patch()` had itself just validated and written.
-"""
-
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.runtime.build_manifest import BuildProfile
 from google_work_agent.adapters.system.json_settings import (
     FileSettingsStore,
     JsonSettingsAdapter,
-    SettingsPatch,
 )
+from google_work_agent.ports.system.settings_port import SettingsPatchV1
 
 
-def _service(tmp_path: Path, *, approved_model_ids: frozenset[str]) -> JsonSettingsAdapter:
-    return JsonSettingsAdapter(
-        store=FileSettingsStore(tmp_path / "app-settings.json"),
-        deployment_profile=BuildProfile.LOCAL_CAPABLE,
-        approved_model_ids=approved_model_ids,
-        has_active_runs=lambda: False,
-    )
+def _adapter(tmp_path: Path) -> JsonSettingsAdapter:
+    return JsonSettingsAdapter(store=FileSettingsStore(tmp_path / "app-settings.json"))
 
 
-def test_patched_approved_model_id_survives_a_subsequent_get(tmp_path: Path) -> None:
-    service = _service(tmp_path, approved_model_ids=frozenset({"qwen2.5:3b"}))
+def test_settings_update_replays_same_operation_and_reconciles(tmp_path: Path) -> None:
+    adapter = _adapter(tmp_path)
+    patch = SettingsPatchV1(schema_version=1, theme="DARK", retention_days=7)
 
-    patched = service.patch(SettingsPatch(command_id="cmd-1", approved_model_id="qwen2.5:3b"))
-    assert patched.approved_model_id == "qwen2.5:3b"
+    first = adapter.update_settings(patch, "settings-op-1")
+    replay = adapter.update_settings(patch, "settings-op-1")
 
-    reloaded = service.get()
-    assert reloaded.approved_model_id == "qwen2.5:3b"
-
-
-def test_get_still_rejects_an_approved_model_id_outside_the_allowlist(tmp_path: Path) -> None:
-    writer = _service(tmp_path, approved_model_ids=frozenset({"qwen2.5:3b"}))
-    writer.patch(SettingsPatch(command_id="cmd-1", approved_model_id="qwen2.5:3b"))
-
-    reader = _service(tmp_path, approved_model_ids=frozenset({"a-different-model"}))
-    with pytest.raises(ValueError, match="approved_model_id is not allowed"):
-        reader.get()
+    assert replay == first
+    assert replay.theme == "DARK"
+    assert replay.retention_days == 7
+    assert adapter.reconcile_settings("settings-op-1", patch).status == "COMPLETED"
 
 
-def test_file_settings_store_load_defaults_to_no_allowlist(tmp_path: Path) -> None:
-    store = FileSettingsStore(tmp_path / "app-settings.json")
-    settings = store.load(deployment_profile=BuildProfile.LOCAL_CAPABLE)
-    assert settings.approved_model_id is None
-    assert settings.setup_completed is False
+def test_settings_operation_ref_conflict_fails_closed(tmp_path: Path) -> None:
+    adapter = _adapter(tmp_path)
+    adapter.update_settings(SettingsPatchV1(schema_version=1, theme="DARK"), "settings-op-1")
+
+    with pytest.raises(ValueError, match="different settings patch"):
+        adapter.update_settings(
+            SettingsPatchV1(schema_version=1, theme="LIGHT"), "settings-op-1"
+        )
 
 
-def test_setup_completion_round_trips_through_settings_store(tmp_path: Path) -> None:
-    service = _service(tmp_path, approved_model_ids=frozenset())
+def test_settings_unknown_persisted_field_fails_closed(tmp_path: Path) -> None:
+    adapter = _adapter(tmp_path)
+    adapter.get_settings()
+    path = tmp_path / "app-settings.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["unknown"] = True
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
-    service.patch(SettingsPatch(command_id="cmd-setup", setup_completed=True))
-
-    assert service.get().setup_completed is True
+    with pytest.raises(ValueError, match="unknown fields"):
+        adapter.get_settings()

@@ -1,30 +1,33 @@
 """Product structured-inference runtime boundary."""
 
-from __future__ import annotations
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Literal, Protocol
 
-from collections.abc import Callable, Mapping
-from typing import Protocol
+from google_work_agent.ports.llm.contracts import OutputSchemaDefinition, PromptReference
 
-from google_work_agent.ports.llm.contracts import (
-    OutputSchemaDefinition,
-    PromptReference,
-    StructuredLLMResult,
-)
-from google_work_agent.ports.observability_events import ObservabilityContext
+
+@dataclass(frozen=True, slots=True)
+class StructuredInferenceResultV1:
+    schema_version: Literal[1]
+    structured_output: dict[str, object]
+    provider: str
+    model: str
+    actual_runtime: Literal["LOCAL_GPU", "API_LLM"]
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    fallback_reason: str | None
 
 
 class StructuredInferencePort(Protocol):
-    """Select a runtime leaf and return one validated structured result."""
-
-    def invoke_structured(
+    def infer(
         self,
-        *,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
         prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        trace_context: ObservabilityContext,
-        semantic_validate: Callable[[object], object] | None = None,
-    ) -> StructuredLLMResult: ...
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1: ...
 
 
-__all__ = ["StructuredInferencePort"]
+__all__ = ["StructuredInferencePort", "StructuredInferenceResultV1"]

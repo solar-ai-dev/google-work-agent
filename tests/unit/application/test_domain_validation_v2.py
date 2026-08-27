@@ -9,8 +9,8 @@ from google_work_agent.application.orchestration.domain_output_validation import
     PolicyOverrideProvenanceDependency,
     build_domain_validation_output_from_v2,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
 )
 
 
@@ -164,7 +164,7 @@ def _call(plan, *, review=None, evidence=None, reader=None, analysis=None, recei
         evidence_drafts=evidence or _evidence(),
         policy_confirmation_receipts=receipts,
         resource_identity_reader=reader or _reader(),
-        tool_registry=build_p0_tool_registry(),
+        tool_registry=load_signed_tool_registry(),
     )
 
 

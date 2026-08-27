@@ -4,8 +4,12 @@ from pathlib import Path
 
 from pytest import MonkeyPatch
 
-from google_work_agent.adapters.connectors.google.mcp import oauth_settings as settings
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    oauth_settings as settings,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
 
 
 def test_google_oauth_settings_load_from_local_env_file(

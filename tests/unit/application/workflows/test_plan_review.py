@@ -41,6 +41,9 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     LLMToolCall,
@@ -52,9 +55,6 @@ from google_work_agent.ports import (
     ToolDefinition,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -181,7 +181,7 @@ def test_shortlisted_policy_review_context_keeps_only_plan_referenced_tools() ->
     referenced_tool_names = {action["tool_name"] for action in plan_draft["actions"]}
 
     shortlisted = _shortlisted_policy_review_context_v1(
-        tool_registry=build_p0_tool_registry(),
+        tool_registry=load_signed_tool_registry(),
         target_kind="PLAN",
         draft=plan_draft,
     )
@@ -195,7 +195,7 @@ def test_shortlisted_policy_review_context_is_empty_for_answer_target() -> None:
     answer_draft = _answer_draft()
 
     shortlisted = _shortlisted_policy_review_context_v1(
-        tool_registry=build_p0_tool_registry(),
+        tool_registry=load_signed_tool_registry(),
         target_kind="ANSWER",
         draft=answer_draft,
     )

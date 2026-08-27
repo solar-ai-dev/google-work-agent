@@ -17,8 +17,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def normalize_resource_type(value: str) -> str:
@@ -43,7 +43,7 @@ def coarse_resource_category(resource_type: str) -> str:
 
 
 def registry_candidates_for_route(
-    *, tool_catalog: ConnectorToolCatalog, resource_type: str, effect_type: EffectType
+    *, tool_catalog: SignedToolRegistry, resource_type: str, effect_type: EffectType
 ) -> tuple[str, tuple[str, ...]]:
     """Return the bounded Registry candidates for one semantic route."""
     return _eligible_bindings(tool_catalog, resource_type, effect_type)
@@ -52,7 +52,7 @@ def registry_candidates_for_route(
 def bind_registry_candidates(
     *,
     candidate: SemanticRouteCandidate,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
 ) -> RouteBindingCandidateV1:
     """Bind semantic routes to a deterministic, bounded Registry candidate artifact.
@@ -105,7 +105,7 @@ def bind_registry_candidates(
 def _bind_input_routes(
     *,
     resource_types: Iterable[str],
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     reason_code: str,
 ) -> list[InputToolRouteV1]:
@@ -126,12 +126,15 @@ def _bind_input_routes(
 
 
 def _eligible_bindings(
-    tool_catalog: ConnectorToolCatalog, resource_type: str, effect_type: EffectType
+    tool_catalog: SignedToolRegistry, resource_type: str, effect_type: EffectType
 ) -> tuple[str, tuple[str, ...]]:
     matches: list[tuple[str, tuple[str, ...]]] = []
-    for connector_id in tool_catalog.list_connector_ids():
-        entries = tool_catalog.eligible(
-            connector_id=connector_id, resource_type=resource_type, effect_type=effect_type
+    connector_ids = sorted({entry.connector_id for entry in tool_catalog.entries})
+    for connector_id in connector_ids:
+        entries = tool_catalog.select_candidates(
+            connector_id=connector_id,
+            resource_type=resource_type,
+            effect=effect_type.value,
         )
         if entries:
             matches.append((connector_id, tuple(entry.tool_name for entry in entries)))

@@ -8,13 +8,13 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.bin
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 def finalize_route_node(
     state: ToolRoutingState,
     *,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     scope_expansion: ScopeExpansionResolver | None,
 ) -> ToolRoutingState:

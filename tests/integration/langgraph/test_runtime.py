@@ -66,6 +66,10 @@ from google_work_agent.application.orchestration.tool_routing import (
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
@@ -86,10 +90,6 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_registry,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
@@ -130,10 +130,8 @@ _PROFILE_CANDIDATE_PROMPT_IDS = {
 # Prompt Artifact gap, not something this integration pass can invent.
 
 
-def _tool_catalog() -> ConnectorToolCatalog:
-    catalog = ConnectorToolCatalog()
-    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
-    return catalog
+def _tool_catalog() -> SignedToolRegistry:
+    return load_signed_tool_registry()
 
 
 class _PendingPlanActionsState:

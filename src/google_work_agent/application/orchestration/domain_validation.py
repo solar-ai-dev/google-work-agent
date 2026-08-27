@@ -15,11 +15,13 @@ from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningValidationError,
     validate_action_plan_draft_v1,
 )
-from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    SignedToolRegistry,
+)
+from google_work_agent.domain.action.model import EffectType
 
 
 class DomainValidationValidationError(ValueError):
@@ -30,7 +32,7 @@ class DomainValidationService:
     """Deterministic Stage 11 domain-validation service."""
 
     def __init__(self, *, tool_registry: SignedToolRegistry | None = None) -> None:
-        self._tool_registry = tool_registry or build_p0_tool_registry()
+        self._tool_registry = tool_registry or load_signed_tool_registry()
 
     def __call__(
         self,
@@ -51,7 +53,7 @@ def build_domain_validation_output_v1(
     analysis_result: WorkAnalysisResultV1,
     tool_registry: SignedToolRegistry | None = None,
 ) -> DomainValidationOutputV1:
-    registry = tool_registry or build_p0_tool_registry()
+    registry = tool_registry or load_signed_tool_registry()
     try:
         validated_plan = validate_action_plan_draft_v1(
             plan_draft,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.adapters.llm.ollama import OllamaTransport
+from google_work_agent.adapters.llm.ollama.transport import OllamaTransport
 from google_work_agent.ports import (
     ApprovedModelInfo,
     AvailabilityState,

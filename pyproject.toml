@@ -22,7 +22,12 @@ where = ["src"]
 include = ["google_work_agent*"]
 
 [tool.setuptools.package-data]
-google_work_agent = ["adapters/persistence/migrations/*.sql"]
+google_work_agent = [
+    "adapters/persistence/migrations/*.sql",
+    "application/tool_registry/*.json",
+    "adapters/connectors/runtime/*.json",
+    "adapters/connectors/google/workspace/mcp_server/*.json",
+]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

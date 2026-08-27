@@ -37,3 +37,8 @@ class DeterministicUUID:
             raise RuntimeError(f"duplicate deterministic id generated: {candidate}")
         self._seen.add(candidate)
         return candidate
+
+    def new_uuid(self) -> str:
+        """Implement the canonical UUIDPort surface for boundary tests."""
+
+        return self.next_id()

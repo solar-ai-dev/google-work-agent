@@ -35,6 +35,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_change_requires_reapproval,
     merge_duplicate_risk,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_action_arguments import (
     dict_argument as _dict_argument,
 )
@@ -60,9 +63,6 @@ from google_work_agent.ports import (
     ResourceType,
     UnitOfWork,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
-)
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
@@ -76,9 +76,7 @@ def _calendar_conflict_audit_metadata(
         "decision": authority[0],
         "matched_resource_ids": list(authority[1]),
         "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
-        "freshness": value.get("freshness", "UNKNOWN")
-        if isinstance(value, dict)
-        else "UNKNOWN",
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
     }
 
 
@@ -91,9 +89,7 @@ def _feasibility_audit_metadata(risk: dict[str, object]) -> dict[str, object]:
         "required_duration": (
             value.get("required_duration_minutes") if isinstance(value, dict) else None
         ),
-        "freshness": value.get("freshness", "UNKNOWN")
-        if isinstance(value, dict)
-        else "UNKNOWN",
+        "freshness": value.get("freshness", "UNKNOWN") if isinstance(value, dict) else "UNKNOWN",
     }
 
 
@@ -124,7 +120,7 @@ class PreflightWriteActionService:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
         self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
         self._calendar_conflicts = CalendarConflictValidator(
             gateway=gateway,
@@ -144,7 +140,7 @@ class PreflightWriteActionService:
             action = _require_action(unit_of_work, action_id)
             if action.status != ActionStatusV1.APPROVED.value:
                 raise PolicyViolationError("write preflight requires an approved action")
-            self._registry.require(action.tool_name)
+            self._registry.get_required(action.connector_id, action.tool_name)
             arguments = _dict_argument(loads(action.arguments_json))
             action_version = action.version
             arguments_hash = action.arguments_hash

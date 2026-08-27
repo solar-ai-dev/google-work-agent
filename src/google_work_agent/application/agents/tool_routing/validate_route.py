@@ -6,15 +6,15 @@ from typing import cast
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 class ToolRouteValidationError(ValueError):
     """Raised when Tool Routing violates the frozen Registry-bound contract."""
 
 
-def validate_route(value: object, *, tool_catalog: ConnectorToolCatalog) -> ToolRoutePlanV2:
+def validate_route(value: object, *, tool_catalog: SignedToolRegistry) -> ToolRoutePlanV2:
     root = _mapping(value, "$")
     if set(root) != {"schema_version", "input_plan", "output_plan", "tool_registry_version"}:
         raise ToolRouteValidationError("ToolRoutePlanV2 fields are invalid")
@@ -52,7 +52,7 @@ def validate_route(value: object, *, tool_catalog: ConnectorToolCatalog) -> Tool
         for tool_id in tool_ids:
             if not isinstance(tool_id, str):
                 raise ToolRouteValidationError("allowed_read_tool_ids must contain strings")
-            entry = tool_catalog.require(connector_id=connector_id, tool_id=tool_id)
+            entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
             if entry.effect_type is not EffectType.READ or entry.resource_type != resource_type:
                 raise ToolRouteValidationError("input route tool binding is invalid")
             if entry.registry_version != registry_version:
@@ -87,7 +87,7 @@ def validate_route(value: object, *, tool_catalog: ConnectorToolCatalog) -> Tool
                 raise ToolRouteValidationError("output route effect is invalid") from error
             if effect is EffectType.READ:
                 raise ToolRouteValidationError("output route effect must be a write effect")
-            entry = tool_catalog.require(connector_id=connector_id, tool_id=tool_id)
+            entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
             if entry.effect_type is not effect or entry.resource_type != resource_type:
                 raise ToolRouteValidationError("output route tool binding is invalid")
             if entry.registry_version != registry_version:

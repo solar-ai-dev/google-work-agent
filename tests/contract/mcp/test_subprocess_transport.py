@@ -6,138 +6,108 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.mcp_manifest import build_manifest_payload
 
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
-from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
-    McpOAuthCredentialAdapter,
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
 )
-from google_work_agent.adapters.mcp import (
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     StdioMCPClientAdapter,
-    build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.ports import MCPClientPortError, MCPClientPortErrorCode
-from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
+from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.ports import MCPClientPortError
 
 
-def test_subprocess_transport_handshakes_without_fixture_google_tools(tmp_path: Path) -> None:
+def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
-    executable = Path(sys.executable).resolve()
+    registry = load_signed_tool_registry()
+    runtime_registry = ConnectorRuntimeRegistry()
     transport = StdioMCPClientAdapter(
-        config=MCPArtifactConfig(
-            executable_path=str(executable),
-            manifest_path=str(manifest_path.resolve()),
-            expected_binary_sha256=calculate_file_sha256(executable),
-            expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-            expected_manifest_version="2026-08-07.p0",
-            expected_protocol_version="2026-08-07.p0",
-            expected_tool_registry_version="2026-08-06.p0",
-            startup_timeout_ms=5_000,
-            request_timeout_ms=5_000,
-            max_restart_count=1,
-            environment="DEVELOPMENT",
-            service_instance_id="svc-contract",
-            working_directory=str(Path(__file__).resolve().parents[3]),
-            module_name="tests.fakes.mcp_server",
-            extra_environment={"GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id"},
+        descriptor=build_google_workspace_connector_descriptor(
+            _config(manifest_path, registry.entries_hash),
+            expected_tool_descriptors=tuple(registry.descriptor_expectations("google_workspace")),
+        ),
+        runtime_registry=runtime_registry,
+    )
+    try:
+        assert {tool.tool_id for tool in transport.list_tools("google_workspace")} == {
+            entry.tool_id for entry in registry.entries
+        }
+        call_result = transport.call_tool(
+            "google_workspace", "gmail_get_thread", {"thread_id": "thread-1"}, 1_000
         )
-    )
-    provider = McpOAuthCredentialAdapter(transport=transport)
-    try:
-        assert provider.get_connection_status().connected is False
-        runtime = transport.runtime_metadata()
-        assert runtime.process_status == "READY"
-        assert runtime.process_instance_id is not None
+        assert call_result.transport_status == "OK"
+        restart_result = transport.restart_once("google_workspace")
+        assert restart_result.restarted is True
+        assert transport.runtime_metadata().restart_count == 1
+        assert transport.runtime_metadata().process_status == "READY"
     finally:
         transport.close()
 
 
-def test_subprocess_transport_rejects_manifest_version_mismatch(tmp_path: Path) -> None:
-    manifest_path = _write_manifest(tmp_path)
-    descriptor = build_google_workspace_connector_descriptor(
-        _artifact_config(manifest_path, expected_manifest_version="unexpected")
-    )
-    with pytest.raises(MCPClientPortError) as captured:
-        StdioMCPClientAdapter(descriptor=descriptor)
-
-    assert captured.value.code is MCPClientPortErrorCode.SCHEMA_MISMATCH
-
-
-def test_subprocess_transport_rejects_manifest_registry_mismatch(tmp_path: Path) -> None:
-    manifest_path = _write_manifest(tmp_path)
-    descriptor = build_google_workspace_connector_descriptor(_artifact_config(manifest_path))
-    descriptor = replace(descriptor, expected_tool_registry=SignedToolRegistry(()))
-
-    with pytest.raises(MCPClientPortError) as captured:
-        StdioMCPClientAdapter(descriptor=descriptor)
-
-    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
-
-
-def test_subprocess_transport_rejects_tool_schema_mismatch(tmp_path: Path) -> None:
-    payload = build_manifest_payload()
-    tools = payload["tools"]
-    assert isinstance(tools, list)
-    first_tool = tools[0]
-    assert isinstance(first_tool, dict)
-    first_tool["tool_schema_hash"] = "mismatch"
+def test_subprocess_transport_rejects_manifest_hash_mismatch(tmp_path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
-    manifest_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    descriptor = build_google_workspace_connector_descriptor(_artifact_config(manifest_path))
+    manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
+    registry = load_signed_tool_registry()
+    config = _config(manifest_path, registry.entries_hash)
+    config = replace(config, expected_manifest_sha256="0" * 64)
 
-    with pytest.raises(MCPClientPortError) as captured:
-        StdioMCPClientAdapter(descriptor=descriptor)
+    with pytest.raises(MCPClientPortError):
+        StdioMCPClientAdapter(
+            descriptor=build_google_workspace_connector_descriptor(
+                config,
+                expected_tool_descriptors=tuple(
+                    registry.descriptor_expectations("google_workspace")
+                ),
+            ),
+            runtime_registry=ConnectorRuntimeRegistry(),
+        )
 
-    assert captured.value.code is MCPClientPortErrorCode.TOOL_REJECTED
 
-
-def test_subprocess_transport_restarts_once_after_child_process_exit(tmp_path: Path) -> None:
-    manifest_path = _write_manifest(tmp_path)
-    transport = StdioMCPClientAdapter(config=_artifact_config(manifest_path))
-    process = transport._process  # noqa: SLF001 - contract test forces the child-exit boundary
-    assert process is not None
-    process.kill()
-    process.wait(timeout=5)
-
+def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path) -> None:
+    manifest_path = tmp_path / "mcp-manifest.json"
+    manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
+    registry = load_signed_tool_registry()
+    transport = StdioMCPClientAdapter(
+        descriptor=build_google_workspace_connector_descriptor(
+            _config(manifest_path, registry.entries_hash),
+            expected_tool_descriptors=tuple(registry.descriptor_expectations("google_workspace")),
+        ),
+        runtime_registry=ConnectorRuntimeRegistry(),
+    )
     try:
-        provider = McpOAuthCredentialAdapter(transport=transport)
-        assert provider.get_connection_status().connected is False
-        metadata = transport.runtime_metadata()
-        assert metadata.process_status == "READY"
-        assert metadata.restart_count == 1
+        result = transport.call_tool(
+            "google_workspace",
+            "gmail_send",
+            {"__test_delivery_certainty": "SENT_RESPONSE_LOST"},
+            1_000,
+        )
+        assert result.transport_status == "ERROR"
+        assert result.payload["delivery_certainty"] == "SENT_RESPONSE_LOST"
     finally:
         transport.close()
 
 
-def _write_manifest(tmp_path: Path) -> Path:
-    manifest_path = tmp_path / "mcp-manifest.json"
-    manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
-    return manifest_path
-
-
-def _artifact_config(
-    manifest_path: Path,
-    *,
-    expected_manifest_version: str = "2026-08-07.p0",
-) -> MCPArtifactConfig:
-    executable = Path(sys.executable).resolve()
+def _config(manifest_path: Path, registry_hash: str) -> MCPArtifactConfig:
+    executable = str(sys.executable)
     return MCPArtifactConfig(
-        executable_path=str(executable),
-        manifest_path=str(manifest_path.resolve()),
-        expected_binary_sha256=calculate_file_sha256(executable),
-        expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
-        expected_manifest_version=expected_manifest_version,
+        executable_path=executable,
+        manifest_path=str(manifest_path),
+        expected_binary_sha256=calculate_file_sha256(Path(executable)),
+        expected_manifest_sha256=calculate_file_sha256(manifest_path),
+        expected_manifest_version="2026-08-07.p0",
         expected_protocol_version="2026-08-07.p0",
-        expected_tool_registry_version="2026-08-06.p0",
+        expected_registry_manifest_hash=registry_hash,
         startup_timeout_ms=5_000,
-        request_timeout_ms=5_000,
+        request_timeout_ms=1_000,
         max_restart_count=1,
-        environment="DEVELOPMENT",
-        service_instance_id="svc-contract",
-        working_directory=str(Path(__file__).resolve().parents[3]),
+        environment="TEST",
+        service_instance_id="service-1",
         module_name="tests.fakes.mcp_server",
     )

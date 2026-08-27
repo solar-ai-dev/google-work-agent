@@ -15,7 +15,6 @@ from typing import Literal, cast
 
 import pytest
 
-from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -23,6 +22,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.prompt_input_contract import (
     PromptRuntimeInputContractValidator,
+)
+from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
+    PromptInputGuardedProvider,
 )
 from google_work_agent.application.orchestration.prompt_registry import (
     default_prompt_manifest_path,

@@ -8,12 +8,9 @@ from email.utils import parseaddr
 from enum import StrEnum
 from typing import cast
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
-    McpConnectorWriteAdapter,
-)
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWriteRequest,
-    PreparedConnectorWrite,
+from google_work_agent.application.write_dispatch_models import (
+    AuthorizedWriteDispatch,
+    PreparedWriteDispatch,
 )
 from google_work_agent.ports import (
     FreeBusyCalendar,
@@ -21,7 +18,6 @@ from google_work_agent.ports import (
     GmailAttachmentMetadata,
     GmailThreadDetail,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
@@ -69,6 +65,68 @@ class GoogleGatewayCallRecord:
     mutated: bool
 
 
+def _build_final_dispatch_arguments(
+    tool_name: str,
+    arguments: dict[str, object],
+    *,
+    recovery_fingerprint: str | None,
+) -> dict[str, object]:
+    if tool_name == "gmail_send":
+        return {
+            "draft_id": _required_argument(arguments, "draft_id"),
+            "recovery_fingerprint": recovery_fingerprint,
+        }
+    if tool_name == "calendar_delete_event":
+        return {
+            "calendar_id": _required_argument(arguments, "calendar_id"),
+            "event_id": _required_argument(arguments, "event_id"),
+        }
+    if tool_name == "tasks_delete_task":
+        return {
+            "task_list_id": _required_argument(arguments, "task_list_id"),
+            "task_id": _required_argument(arguments, "task_id"),
+        }
+    payload = _dict_argument(arguments.get("payload"))
+    if recovery_fingerprint is not None and tool_name in {
+        "gmail_create_draft",
+        "tasks_create_task",
+        "calendar_create_event",
+    }:
+        payload = {**payload, "recovery_fingerprint": recovery_fingerprint}
+    identity = {
+        key: value
+        for key, value in arguments.items()
+        if key in {"draft_id", "task_list_id", "task_id", "calendar_id", "event_id"}
+    }
+    if tool_name not in {
+        "gmail_create_draft",
+        "gmail_update_draft",
+        "tasks_create_task",
+        "tasks_update_task",
+        "calendar_create_event",
+        "calendar_update_event",
+    }:
+        raise LookupError(f"unsupported write tool: {tool_name}")
+    return {**identity, "payload": payload}
+
+
+def _required_argument(arguments: dict[str, object], key: str) -> str:
+    value = arguments.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{key} is required")
+    return value
+
+
+def _dict_argument(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("payload must be an object")
+    return {str(key): item for key, item in value.items()}
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
 class FakeGoogleGateway:
     """Fixture-backed Google Workspace gateway with deterministic faults."""
 
@@ -87,15 +145,56 @@ class FakeGoogleGateway:
         tool_name: str,
         arguments: dict[str, object],
         recovery_fingerprint: str | None,
-    ) -> PreparedConnectorWrite:
-        return self._execution_backend().prepare_write(
+    ) -> PreparedWriteDispatch:
+        return PreparedWriteDispatch(
             tool_name=tool_name,
-            arguments=arguments,
-            recovery_fingerprint=recovery_fingerprint,
+            arguments=_build_final_dispatch_arguments(
+                tool_name, arguments, recovery_fingerprint=recovery_fingerprint
+            ),
         )
 
-    def execute_write(self, request: ConnectorWriteRequest) -> ResourceSnapshot:
-        return self._execution_backend().execute_write(request)
+    def execute_write(self, request: AuthorizedWriteDispatch) -> ResourceSnapshot:
+        tool_name = request.prepared.tool_name
+        arguments = request.prepared.arguments
+        if tool_name == "gmail_send":
+            return self.send_gmail(
+                draft_id=str(arguments["draft_id"]),
+                recovery_fingerprint=_optional_string(arguments.get("recovery_fingerprint")),
+            )
+        if tool_name == "calendar_delete_event":
+            return self.delete_calendar_event(
+                calendar_id=str(arguments["calendar_id"]),
+                event_id=str(arguments["event_id"]),
+            )
+        if tool_name == "tasks_delete_task":
+            return self.delete_task(
+                task_list_id=str(arguments["task_list_id"]),
+                task_id=str(arguments["task_id"]),
+            )
+        payload = _dict_argument(arguments.get("payload"))
+        if tool_name == "gmail_create_draft":
+            return self.create_gmail_draft(payload=payload)
+        if tool_name == "gmail_update_draft":
+            return self.update_gmail_draft(draft_id=str(arguments["draft_id"]), payload=payload)
+        if tool_name == "tasks_create_task":
+            return self.create_task(task_list_id=str(arguments["task_list_id"]), payload=payload)
+        if tool_name == "tasks_update_task":
+            return self.update_task(
+                task_list_id=str(arguments["task_list_id"]),
+                task_id=str(arguments["task_id"]),
+                payload=payload,
+            )
+        if tool_name == "calendar_create_event":
+            return self.create_calendar_event(
+                calendar_id=str(arguments["calendar_id"]), payload=payload
+            )
+        if tool_name == "calendar_update_event":
+            return self.update_calendar_event(
+                calendar_id=str(arguments["calendar_id"]),
+                event_id=str(arguments["event_id"]),
+                payload=payload,
+            )
+        raise LookupError(f"unsupported write tool: {tool_name}")
 
     def fetch_verification_snapshot(
         self,
@@ -104,11 +203,29 @@ class FakeGoogleGateway:
         arguments: dict[str, object],
         fallback_resource_id: str | None,
     ) -> ResourceSnapshot:
-        return self._execution_backend().fetch_verification_snapshot(
-            tool_name=tool_name,
-            arguments=arguments,
-            fallback_resource_id=fallback_resource_id,
+        resource_id = next(
+            (
+                str(arguments[key])
+                for key in ("draft_id", "task_id", "event_id")
+                if arguments.get(key)
+            ),
+            fallback_resource_id,
         )
+        if resource_id is None:
+            raise LookupError("resource reference is required for verification")
+        if tool_name.startswith("gmail_"):
+            return (
+                self.get_gmail_message(message_id=resource_id)
+                if tool_name == "gmail_send"
+                else self.get_gmail_draft(draft_id=resource_id)
+            )
+        if tool_name.startswith("tasks_"):
+            return self.get_task(task_list_id=str(arguments["task_list_id"]), task_id=resource_id)
+        if tool_name.startswith("calendar_"):
+            return self.get_calendar_event(
+                calendar_id=str(arguments["calendar_id"]), event_id=resource_id
+            )
+        raise LookupError(f"unsupported verification tool: {tool_name}")
 
     def search_recovery_candidates(
         self,
@@ -116,13 +233,23 @@ class FakeGoogleGateway:
         tool_name: str,
         recovery_fingerprint: str,
     ) -> tuple[ResourceSnapshot, ...]:
-        return self._execution_backend().search_recovery_candidates(
-            tool_name=tool_name,
+        resource_type = (
+            ResourceType.GMAIL_MESSAGE
+            if tool_name == "gmail_send"
+            else ResourceType.GMAIL_DRAFT
+            if tool_name.startswith("gmail_")
+            else ResourceType.TASK
+            if tool_name.startswith("tasks_")
+            else ResourceType.CALENDAR_EVENT
+            if tool_name.startswith("calendar_")
+            else None
+        )
+        if resource_type is None:
+            raise LookupError(f"unsupported recovery tool: {tool_name}")
+        return self.search_by_recovery_fingerprint(
+            resource_type=resource_type,
             recovery_fingerprint=recovery_fingerprint,
         )
-
-    def _execution_backend(self) -> McpConnectorWriteAdapter:
-        return McpConnectorWriteAdapter(gateway=cast(GoogleWorkspaceGateway, self))
 
     def queue_fault(self, *, operation: str, fault: GoogleGatewayFault) -> None:
         """Queue one deterministic fault for an operation."""

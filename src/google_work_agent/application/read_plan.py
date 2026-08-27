@@ -17,6 +17,12 @@ from google_work_agent.application.read_persistence import (
     handle_existing_save_receipt,
     require_run,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    SignedToolRegistry,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.canonical import (
@@ -32,10 +38,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_catalog,
-)
 
 
 class SaveReadOnlyPlanService:
@@ -46,7 +48,7 @@ class SaveReadOnlyPlanService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._catalog = build_p0_tool_catalog()
+        self._catalog = load_signed_tool_registry()
 
     def __call__(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
@@ -135,7 +137,7 @@ class SaveReadOnlyPlanService:
                 )
 
             for action in command.actions:
-                registry_entry = self._catalog.require(
+                registry_entry = self._catalog.get_required(
                     connector_id=action.connector_id, tool_id=action.tool_name
                 )
                 unit_of_work.actions.insert_for_plan(
@@ -213,16 +215,16 @@ class SaveReadOnlyPlanService:
             return response
 
 
-def _validate_read_only_plan(
-    command: SaveReadOnlyPlanCommand, catalog: ConnectorToolCatalog
-) -> None:
+def _validate_read_only_plan(command: SaveReadOnlyPlanCommand, catalog: SignedToolRegistry) -> None:
     validate_plan_structure(
         actions=command.actions, evidence=command.evidence, plan_label="read-only plan"
     )
     for action in command.actions:
         if not action.connector_id:
             raise ValueError("read action connector_id is required")
-        entry = catalog.require(connector_id=action.connector_id, tool_id=action.tool_name)
+        entry = catalog.get_required(
+            connector_id=action.connector_id, tool_id=action.tool_name
+        )
         if entry.effect_type is not EffectType.READ:
             raise ValueError(f"read-only plan cannot include non-read action: {action.tool_name}")
         if entry.approval_requirement.value != "NONE":

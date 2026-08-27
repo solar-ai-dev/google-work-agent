@@ -4,8 +4,12 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools
-from google_work_agent.adapters.connectors.google.mcp import verified_server
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    server_runtime as verified_server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as workspace_tools,
+)
 from google_work_agent.ports import DeliveryCertainty
 
 

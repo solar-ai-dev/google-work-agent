@@ -11,7 +11,7 @@ from google_work_agent.domain.recovery.transitions.require_recovery import (
 )
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
-    PendingProjectionEvent,
+    RunSseEventV1,
     SseEventBufferPort,
     UnitOfWork,
     WorkflowOutcome,
@@ -119,9 +119,9 @@ class RunOutcomeHandler:
             )
         )
 
-    def publish(self, event: PendingProjectionEvent) -> None:
+    def publish(self, event: RunSseEventV1) -> None:
         try:
-            self._event_publisher.publish(event)
+            self._event_publisher.append(event)
         except Exception:
             return
 

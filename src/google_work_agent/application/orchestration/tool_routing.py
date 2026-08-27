@@ -20,8 +20,8 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactRefV1,
 )
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 if TYPE_CHECKING:
     from google_work_agent.application.orchestration.contracts import (
@@ -195,7 +195,7 @@ class ToolRouteCoordinator:
     def __init__(
         self,
         *,
-        tool_catalog: ConnectorToolCatalog,
+        tool_catalog: SignedToolRegistry,
         id_factory: Callable[[], str],
         policy_preconditions: PolicyPreconditionResolver | None = None,
         read_dependencies: ReadDependencyResolver | None = None,
@@ -401,10 +401,10 @@ class ToolRouteCoordinator:
                 if reason_code not in existing["reason_codes"]:
                     existing["reason_codes"].append(reason_code)
                 continue
-            candidates = self._tool_catalog.eligible(
+            candidates = self._tool_catalog.select_candidates(
                 connector_id=connector_id,
                 resource_type=resource_type,
-                effect_type=EffectType.READ,
+                effect=EffectType.READ.value,
             )
             if not candidates:
                 raise ToolRouteValidationError(
@@ -469,11 +469,12 @@ class ToolRouteCoordinator:
         effect_type: EffectType,
     ) -> tuple[str, tuple[str, ...]]:
         matches: list[tuple[str, tuple[str, ...]]] = []
-        for connector_id in self._tool_catalog.list_connector_ids():
-            entries = self._tool_catalog.eligible(
+        connector_ids = sorted({entry.connector_id for entry in self._tool_catalog.entries})
+        for connector_id in connector_ids:
+            entries = self._tool_catalog.select_candidates(
                 connector_id=connector_id,
                 resource_type=resource_type,
-                effect_type=effect_type,
+                effect=effect_type.value,
             )
             if entries:
                 matches.append((connector_id, tuple(entry.tool_name for entry in entries)))
@@ -513,18 +514,13 @@ class ToolRouteCoordinator:
                 "output_mode": "ACTION",
                 "output_routes": output_routes,
             }
-        versions = {
-            self._tool_catalog.registry_for(connector_id).list_entries()[0].registry_version
-            for connector_id in self._tool_catalog.list_connector_ids()
-            if self._tool_catalog.registry_for(connector_id).list_entries()
-        }
-        if len(versions) != 1:
-            raise ToolRouteValidationError("active connector registries must share one version")
+        if not self._tool_catalog.entries:
+            raise ToolRouteValidationError("active Tool Registry must not be empty")
         return {
             "schema_version": 2,
             "input_plan": input_plan,
             "output_plan": output_plan,
-            "tool_registry_version": next(iter(versions)),
+            "tool_registry_version": self._tool_catalog.contract_version,
         }
 
 
@@ -593,7 +589,7 @@ def determine_semantic_routes(request_intent: RequestIntentV2) -> SemanticRouteC
 def validate_tool_route_plan_v2(
     value: object,
     *,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
 ) -> ToolRoutePlanV2:
     root = _mapping(value, "$")
     if set(root) != {"schema_version", "input_plan", "output_plan", "tool_registry_version"}:
@@ -632,7 +628,7 @@ def validate_tool_route_plan_v2(
         for tool_id in tool_ids:
             if not isinstance(tool_id, str):
                 raise ToolRouteValidationError("allowed_read_tool_ids must contain strings")
-            entry = tool_catalog.require(connector_id=connector_id, tool_id=tool_id)
+            entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
             if entry.effect_type is not EffectType.READ or entry.resource_type != resource_type:
                 raise ToolRouteValidationError("input route tool binding is invalid")
             if entry.registry_version != registry_version:
@@ -667,7 +663,7 @@ def validate_tool_route_plan_v2(
                 raise ToolRouteValidationError("output route effect is invalid") from error
             if effect is EffectType.READ:
                 raise ToolRouteValidationError("output route effect must be a write effect")
-            entry = tool_catalog.require(connector_id=connector_id, tool_id=tool_id)
+            entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
             if entry.effect_type is not effect or entry.resource_type != resource_type:
                 raise ToolRouteValidationError("output route tool binding is invalid")
             if entry.registry_version != registry_version:

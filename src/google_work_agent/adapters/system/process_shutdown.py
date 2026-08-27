@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import os
 from enum import StrEnum
+from pathlib import Path
 from typing import Protocol
 
-from google_work_agent.ports import ClockPort, ShutdownReport
+from google_work_agent.ports import ClockPort
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    OperationalReconcileResultV1,
+)
+from google_work_agent.ports.system.shutdown_port import ShutdownAcceptedV1
 
 
 class ShutdownPhase(StrEnum):
@@ -42,6 +49,8 @@ class ProcessShutdownAdapter:
         mcp_transport: ComponentShutdownPort,
         sessions: ComponentShutdownPort,
         clock: ClockPort,
+        marker_path: Path,
+        timeout_seconds: float = 30.0,
     ) -> None:
         self._command_gate = command_gate
         self._coordinator = coordinator
@@ -51,8 +60,23 @@ class ProcessShutdownAdapter:
         self._mcp_transport = mcp_transport
         self._sessions = sessions
         self._clock = clock
+        self._marker_path = marker_path
+        self._timeout_seconds = timeout_seconds
 
-    def shutdown(self, *, timeout_seconds: float) -> ShutdownReport:
+    def request_shutdown(self, operation_ref: str) -> ShutdownAcceptedV1:
+        if not operation_ref.strip():
+            raise ValueError("operation_ref is required")
+        self._marker_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._marker_path.is_file():
+            existing = json.loads(self._marker_path.read_text(encoding="utf-8"))
+            if existing.get("operation_ref") == operation_ref:
+                return ShutdownAcceptedV1(schema_version=1, accepted=True)
+            if existing.get("status") != "COMPLETED":
+                raise ValueError("shutdown marker belongs to an unresolved operation_ref")
+        _atomic_write(
+            self._marker_path,
+            json.dumps({"operation_ref": operation_ref, "status": "ACCEPTED"}).encode("utf-8"),
+        )
         started = self._clock.now_ms()
         errors: list[str] = []
         phase = ShutdownPhase.STOP_ACCEPTING_COMMANDS.value
@@ -60,7 +84,7 @@ class ProcessShutdownAdapter:
             self._command_gate.stop_accepting_commands()
             phase = ShutdownPhase.STOP_COORDINATOR.value
             self._coordinator.stop_accepting()
-            self._coordinator.shutdown(timeout_seconds)
+            self._coordinator.shutdown(self._timeout_seconds)
             phase = ShutdownPhase.FLUSH_RUNTIME.value
             self._workflow_runtime.flush_or_checkpoint()
             phase = ShutdownPhase.FLUSH_OBSERVABILITY.value
@@ -77,9 +101,39 @@ class ProcessShutdownAdapter:
         except Exception as error:  # pragma: no cover - exercised through tests with doubles
             errors.append(type(error).__name__)
             status = "FAILED"
-        return ShutdownReport(
-            phase=phase,
-            status=status,
-            duration_ms=self._clock.now_ms() - started,
-            safe_error_codes=tuple(errors),
+        _atomic_write(
+            self._marker_path,
+            json.dumps(
+                {
+                    "operation_ref": operation_ref,
+                    "status": status,
+                    "phase": phase,
+                    "duration_ms": self._clock.now_ms() - started,
+                    "safe_error_codes": errors,
+                },
+                sort_keys=True,
+            ).encode("utf-8"),
         )
+        return ShutdownAcceptedV1(schema_version=1, accepted=True)
+
+    def reconcile_shutdown(self, operation_ref: str) -> OperationalReconcileResultV1:
+        if not self._marker_path.is_file():
+            return OperationalReconcileResultV1("SAFE_TO_RETRY", None, None)
+        payload = json.loads(self._marker_path.read_text(encoding="utf-8"))
+        if payload.get("operation_ref") != operation_ref:
+            return OperationalReconcileResultV1("SAFE_TO_RETRY", None, None)
+        status = str(payload.get("status"))
+        return OperationalReconcileResultV1(
+            "COMPLETED" if status in {"ACCEPTED", "COMPLETED"} else "UNCERTAIN",
+            operation_ref,
+            {"accepted": True, "status": status},
+        )
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    temp_path = path.with_name(f".{path.name}.tmp")
+    with temp_path.open("wb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp_path, path)

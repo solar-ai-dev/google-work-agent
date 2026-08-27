@@ -11,20 +11,22 @@ import pytest
 from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
     McpConnectorReadAdapter,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadRequest
+from google_work_agent.application.orchestration.api_acquisition import (
+    ApiDiscoveryAcquisitionAgent,
+    RetrievalBudget,
+    SourceName,
+    SourcePlanningValidationError,
+    build_source_planning_clarification_question,
+    validate_acquisition_result_v1,
+)
+from google_work_agent.application.orchestration.connector_read_models import (
+    PlannedConnectorRead,
+)
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     ApiAcquisitionResult,
     ApiPlanningResult,
     WorkflowPhase,
-)
-from google_work_agent.application.orchestration.api_acquisition import (
-    ApiDiscoveryAcquisitionAgent,
-    RetrievalBudget,
-    SourcePlanningValidationError,
-    build_source_planning_clarification_question,
-    validate_acquisition_result_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     CalendarReadMode,
@@ -37,12 +39,10 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     Weekday,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.application.orchestration.api_acquisition import SourceName
 from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     LLMErrorCode,
     LLMInvocationError,
@@ -58,6 +58,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",
@@ -76,10 +77,8 @@ DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
 
 
 def test_connector_reader_rejects_read_outside_frozen_tool_ids() -> None:
-    reader = McpConnectorReadAdapter(
-        gateway=cast(GoogleWorkspaceGateway, RecordingGoogleGateway())
-    )
-    request = ConnectorReadRequest(
+    reader = McpConnectorReadAdapter(gateway=RecordingGoogleGateway())
+    request = PlannedConnectorRead(
         plan=_plan("TASKS", {}),
         selected_resources=(),
         prefer_selected_resources=False,

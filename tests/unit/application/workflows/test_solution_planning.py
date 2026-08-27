@@ -34,6 +34,10 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_answer_draft_v1,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -42,10 +46,6 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -283,7 +283,7 @@ def test_draft_plan_builds_plan_ready_and_stores_plan_draft_only() -> None:
     assert state_update["answer_draft"] is None
     assert cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id == "planning.draft_plan"
     assert runtime.calls[0]["output_schema"] == _action_plan_draft_output_schema_for_registry(
-        build_p0_tool_registry()
+        load_signed_tool_registry()
     )
 
 
@@ -292,7 +292,7 @@ def test_action_plan_draft_output_schema_reflects_injected_tool_registry() -> No
     injected into this SolutionPlanningAgent instance, not a hardcoded P0
     enum -- so a non-default registry never gets schema-rejected for its
     own legitimately-registered tool names."""
-    full_entries = build_p0_tool_registry().list_entries()
+    full_entries = load_signed_tool_registry().entries
     custom_registry = SignedToolRegistry(full_entries[:1])
 
     schema = _action_plan_draft_output_schema_for_registry(custom_registry)
@@ -341,7 +341,7 @@ def test_action_plan_cannot_escape_frozen_output_route() -> None:
 
 
 def test_invoke_draft_plan_llm_scopes_tool_name_enum_to_agent_tool_registry() -> None:
-    full_entries = build_p0_tool_registry().list_entries()
+    full_entries = load_signed_tool_registry().entries
     custom_registry = SignedToolRegistry(full_entries[:1])
     runtime = FakeLLMRuntime()
     runtime.queued.append(_llm_result(_plan_output(PlanningResult.PLAN_READY.value)))

@@ -216,7 +216,7 @@ def build_production_runtime(
 class _CallableUuidPort:
     factory: Callable[[], str]
 
-    def next_id(self) -> str:
+    def new_uuid(self) -> str:
         return self.factory()
 
 

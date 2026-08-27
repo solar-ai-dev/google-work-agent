@@ -29,6 +29,9 @@ from google_work_agent.application.task_duplicates import (
     duplicate_authority,
     duplicate_change_requires_reapproval,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.write_action_arguments import dict_argument
 from google_work_agent.application.write_execution_integrity import (
     CLAIM_TOKEN_VERSION,
@@ -65,9 +68,6 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.claim_context_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
@@ -123,7 +123,7 @@ class ClaimExecutionHandler:
         self._signing_secret = signing_secret
         self._service_instance_id = service_instance_id
         self._claim_ttl_ms = validate_claim_ttl_ms(claim_ttl_ms)
-        self._registry = build_p0_tool_registry()
+        self._registry = load_signed_tool_registry()
 
     def __call__(self, command: ClaimExecutionCommand) -> ClaimExecutionResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -160,7 +160,7 @@ class ClaimExecutionHandler:
                     detail="write action requires an ACTIVE approval",
                 )
 
-            entry = self._registry.require(action.tool_name)
+            entry = self._registry.get_required(action.connector_id, action.tool_name)
             active_attempt_exists = (
                 unit_of_work.execution_attempts.get_active_for_approval(approval.id) is not None
             )
@@ -273,9 +273,7 @@ class ClaimExecutionHandler:
             attempt = ExecutionAttemptRecord(
                 id=command.attempt_id,
                 approval_id=approval.id,
-                attempt_no=len(
-                    active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
-                )
+                attempt_no=len(active_attempt_tuple(unit_of_work.execution_attempts, approval.id))
                 + 1,
                 status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,

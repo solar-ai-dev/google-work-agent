@@ -4,22 +4,18 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
     SemanticRouteCandidate,
 )
-from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    ConnectorToolCatalog,
-    build_p0_tool_registry,
+from google_work_agent.application.tool_registry import (
+    SignedToolRegistry,
+    load_signed_tool_registry,
 )
+from google_work_agent.domain.action.model import EffectType
 
 
-def _catalog() -> ConnectorToolCatalog:
-    catalog = ConnectorToolCatalog()
-    catalog.register(connector_id="google_workspace", registry=build_p0_tool_registry())
-    return catalog
+def _catalog() -> SignedToolRegistry:
+    return load_signed_tool_registry()
 
 
-def test_task_create_binds_bounded_registry_candidates_and_read_dependency() -> (
-    None
-):
+def test_task_create_binds_bounded_registry_candidates_and_read_dependency() -> None:
     ids = iter(f"route-{index}" for index in range(10))
     binding = bind_registry_candidates(
         candidate=SemanticRouteCandidate(

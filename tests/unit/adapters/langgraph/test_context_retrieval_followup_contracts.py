@@ -21,6 +21,9 @@ from google_work_agent.application.orchestration.api_acquisition import (
     RetrievalBudget,
     retrieval_query_hash,
 )
+from google_work_agent.application.orchestration.connector_read_models import (
+    NormalizedConnectorRead,
+)
 from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
@@ -34,17 +37,16 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
     SourceFetchPlanBuilder,
 )
 from google_work_agent.ports import WorkflowCorrelationContext, WorkflowStartRequest
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadResult
 
 
 @dataclass
 class _Reader:
     calls: int = 0
 
-    def read(self, request: object) -> ConnectorReadResult:
+    def read(self, request: object) -> NormalizedConnectorRead:
         del request
         self.calls += 1
-        return ConnectorReadResult(snapshots=())
+        return NormalizedConnectorRead(snapshots=())
 
 
 @dataclass

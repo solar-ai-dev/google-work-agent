@@ -1,12 +1,15 @@
-"""Google Workspace connector composition."""
+"""Google Workspace connector runtime composition."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from google_work_agent.adapters.connectors.connector_mcp_runtime import (
-    ConnectorMcpRuntime,
-    RestartableMCPClientPort,
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
+)
+from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
+    McpConnectorReadAdapter,
+)
+from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
+    McpConnectorWriteAdapter,
 )
 from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
     McpOAuthCredentialAdapter,
@@ -14,153 +17,91 @@ from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     MCPConnectorDescriptor,
+    StdioMCPClientAdapter,
 )
-from google_work_agent.adapters.mcp.capabilities import (
-    build_google_workspace_internal_capabilities,
-)
-from google_work_agent.adapters.mcp.delivery_gateway import (
-    DeliveryAwareMCPGoogleWorkspaceGateway,
-)
-from google_work_agent.adapters.mcp.delivery_transport import (
-    DeliveryAwareStdioMCPClientAdapter,
-)
-from google_work_agent.adapters.mcp.dispatch_contract import DispatchContractMCPClientPort
-from google_work_agent.adapters.mcp.gateway import (
-    MCPGmailAttachmentGateway,
-    MCPGmailUiReadGateway,
-    MCPGoogleWorkspaceGateway,
-)
-from google_work_agent.adapters.mcp.manifest_guard import (
-    ManifestEnforcedMCPClientPort,
-    RestartableManifestDelegate,
-)
-from google_work_agent.ports import MCPClientPort, MCPRuntimeMetadata
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
+from google_work_agent.ports.connector.mcp_client_port import MCPToolDescriptorV1
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
-_VERIFIED_MCP_MODULE_NAME = "google_work_agent.adapters.connectors.google.mcp.verified_server"
 
 
 def build_google_workspace_connector_descriptor(
     artifact_config: MCPArtifactConfig,
     *,
-    tool_registry: SignedToolRegistry | None = None,
+    expected_tool_descriptors: tuple[MCPToolDescriptorV1, ...],
 ) -> MCPConnectorDescriptor:
     return MCPConnectorDescriptor(
         connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
         artifact_config=artifact_config,
-        expected_tool_registry=tool_registry or build_google_workspace_tool_registry(),
+        expected_tool_descriptors=expected_tool_descriptors,
     )
 
 
-def _default_transport_factory(
-    descriptor: MCPConnectorDescriptor,
-) -> RestartableManifestDelegate:
-    return DeliveryAwareStdioMCPClientAdapter(descriptor=descriptor)
-
-
-def _guarded_transport_factory(
-    base_factory: Callable[[MCPConnectorDescriptor], RestartableManifestDelegate],
-) -> Callable[[MCPConnectorDescriptor], RestartableMCPClientPort]:
-    """Wrap every connector transport in immutable-manifest and schema guards."""
-
-    def build(descriptor: MCPConnectorDescriptor) -> RestartableMCPClientPort:
-        raw_delegate = base_factory(descriptor)
-        try:
-            manifest_guard = ManifestEnforcedMCPClientPort(
-                delegate=raw_delegate,
-                descriptor=descriptor,
-                expected_internal_capabilities=build_google_workspace_internal_capabilities(),
-            )
-            return DispatchContractMCPClientPort(
-                delegate=manifest_guard,
-                descriptor=descriptor,
-            )
-        except Exception:
-            raw_delegate.close()
-            raise
-
-    return build
-
-
 class GoogleWorkspaceConnector:
+    """Own the one Google Workspace stdio child and its canonical adapters."""
+
     def __init__(
         self,
         *,
         descriptor: MCPConnectorDescriptor,
-        transport_factory: (
-            Callable[[MCPConnectorDescriptor], RestartableManifestDelegate] | None
-        ) = None,
+        runtime_registry: ConnectorRuntimeRegistry,
     ) -> None:
         if descriptor.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:
             raise ValueError("Google Workspace connector descriptor id mismatch")
-        base_factory = transport_factory or _default_transport_factory
-        self._runtime = ConnectorMcpRuntime(
-            descriptor=descriptor,
-            transport_factory=_guarded_transport_factory(base_factory),
-        )
-        self._gateway: MCPGoogleWorkspaceGateway | None = None
-        self._oauth_provider: McpOAuthCredentialAdapter | None = None
-        self._gmail_ui_gateway: MCPGmailUiReadGateway | None = None
-        self._gmail_attachment_gateway: MCPGmailAttachmentGateway | None = None
+        self._descriptor = descriptor
+        self._runtime_registry = runtime_registry
+        self._client: StdioMCPClientAdapter | None = None
 
     @property
     def connector_id(self) -> str:
-        return self._runtime.connector_id
+        return self._descriptor.connector_id
 
     @property
     def descriptor(self) -> MCPConnectorDescriptor:
-        return self._runtime.descriptor
+        return self._descriptor
 
     @property
-    def transport(self) -> MCPClientPort:
-        return self._runtime.transport_for_diagnostics
-
-    @property
-    def workspace_gateway(self) -> MCPGoogleWorkspaceGateway:
-        if self._gateway is None:
+    def client(self) -> StdioMCPClientAdapter:
+        if self._client is None:
             raise RuntimeError("Google Workspace connector is not started")
-        return self._gateway
+        return self._client
 
     @property
-    def oauth_provider(self) -> McpOAuthCredentialAdapter:
-        if self._oauth_provider is None:
-            raise RuntimeError("Google Workspace connector is not started")
-        return self._oauth_provider
+    def read_port(self) -> McpConnectorReadAdapter:
+        return McpConnectorReadAdapter(
+            runtime_registry=self._runtime_registry,
+            mcp_client=self.client,
+        )
 
     @property
-    def gmail_ui_gateway(self) -> MCPGmailUiReadGateway:
-        if self._gmail_ui_gateway is None:
-            raise RuntimeError("Google Workspace connector is not started")
-        return self._gmail_ui_gateway
+    def write_port(self) -> McpConnectorWriteAdapter:
+        return McpConnectorWriteAdapter(
+            runtime_registry=self._runtime_registry,
+            mcp_client=self.client,
+        )
 
     @property
-    def gmail_attachment_gateway(self) -> MCPGmailAttachmentGateway:
-        if self._gmail_attachment_gateway is None:
-            raise RuntimeError("Google Workspace connector is not started")
-        return self._gmail_attachment_gateway
+    def oauth_port(self) -> McpOAuthCredentialAdapter:
+        return McpOAuthCredentialAdapter(
+            runtime_registry=self._runtime_registry,
+            mcp_client=self.client,
+        )
 
-    def start(self) -> MCPClientPort:
-        transport = self._runtime.start()
-        if self._gateway is None:
-            self._gateway = DeliveryAwareMCPGoogleWorkspaceGateway(transport=transport)
-            self._oauth_provider = McpOAuthCredentialAdapter(transport=transport)
-            self._gmail_ui_gateway = MCPGmailUiReadGateway(transport=transport)
-            self._gmail_attachment_gateway = MCPGmailAttachmentGateway(transport=transport)
-        return transport
-
-    def health(self) -> MCPRuntimeMetadata:
-        return self._runtime.health()
-
-    def restart(self) -> MCPRuntimeMetadata:
-        return self._runtime.restart()
+    def start(self) -> StdioMCPClientAdapter:
+        if self._client is None:
+            self._client = StdioMCPClientAdapter(
+                descriptor=self._descriptor,
+                runtime_registry=self._runtime_registry,
+            )
+        return self._client
 
     def close(self) -> None:
-        self._runtime.close()
-        self._gateway = None
-        self._oauth_provider = None
-        self._gmail_ui_gateway = None
-        self._gmail_attachment_gateway = None
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+
+__all__ = [
+    "GOOGLE_WORKSPACE_CONNECTOR_ID",
+    "GoogleWorkspaceConnector",
+    "build_google_workspace_connector_descriptor",
+]

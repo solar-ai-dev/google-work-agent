@@ -4,11 +4,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from google_work_agent.ports.google_workspace import DeliveryCertainty
 
 type JsonValue = Any
+
+
+@dataclass(frozen=True, slots=True)
+class MCPToolDescriptorV1:
+    schema_version: Literal[1]
+    connector_id: str
+    tool_id: str
+    input_schema_ref: str
+    output_schema_ref: str
+    registry_entry_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class MCPToolCallResultV1:
+    schema_version: Literal[1]
+    tool_id: str
+    transport_status: Literal["OK", "ERROR", "TIMEOUT", "DISCONNECTED"]
+    payload: JsonValue | None
+    error_code: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MCPRestartResultV1:
+    schema_version: Literal[1]
+    restarted: bool
+    reason_code: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,21 +109,16 @@ class MCPClientPortError(RuntimeError):
 
 
 class MCPClientPort(Protocol):
-    """Minimal MCP transport needed by future adapter contract tests."""
+    """Connector-id-aware MCP runtime client boundary."""
 
-    def call_tool(self, *, tool_name: str, arguments: dict[str, JsonValue]) -> MCPToolResponse:
-        """Invoke one MCP tool."""
+    def list_tools(self, connector_id: str) -> list[MCPToolDescriptorV1]: ...
 
-    def call_control(
+    def call_tool(
         self,
-        *,
-        method: str,
-        arguments: dict[str, JsonValue],
-    ) -> MCPControlResponse:
-        """Invoke one non-tool MCP control method."""
+        connector_id: str,
+        tool_id: str,
+        arguments: JsonValue,
+        timeout_ms: int,
+    ) -> MCPToolCallResultV1: ...
 
-    def runtime_metadata(self) -> MCPRuntimeMetadata:
-        """Return sanitized transport runtime metadata."""
-
-    def close(self) -> None:
-        """Close the transport and any child process resources."""
+    def restart_once(self, connector_id: str) -> MCPRestartResultV1: ...

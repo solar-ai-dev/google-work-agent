@@ -3,31 +3,30 @@
 from __future__ import annotations
 
 import os
-import platform
 from dataclasses import dataclass
 
-from google_work_agent.ports import HardwareCapability, HardwareCapabilityStatus
+from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 
 @dataclass(frozen=True, slots=True)
 class WindowsHardwareProbeAdapter:
+    ram_total_bytes: int = 1
     gpu_present: bool = False
-    gpu_vendor: str | None = None
     gpu_name: str | None = None
-    gpu_memory_bytes: int | None = None
-    capability_status: HardwareCapabilityStatus = HardwareCapabilityStatus.NOT_VALIDATED
+    vram_total_bytes: int | None = None
+    ollama_available: bool = False
+    ollama_version: str | None = None
+    local_runtime_eligible: bool = False
 
-    def probe(self) -> HardwareCapability:
-        return HardwareCapability(
-            cpu_arch=platform.machine() or "unknown",
-            core_summary=str(os.cpu_count() or "unknown"),
-            memory_bytes=None,
+    def probe(self) -> HardwareProfileV1:
+        return HardwareProfileV1(
+            schema_version=1,
+            cpu_logical_cores=max(1, os.cpu_count() or 1),
+            ram_total_bytes=max(1, self.ram_total_bytes),
             gpu_present=self.gpu_present,
-            gpu_vendor=self.gpu_vendor,
             gpu_name=self.gpu_name,
-            gpu_memory_bytes=self.gpu_memory_bytes,
-            capability_status=self.capability_status,
-            safe_reason_codes=()
-            if self.capability_status is HardwareCapabilityStatus.VALIDATED
-            else ("LOCAL_HARDWARE_NOT_VALIDATED",),
+            vram_total_bytes=self.vram_total_bytes,
+            ollama_available=self.ollama_available,
+            ollama_version=self.ollama_version,
+            local_runtime_eligible=self.local_runtime_eligible,
         )

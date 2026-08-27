@@ -42,16 +42,19 @@ from google_work_agent.application.orchestration.task_write_semantics import (
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
+    SignedToolRegistry,
+)
 from google_work_agent.domain.action.model import EffectType, PolicyViolationError
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
     WorkflowStartRequest,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import (
-    SignedToolRegistry,
-    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -205,7 +208,7 @@ def _action_plan_draft_output_schema_for_registry(
     ``r84_gate_runner.py``'s static Gate dataset mapping.
     """
 
-    tool_names = sorted(entry.tool_name for entry in tool_registry.list_entries())
+    tool_names = sorted(entry.tool_id for entry in tool_registry.entries)
     base_schema = dict(ACTION_PLAN_DRAFT_OUTPUT_SCHEMA.json_schema)
     json_schema: dict[str, object] = copy.deepcopy(base_schema)
     properties = cast("dict[str, object]", json_schema["properties"])
@@ -293,7 +296,7 @@ class SolutionPlanningAgent:
             revise_plan_prompt_ref
             or load_solution_planning_revise_plan_prompt_reference(manifest_path)
         )
-        self._tool_registry = tool_registry or build_p0_tool_registry()
+        self._tool_registry = tool_registry or load_signed_tool_registry()
 
     @property
     def answer_only_prompt_ref(self) -> PromptReference:
@@ -925,7 +928,7 @@ def validate_action_plan_draft_v1(
         optional={"llm_provider_result"},
     )
     _require_schema_version(root, "$", ACTION_PLAN_DRAFT_SCHEMA_VERSION)
-    registry = tool_registry or build_p0_tool_registry()
+    registry = tool_registry or load_signed_tool_registry()
     refs = _reference_space(analysis_result)
     status = _require_string(root, "status", "$")
     if status not in _PLAN_RESULT_VALUES:
@@ -1084,9 +1087,12 @@ def _validate_action_draft(
     )
     _require_schema_version(action, path, ACTION_DRAFT_SCHEMA_VERSION)
     tool_name = _require_string(action, "tool_name", path)
-    entry = registry.get(tool_name)
-    if entry is None:
-        raise SolutionPlanningValidationError(f"{path}.tool_name tool not registered: {tool_name}")
+    try:
+        entry = registry.get_required(P0_GOOGLE_WORKSPACE_CONNECTOR_ID, tool_name)
+    except LookupError as exc:
+        raise SolutionPlanningValidationError(
+            f"{path}.tool_name tool not registered: {tool_name}"
+        ) from exc
     effect = _require_string(action, "effect", path)
     if effect not in _ACTION_EFFECT_VALUES:
         raise SolutionPlanningValidationError(f"{path}.effect is invalid")

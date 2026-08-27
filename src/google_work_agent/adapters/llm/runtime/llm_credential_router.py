@@ -1,93 +1,98 @@
-"""LLM credential router and its session-memory leaf."""
+"""LLM credential router and session-memory credential leaf."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
-from google_work_agent.ports import CredentialStorageMode, LLMCredentialState, SecretStorePort
+from google_work_agent.adapters.llm.gemini.credential import GeminiLlmCredentialAdapter
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatusV1
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    OperationalReconcileResultV1,
+)
 
 
-class SessionMemorySecretStore:
-    """Ephemeral in-process leaf used for session-only API keys."""
-
+class SessionMemorySecretStore(SecretStorePort):
     def __init__(self) -> None:
-        self._values: dict[tuple[str, str], str] = {}
+        self._values: dict[str, bytes] = {}
 
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        self._values[(service, account)] = secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        self._values[key] = bytes(secret_bytes)
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        return self._values.get((service, account))
+    def get(self, key: str) -> bytes | None:
+        return self._values.get(key)
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        return self._values.pop((service, account), None) is not None
+    def delete(self, key: str) -> None:
+        self._values.pop(key, None)
 
 
 @dataclass
 class LlmCredentialRouter:
-    """Store one provider API key without exposing the secret value."""
+    """Route provider credentials without exposing secret values in results."""
 
-    provider_name: str
     environment: str
     keyring_store: SecretStorePort | None
     session_store: SessionMemorySecretStore
+    provider_name: str | None = None
+    _leaves: dict[str, GeminiLlmCredentialAdapter] = field(default_factory=dict, init=False)
 
-    def describe_state(self) -> LLMCredentialState:
-        if self.session_store.get_secret(service=self._service_name(), account=self.provider_name):
-            return LLMCredentialState.SESSION_MEMORY
-        if self.keyring_store is None:
-            return LLMCredentialState.UNAVAILABLE
-        if self.keyring_store.get_secret(service=self._service_name(), account=self.provider_name):
-            return LLMCredentialState.KEYRING
-        return LLMCredentialState.NOT_CONFIGURED
+    def __post_init__(self) -> None:
+        if self.provider_name is not None:
+            self._leaves[self.provider_name] = GeminiLlmCredentialAdapter(
+                provider=self.provider_name,
+                environment=self.environment,
+                keyring_store=self.keyring_store,
+                session_store=self.session_store,
+            )
 
-    def store(self, *, api_key: str, mode: CredentialStorageMode) -> LLMCredentialState:
-        normalized = api_key.strip()
-        if not normalized:
-            raise ValueError("API key must not be blank")
-        if mode is CredentialStorageMode.KEYRING:
-            if self.keyring_store is None:
-                raise ValueError("OS keyring is unavailable")
-            self.keyring_store.set_secret(
-                service=self._service_name(), account=self.provider_name, secret=normalized
-            )
-            self.session_store.delete_secret(
-                service=self._service_name(), account=self.provider_name
-            )
-            return LLMCredentialState.KEYRING
-        self.session_store.set_secret(
-            service=self._service_name(), account=self.provider_name, secret=normalized
-        )
-        if self.keyring_store is not None:
-            self.keyring_store.delete_secret(
-                service=self._service_name(), account=self.provider_name
-            )
-        return LLMCredentialState.SESSION_MEMORY
+    def store_credential(
+        self,
+        provider: str,
+        secret: bytes,
+        storage_mode: Literal["KEYRING", "SESSION_ONLY"],
+        operation_ref: str,
+    ) -> LlmCredentialStatusV1:
+        return self._leaf(provider).store(secret, storage_mode, operation_ref)
 
-    def read_secret(self) -> str | None:
-        memory_value = self.session_store.get_secret(
-            service=self._service_name(), account=self.provider_name
-        )
-        if memory_value is not None:
-            return memory_value
-        if self.keyring_store is None:
-            return None
-        return self.keyring_store.get_secret(
-            service=self._service_name(), account=self.provider_name
+    def delete_credential(self, provider: str, operation_ref: str) -> LlmCredentialStatusV1:
+        return self._leaf(provider).delete(operation_ref)
+
+    def get_credential_status(self, provider: str) -> LlmCredentialStatusV1:
+        return self._leaf(provider).status()
+
+    def reconcile_credential(
+        self,
+        operation_ref: str,
+        provider: str,
+        target_state: Literal["CONFIGURED", "NOT_CONFIGURED"],
+        storage_mode: Literal["KEYRING", "SESSION_ONLY"] | None = None,
+    ) -> OperationalReconcileResultV1:
+        return self._leaf(provider).reconcile(
+            operation_ref,
+            target_state,
+            storage_mode,
         )
 
-    def delete(self) -> LLMCredentialState:
-        deleted = self.session_store.delete_secret(
-            service=self._service_name(), account=self.provider_name
-        )
-        if self.keyring_store is not None:
-            deleted = (
-                self.keyring_store.delete_secret(
-                    service=self._service_name(), account=self.provider_name
-                )
-                or deleted
-            )
-        return LLMCredentialState.NOT_CONFIGURED if deleted else self.describe_state()
+    def read_secret(self, provider: str) -> bytes | None:
+        """Router-private handoff used only by a provider inference leaf."""
+        return self._leaf(provider).read_secret()
 
-    def _service_name(self) -> str:
-        return f"GoogleWorkAgent/{self.environment}/llm-api-key"
+    def _leaf(self, provider: str) -> GeminiLlmCredentialAdapter:
+        if not provider:
+            raise ValueError("unknown LLM provider")
+        leaf = self._leaves.get(provider)
+        if leaf is None:
+            if self.provider_name is not None:
+                raise ValueError("unknown LLM provider")
+            leaf = GeminiLlmCredentialAdapter(
+                provider=provider,
+                environment=self.environment,
+                keyring_store=self.keyring_store,
+                session_store=self.session_store,
+            )
+            self._leaves[provider] = leaf
+        return leaf
+
+
+__all__ = ["LlmCredentialRouter", "SessionMemorySecretStore"]

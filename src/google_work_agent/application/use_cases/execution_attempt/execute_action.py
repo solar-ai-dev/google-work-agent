@@ -12,6 +12,10 @@ from google_work_agent.application.use_cases.execution_attempt.begin_execution_a
     BeginExecutionAttemptHandler,
 )
 from google_work_agent.application.write_action_arguments import coerce_int
+from google_work_agent.application.write_dispatch_models import (
+    AuthorizedWriteDispatch,
+    WriteResultMaterializer,
+)
 from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.results import ResultCode
@@ -21,10 +25,6 @@ from google_work_agent.ports import (
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     UnitOfWork,
-)
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-    ConnectorWriteRequest,
 )
 
 
@@ -48,7 +48,7 @@ class ExecuteActionHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorWritePort,
+        connector_execution: WriteResultMaterializer,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,
@@ -107,7 +107,7 @@ class ExecuteActionHandler:
             recovery_fingerprint=approval.recovery_fingerprint,
         )
         snapshot = self._connector_execution.execute_write(
-            ConnectorWriteRequest(
+            AuthorizedWriteDispatch(
                 prepared=prepared,
                 claim_payload=payload,
                 approval_arguments_hash=action.arguments_hash,

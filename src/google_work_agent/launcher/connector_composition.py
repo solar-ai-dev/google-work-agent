@@ -10,30 +10,36 @@ from google_work_agent.adapters.connectors.google_workspace import (
     GoogleWorkspaceConnector,
     build_google_workspace_connector_descriptor,
 )
-from google_work_agent.adapters.mcp import (
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
+)
+from google_work_agent.adapters.connectors.runtime.load_installed_connector_manifest import (
+    InstalledConnectorManifestV1,
+    load_installed_connector_manifest,
+)
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
-    MCPRuntimeStatusProvider,
     calculate_file_sha256,
 )
+from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
 from google_work_agent.adapters.runtime import BuildProfile
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
 )
-from google_work_agent.application.connector_registry import ConnectorRegistry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
-    MCP_TOOL_REGISTRY_VERSION,
 )
-from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
-)
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 @dataclass(frozen=True, slots=True)
 class DevelopmentConnectorBundle:
-    registry: ConnectorRegistry
-    tool_catalog: ConnectorToolCatalog
+    runtime_registry: ConnectorRuntimeRegistry
+    tool_registry: SignedToolRegistry
+    installed_manifest: InstalledConnectorManifestV1
     google_connector: GoogleWorkspaceConnector
     runtime_status_provider: MCPRuntimeStatusProvider
 
@@ -46,11 +52,19 @@ def build_connectors(
     python_executable: Path,
     working_directory: Path,
 ) -> DevelopmentConnectorBundle:
-    tool_catalog = ConnectorToolCatalog()
-    tool_catalog.register(
-        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
-        registry=build_google_workspace_tool_registry(),
-    )
+    tool_registry = load_signed_tool_registry()
+    installed_manifest = load_installed_connector_manifest()
+    installed_connector = installed_manifest.get_required(GOOGLE_WORKSPACE_CONNECTOR_ID)
+    if (
+        installed_connector.provider_namespace != "google"
+        or installed_connector.connector_package != "workspace"
+        or installed_connector.mcp_schema_version != MCP_MANIFEST_VERSION
+        or not installed_connector.tool_projection_path.endswith(
+            "/google_workspace/tool-descriptor-projection-v1.json"
+        )
+    ):
+        raise ValueError("installed Google Workspace connector binding is invalid")
+    runtime_registry = ConnectorRuntimeRegistry()
     descriptor = build_google_workspace_connector_descriptor(
         MCPArtifactConfig(
             executable_path=str(python_executable),
@@ -59,7 +73,7 @@ def build_connectors(
             expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
             expected_manifest_version=MCP_MANIFEST_VERSION,
             expected_protocol_version=MCP_MANIFEST_VERSION,
-            expected_tool_registry_version=MCP_TOOL_REGISTRY_VERSION,
+            expected_registry_manifest_hash=tool_registry.entries_hash,
             startup_timeout_ms=5_000,
             request_timeout_ms=30_000,
             max_restart_count=1,
@@ -68,21 +82,26 @@ def build_connectors(
             working_directory=str(working_directory),
             extra_environment={ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir)},
         ),
-        tool_registry=tool_catalog.registry_for(GOOGLE_WORKSPACE_CONNECTOR_ID),
+        expected_tool_descriptors=tuple(
+            tool_registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)
+        ),
     )
-    google_connector = GoogleWorkspaceConnector(descriptor=descriptor)
-    registry = ConnectorRegistry()
-    registry.register(google_connector)
-    registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID).start()
+    google_connector = GoogleWorkspaceConnector(
+        descriptor=descriptor,
+        runtime_registry=runtime_registry,
+    )
+    transport = google_connector.start()
     return DevelopmentConnectorBundle(
-        registry=registry,
-        tool_catalog=tool_catalog,
+        runtime_registry=runtime_registry,
+        tool_registry=tool_registry,
+        installed_manifest=installed_manifest,
         google_connector=google_connector,
         runtime_status_provider=MCPRuntimeStatusProvider(
-            google_provider=google_connector.oauth_provider,
+            google_provider=google_connector.oauth_port,
+            connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
             api_llm="NOT_CONFIGURED",
             ollama="NOT_CONFIGURED",
             deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
-            runtime=registry.get(GOOGLE_WORKSPACE_CONNECTOR_ID),
+            transport=transport,
         ),
     )

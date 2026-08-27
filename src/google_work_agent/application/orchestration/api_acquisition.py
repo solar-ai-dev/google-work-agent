@@ -13,11 +13,12 @@ from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
 from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.ports.connector.connector_read_port import (
-    ConnectorReadPort,
-    ConnectorReadRequest,
-    ConnectorReadResult,
+from google_work_agent.application.orchestration.connector_read_models import (
+    NormalizedConnectorRead,
+    PlannedConnectorRead,
+)
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
@@ -71,6 +72,7 @@ from google_work_agent.ports import (
     TimeRange,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.observability_events import ObservabilityContext
 
 JsonObject = dict[str, object]
 
@@ -244,7 +246,7 @@ class ApiDiscoveryAcquisitionAgent:
         self,
         *,
         llm_runtime: StructuredLLMRuntime,
-        connector_reader: ConnectorReadPort,
+        connector_reader: ConnectorReadProjection,
         prompt_ref: PromptReference | None = None,
         retrieval_budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET,
         manifest_path: Path | None = None,
@@ -487,7 +489,7 @@ class ApiDiscoveryAcquisitionAgent:
         plan: SourceFetchPlanV1,
         request: WorkflowStartRequest,
         tool_route_plan: ToolRoutePlanV2,
-        read_result: ConnectorReadResult,
+        read_result: NormalizedConnectorRead,
         read_result_cache: RunScopedReadResultCache,
         read_handle_factory: Callable[[], str],
     ) -> MaterializedRetrievalRead:
@@ -561,7 +563,7 @@ class ApiDiscoveryAcquisitionAgent:
         now_ms = self._now_ms()
         timezone = self._timezone_provider()
         read_result = self._connector_reader.read(
-            ConnectorReadRequest(
+            PlannedConnectorRead(
                 plan=plan,
                 selected_resources=request.selected_resources,
                 prefer_selected_resources=request.entry_mode == "RESOURCE_SELECTED",

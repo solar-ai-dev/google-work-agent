@@ -16,7 +16,10 @@ from urllib.request import Request
 
 import pytest
 
-from google_work_agent.adapters.llm.ollama import OllamaHTTPClient, OllamaStructuredLLMProvider
+from google_work_agent.adapters.llm.ollama.structured_inference import (
+    OllamaStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.ollama.transport import OllamaHTTPClient
 from google_work_agent.ports import (
     AvailabilityState,
     OutputSchemaDefinition,
@@ -250,7 +253,7 @@ def test_provider_forwards_runtime_policy_sampling_fields_to_transport(
 
     monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
 
-    provider = OllamaStructuredLLMProvider(
+    provider = OllamaStructuredInferenceAdapter(
         provider_name="ollama",
         transport=OllamaHTTPClient(),
         endpoint="http://127.0.0.1:11434",
@@ -283,7 +286,7 @@ def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
 
     monkeypatch.setattr("google_work_agent.adapters.llm.ollama.urlopen", fake_urlopen)
 
-    provider = OllamaStructuredLLMProvider(
+    provider = OllamaStructuredInferenceAdapter(
         provider_name="ollama",
         transport=OllamaHTTPClient(),
         endpoint="http://127.0.0.1:11434",
@@ -345,7 +348,7 @@ def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
         resolve_calls.append(ref.prompt_id)
         return "Resolved instructions for " + ref.prompt_id
 
-    provider = OllamaStructuredLLMProvider(
+    provider = OllamaStructuredInferenceAdapter(
         provider_name="ollama",
         transport=OllamaHTTPClient(),
         endpoint="http://127.0.0.1:11434",

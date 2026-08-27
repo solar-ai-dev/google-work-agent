@@ -14,8 +14,10 @@ from urllib.request import Request
 
 import pytest
 
-from google_work_agent.adapters.llm.api_provider import ApiStructuredLLMProvider
-from google_work_agent.adapters.llm.gemini import GeminiHTTPClient
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.gemini.transport import GeminiHTTPClient
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, RuntimePolicy
 
 
@@ -142,7 +144,7 @@ def test_provider_forwards_temperature_but_never_seed_to_gemini_transport(
 
     monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
 
-    provider = ApiStructuredLLMProvider(
+    provider = GeminiStructuredInferenceAdapter(
         provider_name="gemini",
         transport=GeminiHTTPClient(),
         model="gemini-flash-latest",
@@ -176,7 +178,7 @@ def test_provider_omits_temperature_when_runtime_policy_leaves_sampling_unset(
 
     monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
 
-    provider = ApiStructuredLLMProvider(
+    provider = GeminiStructuredInferenceAdapter(
         provider_name="gemini",
         transport=GeminiHTTPClient(),
         model="gemini-flash-latest",

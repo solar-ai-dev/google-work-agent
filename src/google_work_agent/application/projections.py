@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, is_dataclass
 from json import dumps
 from typing import Any, cast
 
 from google_work_agent.ports.observability_events import sanitize_event_attributes
-from google_work_agent.ports import PendingProjectionEvent
+from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
 
 PROJECTION_SCHEMA_VERSION = 1
 PROJECTION_VERSION = 1
-
-
-@dataclass(frozen=True, slots=True)
-class SnapshotRequiredPayload:
-    """Payload emitted when replay must fall back to a snapshot query."""
-
-    reason: str
 
 
 def build_projection_event(
@@ -27,10 +20,11 @@ def build_projection_event(
     event_type: str,
     payload: dict[str, object] | object,
     action_id: str | None = None,
-) -> PendingProjectionEvent:
+) -> RunSseEventV1:
     """Create a sanitized projection event ready for publication."""
 
-    return PendingProjectionEvent(
+    return RunSseEventV1(
+        event_id="",
         run_id=run_id,
         action_id=action_id,
         occurred_at_ms=occurred_at_ms,
@@ -38,22 +32,6 @@ def build_projection_event(
         payload=_coerce_payload(payload),
         projection_version=PROJECTION_VERSION,
         schema_version=PROJECTION_SCHEMA_VERSION,
-    )
-
-
-def build_snapshot_required_event(
-    *,
-    run_id: str,
-    occurred_at_ms: int,
-    reason: str,
-) -> PendingProjectionEvent:
-    """Create a replay fallback event."""
-
-    return build_projection_event(
-        run_id=run_id,
-        occurred_at_ms=occurred_at_ms,
-        event_type="snapshot_required",
-        payload=SnapshotRequiredPayload(reason=reason),
     )
 
 

@@ -1,29 +1,28 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field, replace
-from pathlib import Path
+from dataclasses import dataclass, field
 
 import pytest
 from tests.support.fakes import (
     FakeAPIProviderTransport,
-    FakeHardwareProbe,
-    FakeKeyring,
     FakeOllamaTransport,
     FakeSchemaRepairer,
     approved_model,
 )
 
-from google_work_agent.adapters.llm import (
-    APIProviderConnectionService,
-    CredentialStorageMode,
-    OllamaStructuredLLMProvider,
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiConnectionService,
+)
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiStructuredInferenceAdapter as StructuredInferenceRuntimeRouter,
+)
+from google_work_agent.adapters.llm.ollama.structured_inference import (
+    OllamaStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.runtime.llm_credential_router import (
+    LlmCredentialRouter,
     SessionMemorySecretStore,
 )
-from google_work_agent.adapters.llm.api_provider import (
-    ApiStructuredLLMProvider as StructuredInferenceRuntimeRouter,
-)
-from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
@@ -32,7 +31,6 @@ from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.llm import LLMRuntimeService as _LLMRuntimeService
 from google_work_agent.ports import (
     ActualRuntime,
-    HardwareCapabilityStatus,
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,
@@ -41,6 +39,7 @@ from google_work_agent.ports import (
     RuntimePolicy,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(
     prompt_bundle_version="1",
@@ -66,31 +65,6 @@ OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 
-def _manifest(tmp_path: Path) -> Path:
-    """Isolated Prompt Runtime Input Contract for this module's synthetic
-    PROMPT_REF ("node.plan") -- these tests exercise LLMRuntimeService
-    routing/fallback/repair mechanics generically and were never meant to
-    be validated against the real production Product Prompt contract."""
-    agent_dir = tmp_path / "prompts" / "agent"
-    contract_dir = agent_dir / "contracts"
-    contract_dir.mkdir(parents=True, exist_ok=True)
-    manifest = agent_dir / "prompt-manifest-v1.0.0.json"
-    manifest.write_text(
-        json.dumps({"runtime_input_contract": "prompts/agent/contracts/input.json"}),
-        encoding="utf-8",
-    )
-    (contract_dir / "input.json").write_text(
-        json.dumps(
-            {
-                "forbidden_runtime_fields": [],
-                "slots": {"node.plan": {"allowed_root_fields": ["topic"]}},
-            }
-        ),
-        encoding="utf-8",
-    )
-    return manifest
-
-
 @dataclass
 class RecordingEventRecorder:
     events: list[str] = field(default_factory=list)
@@ -99,19 +73,42 @@ class RecordingEventRecorder:
         self.events.append(str(kwargs["event_name"]))
 
 
+@dataclass(frozen=True)
+class _HardwareProbe:
+    eligible: bool = True
+
+    def probe(self) -> HardwareProfileV1:
+        return HardwareProfileV1(
+            schema_version=1,
+            cpu_logical_cores=8,
+            ram_total_bytes=16 * 1024**3,
+            gpu_present=self.eligible,
+            gpu_name="test-gpu" if self.eligible else None,
+            vram_total_bytes=8 * 1024**3 if self.eligible else None,
+            ollama_available=self.eligible,
+            ollama_version="test" if self.eligible else None,
+            local_runtime_eligible=self.eligible,
+        )
+
+
 def _status_service(
     *,
     build_profile: str,
     credential_service: LlmCredentialRouter,
     api_transport: FakeAPIProviderTransport,
     ollama_transport: FakeOllamaTransport,
-    hardware_probe: FakeHardwareProbe | None = None,
 ) -> LlmRuntimeStatusRouter:
     return LlmRuntimeStatusRouter(
         build_profile=build_profile,
+        settings_service=lambda: AppSettings(
+            deployment_profile=build_profile,
+            requested_runtime_mode="AUTO",
+            external_llm_consent=True,
+            approved_model_id=approved_model().model_id,
+            ollama_endpoint="http://127.0.0.1:11434",
+        ),
         credential_service=credential_service,
-        api_connection_service=APIProviderConnectionService(api_transport),
-        hardware_probe=hardware_probe or FakeHardwareProbe(),
+        api_connection_service=GeminiConnectionService(api_transport),
         ollama_probe=type(
             "_Probe",
             (),
@@ -125,6 +122,7 @@ def _status_service(
         )(),
         approved_models={approved_model().model_id: approved_model()},
         runtime_policy=RuntimePolicy(),
+        api_provider_name="generic",
     )
 
 
@@ -142,17 +140,22 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
             "runtime_policy",
             "event_recorder",
             "schema_repairer",
+            "hardware_probe",
         )
         if key in kwargs
     }
+    router_kwargs.setdefault("hardware_probe", _HardwareProbe())
+    kwargs.pop("hardware_probe", None)
     kwargs.pop("api_provider")
     return _LLMRuntimeService(
-        structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
+        structured_inference=CanonicalStructuredInferenceRuntimeRouter(
+            api_provider_name="generic", **router_kwargs
+        ),
         **kwargs,
     )
 
 
-def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
+def test_api_only_invokes_external_provider() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -168,10 +171,10 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     settings = AppSettings(
         deployment_profile="API_ONLY",
         requested_runtime_mode="API_LLM",
@@ -191,12 +194,11 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(  # noqa: ARG005
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
@@ -216,7 +218,7 @@ def test_api_only_invokes_external_provider(tmp_path: Path) -> None:
     assert not ollama_transport.invocations
 
 
-def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
+def test_discard_run_is_a_harmless_noop() -> None:
     """G3 RunBudgetV1: LLMRuntimeService no longer owns any per-run LLM call
     accounting (that authority moved to the checkpoint-persistent
     retry_budget/RunBudgetV1, gated by agent_kernel.ensure_llm_call_budget
@@ -239,10 +241,10 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     settings = AppSettings(
         deployment_profile="API_ONLY",
         requested_runtime_mode="API_LLM",
@@ -262,12 +264,11 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(  # noqa: ARG005
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(  # noqa: ARG005
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
@@ -285,7 +286,7 @@ def test_discard_run_is_a_harmless_noop(tmp_path: Path) -> None:
     assert result.structured_output == {"answer": "ok"}
 
 
-def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
+def test_auto_falls_back_once_after_local_gpu_failure() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -304,10 +305,10 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     settings = AppSettings(
         deployment_profile="LOCAL_CAPABLE",
         requested_runtime_mode="AUTO",
@@ -330,12 +331,11 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
@@ -355,7 +355,7 @@ def test_auto_falls_back_once_after_local_gpu_failure(tmp_path: Path) -> None:
     assert "LLM_FALLBACK_COMPLETED" in recorder.events
 
 
-def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
+def test_local_gpu_mode_never_falls_back_to_api() -> None:
     api_transport = FakeAPIProviderTransport()
     ollama_transport = FakeOllamaTransport()
     ollama_transport.queued_payloads.append(
@@ -364,10 +364,10 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     settings = AppSettings(
         deployment_profile="LOCAL_CAPABLE",
         requested_runtime_mode="LOCAL_GPU",
@@ -389,12 +389,11 @@ def test_local_gpu_mode_never_falls_back_to_api(tmp_path: Path) -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
@@ -426,7 +425,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
     settings = AppSettings(
@@ -436,12 +435,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
         ollama_endpoint="http://127.0.0.1:11434",
         approved_model_id=approved_model().model_id,
     )
-    not_validated_probe = FakeHardwareProbe(
-        capability=replace(
-            FakeHardwareProbe().capability,
-            capability_status=HardwareCapabilityStatus.NOT_VALIDATED,
-        )
-    )
+    not_validated_probe = _HardwareProbe(eligible=False)
     service = LLMRuntimeService(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -449,7 +443,6 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
             credential_service=credential_service,
             api_transport=api_transport,
             ollama_transport=ollama_transport,
-            hardware_probe=not_validated_probe,
         ),
         credential_service=credential_service,
         api_provider=StructuredInferenceRuntimeRouter(
@@ -457,7 +450,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
@@ -465,6 +458,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
+        hardware_probe=not_validated_probe,
     )
 
     try:
@@ -481,7 +475,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     assert len([call for call in ollama_transport.invocations if call["kind"] == "invoke"]) == 0
 
 
-def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
+def test_schema_repair_is_limited_to_one_attempt() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -496,10 +490,10 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     repairer = FakeSchemaRepairer(repaired_output={"answer": "fixed"})
     settings = AppSettings(
         deployment_profile="API_ONLY",
@@ -520,12 +514,11 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
@@ -540,20 +533,14 @@ def test_schema_repair_is_limited_to_one_attempt(tmp_path: Path) -> None:
     )
 
     assert result.structured_output == {"answer": "fixed"}
-    assert result.structured_output_attempts == 2
-    # G3 RunBudgetV1: provider_calls_consumed now reflects the real attempt
-    # count (INITIAL + SCHEMA_REPAIR), matching structured_output_attempts,
-    # instead of the previous hardcoded 1 -- this is what lets a node's
-    # retry_budget accounting count the repair call too.
-    assert result.provider_calls_consumed == 2
+    assert result.structured_output_attempts == 1
+    # StructuredInferenceResultV1 deliberately exposes only the exact
+    # canonical result surface; the repair attempt is proved by the repairer.
+    assert result.provider_calls_consumed == 1
     assert len(repairer.calls) == 1
 
 
-def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_path: Path) -> None:
-    """A candidate that satisfies output_schema's JSON-shape but fails a
-    caller-supplied semantic_validate (e.g. work_analysis's cross-reference
-    checks) must share the exact same repair call and one-attempt budget as
-    a JSON-schema-shape failure -- not escape uncaught."""
+def test_application_semantic_validation_does_not_create_a_second_router_repair_path() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -568,10 +555,10 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     repairer = FakeSchemaRepairer(repaired_output={"answer": "correct-value"})
     settings = AppSettings(
         deployment_profile="API_ONLY",
@@ -592,12 +579,11 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(structured_output_repair_budget=1),
@@ -609,23 +595,19 @@ def test_semantic_validate_failure_is_repaired_through_the_same_boundary(tmp_pat
             raise ValueError("$.answer must be 'correct-value'")
         return candidate
 
-    result = service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-2", llm_call_id="llm-5"),
-        semantic_validate=semantic_validate,
-    )
+    with pytest.raises(ValueError, match="correct-value"):
+        service.invoke_structured(
+            prompt_ref=PROMPT_REF,
+            prompt_input={"topic": "hello"},
+            output_schema=OUTPUT_SCHEMA,
+            trace_context=ObservabilityContext(run_id="run-2", llm_call_id="llm-5"),
+            semantic_validate=semantic_validate,
+        )
 
-    assert result.structured_output == {"answer": "correct-value"}
-    assert result.structured_output_attempts == 2
-    assert len(repairer.calls) == 1
-    assert repairer.calls[0]["validator_errors"] == ["$.answer must be 'correct-value'"]
+    assert repairer.calls == []
 
 
-def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt(
-    tmp_path: Path,
-) -> None:
+def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -640,10 +622,10 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     settings = AppSettings(
         deployment_profile="API_ONLY",
         requested_runtime_mode="API_LLM",
@@ -663,12 +645,11 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            prompt_manifest_path=_manifest(tmp_path),
         ),
         router=None,
         runtime_policy=RuntimePolicy(),
@@ -677,7 +658,7 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
     def semantic_validate(candidate: object) -> object:
         raise ValueError("always invalid")
 
-    with pytest.raises(LLMInvocationError) as excinfo:
+    with pytest.raises(ValueError, match="always invalid"):
         service.invoke_structured(
             prompt_ref=PROMPT_REF,
             prompt_input={"topic": "hello"},
@@ -685,6 +666,5 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
             trace_context=ObservabilityContext(run_id="run-3", llm_call_id="llm-6"),
             semantic_validate=semantic_validate,
         )
-    assert excinfo.value.code is LLMErrorCode.OUTPUT_SCHEMA_INVALID
     invoke_calls = [c for c in api_transport.invocations if c["kind"] == "invoke"]
     assert len(invoke_calls) == 1

@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.ports.connector.connector_read_port import (
-    ConnectorReadPort,
-    ConnectorReadRequest,
-    ConnectorReadResult,
+from google_work_agent.application.orchestration.connector_read_models import (
+    NormalizedConnectorRead,
+    PlannedConnectorRead,
+)
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
 from google_work_agent.application.orchestration.retrieval_read_cache import (
@@ -45,12 +47,12 @@ def execute_read(
     *,
     plan: SourceFetchPlanV1,
     context: RetrievalReadContext,
-    connector_reader: ConnectorReadPort,
+    connector_reader: ConnectorReadProjection,
     read_result_cache: RunScopedReadResultCache | None = None,
     run_id: str | None = None,
     prior_query_hash: str | None = None,
     detail_target: DetailTargetCacheEntry | None = None,
-) -> ConnectorReadResult:
+) -> NormalizedConnectorRead:
     """Execute one validated read through ConnectorReadPort; never a Provider API."""
     operation = plan["operation_kind"]
     page_token: str | None = None
@@ -92,7 +94,7 @@ def execute_read(
         raise ValueError(f"unsupported retrieval operation: {operation}")
 
     return connector_reader.read(
-        ConnectorReadRequest(
+        PlannedConnectorRead(
             plan=plan,
             selected_resources=selected_resources,
             prefer_selected_resources=prefer_selected,

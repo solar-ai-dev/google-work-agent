@@ -14,10 +14,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any, cast
 
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadResult
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     MaterializedRetrievalRead,
+)
+from google_work_agent.application.orchestration.connector_read_models import (
+    NormalizedConnectorRead,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
@@ -61,7 +63,7 @@ class CheckpointSafeAcquisitionFacade:
         plan: SourceFetchPlanV1,
         request: WorkflowStartRequest,
         tool_route_plan: ToolRoutePlanV2,
-        read_result: ConnectorReadResult,
+        read_result: NormalizedConnectorRead,
         read_result_cache: RunScopedReadResultCache,
         read_handle_factory: Callable[[], str],
     ) -> MaterializedRetrievalRead:
@@ -86,9 +88,7 @@ class CheckpointSafeAcquisitionFacade:
             source_summary=sanitize_source_summary(materialized.source_summary),
         )
 
-    def _capture_legacy_snapshots(
-        self, *, run_id: str, result: AcquisitionResultV1
-    ) -> None:
+    def _capture_legacy_snapshots(self, *, run_id: str, result: AcquisitionResultV1) -> None:
         for summary in result["source_summaries"]:
             resources = summary.get("resources")
             if not isinstance(resources, list) or not resources:

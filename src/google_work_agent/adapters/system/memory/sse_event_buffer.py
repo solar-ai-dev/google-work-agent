@@ -1,38 +1,33 @@
-"""In-memory run event publisher used by the local FastAPI service."""
+"""In-memory bounded SSE event buffer and transport subscriptions."""
 
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from queue import Empty, Queue
 from threading import Lock
-from typing import cast
+from typing import Literal, cast
 
-from google_work_agent.ports import (
-    BufferStatus,
-    InvalidReplayCursorError,
-    PendingProjectionEvent,
-    ProjectionEvent,
-    RunEventSubscription,
-    SnapshotRequiredReplayError,
-)
 from google_work_agent.ports.observability_events import sanitize_event_attributes
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    SseEventBufferPort,
+    SseEventPageV1,
+)
 
 
 @dataclass(slots=True)
-class _QueueSubscription:
-    queue: Queue[ProjectionEvent]
+class SseTransportSubscription:
+    queue: Queue[RunSseEventV1]
 
-    def poll(self, timeout_seconds: float) -> ProjectionEvent | None:
+    def poll(self, timeout_seconds: float) -> RunSseEventV1 | None:
         try:
             return self.queue.get(timeout=timeout_seconds)
         except Empty:
             return None
 
 
-class InMemorySseEventBuffer:
-    """Run-scoped event buffer with monotonic ids and replay support."""
-
+class InMemorySseEventBuffer(SseEventBufferPort):
     def __init__(
         self,
         *,
@@ -43,98 +38,88 @@ class InMemorySseEventBuffer:
             raise ValueError("capacity_per_run must be positive")
         self._service_instance_id = service_instance_id
         self._capacity_per_run = capacity_per_run
-        self._buffers: dict[str, deque[ProjectionEvent]] = defaultdict(
+        self._buffers: dict[str, deque[RunSseEventV1]] = defaultdict(
             lambda: deque(maxlen=self._capacity_per_run)
         )
-        self._subscribers: dict[str, list[_QueueSubscription]] = defaultdict(list)
+        self._subscribers: dict[str, list[SseTransportSubscription]] = defaultdict(list)
         self._next_counter = 1
         self._lock = Lock()
 
-    def publish(self, event: PendingProjectionEvent) -> ProjectionEvent:
+    def append(self, event: RunSseEventV1) -> None:
         with self._lock:
             event_id = f"{self._service_instance_id}:{self._next_counter}"
             self._next_counter += 1
-            sanitized = cast(
-                dict[str, object],
-                sanitize_event_attributes(event.payload).values,
-            )
-            published = ProjectionEvent(
-                event_id=event_id,
-                run_id=event.run_id,
-                action_id=event.action_id,
-                occurred_at_ms=event.occurred_at_ms,
-                event_type=event.event_type,
-                payload=sanitized,
-                projection_version=event.projection_version,
-                schema_version=event.schema_version,
-            )
-            buffer = self._buffers[event.run_id]
-            buffer.append(published)
+            sanitized = cast(dict[str, object], sanitize_event_attributes(event.payload).values)
+            published = replace(event, event_id=event_id, payload=sanitized)
+            self._buffers[event.run_id].append(published)
             subscribers = tuple(self._subscribers[event.run_id])
         for subscriber in subscribers:
             subscriber.queue.put_nowait(published)
-        return published
 
-    def replay(
-        self,
-        *,
-        run_id: str,
-        after_event_id: str | None,
-    ) -> tuple[ProjectionEvent, ...]:
+    def list_after(self, run_id: str, last_event_id: str | None, limit: int) -> SseEventPageV1:
+        if limit < 1:
+            raise ValueError("SSE replay limit must be positive")
+        limit = min(limit, self._capacity_per_run)
         with self._lock:
-            buffer = tuple(self._buffers[run_id])
-        if after_event_id is None:
-            return buffer
+            buffer = tuple(self._buffers.get(run_id, ()))
+        if last_event_id is None:
+            selected = buffer[:limit]
+            return _page(selected, buffer, "OK")
+        cursor = _parse_event_id(last_event_id)
+        if cursor is None or cursor[0] != self._service_instance_id or not buffer:
+            return _page((), buffer, "CURSOR_EXPIRED")
+        oldest = _parse_event_id(buffer[0].event_id)
+        newest = _parse_event_id(buffer[-1].event_id)
+        if oldest is None or newest is None or cursor[1] < oldest[1] - 1 or cursor[1] > newest[1]:
+            return _page((), buffer, "CURSOR_EXPIRED")
+        selected = tuple(
+            event for event in buffer if (_parse_event_id(event.event_id) or ("", 0))[1] > cursor[1]
+        )[:limit]
+        return _page(selected, buffer, "OK")
 
-        instance_id, counter = _parse_event_id(after_event_id)
-        if instance_id != self._service_instance_id:
-            raise SnapshotRequiredReplayError("event cursor belongs to another service instance")
+    def clear_run(self, run_id: str) -> None:
+        with self._lock:
+            self._buffers.pop(run_id, None)
 
-        if not buffer:
-            raise SnapshotRequiredReplayError("event buffer is empty")
-
-        newest_counter = _parse_event_id(buffer[-1].event_id)[1]
-        oldest_counter = _parse_event_id(buffer[0].event_id)[1]
-        if counter > newest_counter:
-            raise SnapshotRequiredReplayError("event cursor is ahead of the current buffer")
-        if counter < oldest_counter - 1:
-            raise SnapshotRequiredReplayError("event cursor has already been evicted")
-
-        return tuple(event for event in buffer if _parse_event_id(event.event_id)[1] > counter)
-
-    def subscribe(self, run_id: str) -> RunEventSubscription:
-        subscription = _QueueSubscription(queue=Queue())
+    # Transport-only helpers; they are intentionally absent from SseEventBufferPort.
+    def subscribe(self, run_id: str) -> SseTransportSubscription:
+        subscription = SseTransportSubscription(queue=Queue())
         with self._lock:
             self._subscribers[run_id].append(subscription)
         return subscription
 
-    def get_buffer_status(self, run_id: str) -> BufferStatus:
+    def close_subscription(self, subscription: SseTransportSubscription) -> None:
         with self._lock:
-            buffer = self._buffers[run_id]
-            newest = buffer[-1].event_id if buffer else None
-            return BufferStatus(
-                run_id=run_id,
-                service_instance_id=self._service_instance_id,
-                newest_event_id=newest,
-                event_count=len(buffer),
-                capacity=self._capacity_per_run,
-            )
-
-    def close_subscription(self, subscription: RunEventSubscription) -> None:
-        if not isinstance(subscription, _QueueSubscription):
-            return
-        with self._lock:
-            for subscribers in self._subscribers.values():
-                while subscription in subscribers:
-                    subscribers.remove(subscription)
+            for subscriptions in self._subscribers.values():
+                while subscription in subscriptions:
+                    subscriptions.remove(subscription)
 
 
-def _parse_event_id(event_id: str) -> tuple[str, int]:
+def _page(
+    selected: tuple[RunSseEventV1, ...],
+    full_buffer: tuple[RunSseEventV1, ...],
+    status: str,
+) -> SseEventPageV1:
+    next_event_id = selected[-1].event_id if selected else None
+    if selected and full_buffer and selected[-1] == full_buffer[-1]:
+        next_event_id = None
+    return SseEventPageV1(
+        schema_version=1,
+        events=selected,
+        next_event_id=next_event_id,
+        cursor_status=cast(Literal["OK", "CURSOR_EXPIRED"], status),
+    )
+
+
+def _parse_event_id(event_id: str) -> tuple[str, int] | None:
     try:
         instance_id, raw_counter = event_id.split(":", 1)
         counter = int(raw_counter)
-    except ValueError as error:
-        raise InvalidReplayCursorError("invalid event cursor format") from error
+    except ValueError:
+        return None
     if not instance_id or counter < 1:
-        raise InvalidReplayCursorError("invalid event cursor format")
+        return None
     return instance_id, counter
+
+
+__all__ = ["InMemorySseEventBuffer", "SseTransportSubscription"]

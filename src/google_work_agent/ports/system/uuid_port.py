@@ -6,5 +6,5 @@ from typing import Protocol
 class UUIDPort(Protocol):
     """Generate deterministic or production identifiers."""
 
-    def next_id(self) -> str:
+    def new_uuid(self) -> str:
         """Return the next generated identifier."""

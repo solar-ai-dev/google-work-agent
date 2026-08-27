@@ -17,10 +17,13 @@ from typing import Any, NoReturn, cast
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
-    McpConnectorWriteAdapter,
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    build_manifest_payload_for_descriptors,
 )
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
+from google_work_agent.adapters.langgraph.checkpoint_control import (
+    LangGraphCheckpointControlAdapter,
+)
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -33,23 +36,26 @@ from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegi
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.llm import (
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiConnectionService,
+    GeminiStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.gemini.transport import (
     DEFAULT_GEMINI_MODEL_ID,
-    APIProviderConnectionService,
     GeminiHTTPClient,
-    LoopbackOllamaProbe,
-    OllamaHTTPClient,
-    OllamaStructuredLLMProvider,
+)
+from google_work_agent.adapters.llm.ollama.structured_inference import (
+    OllamaStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.ollama.transport import OllamaHTTPClient
+from google_work_agent.adapters.llm.probes import LoopbackOllamaProbe
+from google_work_agent.adapters.llm.runtime.llm_credential_router import (
+    LlmCredentialRouter,
     SessionMemorySecretStore,
 )
-from google_work_agent.adapters.llm.api_provider import ApiStructuredLLMProvider
-from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
-)
-from google_work_agent.adapters.mcp import (
-    build_manifest_payload,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
@@ -82,6 +88,7 @@ from google_work_agent.application.attachments import (
     GetGmailAttachmentService,
     StageAttachmentService,
 )
+from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
 from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
 from google_work_agent.application.google_connection import (
     DisconnectGoogleService,
@@ -96,6 +103,9 @@ from google_work_agent.application.llm import (
     StoreLLMApiKeyService,
     TestLLMConnectionService,
 )
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.orchestration.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
@@ -109,6 +119,9 @@ from google_work_agent.application.settings import GetSettingsService, PatchSett
 from google_work_agent.application.start_run import (
     ResumeRunService,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -117,6 +130,9 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteHandler,
 )
 from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
     drain_inflight_executions_to_quiescence,
@@ -140,6 +156,7 @@ from google_work_agent.launcher.development_readiness import (
 )
 from google_work_agent.ports import (
     ApprovedModelInfo,
+    AppSettings,
     LauncherProbeDecision,
     ReadinessAggregator,
     ReadinessCheckResult,
@@ -155,6 +172,7 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowStartRequest,
+    WorkHours,
 )
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -162,6 +180,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
 )
+from google_work_agent.ports.system.settings_port import SettingsViewV1
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -444,10 +463,10 @@ def build_container(
         )
     except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
-    connector_registry = connector_bundle.registry
+    connector_registry = connector_bundle.runtime_registry
     google_connector = connector_bundle.google_connector
     runtime_status_provider = connector_bundle.runtime_status_provider
-    google_provider = google_connector.oauth_provider
+    google_provider = google_connector.oauth_port
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     query_service = QueryService(
         database_path=database_path,
@@ -465,7 +484,21 @@ def build_container(
         raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
     prompt_active = True
     workflow_runtime: LangGraphWorkflowRuntime | _PromptInactiveWorkflowRuntime
-    gateway = google_connector.workspace_gateway
+    connector_reader = google_connector.read_port
+    connector_writer = google_connector.write_port
+    read_projection = ConnectorReadProjection(
+        connector_reader=connector_reader,
+        tool_registry=connector_bundle.tool_registry,
+    )
+    dispatch_connector_write = DispatchConnectorWriteHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        tool_registry=connector_bundle.tool_registry,
+        connector_write_port=connector_writer,
+    )
+    write_projection = ConnectorWriteProjection(
+        dispatch_connector_write=dispatch_connector_write,
+        connector_reader=read_projection,
+    )
     resume_target_registry = ResumeTargetRegistry(
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
@@ -475,27 +508,37 @@ def build_container(
         now_ms=clock.now_ms,
         target_resolver=NativeCheckpointTargetResolver(resume_target_registry),
     )
+    checkpoint_control = LangGraphCheckpointControlAdapter(
+        checkpoint_port=checkpoint,
+        native_saver=checkpoint,
+    )
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
             llm_runtime=llm_runtime,
-            gateway=gateway,
-            connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-            tool_catalog=connector_bundle.tool_catalog,
+            connector_reader=read_projection,
+            connector_execution=write_projection,
+            tool_catalog=connector_bundle.tool_registry,
             now_ms=clock.now_ms,
-            id_factory=id_generator.next_id,
+            id_factory=id_generator.new_uuid,
             signing_secret=secrets.token_hex(32),
             service_instance_id=service_instance_id,
             checkpoint_port=checkpoint,
             prompt_manifest_path=prompt_manifest_path,
-            timezone_provider=lambda: settings_service.get().timezone,
+            timezone_provider=lambda: settings_service.get_settings().timezone,
             work_hours_provider=lambda: CalendarWorkHours(
-                timezone=settings_service.get().timezone,
-                days=settings_service.get().work_hours.days,
-                start=settings_service.get().work_hours.start,
-                end=settings_service.get().work_hours.end,
+                timezone=settings_service.get_settings().timezone,
+                days=(
+                    tuple(range(7))
+                    if settings_service.get_settings().include_weekends
+                    else (0, 1, 2, 3, 4)
+                ),
+                start=settings_service.get_settings().working_day_start_local,
+                end=settings_service.get_settings().working_day_end_local,
             ),
-            default_tasklist_id_provider=lambda: settings_service.get().default_tasklist_id,
+            default_tasklist_id_provider=lambda: (
+                settings_service.get_settings().default_tasklist_id
+            ),
             attachment_verifier=attachment_staging,
             resume_target_registry=resume_target_registry,
         )
@@ -576,9 +619,9 @@ def build_container(
                 else workflow_runtime.agent_resume_node(target.semantic_owner_id)
             )
             if handoff.control is None:
-                checkpoint.materialize_resume_target(materialized, goto_node=goto_node)
+                checkpoint_control.materialize_resume_target(materialized, goto_node=goto_node)
             else:
-                checkpoint.materialize_workflow_control(
+                checkpoint_control.materialize_control(
                     materialized,
                     handoff.control,
                     goto_node=None
@@ -671,7 +714,7 @@ def build_container(
 
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
-        id_factory=id_generator.next_id,
+        id_factory=id_generator.new_uuid,
         checkpoint=checkpoint,
         materialize_admission_checkpoint=_materialize_admission_checkpoint,
         invoke_semantic_owner=_invoke_semantic_owner,
@@ -736,7 +779,7 @@ def build_container(
         ),
         workflow_runtime=workflow_runtime,
         event_publisher=event_publisher,
-        action_gateway=gateway,
+        action_gateway=read_projection,
         readiness_aggregator=DevelopmentReadinessAggregator(
             database_path=database_path,
             connector_registry=connector_registry,
@@ -772,8 +815,7 @@ def build_container(
         disconnect_google_service=DisconnectGoogleService(provider=google_provider),
         resource_query_service=OpaqueResourceQueryService(
             ResourceQueryService(
-                gateway=gateway,
-                gmail_detail_gateway=google_connector.gmail_ui_gateway,
+                gateway=read_projection,
                 default_calendar_id_provider=(
                     lambda: llm_runtime.settings_service().default_calendar_id
                 ),
@@ -795,7 +837,8 @@ def build_container(
             now_ms=clock.now_ms,
         ),
         get_gmail_attachment_service=GetGmailAttachmentService(
-            gateway=google_connector.gmail_attachment_gateway,
+            connector_reader=connector_reader,
+            tool_registry=connector_bundle.tool_registry,
         ),
         stage_attachment_service=StageAttachmentService(staging=attachment_staging),
         list_conversations_handler=ListConversationsHandler(
@@ -886,10 +929,11 @@ def _build_llm_runtime(
 ) -> tuple[LLMRuntimeService, JsonSettingsAdapter]:
     settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
-        deployment_profile=BuildProfile.LOCAL_CAPABLE,
-        approved_model_ids=frozenset({DEFAULT_DEV_OLLAMA_MODEL_ID}),
-        has_active_runs=lambda: bool(query_service.list_open_runs()),
     )
+
+    def runtime_settings() -> AppSettings:
+        return _project_runtime_settings(settings_service.get_settings())
+
     credential_service = LlmCredentialRouter(
         provider_name="gemini",
         environment="DEVELOPMENT",
@@ -900,9 +944,9 @@ def _build_llm_runtime(
     gemini_transport = GeminiHTTPClient()
     status_service = LlmRuntimeStatusRouter(
         build_profile=BuildProfile.LOCAL_CAPABLE.value,
+        settings_service=runtime_settings,
         credential_service=credential_service,
-        api_connection_service=APIProviderConnectionService(transport=gemini_transport),
-        hardware_probe=WindowsHardwareProbeAdapter(),
+        api_connection_service=GeminiConnectionService(transport=gemini_transport),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
         approved_models={
             DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
@@ -913,12 +957,15 @@ def _build_llm_runtime(
             )
         },
         runtime_policy=RuntimePolicy(),
+        api_provider_name="gemini",
     )
     structured_inference = StructuredInferenceRuntimeRouter(
-        settings_service=settings_service.get,
+        settings_service=runtime_settings,
         status_service=status_service,
         credential_service=credential_service,
-        api_provider=ApiStructuredLLMProvider(
+        hardware_probe=WindowsHardwareProbeAdapter(),
+        api_provider_name="gemini",
+        api_provider=GeminiStructuredInferenceAdapter(
             provider_name="gemini",
             transport=gemini_transport,
             model=DEFAULT_GEMINI_MODEL_ID,
@@ -926,7 +973,7 @@ def _build_llm_runtime(
                 prompt_ref.prompt_id, prompt_manifest_path
             ),
         ),
-        ollama_provider_factory=lambda model, settings: OllamaStructuredLLMProvider(
+        ollama_provider_factory=lambda model, settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
@@ -940,7 +987,7 @@ def _build_llm_runtime(
         prompt_manifest_path=prompt_manifest_path,
     )
     llm_runtime = LLMRuntimeService(
-        settings_service=settings_service.get,
+        settings_service=runtime_settings,
         status_service=status_service,
         credential_service=credential_service,
         ollama_provider_factory=structured_inference.ollama_provider_factory,
@@ -951,10 +998,37 @@ def _build_llm_runtime(
     return llm_runtime, settings_service
 
 
+def _project_runtime_settings(settings: SettingsViewV1) -> AppSettings:
+    """Project the canonical persisted settings into the still-broad LLM runtime input."""
+
+    return AppSettings(
+        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+        requested_runtime_mode=settings.preferred_llm_mode,
+        default_calendar_id=settings.default_calendar_id,
+        default_tasklist_id=settings.default_tasklist_id,
+        timezone=settings.timezone,
+        work_hours=WorkHours(
+            days=tuple(range(7)) if settings.include_weekends else (0, 1, 2, 3, 4),
+            start=settings.working_day_start_local,
+            end=settings.working_day_end_local,
+        ),
+        run_retention_days=settings.retention_days,
+        external_llm_consent=settings.external_llm_consent,
+    )
+
+
 def _write_mcp_manifest(runtime_root: Path) -> Path:
     manifest_path = runtime_root / "mcp-manifest.json"
+    registry = load_signed_tool_registry()
     manifest_path.write_text(
-        json.dumps(build_manifest_payload(), sort_keys=True),
+        json.dumps(
+            build_manifest_payload_for_descriptors(
+                connector_id="google_workspace",
+                registry_manifest_hash=registry.entries_hash,
+                descriptors=tuple(registry.descriptor_expectations("google_workspace")),
+            ),
+            sort_keys=True,
+        ),
         encoding="utf-8",
     )
     return manifest_path.resolve()

@@ -39,9 +39,12 @@ from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.schema_validation import validate_output_schema
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
+    SignedToolRegistry,
+)
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {
@@ -341,9 +344,10 @@ def _validate_action(
     if effect not in _WRITE_EFFECTS:
         raise CanonicalDomainValidationError(f"{path}.effect is not a write effect")
 
-    entry = tool_registry.get(tool_id)
-    if entry is None:
-        raise CanonicalDomainValidationError(f"{path}.tool_id is not registered")
+    try:
+        entry = tool_registry.get_required(P0_GOOGLE_WORKSPACE_CONNECTOR_ID, tool_id)
+    except LookupError as exc:
+        raise CanonicalDomainValidationError(f"{path}.tool_id is not registered") from exc
     if entry.effect_type.value != effect:
         raise CanonicalDomainValidationError(f"{path}.effect does not match Tool Registry")
 

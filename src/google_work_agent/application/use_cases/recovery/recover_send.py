@@ -9,6 +9,7 @@ from google_work_agent.application.use_cases.recovery.recover_existing_result im
     RecoverExistingResultCommand,
     RecoverExistingResultResult,
 )
+from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
 from google_work_agent.application.write_persistence import (
     require_action,
     require_approval,
@@ -16,9 +17,6 @@ from google_work_agent.application.write_persistence import (
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import UnitOfWork
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +61,7 @@ class RecoverSendHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: ConnectorWritePort,
+        connector_execution: WriteResultMaterializer,
         recover_existing_result: Callable[
             [RecoverExistingResultCommand], RecoverExistingResultResult
         ],

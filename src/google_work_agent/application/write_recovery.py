@@ -23,6 +23,7 @@ from google_work_agent.application.write_action_arguments import (
 from google_work_agent.application.write_action_arguments import (
     required_argument_string as _required_argument_string,
 )
+from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
@@ -113,9 +114,6 @@ from google_work_agent.ports import (
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     UnitOfWork,
-)
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
 )
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
@@ -597,7 +595,7 @@ class RecoverUnknownCreateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorWritePort,
+        gateway: WriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -647,7 +645,7 @@ class RecoverUnknownSendActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorWritePort,
+        gateway: WriteResultMaterializer,
     ) -> None:
         self._delegate = RecoverUnknownCreateActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -676,7 +674,7 @@ class RecoverUnknownDeleteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorWritePort,
+        gateway: WriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -757,7 +755,7 @@ class RecoverUnknownUpdateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: ConnectorWritePort,
+        gateway: WriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

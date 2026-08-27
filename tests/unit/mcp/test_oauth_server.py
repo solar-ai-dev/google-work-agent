@@ -10,8 +10,12 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
 from google_work_agent.application.google_connection import GetGoogleConnectionService
 from google_work_agent.ports import CredentialState, GoogleConnectionStatus, OAuthEnvironment
 
@@ -63,6 +67,7 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
         callback_url="http://127.0.0.1:43123/oauth/callback",
         expires_at_ms=server._now_ms() + 60_000,
         client_id="desktop-client",
+        operation_ref="operation-1",
     )
     captured: Request | None = None
 
@@ -131,7 +136,9 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({}))
-    server._control_call(state, method="google.oauth.start")
+    server._control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
     flow = state.active_flow
     assert flow is not None
     exchanges = 0
@@ -181,7 +188,9 @@ def test_callback_exposes_only_redacted_token_exchange_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({}))
-    server._control_call(state, method="google.oauth.start")
+    server._control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
     flow = state.active_flow
     assert flow is not None
 
@@ -532,7 +541,9 @@ def test_non_401_userinfo_failure_does_not_refresh(
         "_refresh_access_token",
         lambda *_args: pytest.fail("non-401 UserInfo failure must not refresh"),
     )
-    monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", lambda _access_token: resolution)
+    monkeypatch.setattr(
+        server, "_resolve_account_identity_from_userinfo", lambda _access_token: resolution
+    )
 
     state.ensure_access_token()
 
@@ -605,7 +616,9 @@ def test_userinfo_requires_sub_and_verified_email(
 
     monkeypatch.setattr(server, "urlopen", userinfo)
 
-    assert server._resolve_account_identity_from_userinfo("access-value").email == "user@example.com"
+    assert (
+        server._resolve_account_identity_from_userinfo("access-value").email == "user@example.com"
+    )
     assert captured is not None
     assert captured.full_url == server.GOOGLE_USERINFO_ENDPOINT
     assert captured.get_method() == "GET"
@@ -671,6 +684,7 @@ def test_exchange_authorization_code_decodes_email_from_id_token(
         callback_url="http://127.0.0.1:43123/oauth/callback",
         expires_at_ms=server._now_ms() + 60_000,
         client_id="desktop-client",
+        operation_ref="operation-1",
     )
     token = _fake_id_token({"email": "user@example.com", "email_verified": True})
     body = json.dumps(
@@ -729,7 +743,9 @@ def test_missing_client_secret_blocks_oauth_before_any_authorization_flow() -> N
     state.oauth_settings = GoogleOAuthSettings(google_oauth_client_id="desktop-client")
 
     with pytest.raises(server._OAuthConfigurationError) as error_info:
-        server._control_call(state, method="google.oauth.start")
+        server._control_call(
+            state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+        )
 
     assert error_info.value.safe_code == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING"
     assert state.active_flow is None
@@ -815,17 +831,18 @@ class _MemorySecretStorePort:
     def __init__(self, values: dict[str, str]) -> None:
         self.values = values
 
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        del service, account
-        self.values["refresh"] = secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        del key
+        self.values["refresh"] = secret_bytes.decode("utf-8")
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        del service, account
-        return self.values.get("refresh")
+    def get(self, key: str) -> bytes | None:
+        del key
+        value = self.values.get("refresh")
+        return None if value is None else value.encode("utf-8")
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        del service, account
-        return self.values.pop("refresh", None) is not None
+    def delete(self, key: str) -> None:
+        del key
+        self.values.pop("refresh", None)
 
 
 class _HTTPResponse:

@@ -8,20 +8,24 @@ from urllib.request import HTTPRedirectHandler, build_opener
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.mcp_manifest import build_manifest_payload
 
 from google_work_agent.adapters.connectors.google_workspace import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
     build_google_workspace_connector_descriptor,
+)
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
 )
 from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
     McpOAuthCredentialAdapter,
 )
-from google_work_agent.adapters.mcp import (
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
-    MCPRuntimeStatusProvider,
     StdioMCPClientAdapter,
-    build_manifest_payload,
     calculate_file_sha256,
 )
+from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -36,6 +40,7 @@ from google_work_agent.application.google_connection import (
     GetGoogleConnectionService,
     StartGoogleOAuthService,
 )
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.ports import LauncherProbeDecision, ReadinessReport, ReadinessState
 
 
@@ -63,6 +68,8 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
     )
     executable = Path(sys.executable).resolve()
+    registry = load_signed_tool_registry()
+    runtime_registry = ConnectorRuntimeRegistry()
     transport = StdioMCPClientAdapter(
         descriptor=build_google_workspace_connector_descriptor(
             MCPArtifactConfig(
@@ -72,7 +79,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
                 expected_manifest_sha256=calculate_file_sha256(manifest_path.resolve()),
                 expected_manifest_version="2026-08-07.p0",
                 expected_protocol_version="2026-08-07.p0",
-                expected_tool_registry_version="2026-08-06.p0",
+                expected_registry_manifest_hash=registry.entries_hash,
                 startup_timeout_ms=5_000,
                 request_timeout_ms=5_000,
                 max_restart_count=1,
@@ -85,12 +92,20 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
                     "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
                     "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
                 },
-            )
-        )
+            ),
+            expected_tool_descriptors=tuple(
+                registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)
+            ),
+        ),
+        runtime_registry=runtime_registry,
     )
-    provider = McpOAuthCredentialAdapter(transport=transport)
+    provider = McpOAuthCredentialAdapter(
+        runtime_registry=runtime_registry,
+        mcp_client=transport,
+    )
     runtime_provider = MCPRuntimeStatusProvider(
         google_provider=provider,
+        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
         transport=transport,
         api_llm="NOT_CONFIGURED",
         ollama="NOT_AVAILABLE",

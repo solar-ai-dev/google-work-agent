@@ -5,9 +5,14 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from tests.support.claim_context import sign_claim_context
 
-from google_work_agent.adapters.connectors.google.mcp import workspace_tools as server
-from google_work_agent.adapters.connectors.google.mcp.oauth_settings import GoogleOAuthSettings
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    workspace_runtime as server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+    GoogleOAuthSettings,
+)
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
 SESSION_KEY = "11" * 32
@@ -26,16 +31,15 @@ def _state() -> server._WorkspaceState:
 
 
 class _MemorySecretStorePort:
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        del service, account, secret
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        del key, secret_bytes
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        del service, account
+    def get(self, key: str) -> bytes | None:
+        del key
         return None
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
-        del service, account
-        return True
+    def delete(self, key: str) -> None:
+        del key
 
 
 def _build_claim(
@@ -72,7 +76,7 @@ def _build_claim(
         "expires_at_ms": issued_at_ms + ttl_ms,
         "nonce": nonce,
     }
-    claim["signature"] = server._sign_claim_context(state.session_key, claim)
+    claim["signature"] = sign_claim_context(state.session_key, claim)
     return claim
 
 

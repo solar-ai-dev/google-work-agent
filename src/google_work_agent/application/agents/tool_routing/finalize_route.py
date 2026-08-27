@@ -28,8 +28,8 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
 )
 from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 SelectedToolMap = Mapping[tuple[str, str], str]
 
@@ -39,7 +39,7 @@ def finalize_route(
     request_intent: RequestIntentV2,
     binding: RouteBindingCandidateV1,
     selected_tools: SelectedToolMap,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     previous_plan: ToolRoutePlanV2 | None = None,
     policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1] = (),
@@ -164,7 +164,7 @@ def _merge_policy_reads(
     *,
     input_routes: list[InputToolRouteV1],
     required_reads: tuple[tuple[str, str, str], ...],
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
 ) -> list[InputToolRouteV1]:
     by_key = {(route["connector_id"], route["resource_type"]): route for route in input_routes}
@@ -175,8 +175,10 @@ def _merge_policy_reads(
             if reason_code not in existing["reason_codes"]:
                 existing["reason_codes"].append(reason_code)
             continue
-        candidates = tool_catalog.eligible(
-            connector_id=connector_id, resource_type=resource_type, effect_type=EffectType.READ
+        candidates = tool_catalog.select_candidates(
+            connector_id=connector_id,
+            resource_type=resource_type,
+            effect=EffectType.READ.value,
         )
         if not candidates:
             raise ToolRouteValidationError(
@@ -200,7 +202,7 @@ def _freeze_plan(
     output_routes: list[OutputToolRouteV1],
     output_mode: Literal["ANSWER", "ACTION"],
     previous_plan: ToolRoutePlanV2 | None,
-    tool_catalog: ConnectorToolCatalog,
+    tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
 ) -> ToolRoutePlanV2:
     input_revision = (
@@ -239,18 +241,13 @@ def _freeze_plan(
             "output_mode": "ACTION",
             "output_routes": output_routes,
         }
-    versions = {
-        tool_catalog.registry_for(connector_id).list_entries()[0].registry_version
-        for connector_id in tool_catalog.list_connector_ids()
-        if tool_catalog.registry_for(connector_id).list_entries()
-    }
-    if len(versions) != 1:
-        raise ToolRouteValidationError("active connector registries must share one version")
+    if not tool_catalog.entries:
+        raise ToolRouteValidationError("active Tool Registry must not be empty")
     return {
         "schema_version": 2,
         "input_plan": input_plan,
         "output_plan": output_plan,
-        "tool_registry_version": next(iter(versions)),
+        "tool_registry_version": tool_catalog.contract_version,
     }
 
 

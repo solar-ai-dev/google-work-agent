@@ -9,7 +9,13 @@ RU = SRC / "adapters/langgraph/subgraphs/request_understanding"
 TR = SRC / "adapters/langgraph/subgraphs/tool_routing"
 TR_APP = SRC / "application/agents/tool_routing"
 RU_OPERATIONS = ("identify_goal", "detect_ambiguity", "finalize_intent", "validate_intent")
-TR_OPERATIONS = ("determine_io_resources", "bind_registry_candidates", "select_tool_if_needed", "finalize_route", "validate_route")
+TR_OPERATIONS = (
+    "determine_io_resources",
+    "bind_registry_candidates",
+    "select_tool_if_needed",
+    "finalize_route",
+    "validate_route",
+)
 
 
 def _source(path: Path) -> str:
@@ -83,7 +89,7 @@ def test_selection_consumes_previously_bound_candidate_set_only() -> None:
     assert "binding.output_candidates" in source
     assert "eligible_tool_ids=bound.eligible_tool_ids" in source
     assert not any(name.endswith("bind_registry_candidates") for name in imports)
-    assert "ConnectorToolCatalog" not in source
+    assert "SignedToolRegistry" not in source
     assert "registry_candidates_for_route" not in source
     assert ".eligible(" not in source
 
@@ -123,12 +129,25 @@ def test_downstream_tool_reselection_authority_is_absent_in_tool_routing() -> No
 
 
 def test_obsolete_broad_module_authorities_are_absent() -> None:
-    for path in (SRC / "adapters/langgraph/subgraphs/request_understanding.py", SRC / "adapters/langgraph/subgraphs/tool_routing.py"):
+    for path in (
+        SRC / "adapters/langgraph/subgraphs/request_understanding.py",
+        SRC / "adapters/langgraph/subgraphs/tool_routing.py",
+    ):
         assert not path.exists()
 
 
 def test_nodes_have_no_forbidden_execution_dependencies() -> None:
-    forbidden = (".retrieval", ".work_analysis", ".planning", ".review", ".persistence", ".repositories", ".mcp", ".connectors", ".providers")
+    forbidden = (
+        ".retrieval",
+        ".work_analysis",
+        ".planning",
+        ".review",
+        ".persistence",
+        ".repositories",
+        ".mcp",
+        ".connectors",
+        ".providers",
+    )
     for owner in (RU, TR):
         for path in (owner / "nodes").glob("*_node.py"):
             for imported in _imports(path):
@@ -136,7 +155,14 @@ def test_nodes_have_no_forbidden_execution_dependencies() -> None:
 
 
 def test_no_agent_to_agent_imports() -> None:
-    owners = {"request_understanding", "tool_routing", "retrieval", "work_analysis", "planning", "review"}
+    owners = {
+        "request_understanding",
+        "tool_routing",
+        "retrieval",
+        "work_analysis",
+        "planning",
+        "review",
+    }
     for owner_name, owner in (("request_understanding", RU), ("tool_routing", TR)):
         for path in owner.rglob("*.py"):
             for imported in _imports(path):
@@ -147,14 +173,34 @@ def test_no_agent_to_agent_imports() -> None:
 
 
 def test_tool_routing_has_no_downstream_or_provider_execution_calls() -> None:
-    forbidden_calls = {"execute", "invoke_tool", "call_tool", "mcp_call", "retrieve", "search_provider", "mutate", "save", "commit"}
+    forbidden_calls = {
+        "execute",
+        "invoke_tool",
+        "call_tool",
+        "mcp_call",
+        "retrieve",
+        "search_provider",
+        "mutate",
+        "save",
+        "commit",
+    }
     for path in (TR / "nodes").glob("*_node.py"):
         assert _called_names(path).isdisjoint(forbidden_calls)
 
 
 def test_projection_allowlists_are_owner_local() -> None:
-    assert {path.stem for path in (RU / "projections").glob("*_projection.py")} == {"request_projection", "candidate_projection", "intent_projection"}
-    assert {path.stem for path in (TR / "projections").glob("*_projection.py")} == {"determine_io_resources_projection", "semantic_candidate_projection", "selection_projection", "binding_projection", "result_projection"}
+    assert {path.stem for path in (RU / "projections").glob("*_projection.py")} == {
+        "request_projection",
+        "candidate_projection",
+        "intent_projection",
+    }
+    assert {path.stem for path in (TR / "projections").glob("*_projection.py")} == {
+        "determine_io_resources_projection",
+        "semantic_candidate_projection",
+        "selection_projection",
+        "binding_projection",
+        "result_projection",
+    }
 
 
 def test_node_patches_do_not_spread_main_state() -> None:

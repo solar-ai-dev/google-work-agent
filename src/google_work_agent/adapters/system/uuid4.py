@@ -4,5 +4,5 @@ import uuid
 
 
 class Uuid4Adapter:
-    def next_id(self) -> str:
+    def new_uuid(self) -> str:
         return str(uuid.uuid4())

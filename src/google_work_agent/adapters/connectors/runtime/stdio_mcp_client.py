@@ -14,18 +14,25 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, cast
+from typing import Any, Literal, cast
 
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
+)
 from google_work_agent.ports import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
+    DeliveryCertainty,
     MCPClientPortError,
     MCPClientPortErrorCode,
-    MCPControlResponse,
     MCPRuntimeMetadata,
-    MCPToolResponse,
 )
-from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
+from google_work_agent.ports.connector.mcp_client_port import (
+    JsonValue,
+    MCPRestartResultV1,
+    MCPToolCallResultV1,
+    MCPToolDescriptorV1,
+)
 
 JsonObject = dict[str, object]
 PROTOCOL_VERSION = "2026-08-07.p0"
@@ -45,84 +52,93 @@ class MCPProcessStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class MCPManifestTool:
-    tool_name: str
-    effect_type: str
-    required_scope: str
-    approval_requirement: str
-    verification_policy: str
-    recovery_policy: str
-    retryable: bool
-    input_schema_version: str
-    output_schema_version: str
-    tool_schema_hash: str
-    registry_version: str
-
-
-@dataclass(frozen=True, slots=True)
 class MCPServerManifest:
     manifest_version: str
     protocol_version: str
-    tool_registry_version: str
-    tools: tuple[MCPManifestTool, ...]
+    connector_id: str
+    registry_manifest_hash: str
+    tools: tuple[MCPToolDescriptorV1, ...]
 
     @classmethod
     def load(cls, path: Path) -> MCPServerManifest:
         raw = path.read_bytes()
-        payload = json.loads(normalize_manifest_bytes(raw).decode("utf-8"))
+        if len(raw) > MANIFEST_MESSAGE_LIMIT_BYTES:
+            raise ValueError("MCP manifest exceeds size limit")
+        decoded = json.loads(normalize_manifest_bytes(raw).decode("utf-8"))
+        if not isinstance(decoded, dict) or set(decoded) != {
+            "manifest_version",
+            "protocol_version",
+            "connector_id",
+            "registry_manifest_hash",
+            "tools",
+        }:
+            raise ValueError("MCP manifest field set mismatch")
+        payload = cast(dict[str, object], decoded)
+        raw_tools = payload.get("tools")
+        if not isinstance(raw_tools, list) or not raw_tools:
+            raise ValueError("MCP manifest tools must be a non-empty list")
         tools = tuple(
-            _manifest_tool_from_payload(cast(dict[str, object], item))
-            for item in cast(list[object], payload["tools"])
+            _descriptor_from_payload(_require_json_object(item, "MCP tool descriptor"))
+            for item in raw_tools
         )
         return cls(
             manifest_version=str(payload["manifest_version"]),
             protocol_version=str(payload["protocol_version"]),
-            tool_registry_version=str(payload["tool_registry_version"]),
+            connector_id=str(payload["connector_id"]),
+            registry_manifest_hash=str(payload["registry_manifest_hash"]),
             tools=tools,
         )
 
 
-def build_manifest_payload_for_registry(registry: SignedToolRegistry) -> dict[str, object]:
-    entries = registry.list_entries()
-    registry_version = entries[0].registry_version if entries else "2026-08-07.p0"
-    tools = [
-        {
-            "tool_name": entry.tool_name,
-            "effect_type": entry.effect_type.value,
-            "required_scope": entry.scope,
-            "approval_requirement": entry.approval_requirement.value,
-            "verification_policy": entry.verification_policy.value,
-            "recovery_policy": entry.recovery_policy.value,
-            "retryable": entry.retryable,
-            "input_schema_version": entry.input_schema_version,
-            "output_schema_version": entry.output_schema_version,
-            "tool_schema_hash": entry.tool_schema_hash,
-            "registry_version": entry.registry_version,
-        }
-        for entry in entries
-    ]
+def build_manifest_payload_for_descriptors(
+    *,
+    connector_id: str,
+    registry_manifest_hash: str,
+    descriptors: tuple[MCPToolDescriptorV1, ...],
+) -> dict[str, object]:
     return {
         "manifest_version": "2026-08-07.p0",
         "protocol_version": PROTOCOL_VERSION,
-        "tool_registry_version": registry_version,
-        "tools": tools,
+        "connector_id": connector_id,
+        "registry_manifest_hash": registry_manifest_hash,
+        "tools": [
+            {
+                "schema_version": descriptor.schema_version,
+                "connector_id": descriptor.connector_id,
+                "tool_id": descriptor.tool_id,
+                "input_schema_ref": descriptor.input_schema_ref,
+                "output_schema_ref": descriptor.output_schema_ref,
+                "registry_entry_hash": descriptor.registry_entry_hash,
+            }
+            for descriptor in descriptors
+        ],
     }
 
 
-def _manifest_tool_from_payload(payload: dict[str, object]) -> MCPManifestTool:
-    return MCPManifestTool(
-        tool_name=str(payload["tool_name"]),
-        effect_type=str(payload["effect_type"]),
-        required_scope=str(payload["required_scope"]),
-        approval_requirement=str(payload["approval_requirement"]),
-        verification_policy=str(payload["verification_policy"]),
-        recovery_policy=str(payload["recovery_policy"]),
-        retryable=bool(payload["retryable"]),
-        input_schema_version=str(payload["input_schema_version"]),
-        output_schema_version=str(payload["output_schema_version"]),
-        tool_schema_hash=str(payload["tool_schema_hash"]),
-        registry_version=str(payload["registry_version"]),
+def _descriptor_from_payload(payload: dict[str, object]) -> MCPToolDescriptorV1:
+    if set(payload) != {
+        "schema_version",
+        "connector_id",
+        "tool_id",
+        "input_schema_ref",
+        "output_schema_ref",
+        "registry_entry_hash",
+    }:
+        raise ValueError("MCP tool descriptor field set mismatch")
+    return MCPToolDescriptorV1(
+        schema_version=cast(Any, payload["schema_version"]),
+        connector_id=str(payload["connector_id"]),
+        tool_id=str(payload["tool_id"]),
+        input_schema_ref=str(payload["input_schema_ref"]),
+        output_schema_ref=str(payload["output_schema_ref"]),
+        registry_entry_hash=str(payload["registry_entry_hash"]),
     )
+
+
+def _require_json_object(value: object, contract_name: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{contract_name} must be an object")
+    return cast(dict[str, object], value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,13 +149,15 @@ class MCPArtifactConfig:
     expected_manifest_sha256: str
     expected_manifest_version: str
     expected_protocol_version: str
-    expected_tool_registry_version: str
+    expected_registry_manifest_hash: str
     startup_timeout_ms: int
     request_timeout_ms: int
     max_restart_count: int
     environment: str
     service_instance_id: str
-    module_name: str = "google_work_agent.adapters.connectors.google.mcp.verified_server"
+    module_name: str = (
+        "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
+    )
     working_directory: str | None = None
     environment_allowlist: tuple[str, ...] = ("SYSTEMROOT", "WINDIR", "PATH", "TMP", "TEMP")
     extra_environment: dict[str, str] | None = None
@@ -149,7 +167,7 @@ class MCPArtifactConfig:
 class MCPConnectorDescriptor:
     connector_id: str
     artifact_config: MCPArtifactConfig
-    expected_tool_registry: SignedToolRegistry
+    expected_tool_descriptors: tuple[MCPToolDescriptorV1, ...]
 
     def __post_init__(self) -> None:
         if not self.connector_id.strip():
@@ -185,6 +203,7 @@ class StdioMCPClientAdapter:
         self,
         *,
         descriptor: MCPConnectorDescriptor,
+        runtime_registry: ConnectorRuntimeRegistry,
         signature_verifier: ArtifactSignatureVerifier | None = None,
     ) -> None:
         self._descriptor = descriptor
@@ -202,27 +221,87 @@ class StdioMCPClientAdapter:
         self._session_key = secrets.token_hex(SESSION_KEY_BYTES)
         self._lock = threading.RLock()
         self._start_process()
+        self._runtime_registry = runtime_registry
+        runtime_registry.register(descriptor.connector_id, _BoundStdioRuntime(self))
 
-    def call_tool(self, *, tool_name: str, arguments: dict[str, Any]) -> MCPToolResponse:
-        request_id, payload = self._request(
-            message_type="tool_call",
-            body={"tool_name": tool_name, "arguments": arguments},
-        )
-        return MCPToolResponse(payload=payload, request_id=request_id)
+    def list_tools(self, connector_id: str) -> list[MCPToolDescriptorV1]:
+        return self._runtime_registry.resolve(connector_id).list_tools()
 
-    def call_control(self, *, method: str, arguments: dict[str, Any]) -> MCPControlResponse:
-        request_id, payload = self._request(
-            message_type="control_call",
-            body={"method": method, "arguments": arguments},
+    def call_tool(
+        self,
+        connector_id: str,
+        tool_id: str,
+        arguments: JsonValue,
+        timeout_ms: int,
+    ) -> MCPToolCallResultV1:
+        return self._runtime_registry.resolve(connector_id).call_tool(
+            tool_id, arguments, timeout_ms
         )
-        return MCPControlResponse(payload=payload, request_id=request_id)
+
+    def restart_once(self, connector_id: str) -> MCPRestartResultV1:
+        return self._runtime_registry.resolve(connector_id).restart_once()
+
+    def _list_tools(self) -> list[MCPToolDescriptorV1]:
+        return list(self._manifest.tools)
+
+    def _call_tool(
+        self,
+        tool_id: str,
+        arguments: JsonValue,
+        timeout_ms: int,
+    ) -> MCPToolCallResultV1:
+        if timeout_ms <= 0:
+            raise ValueError("timeout_ms must be positive")
+        if not isinstance(arguments, dict):
+            raise TypeError("MCP tool arguments must be an object")
+        message_type = (
+            "control_call"
+            if tool_id.startswith(("google.oauth.", "google.connection."))
+            else "tool_call"
+        )
+        body_key = "method" if message_type == "control_call" else "tool_name"
+        try:
+            _, payload = self._request(
+                message_type=message_type,
+                body={body_key: tool_id, "arguments": arguments},
+                timeout_ms=timeout_ms,
+            )
+        except MCPClientPortError as error:
+            status: Literal["ERROR", "TIMEOUT", "DISCONNECTED"] = (
+                "TIMEOUT"
+                if error.code is MCPClientPortErrorCode.TIMEOUT
+                else "DISCONNECTED"
+                if error.code
+                in {
+                    MCPClientPortErrorCode.CONNECTION_CLOSED,
+                    MCPClientPortErrorCode.PROCESS_UNAVAILABLE,
+                }
+                else "ERROR"
+            )
+            return MCPToolCallResultV1(
+                schema_version=1,
+                tool_id=tool_id,
+                transport_status=status,
+                payload={
+                    "request_id": error.request_id,
+                    "delivery_certainty": error.delivery_certainty.value,
+                },
+                error_code=error.code.value,
+            )
+        return MCPToolCallResultV1(
+            schema_version=1,
+            tool_id=tool_id,
+            transport_status="OK",
+            payload=cast(JsonValue, payload),
+            error_code=None,
+        )
 
     def runtime_metadata(self) -> MCPRuntimeMetadata:
         return MCPRuntimeMetadata(
             process_status=self._status.value,
             protocol_version=self._manifest.protocol_version,
             manifest_version=self._manifest.manifest_version,
-            tool_registry_version=self._manifest.tool_registry_version,
+            tool_registry_version=self._manifest.registry_manifest_hash,
             available_tool_count=len(self._manifest.tools),
             last_safe_error_code=self._last_safe_error_code,
             restart_count=self._restart_count,
@@ -270,6 +349,17 @@ class StdioMCPClientAdapter:
             self._start_process()
             return self.runtime_metadata()
 
+    def _restart_once(self) -> MCPRestartResultV1:
+        try:
+            self.restart()
+        except MCPClientPortError as error:
+            return MCPRestartResultV1(
+                schema_version=1,
+                restarted=False,
+                reason_code=error.code.value,
+            )
+        return MCPRestartResultV1(schema_version=1, restarted=True, reason_code=None)
+
     def _validate_artifacts(self) -> MCPServerManifest:
         executable_path = Path(self._config.executable_path)
         manifest_path = Path(self._config.manifest_path)
@@ -303,7 +393,13 @@ class StdioMCPClientAdapter:
                     code=MCPClientPortErrorCode.ARTIFACT_REJECTED,
                     message=decision.detail or "artifact signature rejected",
                 )
-        manifest = MCPServerManifest.load(manifest_path)
+        try:
+            manifest = MCPServerManifest.load(manifest_path)
+        except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
+                message="MCP manifest is invalid",
+            ) from error
         if manifest.manifest_version != self._config.expected_manifest_version:
             raise MCPClientPortError(
                 code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
@@ -314,60 +410,30 @@ class StdioMCPClientAdapter:
                 code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
                 message="protocol version mismatch",
             )
-        if manifest.tool_registry_version != self._config.expected_tool_registry_version:
+        if manifest.connector_id != self._descriptor.connector_id:
             raise MCPClientPortError(
                 code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
-                message="tool registry version mismatch",
+                message="connector id mismatch",
+            )
+        if manifest.registry_manifest_hash != self._config.expected_registry_manifest_hash:
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.SCHEMA_MISMATCH,
+                message="registry manifest hash mismatch",
             )
         self._validate_manifest_tools(manifest)
         return manifest
 
     def _validate_manifest_tools(self, manifest: MCPServerManifest) -> None:
-        registry = self._descriptor.expected_tool_registry
-        expected_names = {entry.tool_name for entry in registry.list_entries()}
-        manifest_names = {tool.tool_name for tool in manifest.tools}
-        if len(manifest_names) != len(manifest.tools) or manifest_names != expected_names:
+        expected = {
+            descriptor.tool_id: descriptor
+            for descriptor in self._descriptor.expected_tool_descriptors
+        }
+        actual = {descriptor.tool_id: descriptor for descriptor in manifest.tools}
+        if len(actual) != len(manifest.tools) or actual != expected:
             raise MCPClientPortError(
                 code=MCPClientPortErrorCode.TOOL_REJECTED,
-                message="manifest tool allowlist mismatch",
+                message="MCP descriptor projection mismatch",
             )
-        for tool in manifest.tools:
-            entry = registry.require(tool.tool_name)
-            if tool.effect_type != entry.effect_type.value:
-                raise MCPClientPortError(
-                    code=MCPClientPortErrorCode.TOOL_REJECTED,
-                    message=f"tool effect mismatch: {tool.tool_name}",
-                )
-            if tool.required_scope != entry.scope:
-                raise MCPClientPortError(
-                    code=MCPClientPortErrorCode.TOOL_REJECTED,
-                    message=f"tool scope mismatch: {tool.tool_name}",
-                )
-            expected_contract = (
-                entry.approval_requirement.value,
-                entry.verification_policy.value,
-                entry.recovery_policy.value,
-                entry.retryable,
-                entry.input_schema_version,
-                entry.output_schema_version,
-                entry.tool_schema_hash,
-                entry.registry_version,
-            )
-            manifest_contract = (
-                tool.approval_requirement,
-                tool.verification_policy,
-                tool.recovery_policy,
-                tool.retryable,
-                tool.input_schema_version,
-                tool.output_schema_version,
-                tool.tool_schema_hash,
-                tool.registry_version,
-            )
-            if manifest_contract != expected_contract:
-                raise MCPClientPortError(
-                    code=MCPClientPortErrorCode.TOOL_REJECTED,
-                    message=f"tool contract mismatch: {tool.tool_name}",
-                )
 
     def _start_process(self) -> None:
         self._status = MCPProcessStatus.STARTING
@@ -403,7 +469,7 @@ class StdioMCPClientAdapter:
             message_type="initialize",
             body={
                 "manifest_version": self._manifest.manifest_version,
-                "tool_registry_version": self._manifest.tool_registry_version,
+                "registry_manifest_hash": self._manifest.registry_manifest_hash,
             },
         )
         self._status = MCPProcessStatus.VALIDATING_TOOLS
@@ -421,7 +487,7 @@ class StdioMCPClientAdapter:
             )
         _, remote_tools = self._request(message_type="list_tools", body={})
         tool_names = tuple(str(name) for name in cast(list[object], remote_tools["tool_names"]))
-        if tool_names != tuple(sorted(tool.tool_name for tool in self._manifest.tools)):
+        if tool_names != tuple(sorted(tool.tool_id for tool in self._manifest.tools)):
             raise MCPClientPortError(
                 code=MCPClientPortErrorCode.TOOL_REJECTED,
                 message="remote tool list mismatch",
@@ -448,7 +514,13 @@ class StdioMCPClientAdapter:
             child_env.update(self._config.extra_environment)
         return child_env
 
-    def _request(self, *, message_type: str, body: JsonObject) -> tuple[str, JsonObject]:
+    def _request(
+        self,
+        *,
+        message_type: str,
+        body: JsonObject,
+        timeout_ms: int | None = None,
+    ) -> tuple[str, JsonObject]:
         with self._lock:
             process = self._process
             if process is None or process.poll() is not None:
@@ -471,7 +543,12 @@ class StdioMCPClientAdapter:
             request_id = f"req-{self._request_counter}"
             self._send_json({"id": request_id, "type": message_type, **body}, request_id=request_id)
             try:
-                payload = self._wait_for_response(request_id=request_id)
+                payload = self._wait_for_response(
+                    request_id=request_id,
+                    timeout_ms=(
+                        self._config.request_timeout_ms if timeout_ms is None else timeout_ms
+                    ),
+                )
             except MCPClientPortError as error:
                 self._last_safe_error_code = error.code.value
                 if (
@@ -507,8 +584,8 @@ class StdioMCPClientAdapter:
                 request_id=request_id,
             ) from error
 
-    def _wait_for_response(self, *, request_id: str) -> JsonObject:
-        deadline = time.monotonic() + (self._config.request_timeout_ms / 1000)
+    def _wait_for_response(self, *, request_id: str, timeout_ms: int) -> JsonObject:
+        deadline = time.monotonic() + (timeout_ms / 1000)
         while time.monotonic() < deadline:
             try:
                 message = self._stdout_queue.get(timeout=0.05)
@@ -534,12 +611,25 @@ class StdioMCPClientAdapter:
                 # A structured error response proves the child process ran the
                 # request and answered; only the server can know whether that
                 # answer came before or after any Google dispatch occurred.
-                raise MCPClientPortError(
-                    code=MCPClientPortErrorCode(
+                raw_certainty = error_payload.get("delivery_certainty")
+                try:
+                    certainty = DeliveryCertainty(str(raw_certainty))
+                except ValueError:
+                    certainty = (
+                        DeliveryCertainty.MAY_HAVE_BEEN_SENT
+                        if bool(error_payload.get("dispatch_started", True))
+                        else DeliveryCertainty.NOT_SENT
+                    )
+                try:
+                    error_code = MCPClientPortErrorCode(
                         str(error_payload.get("code", "MALFORMED_RESPONSE"))
-                    ),
+                    )
+                except ValueError:
+                    error_code = MCPClientPortErrorCode.MALFORMED_RESPONSE
+                raise MCPClientPortError(
+                    code=error_code,
                     message=str(error_payload.get("message", "mcp request failed")),
-                    dispatch_started=bool(error_payload.get("dispatch_started", True)),
+                    delivery_certainty=certainty,
                     request_id=request_id,
                 )
             response_payload = cast(JsonObject, message.get("payload", {}))
@@ -572,3 +662,25 @@ class StdioMCPClientAdapter:
             return
         for line in process.stderr:
             self._stderr_lines.append(line.rstrip())
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundStdioRuntime:
+    client: StdioMCPClientAdapter
+
+    def list_tools(self) -> list[MCPToolDescriptorV1]:
+        return self.client._list_tools()
+
+    def call_tool(
+        self,
+        tool_id: str,
+        arguments: JsonValue,
+        timeout_ms: int,
+    ) -> MCPToolCallResultV1:
+        return self.client._call_tool(tool_id, arguments, timeout_ms)
+
+    def restart_once(self) -> MCPRestartResultV1:
+        return self.client._restart_once()
+
+    def close(self) -> None:
+        self.client.close()

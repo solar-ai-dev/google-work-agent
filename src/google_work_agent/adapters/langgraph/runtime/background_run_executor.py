@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from queue import Empty, Full, Queue
 from threading import Event, Lock, Thread
+from typing import TypeGuard
 
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -212,10 +213,6 @@ class BackgroundRunExecutorAdapter:
             return
         if checkpoint.applied_handoff_id != handoff.handoff_id:
             raise ValueError("checkpoint does not contain applied handoff evidence")
-        if handoff.control is None:
-            return
-        if not self._checkpoint_port.contains_workflow_control(checkpoint, handoff.control):
-            raise ValueError("checkpoint does not contain durable one-shot control")
 
 
 def _result(accepted: bool, reason_code: str) -> RunExecutionAcceptedV1:
@@ -229,5 +226,5 @@ def _result(accepted: bool, reason_code: str) -> RunExecutionAcceptedV1:
 def _is_exact_active_admission(
     handoff: WorkflowHandoffV1 | None,
     admission: WorkflowExecutionAdmissionV1,
-) -> bool:
+) -> TypeGuard[WorkflowHandoffV1]:
     return handoff is not None and handoff.execution_admission == admission

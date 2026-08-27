@@ -13,11 +13,6 @@ from copy import deepcopy
 from json import dumps
 from typing import Any, cast
 
-from google_work_agent.adapters.connectors.execution_router import ConnectorExecutionRouter
-from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
-from google_work_agent.adapters.langgraph.connector_execution_scope import (
-    ConnectorBoundWriteExecutionPhaseCoordinator,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _acquired_resource_by_handle,
@@ -52,9 +47,6 @@ from google_work_agent.application.write_verification_projection import (
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.ports import ResourceSnapshot, ResourceType
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
-)
 
 
 def replace_llm_expected_with_deterministic_projection(
@@ -215,43 +207,22 @@ class PlanPersistenceMixin:
         self,
         *args: Any,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
-        connector_execution_backends: Mapping[str, ConnectorWritePort] | None = None,
         **kwargs: Any,
     ) -> None:
         llm_runtime = kwargs.get("llm_runtime")
         if default_calendar_id_provider is None and llm_runtime is not None:
             settings_service = getattr(llm_runtime, "settings_service", None)
             if callable(settings_service):
-                default_calendar_id_provider = lambda: getattr(
-                    settings_service(), "default_calendar_id", None
-                )
 
-        legacy_execution = kwargs.get("connector_execution")
-        if connector_execution_backends is None:
-            if isinstance(legacy_execution, ConnectorExecutionRouter):
-                execution_router = legacy_execution
-            else:
-                if legacy_execution is None:
-                    raise TypeError("connector_execution is required")
-                execution_router = ConnectorExecutionRouter(
-                    {GOOGLE_WORKSPACE_CONNECTOR_ID: cast(ConnectorWritePort, legacy_execution)}
-                )
-        else:
-            execution_router = ConnectorExecutionRouter(connector_execution_backends)
-        kwargs["connector_execution"] = execution_router
+                def get_default_calendar_id() -> str | None:
+                    return getattr(settings_service(), "default_calendar_id", None)
+
+                default_calendar_id_provider = get_default_calendar_id
+
+        if kwargs.get("connector_execution") is None:
+            raise TypeError("connector_execution is required")
 
         super().__init__(*args, default_calendar_id_provider=default_calendar_id_provider, **kwargs)
-        self._connector_execution_router = execution_router
-
-        raw_execution_phase = self._write_execution_phase
-        connector_bound_phase = ConnectorBoundWriteExecutionPhaseCoordinator(
-            delegate=raw_execution_phase,
-            unit_of_work_factory=self._unit_of_work_factory,
-        )
-        self._write_execution_phase = connector_bound_phase
-        self._write_execution_node._execution_phase = connector_bound_phase
-        self._write_recovery._execution_phase = connector_bound_phase
-        self._invocation._resume_reauth_execution = self._write_execution_node
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         plan_draft = replace_llm_expected_with_deterministic_projection(plan_draft)
@@ -472,8 +443,7 @@ class PlanPersistenceMixin:
                 snapshot=snapshot,
                 captured_at_ms=self._now_ms(),
             )
-            persisted = upsert_registered_resource_ref(
-                unit_of_work,resource_ref)
+            persisted = upsert_registered_resource_ref(unit_of_work, resource_ref)
             unit_of_work.commit()
             return persisted.id
 

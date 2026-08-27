@@ -1,17 +1,9 @@
 """Canonical Google Tasks delete connector operation."""
 
-from __future__ import annotations
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    provider_operation_runtime,
+)
 
-from google_work_agent.ports import GoogleWorkspaceGateway
 
-
-class DeleteTaskOperation:
-    def __init__(self, *, gateway: GoogleWorkspaceGateway) -> None:
-        self._gateway = gateway
-
-    def execute(
-        self, *, task_list_id: str, task_id: str, claim_context: dict[str, object] | None
-    ):
-        return self._gateway.delete_task(
-            task_list_id=task_list_id, task_id=task_id, claim_context=claim_context
-        )
+class DeleteTaskOperation(provider_operation_runtime.WorkspaceProviderOperation):
+    tool_id = "tasks_delete_task"

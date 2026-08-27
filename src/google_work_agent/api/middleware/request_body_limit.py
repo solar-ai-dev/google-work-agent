@@ -30,7 +30,7 @@ def install_request_body_limit_middleware(app: FastAPI, container: ApiContainer)
             ):
                 request_id = getattr(request.state, "request_id", None)
                 if not isinstance(request_id, str):
-                    request_id = container.id_generator.next_id()
+                    request_id = container.id_generator.new_uuid()
                 raise ApiRequestError(
                     error_code="INVALID_ARGUMENT",
                     user_message="Request body exceeds the local API limit.",

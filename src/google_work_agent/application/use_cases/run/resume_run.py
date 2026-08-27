@@ -248,7 +248,7 @@ class ResumeRunHandler:
         unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
                 schema_version=1,
-                handoff_id=self._id_generator.next_id(),
+                handoff_id=self._id_generator.new_uuid(),
                 trigger_command_id=command.command_id,
                 execution=RunExecutionRefV1(
                     schema_version=1,

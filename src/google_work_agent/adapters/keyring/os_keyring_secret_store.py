@@ -15,18 +15,20 @@ class OsKeyringSecretStoreAdapter(SecretStorePort):
             raise RuntimeError("keyring dependency is unavailable") from error
         self._keyring = keyring
 
-    def set_secret(self, *, service: str, account: str, secret: str) -> None:
-        self._keyring.set_password(service, account, secret)
+    def put(self, key: str, secret_bytes: bytes) -> None:
+        self._keyring.set_password(_SERVICE_NAME, key, secret_bytes.decode("utf-8"))
 
-    def get_secret(self, *, service: str, account: str) -> str | None:
-        value = self._keyring.get_password(service, account)
+    def get(self, key: str) -> bytes | None:
+        value = self._keyring.get_password(_SERVICE_NAME, key)
         if value is None:
             return None
-        return str(value)
+        return str(value).encode("utf-8")
 
-    def delete_secret(self, *, service: str, account: str) -> bool:
+    def delete(self, key: str) -> None:
         try:
-            self._keyring.delete_password(service, account)
+            self._keyring.delete_password(_SERVICE_NAME, key)
         except Exception:
-            return False
-        return True
+            return
+
+
+_SERVICE_NAME = "GoogleWorkAgent"

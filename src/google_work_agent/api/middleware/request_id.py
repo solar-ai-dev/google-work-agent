@@ -13,5 +13,5 @@ def install_request_id_middleware(app: FastAPI, container: ApiContainer) -> None
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        request.state.request_id = container.id_generator.next_id()
+        request.state.request_id = container.id_generator.new_uuid()
         return await call_next(request)

@@ -14,6 +14,7 @@ from google_work_agent.application.write_action_arguments import (
     dict_argument,
     required_argument_string,
 )
+from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_persistence import (
     action_response_from_result,
@@ -53,9 +54,6 @@ from google_work_agent.ports import (
     GoogleWorkspaceGatewayError,
     ResourceType,
     UnitOfWork,
-)
-from google_work_agent.ports.connector.connector_write_port import (
-    ConnectorWritePort,
 )
 
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
@@ -115,7 +113,7 @@ class VerifyActionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        connector_execution: ConnectorWritePort,
+        connector_execution: WriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

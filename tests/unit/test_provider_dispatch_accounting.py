@@ -4,10 +4,12 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from google_work_agent.adapters.llm.prompt_input_guard import PromptInputGuardedProvider
 from google_work_agent.application.orchestration.contracts import (
     build_default_run_budget,
     consume_llm_provider_calls,
+)
+from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
+    PromptInputGuardedProvider,
 )
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     current_provider_dispatch_budget,
@@ -168,9 +170,11 @@ def test_failed_primary_dispatch_is_counted_before_timeout() -> None:
     provider = _FakeProvider(fail_structured=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
 
-    with provider_dispatch_budget_scope(budget):
-        with pytest.raises(TimeoutError, match="provider timeout"):
-            _invoke_structured(guarded)
+    with (
+        provider_dispatch_budget_scope(budget),
+        pytest.raises(TimeoutError, match="provider timeout"),
+    ):
+        _invoke_structured(guarded)
 
     assert provider.structured_dispatches == 1
     assert budget["llm_calls_used"] == 1
@@ -259,9 +263,11 @@ def test_failed_tool_call_dispatch_is_counted() -> None:
     provider = _FakeProvider(fail_tool=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
 
-    with provider_dispatch_budget_scope(budget):
-        with pytest.raises(TimeoutError, match="tool provider timeout"):
-            _invoke_tool(guarded)
+    with (
+        provider_dispatch_budget_scope(budget),
+        pytest.raises(TimeoutError, match="tool provider timeout"),
+    ):
+        _invoke_tool(guarded)
 
     assert provider.tool_dispatches == 1
     assert budget["llm_calls_used"] == 1
@@ -303,10 +309,12 @@ def test_execution_scope_clears_budget_after_escaping_provider_error() -> None:
     provider = _FakeProvider(fail_structured=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
 
-    with pytest.raises(TimeoutError, match="provider timeout"):
-        with provider_dispatch_execution_scope():
-            with provider_dispatch_budget_scope(budget):
-                _invoke_structured(guarded)
+    with (
+        pytest.raises(TimeoutError, match="provider timeout"),
+        provider_dispatch_execution_scope(),
+        provider_dispatch_budget_scope(budget),
+    ):
+        _invoke_structured(guarded)
 
     assert provider.structured_dispatches == 1
     assert budget["llm_calls_used"] == 1

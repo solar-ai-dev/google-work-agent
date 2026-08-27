@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps, loads
 
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.read_contracts import (
     CompletedEvidence,
     CompletedResourceRef,
@@ -24,7 +27,6 @@ from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
     FreeBusyCalendar,
-    GoogleWorkspaceGateway,
     ResourcePage,
     ResourceSnapshot,
     TimeRange,
@@ -36,7 +38,7 @@ class ExecuteReadActionService:
     """Execute one claimed read action outside of any SQLite transaction."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], gateway: GoogleWorkspaceGateway
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], gateway: ConnectorReadProjection
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway

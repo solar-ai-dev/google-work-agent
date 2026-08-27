@@ -1,18 +1,20 @@
-"""Google Workspace gateway port definitions."""
+"""Legacy-neutral Google Workspace value and error contracts.
+
+The provider operation boundary is owned by the exact connector ports under
+``ports.connector``.  This module intentionally contains no gateway Protocol.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any
 
 type JsonValue = Any
 
 
 class ResourceType(StrEnum):
-    """Supported fixture-backed Google Workspace resource types."""
-
     GMAIL_THREAD = "gmail_thread"
     GMAIL_MESSAGE = "gmail_message"
     GMAIL_DRAFT = "gmail_draft"
@@ -25,8 +27,6 @@ class ResourceType(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ResourceSnapshot:
-    """Immutable projection for one Google Workspace resource snapshot."""
-
     fixture_snapshot_id: str
     resource_type: ResourceType
     resource_id: str
@@ -39,16 +39,12 @@ class ResourceSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class ResourcePage:
-    """Deterministic paginated Google Workspace result."""
-
     items: tuple[ResourceSnapshot, ...]
     next_page_token: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class GmailAttachmentMetadata:
-    """Safe metadata for one attachment in the UI-only Gmail detail view."""
-
     message_id: str
     attachment_id: str
     filename: str
@@ -58,8 +54,6 @@ class GmailAttachmentMetadata:
 
 @dataclass(frozen=True, slots=True)
 class GmailThreadDetail:
-    """UI-only projection of the latest message in one Gmail thread."""
-
     thread_id: str
     message_id: str
     rfc822_message_id: str | None
@@ -74,17 +68,8 @@ class GmailThreadDetail:
     version: str
 
 
-class GmailUiReadGateway(Protocol):
-    """Narrow Gmail read port used only by the local UI projection."""
-
-    def get_thread_detail(self, *, thread_id: str) -> GmailThreadDetail:
-        """Return the latest message detail for one Gmail thread."""
-
-
 @dataclass(frozen=True, slots=True)
 class FreeBusyInterval:
-    """One busy interval returned by the gateway."""
-
     start: str
     end: str
     transparency: str
@@ -92,16 +77,12 @@ class FreeBusyInterval:
 
 @dataclass(frozen=True, slots=True)
 class FreeBusyCalendar:
-    """Free/busy response for one calendar."""
-
     calendar_id: str
     intervals: tuple[FreeBusyInterval, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class TimeRange:
-    """Explicit timezone-aware range for Calendar free/busy requests."""
-
     start: str
     end: str
 
@@ -113,8 +94,6 @@ class TimeRange:
 
 
 class GoogleWorkspaceErrorCode(StrEnum):
-    """Deterministic fault codes exposed by the fake gateway."""
-
     AUTH_EXPIRED = "AUTH_EXPIRED"
     INVALID_ARGUMENT = "INVALID_ARGUMENT"
     PERMISSION_DENIED = "PERMISSION_DENIED"
@@ -132,23 +111,13 @@ class GoogleWorkspaceErrorCode(StrEnum):
 
 
 class DeliveryCertainty(StrEnum):
-    """Transport knowledge used to select FAILED versus UNKNOWN_RESULT."""
-
     NOT_SENT = "NOT_SENT"
     MAY_HAVE_BEEN_SENT = "MAY_HAVE_BEEN_SENT"
     SENT_RESPONSE_LOST = "SENT_RESPONSE_LOST"
 
 
 class GoogleWorkspaceGatewayError(RuntimeError):
-    """Gateway error that preserves delivery and mutation semantics.
-
-    ``mcp_request_id`` is transport-level correlation metadata (which MCP
-    request this failure came from), not a Google-provider-specific
-    request id -- Core is not expected to interpret it beyond correlating
-    it back to the originating MCP call. It is optional because non-MCP
-    gateway implementations (e.g. fakes) have no such transport to
-    correlate against.
-    """
+    """Compatibility error value; it is not an integration authority."""
 
     def __init__(
         self,
@@ -171,174 +140,6 @@ class GoogleWorkspaceGatewayError(RuntimeError):
             if mutated
             else DeliveryCertainty.MAY_HAVE_BEEN_SENT
         )
-
-
-class GoogleWorkspaceGateway(Protocol):
-    """Read/write gateway over Google Workspace resources."""
-
-    def search_gmail_threads(
-        self,
-        *,
-        query: str,
-        page_token: str | None,
-        page_size: int,
-        include_thread_metadata: bool = True,
-    ) -> ResourcePage:
-        """Search Gmail threads."""
-
-    def get_gmail_thread(self, *, thread_id: str) -> ResourceSnapshot:
-        """Return one Gmail thread snapshot."""
-
-    def get_gmail_message(self, *, message_id: str) -> ResourceSnapshot:
-        """Return one Gmail message snapshot."""
-
-    def create_gmail_draft(
-        self,
-        *,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Create one Gmail draft."""
-
-    def update_gmail_draft(
-        self,
-        *,
-        draft_id: str,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Update one Gmail draft."""
-
-    def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
-        """Return one Gmail draft snapshot."""
-
-    def send_gmail(
-        self,
-        *,
-        draft_id: str,
-        recovery_fingerprint: str | None,
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Send one approved Gmail draft and return the provider message identity."""
-
-    def list_task_lists(
-        self,
-        *,
-        page_token: str | None,
-        page_size: int,
-    ) -> ResourcePage:
-        """List task lists."""
-
-    def list_tasks(
-        self,
-        *,
-        task_list_id: str,
-        page_token: str | None,
-        page_size: int,
-        show_completed: bool = False,
-        show_hidden: bool = False,
-        show_deleted: bool = False,
-    ) -> ResourcePage:
-        """List tasks for one task list."""
-
-    def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot:
-        """Return one task snapshot."""
-
-    def create_task(
-        self,
-        *,
-        task_list_id: str,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Create one task."""
-
-    def update_task(
-        self,
-        *,
-        task_list_id: str,
-        task_id: str,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Update one task."""
-
-    def list_calendars(
-        self,
-        *,
-        page_token: str | None,
-        page_size: int,
-    ) -> ResourcePage:
-        """List calendars."""
-
-    def list_calendar_events(
-        self,
-        *,
-        calendar_id: str,
-        page_token: str | None,
-        page_size: int,
-        time_min: str | None = None,
-        time_max: str | None = None,
-        single_events: bool = False,
-        order_by: str | None = None,
-    ) -> ResourcePage:
-        """List calendar events for one calendar."""
-
-    def query_freebusy(
-        self,
-        *,
-        calendar_ids: tuple[str, ...],
-        time_range: TimeRange,
-    ) -> tuple[FreeBusyCalendar, ...]:
-        """Return free/busy intervals for calendars."""
-
-    def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
-        """Return one calendar event snapshot."""
-
-    def create_calendar_event(
-        self,
-        *,
-        calendar_id: str,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Create one calendar event."""
-
-    def update_calendar_event(
-        self,
-        *,
-        calendar_id: str,
-        event_id: str,
-        payload: dict[str, JsonValue],
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Update one calendar event."""
-
-    def delete_calendar_event(
-        self,
-        *,
-        calendar_id: str,
-        event_id: str,
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Delete one approved non-recurring Calendar event."""
-
-    def delete_task(
-        self,
-        *,
-        task_list_id: str,
-        task_id: str,
-        claim_context: dict[str, JsonValue] | None = None,
-    ) -> ResourceSnapshot:
-        """Delete one approved Google Task."""
-
-    def search_by_recovery_fingerprint(
-        self,
-        *,
-        resource_type: ResourceType,
-        recovery_fingerprint: str,
-    ) -> tuple[ResourceSnapshot, ...]:
-        """Return recovery candidates for one fingerprint."""
 
 
 def _parse_rfc3339(value: str) -> datetime:
