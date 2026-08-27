@@ -21,7 +21,7 @@ Historical mapping files retain their declared investigation SHA and preservatio
 | Agent tool routing | Tool-routing semantic operations and LangGraph adapters were substantially refactored. | 6ec tool-routing rows require current-status override; preservation source remains valid. | **IMPROVED; per-operation behavior remains governed by canonical rows**. |
 | Agent retrieval contracts | No materialization of `application/agents/retrieval/contracts/segment_identity.py` or `query_attempt.py`. Current contracts dir still contains only `__init__.py`. | `STR-477`, `STR-478` remain OPEN structural moves from existing semantics. | **OPEN**. |
 | LangGraph | State/workflow, planning/corrective-plan persistence, write execution/recovery and tool-routing graph files changed materially. | Runtime is closer to owner-local Domain/Application contracts. `checkpoint_target_resolver.py` remains a legacy-name translation/fallback bridge. | **IMPROVED; COMPAT BRIDGE OPEN**. |
-| Ports / Connector / MCP | Small MCP/stdio changes; Domain record import cut-over occurred. `McpConnectorWriteAdapter` still directly composes provider operations through `GoogleWorkspaceGateway`. | Single external execution seam remains incomplete. | **CONNECTOR MCP BYPASS OPEN**. |
+| Ports / Connector / MCP | Small MCP/stdio changes; Domain record import cut-over occurred. **`McpConnectorReadAdapter` still directly calls `GoogleWorkspaceGateway`, and `McpConnectorWriteAdapter` still directly composes provider operations through `GoogleWorkspaceGateway`.** | `ValidatedConnectorToolBindingV1 → ConnectorRuntimeRegistry → MCPClientPort` is not yet the sole external execution seam. | **CONNECTOR READ/WRITE MCP BYPASS OPEN**. |
 | Tool Registry artifacts | `application/tool_registry/` remains absent. | `STR-303` / `STR-305` and assigned NPA manifest/projection work remain required. | **OPEN**. |
 | LLM leaves | Broad `api_provider.py`, `gemini.py`, `ollama.py` and runtime routers remain; exact provider-family/Ollama leaf package files are not materialized. | `STR-459..462,464` remain SPLIT/MOVE migrations, not greenfield rewrites. | **OPEN**. |
 | API / Composition | Only narrow API files changed in the #104 delta; main composition findings are not reversed. | API root formal row remains closed; Bootstrap Secret formal row remains Launcher-owned. | **MAPPING CLOSED / RUNTIME ROOT NOT GLOBALLY CLOSED**. |
@@ -55,7 +55,7 @@ Historical mapping files retain their declared investigation SHA and preservatio
 
 ### Still open
 
-- connector runtime single seam: Registry → `MCPClientPort` is not the only execution path
+- connector runtime single seam: both `McpConnectorReadAdapter` and `McpConnectorWriteAdapter` still retain direct `GoogleWorkspaceGateway` / provider-operation execution paths; Registry → `MCPClientPort` is not the only execution path
 - exact Signed Tool Registry implementation mirror + connector descriptor projection
 - exact LLM leaf package authorities
 - exact retrieval owner-local contract files
@@ -70,7 +70,8 @@ Historical mapping files retain their declared investigation SHA and preservatio
 ```text
 BASE HISTORICAL MAPPINGS INVALIDATED       = NO
 FORMAL CANONICAL EXACT-SET                 = 142 CAP + 473 STR + 85 NPA / PASS
-CURRENT-HEAD RECONCILIATION                = COMPLETE THROUGH a03432c8
+CURRENT-HEAD MAPPING-RELEVANT DELTA       = RECONCILED THROUGH a03432c8
+PRODUCTION-WIDE NEGATIVE PROOF             = OPEN
 DOMAIN #104 BOUNDED CORE                   = 54/54 CLOSED
 APPROVAL PLAN ACTIVATION DEFECT            = CLOSED
 GLOBAL SINGLE-PRODUCTION-AUTHORITY CLOSURE = OPEN

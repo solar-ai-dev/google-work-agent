@@ -32,7 +32,7 @@ Formal mapping-row presence alone never proves this contract.
 | Persistence semantic duplication | Run/Action SQLite repositories are persistence/query/CAS adapters and import Domain models; prior broad lifecycle mutation authority is materially removed. | **IMPROVED; persistence-wide proof not independently closed here** |
 | Application duplicate/broad authority | `application/coordinator.py` and duplicate approval use-case removed; multiple broad Run wrappers deleted; owner-local transitions invoked. | **IMPROVED** |
 | Retrieval owner-local contracts | Exact `segment_identity.py::SourceSegmentIdentityV1` and `query_attempt.py::QueryAttemptV1` absent. | **OPEN** |
-| Connector external execution seam | `McpConnectorWriteAdapter` still imports concrete provider operation classes and depends on `GoogleWorkspaceGateway`; Registry → `MCPClientPort` is not sole seam. | **OPEN / BLOCKER** |
+| Connector external execution seam | **`McpConnectorReadAdapter` directly depends on `GoogleWorkspaceGateway`; `McpConnectorWriteAdapter` also depends on `GoogleWorkspaceGateway` and imports concrete provider operation classes.** `ValidatedConnectorToolBindingV1 → ConnectorRuntimeRegistry → MCPClientPort` is not the sole seam. | **OPEN / BLOCKER** |
 | Signed Tool Registry implementation mirror | `application/tool_registry/` absent; exact manifest + projection authorities not materialized. | **OPEN / BLOCKER** |
 | LLM leaf authority | Exact provider/Ollama leaf package files absent; broad provider modules remain. | **OPEN** |
 | Resume-target authority | Native checkpoint resolver still translates legacy runnable/phase names and falls back through a compatibility bridge. | **OPEN COMPAT BRIDGE** |
