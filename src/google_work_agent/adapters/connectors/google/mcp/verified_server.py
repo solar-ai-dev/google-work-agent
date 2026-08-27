@@ -19,15 +19,17 @@ from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.domain.claim_contract import CLAIM_CONTEXT_MAX_TTL_MS
-from google_work_agent.domain.google_workspace_tool_contracts import (
+from google_work_agent.ports import DeliveryCertainty
+from google_work_agent.ports.connector.claim_context_contract import CLAIM_CONTEXT_MAX_TTL_MS
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
     ToolContractViolation,
     google_workspace_tool_contract,
     validate_tool_input,
     validate_tool_output,
 )
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
-from google_work_agent.ports import DeliveryCertainty
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 # Production ClaimContext validation consumes the Domain TTL authority. The
 # legacy module keeps provider mechanics only; its historical literal is not

@@ -16,6 +16,7 @@ from google_work_agent.application.feasibility import (
     feasibility_authority,
     require_feasibility_approval,
 )
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_source_snapshot_for_task_duplicate,
@@ -47,26 +48,27 @@ from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
 )
 from google_work_agent.domain.action.model import (
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     PolicyViolationError,
     next_allowed_action_commands,
 )
 from google_work_agent.domain.action.transitions.approve_action import transition_approve_action
 from google_work_agent.domain.approval.model import Approval as ApprovalRecord
-from google_work_agent.domain.approval.model import ApprovalStatus
-from google_work_agent.domain.calendar_conflict import CalendarConflictDecision
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
 )
 
 
@@ -112,10 +114,10 @@ class ApproveWriteActionService:
                 default=None,
             )
             if (
-                plan.status is not PlanStatus.WAITING_APPROVAL
+                plan.status is not PlanStatusV1.WAITING_APPROVAL
                 or current_plan is None
                 or current_plan.id != plan.id
-                or run.status is not RunStatus.WAITING_APPROVAL
+                or run.status is not RunStatusV1.WAITING_APPROVAL
             ):
                 response = WriteActionResponse(
                     applied=False,
@@ -180,7 +182,7 @@ class ApproveWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status),
+                                ActionStatusV1(action.status),
                                 effect_type=EffectType(action.effect_type),
                             )
                         ),
@@ -234,7 +236,7 @@ class ApproveWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status),
+                                ActionStatusV1(action.status),
                                 effect_type=EffectType(action.effect_type),
                             )
                         ),
@@ -274,7 +276,7 @@ class ApproveWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status),
+                                ActionStatusV1(action.status),
                                 effect_type=EffectType(action.effect_type),
                             )
                         ),
@@ -309,7 +311,7 @@ class ApproveWriteActionService:
                     **approval_source_snapshot_for_feasibility(risk=action.risk),
                 }
             approval_result = transition_approve_action(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=EffectType(action.effect_type),
@@ -335,7 +337,7 @@ class ApproveWriteActionService:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=approval_result.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -348,7 +350,7 @@ class ApproveWriteActionService:
                 action_id=action.id,
                 approval_no=len(unit_of_work.approvals.list_by_action(action.id)) + 1,
                 action_version=approval_result.current_version,
-                status=ApprovalStatus.ACTIVE,
+                status=ApprovalStatusV1.ACTIVE,
                 approved_by_account_id=command.approved_by_account_id,
                 approved_by_display=command.approved_by_display,
                 arguments_snapshot_json=action.arguments_json,
@@ -377,7 +379,7 @@ class ApproveWriteActionService:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_APPROVED",
-                    status=ActionStatus.APPROVED.value,
+                    status=ActionStatusV1.APPROVED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"approval_id": approval.id, "command_id": command.command_id},

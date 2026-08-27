@@ -18,9 +18,7 @@ def test_latest_run_association_is_conversation_local(tmp_path: Path) -> None:
             "INSERT INTO google_accounts (id, email, connected_at_ms) "
             "VALUES ('account-1', 'account@example.com', 1)"
         )
-        connection.execute(
-            "INSERT INTO conversations VALUES ('c-1', 'account-1', 'test', 1, 1)"
-        )
+        connection.execute("INSERT INTO conversations VALUES ('c-1', 'account-1', 'test', 1, 1)")
         connection.execute(
             """INSERT INTO runs
             (id, conversation_id, entry_mode, status, langgraph_thread_id, requested_mode,
@@ -35,9 +33,7 @@ def test_latest_run_association_is_conversation_local(tmp_path: Path) -> None:
             VALUES ('r-2', 'c-1', 'AGENT_SEARCH', 'ANALYZING', 'thread-2', 'AUTO',
                     NULL, '{}', 2, 20, NULL)"""
         )
-    handler = GetLatestRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path)
-    )
+    handler = GetLatestRunHandler(unit_of_work_factory=sqlite_unit_of_work_factory(database_path))
 
     result = handler(GetLatestRunQuery("c-1"))
 

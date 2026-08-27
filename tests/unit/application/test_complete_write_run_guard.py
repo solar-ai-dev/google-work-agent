@@ -5,17 +5,17 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.application.write_run_completion import CompleteWriteRunService
+from google_work_agent.application.use_cases.run.complete_write_run import CompleteWriteRunHandler
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import Approval as ApprovalRecord
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.verification.model import Verification as VerificationRecord
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports import UnitOfWork
@@ -56,7 +56,7 @@ class _GuardUow:
         self.verifications = _ListRepo(cast(tuple[object, ...], verifications))
 
 
-def _plan(status: PlanStatus = PlanStatus.ACTIVE) -> PlanRecord:
+def _plan(status: PlanStatusV1 = PlanStatusV1.ACTIVE) -> PlanRecord:
     return PlanRecord(
         id="plan-1",
         run_id="run-1",
@@ -67,7 +67,7 @@ def _plan(status: PlanStatus = PlanStatus.ACTIVE) -> PlanRecord:
     )
 
 
-def _action(status: ActionStatus = ActionStatus.VERIFIED) -> ActionRecord:
+def _action(status: ActionStatusV1 = ActionStatusV1.VERIFIED) -> ActionRecord:
     return ActionRecord(
         id="action-1",
         plan_id="plan-1",
@@ -90,7 +90,7 @@ def _action(status: ActionStatus = ActionStatus.VERIFIED) -> ActionRecord:
     )
 
 
-def _approval(status: ApprovalStatus = ApprovalStatus.CONSUMED) -> ApprovalRecord:
+def _approval(status: ApprovalStatusV1 = ApprovalStatusV1.CONSUMED) -> ApprovalRecord:
     return ApprovalRecord(
         id="approval-1",
         action_id="action-1",
@@ -114,7 +114,7 @@ def _approval(status: ApprovalStatus = ApprovalStatus.CONSUMED) -> ApprovalRecor
 
 
 def _attempt(
-    status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED,
+    status: ExecutionAttemptStatusV1 = ExecutionAttemptStatusV1.SUCCEEDED,
 ) -> ExecutionAttemptRecord:
     return ExecutionAttemptRecord(
         id="attempt-1",
@@ -166,7 +166,7 @@ def _conflict(
         attempts=(selected_attempt,),
         verifications=(selected_verification,),
     )
-    return CompleteWriteRunService._aggregate_conflict(
+    return CompleteWriteRunHandler._aggregate_conflict(
         unit_of_work=cast(UnitOfWork, uow),
         run_id="run-1",
         relevant_plans=(selected_plan,),
@@ -179,14 +179,14 @@ def _conflict(
 @pytest.mark.parametrize(
     ("status", "expected_fragment"),
     [
-        (ActionStatus.UNKNOWN_RESULT, "UNKNOWN_RESULT"),
-        (ActionStatus.EXECUTED, "verified"),
-        (ActionStatus.MISMATCH, "MISMATCH"),
-        (ActionStatus.APPROVED, "not VERIFIED"),
+        (ActionStatusV1.UNKNOWN_RESULT, "UNKNOWN_RESULT"),
+        (ActionStatusV1.EXECUTED, "verified"),
+        (ActionStatusV1.MISMATCH, "MISMATCH"),
+        (ActionStatusV1.APPROVED, "not VERIFIED"),
     ],
 )
 def test_complete_write_run_rejects_unresolved_action_states(
-    status: ActionStatus,
+    status: ActionStatusV1,
     expected_fragment: str,
 ) -> None:
     detail = _conflict(action=_action(status))
@@ -200,7 +200,7 @@ def test_complete_write_run_rejects_durable_cancel_intent() -> None:
 
 
 def test_complete_write_run_rejects_illegal_active_approval() -> None:
-    detail = _conflict(approval=replace(_approval(), status=ApprovalStatus.ACTIVE))
+    detail = _conflict(approval=replace(_approval(), status=ApprovalStatusV1.ACTIVE))
 
     assert detail is not None
     assert "ACTIVE approval" in detail
@@ -209,12 +209,12 @@ def test_complete_write_run_rejects_illegal_active_approval() -> None:
 @pytest.mark.parametrize(
     "status",
     [
-        ExecutionAttemptStatus.CLAIMED,
-        ExecutionAttemptStatus.EXECUTING,
-        ExecutionAttemptStatus.UNKNOWN_RESULT,
+        ExecutionAttemptStatusV1.CLAIMED,
+        ExecutionAttemptStatusV1.EXECUTING,
+        ExecutionAttemptStatusV1.UNKNOWN_RESULT,
     ],
 )
-def test_complete_write_run_rejects_unresolved_attempt(status: ExecutionAttemptStatus) -> None:
+def test_complete_write_run_rejects_unresolved_attempt(status: ExecutionAttemptStatusV1) -> None:
     detail = _conflict(attempt=replace(_attempt(), status=status))
 
     assert detail is not None
@@ -240,7 +240,7 @@ def test_complete_write_run_rejects_multiple_non_superseded_plans() -> None:
         verifications=(_verification(),),
     )
 
-    detail = CompleteWriteRunService._aggregate_conflict(
+    detail = CompleteWriteRunHandler._aggregate_conflict(
         unit_of_work=cast(UnitOfWork, uow),
         run_id="run-1",
         relevant_plans=(plan, replace(plan, id="plan-2", revision_no=2)),

@@ -19,13 +19,13 @@ from google_work_agent.application.execution_phase import (
 )
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.application.run_terminal import RunTransitionResponse
-from google_work_agent.application.write_run_completion import (
+from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
-    CompleteWriteRunService,
+    CompleteWriteRunHandler,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 
 
 class WriteExecutionNode:
@@ -41,7 +41,7 @@ class WriteExecutionNode:
         execute_read_only_plan: Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState],
         execution_phase: WriteExecutionPhaseCoordinator,
         has_persisted_cancel_intent: Callable[[str], bool],
-        complete_write_run: CompleteWriteRunService,
+        complete_write_run: CompleteWriteRunHandler,
         current_run_version: Callable[[str], int],
     ) -> None:
         self._id_factory = id_factory
@@ -121,17 +121,17 @@ class WriteExecutionNode:
                 verification_statuses=verification_statuses,
             )
         if action.status in {
-            ActionStatus.VERIFIED.value,
-            ActionStatus.MISMATCH.value,
-            ActionStatus.FAILED.value,
-            ActionStatus.BLOCKED.value,
-            ActionStatus.DEPENDENCY_BLOCKED.value,
-            ActionStatus.CANCELLED.value,
-            ActionStatus.REJECTED.value,
+            ActionStatusV1.VERIFIED.value,
+            ActionStatusV1.MISMATCH.value,
+            ActionStatusV1.FAILED.value,
+            ActionStatusV1.BLOCKED.value,
+            ActionStatusV1.DEPENDENCY_BLOCKED.value,
+            ActionStatusV1.CANCELLED.value,
+            ActionStatusV1.REJECTED.value,
         }:
             verification_statuses.append(action.status)
             return None
-        if action.status != ActionStatus.APPROVED.value:
+        if action.status != ActionStatusV1.APPROVED.value:
             return None
 
         phase_result = self._execution_phase.execute(
@@ -208,7 +208,7 @@ class WriteExecutionNode:
                 },
             }
         if phase_result.disposition is WriteExecutionDisposition.FAILED:
-            verification_statuses.append(ActionStatus.FAILED.value)
+            verification_statuses.append(ActionStatusV1.FAILED.value)
             return {
                 **state,
                 "__target__": "end",
@@ -250,7 +250,7 @@ class WriteExecutionNode:
         if aggregate is ReconcileAggregate.RUN and current_status is not None and not next_allowed:
             try:
                 next_allowed = tuple(
-                    item.value for item in next_allowed_run_commands(RunStatus(current_status))
+                    item.value for item in next_allowed_run_commands(RunStatusV1(current_status))
                 )
             except ValueError:
                 next_allowed = ()
@@ -316,18 +316,18 @@ class WriteExecutionNode:
         actions: tuple[ActionRecord, ...],
         verification_statuses: list[str],
     ) -> GraphState:
-        statuses = {ActionStatus(action.status) for action in actions}
+        statuses = {ActionStatusV1(action.status) for action in actions}
         if statuses & {
-            ActionStatus.UNKNOWN_RESULT,
-            ActionStatus.MISMATCH,
-            ActionStatus.EXECUTED,
+            ActionStatusV1.UNKNOWN_RESULT,
+            ActionStatusV1.MISMATCH,
+            ActionStatusV1.EXECUTED,
         }:
             target = "recovery"
             outcome = "RECOVERY_REQUIRED"
         elif statuses & {
-            ActionStatus.PROPOSED,
-            ActionStatus.MODIFIED,
-            ActionStatus.EXPIRED,
+            ActionStatusV1.PROPOSED,
+            ActionStatusV1.MODIFIED,
+            ActionStatusV1.EXPIRED,
         }:
             target = "waiting_approval"
             outcome = "WAITING_APPROVAL"
@@ -356,7 +356,7 @@ class WriteExecutionNode:
         if (
             not actions
             or len(verification_statuses) != len(actions)
-            or not all(status == ActionStatus.VERIFIED.value for status in verification_statuses)
+            or not all(status == ActionStatusV1.VERIFIED.value for status in verification_statuses)
             or self._has_persisted_cancel_intent(run_id)
         ):
             return None

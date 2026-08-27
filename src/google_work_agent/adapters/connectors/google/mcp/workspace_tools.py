@@ -42,8 +42,10 @@ from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStorePort, TimeRange
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"

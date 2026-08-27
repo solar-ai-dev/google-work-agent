@@ -5,7 +5,10 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
     SemanticRouteCandidate,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    ConnectorToolCatalog,
+    build_p0_tool_registry,
+)
 
 
 def _catalog() -> ConnectorToolCatalog:
@@ -14,7 +17,7 @@ def _catalog() -> ConnectorToolCatalog:
     return catalog
 
 
-def test_bind_registry_candidates__task_create__binds_bounded_registry_candidates_and_read_dependency() -> (
+def test_task_create_binds_bounded_registry_candidates_and_read_dependency() -> (
     None
 ):
     ids = iter(f"route-{index}" for index in range(10))

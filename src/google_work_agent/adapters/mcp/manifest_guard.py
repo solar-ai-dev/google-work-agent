@@ -13,18 +13,18 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
-from google_work_agent.adapters.mcp.capabilities import MCPInternalCapability
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
-from google_work_agent.domain.google_workspace_tool_contracts import (
-    google_workspace_tool_contract,
-)
+from google_work_agent.adapters.mcp.capabilities import MCPInternalCapability
 from google_work_agent.ports import (
-    MCPControlResponse,
-    MCPRuntimeMetadata,
-    MCPToolResponse,
     MCPClientPort,
     MCPClientPortError,
     MCPClientPortErrorCode,
+    MCPControlResponse,
+    MCPRuntimeMetadata,
+    MCPToolResponse,
+)
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
 )
 
 

@@ -21,7 +21,15 @@ from google_work_agent.adapters.persistence import (
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.queries import QueryService
+from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
+    BeginExecutionAttemptCommand,
+    BeginExecutionAttemptHandler,
+)
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.run.finalize_cancel import FinalizeCancelHandler
+from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
 from google_work_agent.application.write_actions import (
     DeliveryCertainty,
     classify_write_delivery,
@@ -31,10 +39,7 @@ from google_work_agent.application.write_approval import ApproveWriteActionServi
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_cancellation import (
-    FinalizeRunCancellationService,
-    RequestRunCancellationService,
-)
+from google_work_agent.application.write_cancellation import RequestRunCancellationService
 from google_work_agent.application.write_cancellation_contracts import (
     FinalizeRunCancellationCommand,
     RequestRunCancellationCommand,
@@ -47,8 +52,8 @@ from google_work_agent.application.write_execution_contracts import (
     VerifyWriteActionCommand,
     WriteActionResponse,
 )
+from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -58,7 +63,6 @@ from google_work_agent.application.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_reauth import RequireWriteReauthService
 from google_work_agent.application.write_recovery import (
     MarkWriteActionUnknownResultService,
     PrepareWriteRetryService,
@@ -66,7 +70,6 @@ from google_work_agent.application.write_recovery import (
     RecoverUnknownDeleteActionService,
     RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionService,
-    ResolveMismatchRecoveryService,
 )
 from google_work_agent.application.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
@@ -75,19 +78,16 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownDeleteActionCommand,
     RecoverUnknownSendActionCommand,
     RecoverUnknownUpdateActionCommand,
-    RecoveryResolutionKind,
-    RequireWriteReauthCommand,
-    ResolveMismatchRecoveryCommand,
 )
 from google_work_agent.application.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
 from google_work_agent.application.write_verification import VerifyWriteActionService
 from google_work_agent.domain.action.model import PolicyViolationError
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.results import InvariantViolationError, ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatus
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 from google_work_agent.ports import (
     FreeBusyCalendar,
     GoogleWorkspaceErrorCode,
@@ -527,7 +527,7 @@ def _prepare_calendar_feasibility_action(
     save = SaveWritePlanService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
     )
-    publish = PublishWritePlanService(
+    publish = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
     )
     save(
@@ -627,7 +627,7 @@ def _prepare_write_plan(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -761,7 +761,7 @@ def _prepare_mismatch(*, write_database: Path, gateway: FakeGoogleGateway, suffi
             action_id=f"action-{suffix}",
             attempt_id=f"attempt-{suffix}",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -894,7 +894,7 @@ def _prepare_effect_write_plan(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -1007,9 +1007,32 @@ def _mark_effect_unknown(
             action_id=f"action-{suffix}",
             attempt_id=f"attempt-{suffix}",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=error.code.value,
             error_detail=str(error),
+        )
+    )
+
+
+def _begin_claimed_action(
+    *,
+    write_database: Path,
+    clock: FakeClockPort,
+    claimed: WriteActionResponse,
+) -> None:
+    payload = read_claim_token(
+        claimed.claim_token or "",
+        signing_secret="phase-e-secret",
+    )
+    BeginExecutionAttemptHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        BeginExecutionAttemptCommand(
+            command_id=f"begin-execution-attempt:{payload['attempt_id']}",
+            request_hash=calculate_canonical_json_hash(payload),
+            action_id=claimed.action_id,
+            claim_payload=payload,
         )
     )
 
@@ -1113,7 +1136,7 @@ def _prepare_update_claimed_action(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -1190,7 +1213,7 @@ def _prepare_update_claimed_action(
             idempotency_key="y4" * 32,
         )
     )
-    return claim_service(
+    claimed = claim_service(
         ClaimWriteActionCommand(
             command_id=f"claim-{suffix}",
             request_hash="y5" * 32,
@@ -1201,6 +1224,8 @@ def _prepare_update_claimed_action(
             nonce=f"nonce-{suffix}",
         )
     )
+    _begin_claimed_action(write_database=write_database, clock=clock, claimed=claimed)
+    return claimed
 
 
 def _expected_task_projection(

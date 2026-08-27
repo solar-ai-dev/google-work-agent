@@ -15,8 +15,8 @@ from tests.integration.persistence.test_write_actions import (
     InvariantViolationError,
     Path,
     QueryService,
+    RequireReauthHandler,
     RequireWriteReauthCommand,
-    RequireWriteReauthService,
     SaveWritePlanCommand,
     SaveWritePlanService,
     WriteActionDraft,
@@ -37,7 +37,7 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     del fixture_gateway
     clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth")
-    request_service = RequireWriteReauthService(
+    request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -66,7 +66,7 @@ def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
     del fixture_gateway
     clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth-mcp")
-    request_service = RequireWriteReauthService(
+    request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -126,7 +126,7 @@ def test_action_risk_defaults_to_empty_object_on_insert(write_database: Path) ->
 def test_action_risk_round_trips_through_repository_and_run_snapshot(
     write_database: Path,
 ) -> None:
-    risk = {"z": ["경고", {"matched": True}], "a": 1}
+    risk = {"z": ["寃쎄퀬", {"matched": True}], "a": 1}
     _prepare_write_plan(
         write_database=write_database,
         clock=FakeClockPort(1000),
@@ -156,7 +156,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
         row = connection.execute(
             "SELECT risk_json FROM actions WHERE id = 'action-risk-roundtrip';"
         ).fetchone()
-        assert str(row["risk_json"]) == '{"a":1,"z":["경고",{"matched":true}]}'
+        assert str(row["risk_json"]) == '{"a":1,"z":["寃쎄퀬",{"matched":true}]}'
     finally:
         connection.close()
 

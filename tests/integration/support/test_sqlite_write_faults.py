@@ -11,6 +11,7 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
@@ -22,7 +23,6 @@ from google_work_agent.application.write_execution_contracts import (
     StoreWriteActionSuccessCommand,
 )
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -121,7 +121,7 @@ def test_store_write_success_fault_rolls_back_receipt_trace_resource_and_action_
                 action_id="action-fault",
                 attempt_id="attempt-fault",
                 expected_action_version=2,
-                expected_attempt_version=0,
+                expected_attempt_version=1,
                 snapshot=executed.snapshot,
             )
         )
@@ -153,8 +153,9 @@ def test_store_write_success_fault_rolls_back_receipt_trace_resource_and_action_
         ).fetchone()
         assert action_row["status"] == "EXECUTING"
         assert action_row["version"] == 2
-        assert attempt_row["status"] == "CLAIMED"
-        assert attempt_row["version"] == 0
+        # BeginExecutionAttempt commits before connector Write/StoreSuccess.
+        assert attempt_row["status"] == "EXECUTING"
+        assert attempt_row["version"] == 1
         assert tuple(counts) == (0, 0, 0)
     finally:
         connection.close()
@@ -177,7 +178,7 @@ def _prepare_claimed_write_action(database_path: Path, clock: FakeClockPort) -> 
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
     )

@@ -28,7 +28,7 @@ from google_work_agent.application.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
@@ -36,9 +36,11 @@ from google_work_agent.domain.canonical import (
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 
 def persist_reserved_corrective_write_plan(
@@ -104,11 +106,13 @@ def persist_reserved_corrective_write_plan(
         publish_receipt = unit_of_work.command_receipts.get_by_command_id(publish_command_id)
 
         if (
-            current_plan.status is PlanStatus.WAITING_APPROVAL
-            and current_run.status is RunStatus.WAITING_APPROVAL
+            current_plan.status is PlanStatusV1.WAITING_APPROVAL
+            and current_run.status is RunStatusV1.WAITING_APPROVAL
         ):
             use_durable_continuation = True
-        elif current_plan.status is PlanStatus.DRAFT and current_run.status is RunStatus.PLANNING:
+        elif (
+            current_plan.status is PlanStatusV1.DRAFT and current_run.status is RunStatusV1.PLANNING
+        ):
             if existing_actions:
                 use_durable_continuation = True
             else:
@@ -273,8 +277,8 @@ def _continue_durable_corrective_write_plan(
     )
 
     if (
-        proof["run_status"] is RunStatus.WAITING_APPROVAL
-        and proof["plan_status"] is PlanStatus.WAITING_APPROVAL
+        proof["run_status"] is RunStatusV1.WAITING_APPROVAL
+        and proof["plan_status"] is PlanStatusV1.WAITING_APPROVAL
     ):
         return reserved_plan.id
 
@@ -333,8 +337,8 @@ def _build_durable_materialization_proof(
         if latest.id != reserved_plan.id or latest.revision_no != reserved_plan.revision_no:
             raise ValueError("corrective destination is no longer the latest Plan revision")
         valid_status_pairs = {
-            (RunStatus.PLANNING, PlanStatus.DRAFT),
-            (RunStatus.WAITING_APPROVAL, PlanStatus.WAITING_APPROVAL),
+            (RunStatusV1.PLANNING, PlanStatusV1.DRAFT),
+            (RunStatusV1.WAITING_APPROVAL, PlanStatusV1.WAITING_APPROVAL),
         }
         if (current_run.status, current_plan.status) not in valid_status_pairs:
             raise ValueError(
@@ -486,7 +490,7 @@ def _build_durable_materialization_proof(
         )
         publish_receipt = unit_of_work.command_receipts.get_by_command_id(publish_command_id)
 
-        if current_run.status is RunStatus.PLANNING and current_plan.status is PlanStatus.DRAFT:
+        if current_run.status is RunStatusV1.PLANNING and current_plan.status is PlanStatusV1.DRAFT:
             if publish_receipt is not None:
                 raise ValueError(
                     "materialized corrective DRAFT has an unexpected durable Publish receipt"
@@ -688,7 +692,7 @@ def _require_applied_publish_receipt(
     if (
         payload.get("applied") is not True
         or payload.get("plan_id") != plan_id
-        or payload.get("plan_status") != PlanStatus.WAITING_APPROVAL.value
+        or payload.get("plan_status") != PlanStatusV1.WAITING_APPROVAL.value
     ):
         raise ValueError("corrective Publish receipt does not match durable Plan state")
 
@@ -709,7 +713,7 @@ def _validate_persisted_materialization(
     if (
         plan.run_id != run_id
         or plan.summary_text != summary_text
-        or plan.status not in {PlanStatus.DRAFT, PlanStatus.WAITING_APPROVAL}
+        or plan.status not in {PlanStatusV1.DRAFT, PlanStatusV1.WAITING_APPROVAL}
     ):
         raise ValueError("persisted corrective Plan identity/summary drifted")
 
@@ -743,7 +747,7 @@ def _validate_persisted_materialization(
             or persisted_action.recovery_policy != entry.recovery_policy.value
             or persisted_action.target_resource_ref_id
             != target_resource_ids[candidate["action_id"]]
-            or persisted_action.status != ActionStatus.PROPOSED.value
+            or persisted_action.status != ActionStatusV1.PROPOSED.value
             or persisted_action.version != 0
             or persisted_action.arguments_hash
             != calculate_canonical_json_hash(candidate["arguments"])

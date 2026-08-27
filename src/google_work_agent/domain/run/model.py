@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-class RunStatus(StrEnum):
+class RunStatusV1(StrEnum):
     CREATED = "CREATED"
     ANALYZING = "ANALYZING"
     RETRIEVING = "RETRIEVING"
@@ -28,7 +28,7 @@ class RunStatus(StrEnum):
 class Run:
     id: str
     conversation_id: str
-    status: RunStatus
+    status: RunStatusV1
     version: int
     started_at_ms: int
     finished_at_ms: int | None
@@ -43,7 +43,7 @@ class RunCreate:
     id: str
     conversation_id: str
     entry_mode: str
-    status: RunStatus
+    status: RunStatusV1
     langgraph_thread_id: str
     requested_mode: str
     actual_runtime: str | None
@@ -73,38 +73,38 @@ class RunCommand(StrEnum):
 
 TERMINAL_RUN_STATUSES = frozenset(
     {
-        RunStatus.COMPLETED,
-        RunStatus.CANCELLED,
-        RunStatus.FAILED,
-        RunStatus.BLOCKED,
+        RunStatusV1.COMPLETED,
+        RunStatusV1.CANCELLED,
+        RunStatusV1.FAILED,
+        RunStatusV1.BLOCKED,
     }
 )
 
 PREEMPTING_RUN_STATUSES = TERMINAL_RUN_STATUSES | frozenset(
     {
-        RunStatus.CANCEL_REQUESTED,
-        RunStatus.REAUTH_REQUIRED,
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.CANCEL_REQUESTED,
+        RunStatusV1.REAUTH_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
     }
 )
 
 
-def is_terminal_run_status(status: RunStatus) -> bool:
+def is_terminal_run_status(status: RunStatusV1) -> bool:
     return status in TERMINAL_RUN_STATUSES
 
 
-def is_preempting_run_status(status: RunStatus) -> bool:
+def is_preempting_run_status(status: RunStatusV1) -> bool:
     return status in PREEMPTING_RUN_STATUSES
 
 
-def next_allowed_run_commands(current_status: RunStatus) -> tuple[RunCommand, ...]:
+def next_allowed_run_commands(current_status: RunStatusV1) -> tuple[RunCommand, ...]:
     """Project exact Run-owner commands without invoking persistence or adapters."""
     allowed: list[RunCommand] = []
-    if current_status is RunStatus.CREATED:
+    if current_status is RunStatusV1.CREATED:
         allowed.append(RunCommand.START_ANALYSIS)
-    if current_status in {RunStatus.ANALYZING, RunStatus.PLANNING}:
+    if current_status in {RunStatusV1.ANALYZING, RunStatusV1.PLANNING}:
         allowed.append(RunCommand.BEGIN_RETRIEVAL)
-    if current_status in {RunStatus.ANALYZING, RunStatus.RETRIEVING}:
+    if current_status in {RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING}:
         allowed.append(RunCommand.BEGIN_PLANNING)
     if current_status not in TERMINAL_RUN_STATUSES:
         allowed.append(RunCommand.REQUEST_CANCEL)
@@ -116,7 +116,7 @@ class RunTransitionRejected(ValueError):
 
 
 def require_status(
-    current_status: RunStatus, allowed: frozenset[RunStatus], operation: str
+    current_status: RunStatusV1, allowed: frozenset[RunStatusV1], operation: str
 ) -> None:
     if current_status not in allowed:
         allowed_text = ", ".join(sorted(status.value for status in allowed))

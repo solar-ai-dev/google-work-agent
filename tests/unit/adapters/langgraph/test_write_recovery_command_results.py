@@ -7,11 +7,11 @@ from google_work_agent.application.execution_phase import WriteExecutionPhaseCoo
 from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 class _Phase:
@@ -37,7 +37,7 @@ class _Phase:
         return self.verify_response
 
 
-def _action(status: ActionStatus) -> ActionRecord:
+def _action(status: ActionStatusV1) -> ActionRecord:
     return ActionRecord(
         id="action-1",
         plan_id="plan-1",
@@ -65,13 +65,13 @@ def _plan() -> PlanRecord:
         id="plan-1",
         run_id="run-1",
         revision_no=1,
-        status=PlanStatus.ACTIVE,
+        status=PlanStatusV1.ACTIVE,
         summary_text="write",
         created_at_ms=1,
     )
 
 
-def _action_response(*, applied: bool, status: ActionStatus) -> WriteActionResponse:
+def _action_response(*, applied: bool, status: ActionStatusV1) -> WriteActionResponse:
     return WriteActionResponse(
         applied=applied,
         result_code=(
@@ -81,13 +81,13 @@ def _action_response(*, applied: bool, status: ActionStatus) -> WriteActionRespo
         action_status=status.value,
         action_version=3,
         next_allowed_commands=(
-            ("RECOVER_EXISTING_RESULT",) if status is ActionStatus.UNKNOWN_RESULT else ()
+            ("RECOVER_EXISTING_RESULT",) if status is ActionStatusV1.UNKNOWN_RESULT else ()
         ),
         attempt_id="attempt-1",
     )
 
 
-def _completion_response(*, applied: bool, status: RunStatus) -> RunTransitionResponse:
+def _completion_response(*, applied: bool, status: RunStatusV1) -> RunTransitionResponse:
     return RunTransitionResponse(
         applied=applied,
         result_code=(
@@ -110,7 +110,7 @@ def _coordinator(
     return WriteRecoveryCoordinator(
         latest_unknown_action=(
             (lambda _run_id: (action, "attempt-1", 0))
-            if action.status == ActionStatus.UNKNOWN_RESULT.value
+            if action.status == ActionStatusV1.UNKNOWN_RESULT.value
             else (lambda _run_id: None)
         ),
         execution_phase=cast(WriteExecutionPhaseCoordinator, phase),
@@ -123,9 +123,9 @@ def _coordinator(
 
 
 def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() -> None:
-    action = _action(ActionStatus.UNKNOWN_RESULT)
+    action = _action(ActionStatusV1.UNKNOWN_RESULT)
     phase = _Phase(
-        recover_response=_action_response(applied=False, status=ActionStatus.UNKNOWN_RESULT)
+        recover_response=_action_response(applied=False, status=ActionStatusV1.UNKNOWN_RESULT)
     )
     completion_calls = 0
 
@@ -150,8 +150,8 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
 
 
 def test_begin_verification_applied_false_stops_verification_and_completion() -> None:
-    action = _action(ActionStatus.EXECUTED)
-    phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatus.VERIFIED))
+    action = _action(ActionStatusV1.EXECUTED)
+    phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0
 
     def completion(_plan_id: str, _run_id: str):
@@ -162,7 +162,7 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
     begin_conflict = CommandResult(
         applied=False,
         result_code=ResultCode.STATE_CONFLICT,
-        current_status=RunStatus.RECOVERY_REQUIRED,
+        current_status=RunStatusV1.RECOVERY_REQUIRED,
         current_version=5,
         next_allowed_commands=(),
         conflict_detail="already reconciled elsewhere",
@@ -182,8 +182,8 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
 
 
 def test_verification_applied_false_stops_completion_and_additional_verification() -> None:
-    action = _action(ActionStatus.EXECUTED)
-    phase = _Phase(verify_response=_action_response(applied=False, status=ActionStatus.EXECUTED))
+    action = _action(ActionStatusV1.EXECUTED)
+    phase = _Phase(verify_response=_action_response(applied=False, status=ActionStatusV1.EXECUTED))
     completion_calls = 0
 
     def completion(_plan_id: str, _run_id: str):
@@ -206,14 +206,14 @@ def test_verification_applied_false_stops_completion_and_additional_verification
 
 
 def test_completion_applied_false_is_not_reported_restart_reconciled() -> None:
-    action = _action(ActionStatus.EXECUTED)
-    phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatus.VERIFIED))
+    action = _action(ActionStatusV1.EXECUTED)
+    phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0
 
     def completion(_plan_id: str, _run_id: str) -> RunTransitionResponse:
         nonlocal completion_calls
         completion_calls += 1
-        return _completion_response(applied=False, status=RunStatus.RECOVERY_REQUIRED)
+        return _completion_response(applied=False, status=RunStatusV1.RECOVERY_REQUIRED)
 
     coordinator = _coordinator(
         phase=phase,

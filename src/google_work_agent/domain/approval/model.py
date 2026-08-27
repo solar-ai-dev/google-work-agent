@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-class ApprovalStatus(StrEnum):
+class ApprovalStatusV1(StrEnum):
     ACTIVE = "ACTIVE"
     EXPIRED = "EXPIRED"
     CONSUMED = "CONSUMED"
@@ -21,7 +21,7 @@ class Approval:
     action_id: str
     approval_no: int
     action_version: int
-    status: ApprovalStatus
+    status: ApprovalStatusV1
     approved_by_account_id: str
     approved_by_display: str | None
     arguments_snapshot_json: str

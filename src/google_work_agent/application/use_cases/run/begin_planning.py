@@ -9,16 +9,16 @@ from json import dumps, loads
 
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.write_persistence import revoke_active_approvals
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import (
-    RunStatus,
+    RunStatusV1,
     RunTransitionRejected,
     next_allowed_run_commands,
 )
@@ -30,13 +30,13 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowHandoffStageV1,
 )
 
-_PUBLISHED_REENTRY = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})
+_PUBLISHED_REENTRY = frozenset({RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
 _UNRESOLVED_EXTERNAL_EFFECTS = frozenset(
     {
-        ActionStatus.EXECUTING,
-        ActionStatus.UNKNOWN_RESULT,
-        ActionStatus.EXECUTED,
-        ActionStatus.MISMATCH,
+        ActionStatusV1.EXECUTING,
+        ActionStatusV1.UNKNOWN_RESULT,
+        ActionStatusV1.EXECUTED,
+        ActionStatusV1.MISMATCH,
     }
 )
 
@@ -106,7 +106,7 @@ class BeginPlanningHandler:
         self,
         unit_of_work: UnitOfWork,
         command: BeginPlanningCommand,
-        status: RunStatus,
+        status: RunStatusV1,
         version: int,
         now_ms: int,
     ) -> BeginPlanningResult:
@@ -121,12 +121,12 @@ class BeginPlanningHandler:
             else None
         )
         actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
-        action_statuses = tuple(ActionStatus(action.status) for action in actions)
+        action_statuses = tuple(ActionStatusV1(action.status) for action in actions)
         active_approvals = sum(
             1
             for action in actions
             if (approval := unit_of_work.approvals.get_active_by_action(action.id)) is not None
-            and approval.status is ApprovalStatus.ACTIVE
+            and approval.status is ApprovalStatusV1.ACTIVE
         )
         unresolved_effects = sum(
             1 for action_status in action_statuses if action_status in _UNRESOLVED_EXTERNAL_EFFECTS
@@ -179,7 +179,7 @@ class BeginPlanningHandler:
                 unit_of_work.plans.update_if_status(
                     plan.id,
                     expected_status=plan.status,
-                    next_status=PlanStatus.SUPERSEDED,
+                    next_status=PlanStatusV1.SUPERSEDED,
                 )
                 is None
             ):
@@ -208,7 +208,7 @@ class BeginPlanningHandler:
             plan
             if plan is not None
             and plan.run_id == command.run_id
-            and plan.status is PlanStatus.WAITING_APPROVAL
+            and plan.status is PlanStatusV1.WAITING_APPROVAL
             else None
         )
 
@@ -292,7 +292,7 @@ class BeginPlanningHandler:
             return _result(
                 False,
                 ResultCode.DUPLICATE_COMMAND,
-                RunStatus.CREATED if run is None else run.status,
+                RunStatusV1.CREATED if run is None else run.status,
                 0 if run is None else run.version,
                 "command_id already exists with a different request_hash",
             )
@@ -306,7 +306,7 @@ class BeginPlanningHandler:
 def _result(
     applied: bool,
     result_code: ResultCode,
-    status: RunStatus,
+    status: RunStatusV1,
     version: int,
     conflict_detail: str | None = None,
     handoff_id: str | None = None,

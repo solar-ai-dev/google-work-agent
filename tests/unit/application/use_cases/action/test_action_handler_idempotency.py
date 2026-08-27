@@ -16,7 +16,7 @@ from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 
@@ -49,7 +49,7 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
                 "applied": True,
                 "result_code": ResultCode.TRANSITION_APPLIED.value,
                 "action_id": "action-1",
-                "action_status": ActionStatus.MODIFIED.value,
+                "action_status": ActionStatusV1.MODIFIED.value,
                 "action_version": 2,
                 "next_allowed_commands": [],
                 "request_replayed": False,
@@ -87,7 +87,7 @@ def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> No
                 "applied": True,
                 "result_code": ResultCode.TRANSITION_APPLIED.value,
                 "action_id": "action-1",
-                "action_status": ActionStatus.REJECTED.value,
+                "action_status": ActionStatusV1.REJECTED.value,
                 "action_version": 2,
                 "next_allowed_commands": [],
                 "request_replayed": False,
@@ -119,7 +119,7 @@ def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> 
                 "applied": True,
                 "result_code": ResultCode.TRANSITION_APPLIED.value,
                 "action_id": "action-1",
-                "action_status": ActionStatus.MODIFIED.value,
+                "action_status": ActionStatusV1.MODIFIED.value,
                 "action_version": 2,
                 "next_allowed_commands": [],
                 "approval_id": None,

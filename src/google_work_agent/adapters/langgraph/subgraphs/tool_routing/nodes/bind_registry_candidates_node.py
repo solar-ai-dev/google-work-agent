@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.semantic_candidate_projection import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.semantic_candidate_projection import (  # noqa: E501
     project_semantic_candidate_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
 )
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def bind_registry_candidates_node(

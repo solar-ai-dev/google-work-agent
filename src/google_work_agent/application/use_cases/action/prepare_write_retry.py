@@ -12,13 +12,13 @@ from google_work_agent.application.write_persistence import (
     require_plan_review,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.prepare_write_retry import (
     transition_prepare_write_retry,
 )
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -84,7 +84,7 @@ class PrepareWriteRetryHandler:
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
-            if plan.status is PlanStatus.SUPERSEDED:
+            if plan.status is PlanStatusV1.SUPERSEDED:
                 return self._finish(
                     unit_of_work,
                     command,
@@ -97,7 +97,7 @@ class PrepareWriteRetryHandler:
                 )
 
             preview = transition_prepare_write_retry(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_action_version,
                 effect_type=EffectType(action.effect_type),
@@ -122,7 +122,7 @@ class PrepareWriteRetryHandler:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -162,7 +162,7 @@ class PrepareWriteRetryHandler:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_RETRY_PREPARED",
-                    status=ActionStatus.MODIFIED.value,
+                    status=ActionStatusV1.MODIFIED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {
@@ -278,7 +278,7 @@ class PrepareWriteRetryHandler:
             next_allowed_commands=tuple(
                 item.value
                 for item in next_allowed_action_commands(
-                    ActionStatus(action.status), effect_type=EffectType(action.effect_type)
+                    ActionStatusV1(action.status), effect_type=EffectType(action.effect_type)
                 )
             ),
             conflict_detail=conflict_detail,

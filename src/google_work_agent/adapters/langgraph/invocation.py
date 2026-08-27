@@ -12,7 +12,7 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     provider_dispatch_execution_scope,
 )
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     WorkflowCancelRequest,
     WorkflowInvocationResult,
@@ -212,7 +212,7 @@ class WorkflowInvocationCoordinator:
             return self._recovery_node(values)
         if not allow_reauth_resume:
             return None
-        if self._current_run_status(run_id) != RunStatus.REAUTH_REQUIRED.value:
+        if self._current_run_status(run_id) != RunStatusV1.REAUTH_REQUIRED.value:
             return None
         execution_summary = values.get("execution_summary")
         if not isinstance(execution_summary, Mapping):
@@ -272,16 +272,16 @@ class WorkflowInvocationCoordinator:
     ) -> WorkflowInvocationResult:
         run_status = self._current_run_status(run_id)
         terminal_statuses = {
-            RunStatus.COMPLETED.value,
-            RunStatus.BLOCKED.value,
-            RunStatus.FAILED.value,
-            RunStatus.CANCELLED.value,
+            RunStatusV1.COMPLETED.value,
+            RunStatusV1.BLOCKED.value,
+            RunStatusV1.FAILED.value,
+            RunStatusV1.CANCELLED.value,
         }
         if run_status in terminal_statuses:
             outcome = WorkflowOutcome.COMPLETED
-        elif run_status == RunStatus.RECOVERY_REQUIRED.value:
+        elif run_status == RunStatusV1.RECOVERY_REQUIRED.value:
             outcome = WorkflowOutcome.RECOVERY_REQUIRED
-        elif run_status == RunStatus.REAUTH_REQUIRED.value:
+        elif run_status == RunStatusV1.REAUTH_REQUIRED.value:
             outcome = WorkflowOutcome.ACCEPTED
         else:
             outcome = WorkflowOutcome.ACCEPTED

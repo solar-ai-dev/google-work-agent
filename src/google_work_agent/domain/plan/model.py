@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-class PlanStatus(StrEnum):
+class PlanStatusV1(StrEnum):
     DRAFT = "DRAFT"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     ACTIVE = "ACTIVE"
@@ -26,7 +26,7 @@ class Plan:
     id: str
     run_id: str
     revision_no: int
-    status: PlanStatus
+    status: PlanStatusV1
     summary_text: str | None
     created_at_ms: int
     review_status: PlanReviewStatus = PlanReviewStatus.PASSED

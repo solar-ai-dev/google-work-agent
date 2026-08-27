@@ -22,7 +22,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository
     SQLiteAuditRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
-    SQLiteCommandReceiptRepository,
+    SqliteCommandReceiptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SQLiteEvidenceRepository,
@@ -54,7 +54,7 @@ __all__ = [
     "SQLiteActionRepository",
     "SQLiteApprovalRepository",
     "SQLiteAuditRepository",
-    "SQLiteCommandReceiptRepository",
+    "SqliteCommandReceiptRepository",
     "SQLiteEvidenceRepository",
     "SQLiteExecutionAttemptRepository",
     "SQLitePlanRepository",

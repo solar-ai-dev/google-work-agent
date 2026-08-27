@@ -41,7 +41,7 @@ from google_work_agent.application.orchestration.state_artifacts import (
 )
 from google_work_agent.application.schema_validation import validate_output_schema
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import SignedToolRegistry
+from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {

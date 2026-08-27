@@ -89,9 +89,7 @@ def _handler(tmp_path: Path, publisher: FakePublisher) -> GetEventReplayHandler:
 
 def test_replay_returns_events_without_snapshot_fallback(tmp_path: Path) -> None:
     publisher = FakePublisher()
-    result = _handler(tmp_path, publisher)(
-        GetEventReplayQuery(run_id="run-1", after_event_id="6")
-    )
+    result = _handler(tmp_path, publisher)(GetEventReplayQuery(run_id="run-1", after_event_id="6"))
     assert result.run_exists is True
     assert result.snapshot_fallback is False
     assert result.terminate_stream is False

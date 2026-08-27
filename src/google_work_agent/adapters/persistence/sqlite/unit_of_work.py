@@ -20,7 +20,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository
     SQLiteAuditRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
-    SQLiteCommandReceiptRepository,
+    SqliteCommandReceiptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.conversation_repository import (
     SqliteConversationRepository,
@@ -75,7 +75,7 @@ class SqliteUnitOfWork:
         self.conversations = SqliteConversationRepository(connection)
         self.runs = SQLiteRunRepository(connection)
         self.messages = SqliteMessageRepository(connection)
-        self.command_receipts = SQLiteCommandReceiptRepository(connection)
+        self.command_receipts = SqliteCommandReceiptRepository(connection)
         self.plans = SQLitePlanRepository(connection)
         self.actions = SQLiteActionRepository(connection)
         self.resource_refs = SqliteResourceRefRepository(connection)

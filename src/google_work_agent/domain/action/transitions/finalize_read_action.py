@@ -1,17 +1,17 @@
 """Finalize a completed READ Action."""
 
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.results import CommandResult, ResultCode
 
 
 def transition_finalize_read_action(
-    current_status: ActionStatus,
+    current_status: ActionStatusV1,
     current_version: int,
     expected_version: int,
     *,
     effect_type: EffectType,
-) -> CommandResult[ActionStatus, ActionCommand]:
-    if effect_type is not EffectType.READ or current_status is not ActionStatus.EXECUTED:
+) -> CommandResult[ActionStatusV1, ActionCommand]:
+    if effect_type is not EffectType.READ or current_status is not ActionStatusV1.EXECUTED:
         return CommandResult(
             False,
             ResultCode.STATE_CONFLICT,
@@ -30,5 +30,5 @@ def transition_finalize_read_action(
             "expected_version does not match current_version",
         )
     return CommandResult(
-        True, ResultCode.TRANSITION_APPLIED, ActionStatus.VERIFIED, current_version + 1, ()
+        True, ResultCode.TRANSITION_APPLIED, ActionStatusV1.VERIFIED, current_version + 1, ()
     )

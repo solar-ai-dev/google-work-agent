@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import inspect
 
+from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
+    ResolveMismatchRecoveryHandler,
+)
+
 import google_work_agent.adapters.langgraph.corrective_plan_persistence as corrective_persistence
 import google_work_agent.adapters.langgraph.main.plan_persistence as plan_persistence
 import google_work_agent.application.run_terminal as run_terminal
@@ -13,9 +17,6 @@ from google_work_agent.adapters.langgraph.main.workflow import (
 )
 from google_work_agent.adapters.persistence.corrective_plan_repository import (
     CorrectiveAwareSQLitePlanRepository,
-)
-from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
-    ResolveMismatchRecoveryHandler,
 )
 
 
@@ -61,16 +62,14 @@ def test_corrective_resume_retries_pending_non_interrupt_task_and_reconciles_pub
     assert "if snapshot.next:" in source
     assert 'state.get("__reserved_corrective_plan_id__") != plan.id' in source
     assert "self._graph.invoke(None, config=config)" in source
-    assert "RunStatus.WAITING_APPROVAL" in source
-    assert "PlanStatus.WAITING_APPROVAL" in source
+    assert "RunStatusV1.WAITING_APPROVAL" in source
+    assert "PlanStatusV1.WAITING_APPROVAL" in source
     assert '"__reserved_corrective_plan_id__": None' in source
     assert "WorkflowPhase.WAITING_APPROVAL.value" in source
 
 
 def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -> None:
-    ordinary_source = inspect.getsource(
-        plan_persistence.PlanPersistenceMixin._persist_write_plan
-    )
+    ordinary_source = inspect.getsource(plan_persistence.PlanPersistenceMixin._persist_write_plan)
     corrective_source = inspect.getsource(corrective_persistence)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)
     repository_source = inspect.getsource(CorrectiveAwareSQLitePlanRepository.insert_draft)

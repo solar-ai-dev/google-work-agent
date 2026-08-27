@@ -6,7 +6,7 @@ from typing import cast
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateKindV1,
     ExecutionReconciliationCandidateV1,
@@ -29,7 +29,7 @@ class SQLiteExecutionAttemptRepository:
             id=str(r["id"]),
             approval_id=str(r["approval_id"]),
             attempt_no=int(r["attempt_no"]),
-            status=ExecutionAttemptStatus(str(r["status"])),
+            status=ExecutionAttemptStatusV1(str(r["status"])),
             version=int(r["version"]),
             result_resource_ref_id=None
             if r["result_resource_ref_id"] is None
@@ -85,8 +85,8 @@ class SQLiteExecutionAttemptRepository:
         attempt_id: str,
         *,
         expected_version: int,
-        expected_status: ExecutionAttemptStatus,
-        status: ExecutionAttemptStatus,
+        expected_status: ExecutionAttemptStatusV1,
+        status: ExecutionAttemptStatusV1,
         error_code: str | None,
         error_detail_json: str | None,
         result_resource_ref_id: str | None,

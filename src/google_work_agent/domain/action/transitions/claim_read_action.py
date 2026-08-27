@@ -1,16 +1,16 @@
 """Claim a READ Action without Approval or ExecutionAttempt."""
 
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.results import CommandResult, ResultCode
 
 
 def transition_claim_read_action(
-    current_status: ActionStatus,
+    current_status: ActionStatusV1,
     current_version: int,
     expected_version: int,
     *,
     effect_type: EffectType,
-) -> CommandResult[ActionStatus, ActionCommand]:
+) -> CommandResult[ActionStatusV1, ActionCommand]:
     if effect_type is not EffectType.READ:
         return CommandResult(
             False,
@@ -29,7 +29,7 @@ def transition_claim_read_action(
             (),
             "expected_version does not match current_version",
         )
-    if current_status is not ActionStatus.PROPOSED:
+    if current_status is not ActionStatusV1.PROPOSED:
         return CommandResult(
             False,
             ResultCode.STATE_CONFLICT,
@@ -39,5 +39,5 @@ def transition_claim_read_action(
             "ClaimReadAction requires PROPOSED",
         )
     return CommandResult(
-        True, ResultCode.TRANSITION_APPLIED, ActionStatus.EXECUTING, current_version + 1, ()
+        True, ResultCode.TRANSITION_APPLIED, ActionStatusV1.EXECUTING, current_version + 1, ()
     )

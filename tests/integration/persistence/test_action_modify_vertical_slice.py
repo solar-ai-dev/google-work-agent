@@ -16,6 +16,7 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.write_action_mutation import ModifyWriteActionService
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
@@ -29,7 +30,6 @@ from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
 )
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -38,14 +38,14 @@ from google_work_agent.application.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
@@ -111,7 +111,7 @@ def _save_and_publish_task_action(
     save_service = SaveWritePlanService(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     save_response = save_service(
@@ -252,15 +252,18 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
     assert blocked.conflict_detail == ("plan review must pass after the latest action modification")
 
     with unit_of_work_factory() as unit_of_work:
-        assert unit_of_work.plans.update_review_if_version_and_status(
-            "plan-1",
-            expected_review_version=1,
-            expected_review_statuses=frozenset(PlanReviewStatus),
-            values={
-                "review_status": PlanReviewStatus.PASSED,
-                "review_disposition": "PASS",
-            },
-        ) is not None
+        assert (
+            unit_of_work.plans.update_review_if_version_and_status(
+                "plan-1",
+                expected_review_version=1,
+                expected_review_statuses=frozenset(PlanReviewStatus),
+                values={
+                    "review_status": PlanReviewStatus.PASSED,
+                    "review_disposition": "PASS",
+                },
+            )
+            is not None
+        )
         unit_of_work.commit()
 
     approved = approve_service(
@@ -381,7 +384,7 @@ def test_approved_action_modify_revokes_active_approval(modify_database: Path) -
         stale_approval = unit_of_work.approvals.get_by_id("approval-1")
         active_approval = unit_of_work.approvals.get_active_by_action("action-1")
     assert stale_approval is not None
-    assert stale_approval.status is ApprovalStatus.REVOKED
+    assert stale_approval.status is ApprovalStatusV1.REVOKED
     assert active_approval is None
 
     # The stale (revoked) approval must never authorize a claim of the
@@ -745,8 +748,8 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
         unit_of_work.execution_attempts.update_if_version_and_status(
             "attempt-failed-modify",
             expected_version=0,
-            expected_status=ExecutionAttemptStatus.CLAIMED,
-            status=ExecutionAttemptStatus.FAILED,
+            expected_status=ExecutionAttemptStatusV1.CLAIMED,
+            status=ExecutionAttemptStatusV1.FAILED,
             error_code="NOT_SENT",
             error_detail_json="{}",
             result_resource_ref_id=None,
@@ -756,8 +759,8 @@ def test_failed_action_is_not_modifiable_through_this_endpoint(modify_database: 
         unit_of_work.actions.update_if_version_and_status(
             "action-1",
             expected_version=2,
-            expected_status=ActionStatus.EXECUTING,
-            next_status=ActionStatus.FAILED,
+            expected_status=ActionStatusV1.EXECUTING,
+            next_status=ActionStatusV1.FAILED,
             updated_at_ms=clock.now_ms(),
         )
         unit_of_work.commit()
@@ -894,7 +897,7 @@ def test_semantically_identical_patch_on_approved_action_does_not_revoke_approva
     assert action.status == "APPROVED"
     assert action.version == 1
     assert approval is not None
-    assert approval.status is ApprovalStatus.ACTIVE
+    assert approval.status is ApprovalStatusV1.ACTIVE
     assert active_approval is not None
     assert active_approval.id == "approval-noop-1"
 
@@ -916,7 +919,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     save_service = SaveWritePlanService(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     approve_service = ApproveWriteActionService(
@@ -1041,7 +1044,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     assert dependent_action.version == 1
     assert dependent_active_approval is None
     assert dependent_stale_approval is not None
-    assert dependent_stale_approval.status is ApprovalStatus.REVOKED
+    assert dependent_stale_approval.status is ApprovalStatusV1.REVOKED
     cascade_events = [
         event
         for event in dependent_audit_events

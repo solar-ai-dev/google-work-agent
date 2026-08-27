@@ -15,9 +15,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import DeliveryCertainty, UUIDPort
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
@@ -116,9 +116,9 @@ class ReconcileInflightExecutionsHandler:
                 actions = () if plan is None else unit_of_work.actions.list_by_plan(plan.id)
             stage = (
                 "CANCEL_RESOLUTION"
-                if run is not None and run.status is RunStatus.CANCEL_REQUESTED
+                if run is not None and run.status is RunStatusV1.CANCEL_REQUESTED
                 else "PREFLIGHT"
-                if any(item.status == ActionStatus.APPROVED.value for item in actions)
+                if any(item.status == ActionStatusV1.APPROVED.value for item in actions)
                 else None
             )
             return (
@@ -131,7 +131,7 @@ class ReconcileInflightExecutionsHandler:
     def _require_unknown_recovery(self, candidate: ExecutionReconciliationCandidateV1) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(candidate.run_id)
-        if run is None or run.status is RunStatus.RECOVERY_REQUIRED:
+        if run is None or run.status is RunStatusV1.RECOVERY_REQUIRED:
             return False
         command_id = (
             f"system:execution-attempt-reconcile:{candidate.execution_attempt_id}:require-recovery"

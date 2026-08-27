@@ -19,8 +19,8 @@ from google_work_agent.adapters.mcp import (
     build_manifest_payload,
     calculate_file_sha256,
 )
-from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import MCPClientPortError, MCPClientPortErrorCode
+from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
 
 
 def test_subprocess_transport_handshakes_without_fixture_google_tools(tmp_path: Path) -> None:

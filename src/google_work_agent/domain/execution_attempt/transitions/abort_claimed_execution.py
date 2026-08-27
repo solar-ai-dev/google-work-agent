@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 
 
@@ -11,19 +11,19 @@ from google_work_agent.domain.results import ResultCode
 class AbortClaimedExecutionDecision:
     applied: bool
     result_code: ResultCode
-    action_status: ActionStatus
+    action_status: ActionStatusV1
     action_version: int
-    attempt_status: ExecutionAttemptStatus
+    attempt_status: ExecutionAttemptStatusV1
     attempt_version: int
     conflict_detail: str | None = None
 
 
 def transition_abort_claimed_execution(
     *,
-    action_status: ActionStatus,
+    action_status: ActionStatusV1,
     action_version: int,
     expected_action_version: int,
-    attempt_status: ExecutionAttemptStatus,
+    attempt_status: ExecutionAttemptStatusV1,
     attempt_version: int,
     expected_attempt_version: int,
     durable_cancel_intent: bool,
@@ -41,8 +41,8 @@ def transition_abort_claimed_execution(
             "expected version does not match current version",
         )
     if (
-        action_status is not ActionStatus.EXECUTING
-        or attempt_status is not ExecutionAttemptStatus.CLAIMED
+        action_status is not ActionStatusV1.EXECUTING
+        or attempt_status is not ExecutionAttemptStatusV1.CLAIMED
     ):
         return AbortClaimedExecutionDecision(
             False,
@@ -66,8 +66,8 @@ def transition_abort_claimed_execution(
     return AbortClaimedExecutionDecision(
         True,
         ResultCode.TRANSITION_APPLIED,
-        ActionStatus.CANCELLED if durable_cancel_intent else ActionStatus.FAILED,
+        ActionStatusV1.CANCELLED if durable_cancel_intent else ActionStatusV1.FAILED,
         action_version + 1,
-        ExecutionAttemptStatus.FAILED,
+        ExecutionAttemptStatusV1.FAILED,
         attempt_version + 1,
     )

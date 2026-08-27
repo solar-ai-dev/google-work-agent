@@ -245,8 +245,7 @@ def test_recovery_has_one_canonical_writer_and_no_legacy_concrete_authority() ->
             assert ".store_context(" not in source, path
             assert ".clear_context(" not in source, path
     assert not (
-        ROOT
-        / "src/google_work_agent/application/use_cases/recovery/resolve_mismatch_recovery.py"
+        ROOT / "src/google_work_agent/application/use_cases/recovery/resolve_mismatch_recovery.py"
     ).exists()
 
 
@@ -257,7 +256,8 @@ def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None
         ROOT / "src/google_work_agent/application/use_cases/run/get_event_replay.py",
         ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation.py",
         ROOT / "src/google_work_agent/application/use_cases/conversation/get_latest_run.py",
-        ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation_history.py",
+        ROOT
+        / "src/google_work_agent/application/use_cases/conversation/get_conversation_history.py",
     )
     forbidden = ("sqlite3", "database_path", "connection_factory", ".execute(", "from_legacy")
     for path in handlers:
@@ -428,7 +428,7 @@ class Runtime:
 
 def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
     source = (USE_CASE_ROOT / "run/resume_run.py").read_text(encoding="utf-8")
-    assert '"SAFE_CHECKPOINT_RESUME": RunStatus.BLOCKED' not in source
+    assert '"SAFE_CHECKPOINT_RESUME": RunStatusV1.BLOCKED' not in source
 
 
 def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:

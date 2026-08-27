@@ -12,8 +12,8 @@ from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 class CorrectivePlanContinuationRequired(RuntimeError):
@@ -90,15 +90,15 @@ def _classify_failure_after_corrective_save(
         return _FailureDisposition.UNSAFE
 
     if (
-        proof["run_status"] is RunStatus.PLANNING
-        and proof["plan_status"] is PlanStatus.DRAFT
+        proof["run_status"] is RunStatusV1.PLANNING
+        and proof["plan_status"] is PlanStatusV1.DRAFT
         and proof["publish_receipt_present"] is False
     ):
         return _FailureDisposition.CONTINUATION_REQUIRED
 
     if (
-        proof["run_status"] is RunStatus.WAITING_APPROVAL
-        and proof["plan_status"] is PlanStatus.WAITING_APPROVAL
+        proof["run_status"] is RunStatusV1.WAITING_APPROVAL
+        and proof["plan_status"] is PlanStatusV1.WAITING_APPROVAL
     ):
         return _FailureDisposition.ALREADY_PUBLISHED
 

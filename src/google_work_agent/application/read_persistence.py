@@ -18,7 +18,7 @@ from google_work_agent.application.read_contracts import (
     SaveReadOnlyPlanResponse,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
@@ -27,37 +27,29 @@ from google_work_agent.domain.canonical import (
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.run.transitions.complete_read_only_run import (
-    transition_complete_read_only_run,
-)
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     UnitOfWork,
 )
 
 READ_ACTION_TERMINAL_STATUSES = frozenset(
     {
-        ActionStatus.VERIFIED,
-        ActionStatus.FAILED,
-        ActionStatus.BLOCKED,
-        ActionStatus.DEPENDENCY_BLOCKED,
-        ActionStatus.REJECTED,
-        ActionStatus.EXPIRED,
-        ActionStatus.MISMATCH,
+        ActionStatusV1.VERIFIED,
+        ActionStatusV1.FAILED,
     }
 )
 
 DEPENDENCY_FAILURE_STATUSES = frozenset(
     {
-        ActionStatus.FAILED,
-        ActionStatus.BLOCKED,
-        ActionStatus.DEPENDENCY_BLOCKED,
-        ActionStatus.REJECTED,
-        ActionStatus.EXPIRED,
-        ActionStatus.MISMATCH,
+        ActionStatusV1.FAILED,
+        ActionStatusV1.BLOCKED,
+        ActionStatusV1.DEPENDENCY_BLOCKED,
+        ActionStatusV1.REJECTED,
+        ActionStatusV1.EXPIRED,
+        ActionStatusV1.MISMATCH,
     }
 )
 
@@ -98,7 +90,7 @@ class _AggregateState:
 
 def action_result_response(
     action_id: str,
-    result: CommandResult[ActionStatus, ActionCommand],
+    result: CommandResult[ActionStatusV1, ActionCommand],
 ) -> ReadActionCommandResponse:
     return ReadActionCommandResponse(
         applied=bool(result.applied),
@@ -214,7 +206,7 @@ def handle_existing_save_receipt(
                 run_status=run.status.value,
                 run_version=run.version,
                 plan_id="",
-                plan_status=PlanStatus.DRAFT.value,
+                plan_status=PlanStatusV1.DRAFT.value,
                 action_ids=(),
                 conflict_detail="command_id already exists with a different request_hash",
             ),
@@ -228,7 +220,7 @@ def handle_existing_save_receipt(
     run = require_run(unit_of_work, run_id)
     plan = unit_of_work.plans.get_by_id(command.plan_id)
     if plan is None:
-        if run.status is RunStatus.PLANNING and run.version == command.expected_run_version:
+        if run.status is RunStatusV1.PLANNING and run.version == command.expected_run_version:
             return _PendingReceiptResolution(should_return=False)
         response = _recovery_required_save_response(
             run=run,
@@ -286,7 +278,7 @@ def handle_existing_publish_receipt(
                 run_status=run.status.value,
                 run_version=run.version,
                 plan_id="",
-                plan_status=PlanStatus.DRAFT.value,
+                plan_status=PlanStatusV1.DRAFT.value,
                 conflict_detail="command_id already exists with a different request_hash",
             ),
         )
@@ -298,9 +290,9 @@ def handle_existing_publish_receipt(
 
     run = require_run(unit_of_work, run_id)
     plan = require_plan(unit_of_work, command.plan_id)
-    if plan.status in {PlanStatus.ACTIVE, PlanStatus.COMPLETED} and run.status in {
-        RunStatus.EXECUTING,
-        RunStatus.COMPLETED,
+    if plan.status in {PlanStatusV1.ACTIVE, PlanStatusV1.COMPLETED} and run.status in {
+        RunStatusV1.EXECUTING,
+        RunStatusV1.COMPLETED,
     }:
         response = PublishReadOnlyPlanResponse(
             applied=True,
@@ -316,8 +308,8 @@ def handle_existing_publish_receipt(
         unit_of_work.commit()
         return _PendingReceiptResolution(should_return=True, response=response)
     if (
-        plan.status is PlanStatus.DRAFT
-        and run.status is RunStatus.PLANNING
+        plan.status is PlanStatusV1.DRAFT
+        and run.status is RunStatusV1.PLANNING
         and run.version == command.expected_run_version
     ):
         return _PendingReceiptResolution(should_return=False)
@@ -368,7 +360,7 @@ def handle_existing_claim_receipt(
 
     action = require_action(unit_of_work, action_id)
     if (
-        action.status != ActionStatus.PROPOSED.value
+        action.status != ActionStatusV1.PROPOSED.value
         and action.version >= command.expected_version + 1
     ):
         response = ReadActionCommandResponse(
@@ -382,7 +374,10 @@ def handle_existing_claim_receipt(
         finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
         unit_of_work.commit()
         return _PendingReceiptResolution(should_return=True, response=response)
-    if action.status == ActionStatus.PROPOSED.value and action.version == command.expected_version:
+    if (
+        action.status == ActionStatusV1.PROPOSED.value
+        and action.version == command.expected_version
+    ):
         return _PendingReceiptResolution(should_return=False)
 
     response = ReadActionCommandResponse(
@@ -421,7 +416,7 @@ def handle_existing_complete_receipt(
 
     action = require_action(unit_of_work, action_id)
     plan = require_plan(unit_of_work, action.plan_id)
-    if action.status in {ActionStatus.EXECUTED.value, ActionStatus.VERIFIED.value}:
+    if action.status in {ActionStatusV1.EXECUTED.value, ActionStatusV1.VERIFIED.value}:
         if _complete_projection_matches(
             unit_of_work=unit_of_work,
             run_id=plan.run_id,
@@ -446,7 +441,10 @@ def handle_existing_complete_receipt(
             completed_at_ms=completed_at_ms,
             detail="complete_read_action detected partial projection persistence",
         )
-    if action.status == ActionStatus.EXECUTING.value and action.version == command.expected_version:
+    if (
+        action.status == ActionStatusV1.EXECUTING.value
+        and action.version == command.expected_version
+    ):
         if _complete_projection_matches(
             unit_of_work=unit_of_work,
             run_id=plan.run_id,
@@ -496,7 +494,7 @@ def handle_existing_finalize_receipt(
 
     action = require_action(unit_of_work, action_id)
     plan = require_plan(unit_of_work, action.plan_id)
-    if action.status == ActionStatus.VERIFIED.value:
+    if action.status == ActionStatusV1.VERIFIED.value:
         aggregate = _inspect_read_plan_state(unit_of_work, plan.id)
         if _plan_and_run_match_reconciled_state(unit_of_work, plan, aggregate):
             response = ReadActionCommandResponse(
@@ -520,7 +518,10 @@ def handle_existing_finalize_receipt(
             completed_at_ms=completed_at_ms,
             detail="finalize_read_action parent reconciliation is incomplete",
         )
-    if action.status == ActionStatus.EXECUTED.value and action.version == command.expected_version:
+    if (
+        action.status == ActionStatusV1.EXECUTED.value
+        and action.version == command.expected_version
+    ):
         return _PendingReceiptResolution(should_return=False)
     return _return_recovery_required_action(
         unit_of_work=unit_of_work,
@@ -557,7 +558,7 @@ def handle_existing_fail_receipt(
 
     action = require_action(unit_of_work, action_id)
     plan = require_plan(unit_of_work, action.plan_id)
-    if action.status == ActionStatus.FAILED.value:
+    if action.status == ActionStatusV1.FAILED.value:
         aggregate = _inspect_read_plan_state(unit_of_work, plan.id)
         if _plan_and_run_match_reconciled_state(unit_of_work, plan, aggregate):
             response = ReadActionCommandResponse(
@@ -582,7 +583,10 @@ def handle_existing_fail_receipt(
             completed_at_ms=completed_at_ms,
             detail="fail_read_action parent reconciliation is incomplete",
         )
-    if action.status == ActionStatus.EXECUTING.value and action.version == command.expected_version:
+    if (
+        action.status == ActionStatusV1.EXECUTING.value
+        and action.version == command.expected_version
+    ):
         return _PendingReceiptResolution(should_return=False)
     return _return_recovery_required_action(
         unit_of_work=unit_of_work,
@@ -705,7 +709,7 @@ def _recovery_required_save_response(
         run_status=run.status.value,
         run_version=run.version,
         plan_id=command.plan_id,
-        plan_status=PlanStatus.DRAFT.value,
+        plan_status=PlanStatusV1.DRAFT.value,
         action_ids=tuple(action.action_id for action in command.actions),
         conflict_detail=conflict_detail,
     )
@@ -785,9 +789,9 @@ def _inspect_read_plan_state(unit_of_work: UnitOfWork, plan_id: str) -> _Aggrega
         action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
         for action in actions
     }
-    action_statuses = {action.id: ActionStatus(action.status) for action in actions}
+    action_statuses = {action.id: ActionStatusV1(action.status) for action in actions}
     if any(
-        action_statuses[action.id] is ActionStatus.PROPOSED
+        action_statuses[action.id] is ActionStatusV1.PROPOSED
         and dependencies[action.id]
         and any(
             action_statuses[dep] in DEPENDENCY_FAILURE_STATUSES for dep in dependencies[action.id]
@@ -796,8 +800,8 @@ def _inspect_read_plan_state(unit_of_work: UnitOfWork, plan_id: str) -> _Aggrega
     ):
         return _AggregateState(plan_completed=False, run_completed=False, partial=True)
 
-    statuses = [ActionStatus(action.status) for action in actions]
-    partial = any(status is not ActionStatus.VERIFIED for status in statuses)
+    statuses = [ActionStatusV1(action.status) for action in actions]
+    partial = any(status is not ActionStatusV1.VERIFIED for status in statuses)
     if any(status not in READ_ACTION_TERMINAL_STATUSES for status in statuses):
         return _AggregateState(plan_completed=False, run_completed=False, partial=partial)
     return _AggregateState(plan_completed=True, run_completed=True, partial=partial)
@@ -809,79 +813,10 @@ def _plan_and_run_match_reconciled_state(
     aggregate: _AggregateState,
 ) -> bool:
     run = require_run(unit_of_work, plan.run_id)
-    expected_plan_status = PlanStatus.COMPLETED if aggregate.plan_completed else PlanStatus.ACTIVE
-    expected_run_status = RunStatus.COMPLETED if aggregate.run_completed else RunStatus.EXECUTING
+    expected_plan_status = (
+        PlanStatusV1.COMPLETED if aggregate.plan_completed else PlanStatusV1.ACTIVE
+    )
+    expected_run_status = (
+        RunStatusV1.COMPLETED if aggregate.run_completed else RunStatusV1.EXECUTING
+    )
     return plan.status is expected_plan_status and run.status is expected_run_status
-
-
-def reconcile_read_plan_state(
-    unit_of_work: UnitOfWork,
-    plan_id: str,
-    now_ms: int,
-) -> _AggregateState:
-    while True:
-        actions = unit_of_work.actions.list_by_plan(plan_id)
-        dependencies = {
-            action.id: unit_of_work.action_dependencies.list_dependencies(action.id)
-            for action in actions
-        }
-        action_statuses = {action.id: ActionStatus(action.status) for action in actions}
-        changed = False
-        for action in actions:
-            if ActionStatus(action.status) is not ActionStatus.PROPOSED:
-                continue
-            deps = dependencies[action.id]
-            if deps and any(action_statuses[dep] in DEPENDENCY_FAILURE_STATUSES for dep in deps):
-                changed = (
-                    unit_of_work.actions.update_if_version_and_status(
-                        action.id,
-                        expected_version=action.version,
-                        expected_status=ActionStatus(action.status),
-                        next_status=ActionStatus.DEPENDENCY_BLOCKED,
-                        updated_at_ms=now_ms,
-                    )
-                    is not None
-                    or changed
-                )
-        if not changed:
-            break
-
-    actions = unit_of_work.actions.list_by_plan(plan_id)
-    terminal_statuses = [ActionStatus(action.status) for action in actions]
-    partial = any(status is not ActionStatus.VERIFIED for status in terminal_statuses)
-    if any(status not in READ_ACTION_TERMINAL_STATUSES for status in terminal_statuses):
-        return _AggregateState(plan_completed=False, run_completed=False, partial=partial)
-
-    plan = require_plan(unit_of_work, plan_id)
-    run = require_run(unit_of_work, plan.run_id)
-    next_run_status, next_plan_status = transition_complete_read_only_run(
-        run.status,
-        plan_status=plan.status,
-        action_statuses=tuple(terminal_statuses),
-    )
-    if (
-        unit_of_work.plans.update_if_status(
-            plan.id,
-            expected_status=plan.status,
-            next_status=next_plan_status,
-        )
-        is None
-    ):
-        raise RuntimeError("validated CompleteReadOnlyRun Plan CAS failed")
-    run_applied = unit_of_work.runs.update_if_version_and_status(
-        run.id,
-        run.version,
-        frozenset({run.status}),
-        {
-            "status": next_run_status.value,
-            "version": run.version + 1,
-            "finished_at_ms": now_ms,
-        },
-    )
-    if not run_applied:
-        raise RuntimeError("validated CompleteReadOnlyRun Run CAS failed")
-    return _AggregateState(
-        plan_completed=True,
-        run_completed=True,
-        partial=partial,
-    )

@@ -41,7 +41,6 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     LLMToolCall,
@@ -53,6 +52,9 @@ from google_work_agent.ports import (
     ToolDefinition,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 

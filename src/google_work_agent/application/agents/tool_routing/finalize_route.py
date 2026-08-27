@@ -29,7 +29,7 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
 from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 SelectedToolMap = Mapping[tuple[str, str], str]
 
@@ -110,11 +110,13 @@ def _materialize_output_routes(
         selected_tool_id = selected_tools.get(key)
         if selected_tool_id is None:
             raise ToolRouteValidationError(
-                f"tool selection is required after Registry binding: {bound.resource_type}/{bound.effect}"
+                "tool selection is required after Registry binding: "
+                f"{bound.resource_type}/{bound.effect}"
             )
         if selected_tool_id not in bound.eligible_tool_ids:
             raise ToolRouteValidationError(
-                f"selected tool is outside the bound eligible set: {bound.resource_type}/{bound.effect}"
+                "selected tool is outside the bound eligible set: "
+                f"{bound.resource_type}/{bound.effect}"
             )
         reason_codes = (
             ["REGISTRY_SINGLE_CANDIDATE"]

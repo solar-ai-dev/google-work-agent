@@ -101,13 +101,12 @@ from google_work_agent.application.orchestration.prompt_registry import (
     default_prompt_manifest_path,
     resolve_instruction_text,
 )
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_continuation import OpaqueResourceQueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
-    ModifyWriteActionService,
-    RejectWriteActionService,
     ResumeRunService,
 )
 from google_work_agent.application.use_cases.conversation.create_conversation import (
@@ -129,11 +128,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
 )
 from google_work_agent.application.write_actions import (
-    ApproveWriteActionService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.launcher.connector_composition import build_connectors
 from google_work_agent.launcher.development_constants import (
     PROJECT_ROOT,
@@ -725,25 +722,9 @@ def build_container(
         graph_version=RESUME_CONTRACT_VERSION,
         schedule_run_execution=production_runtime.schedule_run_execution,
         resume_target_registry=resume_target_registry,
-        approve_action_service=ApproveWriteActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
-        modify_action_service=ModifyWriteActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-            gateway=gateway,
-            work_hours_provider=lambda: CalendarWorkHours(
-                timezone=settings_service.get().timezone,
-                days=settings_service.get().work_hours.days,
-                start=settings_service.get().work_hours.start,
-                end=settings_service.get().work_hours.end,
-            ),
-        ),
-        reject_action_service=RejectWriteActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
+        approve_action_service=None,
+        modify_action_service=None,
+        reject_action_service=None,
         prepare_retry_service=PrepareWriteRetryService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -755,6 +736,7 @@ def build_container(
         ),
         workflow_runtime=workflow_runtime,
         event_publisher=event_publisher,
+        action_gateway=gateway,
         readiness_aggregator=DevelopmentReadinessAggregator(
             database_path=database_path,
             connector_registry=connector_registry,

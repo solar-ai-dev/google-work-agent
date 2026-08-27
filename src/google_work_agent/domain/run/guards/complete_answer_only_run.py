@@ -1,12 +1,12 @@
 """Guard for complete answer only run."""
 
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected, require_status
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected, require_status
 
-_ALLOWED = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING, RunStatus.PLANNING})
+_ALLOWED = frozenset({RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING, RunStatusV1.PLANNING})
 
 
 def guard_complete_answer_only_run(
-    current_status: RunStatus,
+    current_status: RunStatusV1,
     *,
     has_plan: bool,
     has_action: bool,

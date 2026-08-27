@@ -3,11 +3,11 @@
 import sqlite3
 
 from google_work_agent.domain.approval.model import Approval as ApprovalRecord
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 
 
 class SQLiteApprovalRepository:
-    _SELECT = "SELECT id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms FROM approvals"
+    _SELECT = "SELECT id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms FROM approvals"  # noqa: E501
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
@@ -19,7 +19,7 @@ class SQLiteApprovalRepository:
             action_id=str(r["action_id"]),
             approval_no=int(r["approval_no"]),
             action_version=int(r["action_version"]),
-            status=ApprovalStatus(str(r["status"])),
+            status=ApprovalStatusV1(str(r["status"])),
             approved_by_account_id=str(r["approved_by_account_id"]),
             approved_by_display=None
             if r["approved_by_display"] is None
@@ -51,7 +51,7 @@ class SQLiteApprovalRepository:
 
     def insert(self, record: ApprovalRecord) -> None:
         self._connection.execute(
-            "INSERT INTO approvals (id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            "INSERT INTO approvals (id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
             (
                 record.id,
                 record.action_id,
@@ -78,12 +78,12 @@ class SQLiteApprovalRepository:
         self,
         approval_id: str,
         *,
-        expected_status: ApprovalStatus,
-        next_status: ApprovalStatus,
+        expected_status: ApprovalStatusV1,
+        next_status: ApprovalStatusV1,
         consumed_at_ms: int | None = None,
     ) -> bool:
         cursor = self._connection.execute(
-            "UPDATE approvals SET status=?, consumed_at_ms=COALESCE(?, consumed_at_ms) WHERE id=? AND status=?;",
+            "UPDATE approvals SET status=?, consumed_at_ms=COALESCE(?, consumed_at_ms) WHERE id=? AND status=?;",  # noqa: E501
             (next_status.value, consumed_at_ms, approval_id, expected_status.value),
         )
         if cursor.rowcount > 1:

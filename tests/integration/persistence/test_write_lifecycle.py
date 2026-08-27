@@ -19,11 +19,11 @@ from tests.integration.persistence.test_write_actions import (
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
-    McpConnectorWriteAdapter,
     GoogleWorkspaceGateway,
+    McpConnectorWriteAdapter,
     Path,
+    PublishPlanHandler,
     PublishWritePlanCommand,
-    PublishWritePlanService,
     RecoveryResolutionKind,
     RequestRunCancellationCommand,
     RequestRunCancellationService,
@@ -31,7 +31,7 @@ from tests.integration.persistence.test_write_actions import (
     ResolveMismatchRecoveryService,
     ResultCode,
     RunCommand,
-    RunStatus,
+    RunStatusV1,
     SaveWritePlanCommand,
     SaveWritePlanService,
     StoreWriteActionSuccessCommand,
@@ -66,19 +66,19 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
         resolved = unit_of_work.runs.resolve_recovery(
             "run-1",
             expected_version=1,
-            recovery_next_status=RunStatus.VERIFYING,
+            recovery_next_status=RunStatusV1.VERIFYING,
         )
         unit_of_work.commit()
 
     assert required.applied is True
-    assert required.current_status is RunStatus.RECOVERY_REQUIRED
+    assert required.current_status is RunStatusV1.RECOVERY_REQUIRED
     assert required.next_allowed_commands == (
         RunCommand.REQUEST_CANCEL,
         RunCommand.REQUIRE_REAUTH,
         RunCommand.RESOLVE_RECOVERY,
     )
     assert resolved.applied is True
-    assert resolved.current_status is RunStatus.VERIFYING
+    assert resolved.current_status is RunStatusV1.VERIFYING
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute("SELECT status, version FROM runs WHERE id = 'run-1';").fetchone()
@@ -96,7 +96,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -239,7 +239,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
             action_id="action-write-1",
             attempt_id="attempt-write-1",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -492,7 +492,7 @@ def test_verification_mismatch_is_persisted_without_auto_verifying_tool_response
             action_id="action-mismatch",
             attempt_id="attempt-mismatch",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -720,9 +720,7 @@ def test_mismatch_recovery_create_corrective_plan_fails_closed_when_cancel_inten
     connection = connect_sqlite(write_database)
     try:
         plan_count_before = connection.execute("SELECT COUNT(*) FROM plans;").fetchone()[0]
-        approval_count_before = connection.execute(
-            "SELECT COUNT(*) FROM approvals;"
-        ).fetchone()[0]
+        approval_count_before = connection.execute("SELECT COUNT(*) FROM approvals;").fetchone()[0]
     finally:
         connection.close()
     create_task_calls_before = fixture_gateway.count_calls("create_task")
@@ -805,9 +803,7 @@ def test_mismatch_recovery_accept_partial_fails_closed_when_cancel_intent_active
         action_status = connection.execute(
             "SELECT status FROM actions WHERE id = 'action-accept-partial-cancel';"
         ).fetchone()[0]
-        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
-            0
-        ]
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[0]
     finally:
         connection.close()
     assert action_status == "MISMATCH"
@@ -864,8 +860,7 @@ def test_fail_recovery_creates_no_new_plan_revision(
     connection = connect_sqlite(write_database)
     try:
         plans_before = [
-            tuple(row)
-            for row in connection.execute("SELECT id, revision_no, status FROM plans;")
+            tuple(row) for row in connection.execute("SELECT id, revision_no, status FROM plans;")
         ]
     finally:
         connection.close()
@@ -889,8 +884,7 @@ def test_fail_recovery_creates_no_new_plan_revision(
     connection = connect_sqlite(write_database)
     try:
         plans_after = [
-            tuple(row)
-            for row in connection.execute("SELECT id, revision_no, status FROM plans;")
+            tuple(row) for row in connection.execute("SELECT id, revision_no, status FROM plans;")
         ]
     finally:
         connection.close()
@@ -1138,9 +1132,7 @@ def test_fail_recovery_terminal_blocks_accept_partial_and_corrective_replan(
     assert corrective.applied is False
     connection = connect_sqlite(write_database)
     try:
-        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
-            0
-        ]
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[0]
     finally:
         connection.close()
     assert run_status == "FAILED"
@@ -1188,9 +1180,7 @@ def test_fail_recovery_fails_closed_when_cancel_intent_active(
     assert result.result_code == "STATE_CONFLICT"
     connection = connect_sqlite(write_database)
     try:
-        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[
-            0
-        ]
+        run_status = connection.execute("SELECT status FROM runs WHERE id = 'run-1';").fetchone()[0]
     finally:
         connection.close()
     assert run_status != "FAILED"
@@ -1228,7 +1218,7 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
             action_id="action-verify-boundary",
             attempt_id="attempt-verify-boundary",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -1298,7 +1288,7 @@ def test_verify_write_action_success_persists_mcp_request_id_correlation(
             action_id="action-verify-mcp",
             attempt_id="attempt-verify-mcp",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -1396,7 +1386,7 @@ def test_verify_write_action_rechecks_version_after_external_get(
             action_id="action-verify-race",
             attempt_id="attempt-verify-race",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )

@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 class ReconcileAggregate(StrEnum):
@@ -28,27 +28,27 @@ class ReconciliationDecision:
 _ACTION_APPROVAL_COMMANDS = frozenset({"APPROVE_ACTION"})
 _ACTION_RECOVERY_STATUSES = frozenset(
     {
-        ActionStatus.UNKNOWN_RESULT,
-        ActionStatus.MISMATCH,
-        ActionStatus.EXECUTED,
+        ActionStatusV1.UNKNOWN_RESULT,
+        ActionStatusV1.MISMATCH,
+        ActionStatusV1.EXECUTED,
     }
 )
 _ACTION_TERMINAL_STATUSES = frozenset(
     {
-        ActionStatus.VERIFIED,
-        ActionStatus.FAILED,
-        ActionStatus.BLOCKED,
-        ActionStatus.DEPENDENCY_BLOCKED,
-        ActionStatus.CANCELLED,
-        ActionStatus.REJECTED,
+        ActionStatusV1.VERIFIED,
+        ActionStatusV1.FAILED,
+        ActionStatusV1.BLOCKED,
+        ActionStatusV1.DEPENDENCY_BLOCKED,
+        ActionStatusV1.CANCELLED,
+        ActionStatusV1.REJECTED,
     }
 )
 _RUN_TERMINAL_STATUSES = frozenset(
     {
-        RunStatus.COMPLETED,
-        RunStatus.CANCELLED,
-        RunStatus.FAILED,
-        RunStatus.BLOCKED,
+        RunStatusV1.COMPLETED,
+        RunStatusV1.CANCELLED,
+        RunStatusV1.FAILED,
+        RunStatusV1.BLOCKED,
     }
 )
 
@@ -68,7 +68,7 @@ def reconcile_write_conflict(
     commands = frozenset(next_allowed_commands)
     if aggregate is ReconcileAggregate.ACTION:
         try:
-            status = ActionStatus(current_status or "")
+            status = ActionStatusV1(current_status or "")
         except ValueError:
             return ReconciliationDecision(target="end", outcome="SUSPEND_CONTRACT_CONFLICT")
 
@@ -80,9 +80,9 @@ def reconcile_write_conflict(
                 outcome="ALREADY_TERMINAL",
             )
         if commands & _ACTION_APPROVAL_COMMANDS or status in {
-            ActionStatus.PROPOSED,
-            ActionStatus.MODIFIED,
-            ActionStatus.EXPIRED,
+            ActionStatusV1.PROPOSED,
+            ActionStatusV1.MODIFIED,
+            ActionStatusV1.EXPIRED,
         }:
             return ReconciliationDecision(
                 target="waiting_approval",
@@ -91,19 +91,19 @@ def reconcile_write_conflict(
         return ReconciliationDecision(target="end", outcome="SUSPEND_IN_FLIGHT")
 
     try:
-        run_status = RunStatus(current_status or "")
+        run_status = RunStatusV1(current_status or "")
     except ValueError:
         return ReconciliationDecision(target="end", outcome="SUSPEND_CONTRACT_CONFLICT")
 
-    if run_status is RunStatus.WAITING_APPROVAL:
+    if run_status is RunStatusV1.WAITING_APPROVAL:
         return ReconciliationDecision(target="waiting_approval", outcome="WAITING_APPROVAL")
-    if run_status is RunStatus.RECOVERY_REQUIRED or "RESOLVE_RECOVERY" in commands:
+    if run_status is RunStatusV1.RECOVERY_REQUIRED or "RESOLVE_RECOVERY" in commands:
         return ReconciliationDecision(target="recovery", outcome="RECOVERY_REQUIRED")
     if run_status in _RUN_TERMINAL_STATUSES:
         return ReconciliationDecision(target="end", outcome="ALREADY_TERMINAL")
-    if run_status is RunStatus.REAUTH_REQUIRED:
+    if run_status is RunStatusV1.REAUTH_REQUIRED:
         return ReconciliationDecision(target="end", outcome="SUSPEND_REAUTH_REQUIRED")
-    if run_status is RunStatus.CANCEL_REQUESTED:
+    if run_status is RunStatusV1.CANCEL_REQUESTED:
         return ReconciliationDecision(target="end", outcome="SUSPEND_CANCEL_REQUESTED")
     return ReconciliationDecision(target="end", outcome="SUSPEND_IN_FLIGHT")
 

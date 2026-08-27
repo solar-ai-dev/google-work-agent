@@ -2,10 +2,10 @@ from typing import Any
 
 from google_work_agent.adapters.connectors.connector_mcp_runtime import ConnectorMcpRuntime
 from google_work_agent.adapters.mcp import MCPArtifactConfig, MCPConnectorDescriptor
-from google_work_agent.domain.google_workspace_tool_registry import (
+from google_work_agent.ports import MCPControlResponse, MCPRuntimeMetadata, MCPToolResponse
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
-from google_work_agent.ports import MCPControlResponse, MCPRuntimeMetadata, MCPToolResponse
 
 
 class _Transport:

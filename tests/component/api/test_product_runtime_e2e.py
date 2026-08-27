@@ -57,8 +57,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.settings import GetSettingsService, PatchSettingsService
 from google_work_agent.application.start_run import (
-    ModifyWriteActionService,
-    RejectWriteActionService,
     ResumeRunService,
 )
 from google_work_agent.application.use_cases.conversation.create_conversation import (
@@ -70,11 +68,15 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
+from google_work_agent.application.write_action_mutation import (
+    ModifyWriteActionService,
+    RejectWriteActionService,
+)
 from google_work_agent.application.write_actions import (
-    ApproveWriteActionService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,
@@ -405,6 +407,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
+        action_gateway=gateway,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,

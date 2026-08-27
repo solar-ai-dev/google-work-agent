@@ -7,7 +7,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRoutePlanV2,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 class ToolRouteValidationError(ValueError):

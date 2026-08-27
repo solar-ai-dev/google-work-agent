@@ -1,0 +1,167 @@
+"""Canonical persisted ExpireApproval application boundary."""
+
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from json import dumps, loads
+
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.transitions.expire_approval import transition_expire_approval
+from google_work_agent.domain.audit_event.model import AuditEvent
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports import UnitOfWork
+
+
+@dataclass(frozen=True, slots=True)
+class ExpireApprovalCommand:
+    command_id: str
+    request_hash: str
+    approval_id: str
+    expected_action_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExpireApprovalResult:
+    applied: bool
+    result_code: str
+    approval_id: str
+    approval_status: str
+    action_id: str
+    action_status: str
+    action_version: int
+    conflict_detail: str | None = None
+
+
+class ExpireApprovalHandler:
+    def __init__(
+        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
+
+    def __call__(self, command: ExpireApprovalCommand) -> ExpireApprovalResult:
+        with self._unit_of_work_factory() as unit_of_work:
+            now_ms = self._now_ms()
+            receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+            if receipt is not None:
+                if receipt.request_hash != command.request_hash:
+                    return _current(unit_of_work, command, ResultCode.DUPLICATE_COMMAND)
+                if (
+                    receipt.response_json is not None
+                    and receipt.status is not CommandReceiptStatus.RECEIVED
+                ):
+                    return ExpireApprovalResult(**loads(receipt.response_json))
+                raise RuntimeError("RECEIVED ExpireApproval receipt requires reconciliation")
+            unit_of_work.command_receipts.add_received(
+                command_id=command.command_id,
+                command_type="ExpireApproval",
+                request_hash=command.request_hash,
+                aggregate_type="Approval",
+                aggregate_id=command.approval_id,
+                created_at_ms=now_ms,
+            )
+            approval = unit_of_work.approvals.get_by_id(command.approval_id)
+            if approval is None:
+                raise LookupError(f"approval not found: {command.approval_id}")
+            action = unit_of_work.actions.get_by_id(approval.action_id)
+            if action is None:
+                raise LookupError(f"action not found: {approval.action_id}")
+            plan = unit_of_work.plans.get_by_id(action.plan_id)
+            if plan is None:
+                raise LookupError(f"plan not found: {action.plan_id}")
+            current = tuple(
+                candidate
+                for candidate in unit_of_work.plans.list_by_run(plan.run_id)
+                if candidate.status is not PlanStatusV1.SUPERSEDED
+            )
+            if action.version != command.expected_action_version:
+                result = _current(unit_of_work, command, ResultCode.VERSION_CONFLICT)
+            else:
+                next_action, next_approval = transition_expire_approval(
+                    action_status=ActionStatusV1(action.status),
+                    approval_status=approval.status,
+                    plan_status=plan.status,
+                    plan_is_current=len(current) == 1 and current[0].id == plan.id,
+                )
+                if not unit_of_work.approvals.update_if_status(
+                    approval.id,
+                    expected_status=approval.status,
+                    next_status=next_approval,
+                ):
+                    raise RuntimeError("validated ExpireApproval Approval CAS failed")
+                updated = unit_of_work.actions.update_if_version_and_status(
+                    action.id,
+                    expected_version=action.version,
+                    expected_status=ActionStatusV1(action.status),
+                    next_status=next_action,
+                    updated_at_ms=now_ms,
+                )
+                if updated is None:
+                    raise RuntimeError("validated ExpireApproval Action CAS failed")
+                result = ExpireApprovalResult(
+                    True,
+                    ResultCode.TRANSITION_APPLIED.value,
+                    approval.id,
+                    next_approval.value,
+                    action.id,
+                    next_action.value,
+                    updated.version,
+                )
+                for event_type in ("ACTION_EXPIRED", "APPROVAL_EXPIRED"):
+                    unit_of_work.audits.add(
+                        AuditEvent(
+                            account_id=approval.approved_by_account_id,
+                            run_id=plan.run_id,
+                            action_id=action.id,
+                            actor_type="SYSTEM",
+                            actor_id="expire_approval",
+                            actor_display="ExpireApproval",
+                            event_type=event_type,
+                            outcome=ResultCode.TRANSITION_APPLIED.value,
+                            metadata_json=dumps(
+                                {
+                                    "command_id": command.command_id,
+                                    "approval_id": approval.id,
+                                },
+                                sort_keys=True,
+                            ),
+                            created_at_ms=now_ms,
+                        )
+                    )
+            unit_of_work.command_receipts.finish_json(
+                command_id=command.command_id,
+                applied=result.applied,
+                result_code=ResultCode(result.result_code),
+                result_version=result.action_version,
+                response_json=dumps(asdict(result), sort_keys=True),
+                completed_at_ms=now_ms,
+            )
+            unit_of_work.commit()
+            return result
+
+
+def _current(
+    unit_of_work: UnitOfWork,
+    command: ExpireApprovalCommand,
+    code: ResultCode,
+) -> ExpireApprovalResult:
+    approval = unit_of_work.approvals.get_by_id(command.approval_id)
+    if approval is None:
+        raise LookupError(f"approval not found: {command.approval_id}")
+    action = unit_of_work.actions.get_by_id(approval.action_id)
+    if action is None:
+        raise LookupError(f"action not found: {approval.action_id}")
+    return ExpireApprovalResult(
+        False,
+        code.value,
+        approval.id,
+        approval.status.value,
+        action.id,
+        action.status,
+        action.version,
+        "command conflict",
+    )
+
+
+__all__ = ["ExpireApprovalCommand", "ExpireApprovalHandler", "ExpireApprovalResult"]

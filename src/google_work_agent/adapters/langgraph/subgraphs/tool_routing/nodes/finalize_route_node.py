@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.binding_projection import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.binding_projection import (  # noqa: E501
     project_binding_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def finalize_route_node(

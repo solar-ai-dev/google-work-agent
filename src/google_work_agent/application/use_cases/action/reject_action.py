@@ -9,12 +9,13 @@ from re import fullmatch
 
 from google_work_agent.application.projections import build_snapshot_required_event
 from google_work_agent.application.write_persistence import (
+    append_approval_revoked_audits,
     emit_command_rejected_hash_mismatch,
     revoke_active_approvals,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
 )
@@ -22,11 +23,8 @@ from google_work_agent.domain.action.transitions.reject_action import transition
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.transitions.begin_verification import (
-    transition_begin_verification,
-)
 from google_work_agent.domain.run.transitions.complete_write_run import (
     transition_complete_write_run,
 )
@@ -109,7 +107,7 @@ class RejectActionHandler:
             actor_account_id = conversation.account_id
 
             preview = transition_reject_action(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=EffectType(action.effect_type),
@@ -119,11 +117,19 @@ class RejectActionHandler:
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
                 revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
+                append_approval_revoked_audits(
+                    unit_of_work,
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    approval_ids=revoked_approval_ids,
+                    command_id=command.command_id,
+                    created_at_ms=now_ms,
+                )
                 if (
                     unit_of_work.actions.update_if_version_and_status(
                         action.id,
                         expected_version=action.version,
-                        expected_status=ActionStatus(action.status),
+                        expected_status=ActionStatusV1(action.status),
                         next_status=preview.current_status,
                         updated_at_ms=now_ms,
                     )
@@ -188,44 +194,61 @@ class RejectActionHandler:
                     )
                 )
                 terminal = {
-                    ActionStatus.REJECTED.value,
-                    ActionStatus.VERIFIED.value,
-                    ActionStatus.FAILED.value,
-                    ActionStatus.BLOCKED.value,
-                    ActionStatus.DEPENDENCY_BLOCKED.value,
-                    ActionStatus.MISMATCH.value,
-                    ActionStatus.CANCELLED.value,
+                    ActionStatusV1.REJECTED.value,
+                    ActionStatusV1.VERIFIED.value,
+                    ActionStatusV1.FAILED.value,
+                    ActionStatusV1.BLOCKED.value,
+                    ActionStatusV1.DEPENDENCY_BLOCKED.value,
+                    ActionStatusV1.MISMATCH.value,
+                    ActionStatusV1.CANCELLED.value,
                 }
                 current_actions = unit_of_work.actions.list_by_plan(plan.id)
                 if current_actions and all(item.status in terminal for item in current_actions):
-                    verifying_status = transition_begin_verification(run.status)
+                    approvals = tuple(
+                        approval
+                        for current_action in current_actions
+                        for approval in unit_of_work.approvals.list_by_action(current_action.id)
+                    )
+                    attempts = tuple(
+                        attempt
+                        for approval in approvals
+                        for attempt in unit_of_work.execution_attempts.list_by_approval(approval.id)
+                    )
+                    completed_status = transition_complete_write_run(
+                        run.status,
+                        plan_status=plan.status,
+                        plan_is_current=True,
+                        action_statuses=tuple(
+                            ActionStatusV1(item.status) for item in current_actions
+                        ),
+                        attempt_statuses=tuple(attempt.status for attempt in attempts),
+                        unresolved_required_fact_count=0,
+                        external_write_count=sum(
+                            attempt.status.value
+                            in {"EXECUTING", "UNKNOWN_RESULT", "SUCCEEDED", "FAILED"}
+                            for attempt in attempts
+                        ),
+                        cancel_intent_active=False,
+                    )
                     if not unit_of_work.runs.update_if_version_and_status(
                         run.id,
                         run.version,
                         frozenset({run.status}),
-                        {"status": verifying_status.value, "version": run.version + 1},
-                    ):
-                        raise RuntimeError("validated BeginVerification CAS failed")
-                    completed_status = transition_complete_write_run(verifying_status)
-                    if not unit_of_work.runs.update_if_version_and_status(
-                        run.id,
-                        run.version + 1,
-                        frozenset({verifying_status}),
                         {
                             "status": completed_status.value,
-                            "version": run.version + 2,
+                            "version": run.version + 1,
                             "finished_at_ms": now_ms,
                         },
                     ):
                         raise RuntimeError("validated CompleteWriteRun CAS failed")
                     if plan.status in {
-                        PlanStatus.WAITING_APPROVAL,
-                        PlanStatus.ACTIVE,
+                        PlanStatusV1.WAITING_APPROVAL,
+                        PlanStatusV1.ACTIVE,
                     } and (
                         unit_of_work.plans.update_if_status(
                             plan.id,
                             expected_status=plan.status,
-                            next_status=PlanStatus.COMPLETED,
+                            next_status=PlanStatusV1.COMPLETED,
                         )
                         is None
                     ):
@@ -312,7 +335,7 @@ class RejectActionHandler:
             tuple(
                 item.value
                 for item in next_allowed_action_commands(
-                    ActionStatus(action.status), effect_type=EffectType(action.effect_type)
+                    ActionStatusV1(action.status), effect_type=EffectType(action.effect_type)
                 )
             ),
             conflict_detail=conflict_detail,
@@ -362,18 +385,26 @@ class RejectActionHandler:
             visited.add(dependent_id)
             dependent = unit_of_work.actions.get_by_id(dependent_id)
             if dependent is None or dependent.status not in {
-                ActionStatus.PROPOSED.value,
-                ActionStatus.MODIFIED.value,
-                ActionStatus.APPROVED.value,
+                ActionStatusV1.PROPOSED.value,
+                ActionStatusV1.MODIFIED.value,
+                ActionStatusV1.APPROVED.value,
             }:
                 continue
             revoked = revoke_active_approvals(unit_of_work, dependent_id)
+            append_approval_revoked_audits(
+                unit_of_work,
+                run_id=run_id,
+                action_id=dependent_id,
+                approval_ids=revoked,
+                command_id=command_id,
+                created_at_ms=now_ms,
+            )
             if (
                 unit_of_work.actions.update_if_version_and_status(
                     dependent_id,
                     expected_version=dependent.version,
-                    expected_status=ActionStatus(dependent.status),
-                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                    expected_status=ActionStatusV1(dependent.status),
+                    next_status=ActionStatusV1.DEPENDENCY_BLOCKED,
                     updated_at_ms=now_ms,
                 )
                 is None
@@ -384,7 +415,7 @@ class RejectActionHandler:
                 "command_id": command_id,
                 "blocked_by_action_id": rejected_action_id,
                 "previous_status": dependent.status,
-                "new_status": ActionStatus.DEPENDENCY_BLOCKED.value,
+                "new_status": ActionStatusV1.DEPENDENCY_BLOCKED.value,
                 "revoked_approval_ids": list(revoked),
             }
             unit_of_work.traces.add(
@@ -392,7 +423,7 @@ class RejectActionHandler:
                     run_id=run_id,
                     action_id=dependent_id,
                     event_type="ACTION_DEPENDENCY_BLOCKED",
-                    status=ActionStatus.DEPENDENCY_BLOCKED.value,
+                    status=ActionStatusV1.DEPENDENCY_BLOCKED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"command_id": command_id, "blocked_by_action_id": rejected_action_id},

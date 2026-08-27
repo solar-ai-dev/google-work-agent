@@ -17,8 +17,8 @@ from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt,
     upsert_resource_ref,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.store_success import (
     transition_store_success,
 )
@@ -99,7 +99,7 @@ class StoreSuccessHandler:
             attempt = require_attempt(unit_of_work, command.attempt_id)
             plan = require_plan(unit_of_work, action.plan_id)
             transition = transition_store_success(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action_version=action.version,
                 expected_action_version=command.expected_action_version,
                 attempt_status=attempt.status,
@@ -122,7 +122,7 @@ class StoreSuccessHandler:
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
-                status=ExecutionAttemptStatus.SUCCEEDED,
+                status=ExecutionAttemptStatusV1.SUCCEEDED,
                 error_code=None,
                 error_detail_json=None,
                 result_resource_ref_id=persisted_resource_ref.id,
@@ -136,7 +136,7 @@ class StoreSuccessHandler:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=transition.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -148,7 +148,7 @@ class StoreSuccessHandler:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_EXECUTED",
-                    status=ActionStatus.EXECUTED.value,
+                    status=ActionStatusV1.EXECUTED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},

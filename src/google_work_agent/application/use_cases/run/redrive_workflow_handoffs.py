@@ -26,7 +26,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.run.model import (
-    RunStatus,
+    RunStatusV1,
     is_preempting_run_status,
     is_terminal_run_status,
 )
@@ -151,14 +151,14 @@ class RedriveWorkflowHandoffsHandler:
                 handoff_id, expected_version, _RUN_NOT_EXECUTABLE
             )
 
-        if run.status in {RunStatus.REAUTH_REQUIRED, RunStatus.CANCEL_REQUESTED}:
+        if run.status in {RunStatusV1.REAUTH_REQUIRED, RunStatusV1.CANCEL_REQUESTED}:
             # A different Domain authority already governs this run -- never create a
             # competing CHECKPOINT_MISMATCH recovery merely to retire the handoff.
             return False
 
         fingerprint = _reconciliation_fingerprint(handoff)
 
-        if run.status is not RunStatus.RECOVERY_REQUIRED:
+        if run.status is not RunStatusV1.RECOVERY_REQUIRED:
             require_recovery_command = RequireRecoveryCommand(
                 run_id=run.id,
                 expected_version=run.version,
@@ -205,7 +205,7 @@ class RedriveWorkflowHandoffsHandler:
             ):
                 return False
             run = unit_of_work.runs.get(handoff.execution.run_id)
-            if run is None or run.status is not RunStatus.RECOVERY_REQUIRED:
+            if run is None or run.status is not RunStatusV1.RECOVERY_REQUIRED:
                 return False
             context = unit_of_work.recovery_contexts.load_current_context(handoff.execution.run_id)
             if (

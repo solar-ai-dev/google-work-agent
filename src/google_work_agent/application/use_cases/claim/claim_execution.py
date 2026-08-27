@@ -40,8 +40,8 @@ from google_work_agent.application.write_persistence import (
     require_run,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.claim.guards.claim_execution import (
@@ -50,21 +50,23 @@ from google_work_agent.domain.claim.guards.claim_execution import (
 )
 from google_work_agent.domain.claim.model import ClaimCommand
 from google_work_agent.domain.claim.transitions.claim_execution import transition_claim_execution
-from google_work_agent.domain.claim_contract import (
-    CLAIM_CONTEXT_DEFAULT_TTL_MS,
-    validate_claim_ttl_ms,
-)
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
+)
+from google_work_agent.ports.connector.claim_context_contract import (
+    CLAIM_CONTEXT_DEFAULT_TTL_MS,
+    validate_claim_ttl_ms,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
 )
 
 
@@ -88,7 +90,7 @@ class ClaimExecutionResult:
     applied: bool
     result_code: ResultCode
     action_id: str
-    current_status: ActionStatus
+    current_status: ActionStatusV1
     current_version: int
     next_allowed_commands: tuple[ClaimCommand, ...]
     approval_id: str | None = None
@@ -149,7 +151,7 @@ class ClaimExecutionHandler:
                     unit_of_work=unit_of_work,
                     command=command,
                     action_id=action.id,
-                    status=ActionStatus(action.status),
+                    status=ActionStatusV1(action.status),
                     version=action.version,
                     now_ms=now_ms,
                     detail="write action requires an ACTIVE approval",
@@ -178,7 +180,7 @@ class ClaimExecutionHandler:
                     command_source_snapshot=command.source_snapshot,
                 )
                 guard = ClaimExecutionGuardInput(
-                    action_status=ActionStatus(action.status),
+                    action_status=ActionStatusV1(action.status),
                     effect_type=EffectType(action.effect_type),
                     action_version=action.version,
                     approval_status=approval.status,
@@ -208,7 +210,7 @@ class ClaimExecutionHandler:
                     unit_of_work=unit_of_work,
                     command=command,
                     action_id=action.id,
-                    status=ActionStatus(action.status),
+                    status=ActionStatusV1(action.status),
                     version=action.version,
                     now_ms=now_ms,
                     detail=str(error),
@@ -245,7 +247,7 @@ class ClaimExecutionHandler:
             if not unit_of_work.approvals.update_if_status(
                 approval.id,
                 expected_status=approval.status,
-                next_status=ApprovalStatus.CONSUMED,
+                next_status=ApprovalStatusV1.CONSUMED,
                 consumed_at_ms=now_ms,
             ):
                 raise RuntimeError("validated ConsumeApproval CAS failed")
@@ -253,7 +255,7 @@ class ClaimExecutionHandler:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -266,7 +268,7 @@ class ClaimExecutionHandler:
                 id=command.attempt_id,
                 approval_id=approval.id,
                 attempt_no=len(unit_of_work.execution_attempts.list_by_approval(approval.id)) + 1,
-                status=ExecutionAttemptStatus.CLAIMED,
+                status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,
                 result_resource_ref_id=None,
                 response_metadata_json=None,
@@ -298,7 +300,7 @@ class ClaimExecutionHandler:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="EXECUTION_CLAIMED",
-                    status=ActionStatus.EXECUTING.value,
+                    status=ActionStatusV1.EXECUTING.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"approval_id": approval.id, "attempt_id": attempt.id},
@@ -392,7 +394,7 @@ class ClaimExecutionHandler:
     def _predecessors_verified(*, unit_of_work: UnitOfWork, action_id: str) -> bool:
         for predecessor_id in unit_of_work.action_dependencies.list_dependencies(action_id):
             predecessor = unit_of_work.actions.get_by_id(predecessor_id)
-            if predecessor is None or predecessor.status != ActionStatus.VERIFIED.value:
+            if predecessor is None or predecessor.status != ActionStatusV1.VERIFIED.value:
                 return False
         return True
 
@@ -424,7 +426,7 @@ class ClaimExecutionHandler:
         unit_of_work: UnitOfWork,
         command: ClaimExecutionCommand,
         action_id: str,
-        status: ActionStatus,
+        status: ActionStatusV1,
         version: int,
         now_ms: int,
         detail: str,
@@ -468,7 +470,7 @@ class ClaimExecutionHandler:
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND,
                 action_id=action.id,
-                current_status=ActionStatus(action.status),
+                current_status=ActionStatusV1(action.status),
                 current_version=action.version,
                 next_allowed_commands=(),
                 conflict_detail="command_id already exists with a different request_hash",
@@ -480,7 +482,7 @@ class ClaimExecutionHandler:
                 applied=False,
                 result_code=ResultCode.RECOVERY_REQUIRED,
                 action_id=action.id,
-                current_status=ActionStatus(action.status),
+                current_status=ActionStatusV1(action.status),
                 current_version=action.version,
                 next_allowed_commands=(),
                 conflict_detail=(
@@ -493,7 +495,7 @@ class ClaimExecutionHandler:
             applied=bool(payload["applied"]),
             result_code=ResultCode(str(payload["result_code"])),
             action_id=str(payload["action_id"]),
-            current_status=ActionStatus(str(payload["current_status"])),
+            current_status=ActionStatusV1(str(payload["current_status"])),
             current_version=int(payload["current_version"]),
             next_allowed_commands=tuple(
                 ClaimCommand(str(item)) for item in payload["next_allowed_commands"]

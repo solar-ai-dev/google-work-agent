@@ -19,9 +19,9 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.mark_unknown_result import (
     transition_mark_unknown_result,
 )
@@ -109,7 +109,7 @@ class MarkUnknownResultHandler:
             attempt = require_attempt(unit_of_work, command.attempt_id)
             plan = require_plan(unit_of_work, action.plan_id)
             transition = transition_mark_unknown_result(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action_version=action.version,
                 expected_action_version=command.expected_action_version,
                 attempt_status=attempt.status,
@@ -122,7 +122,7 @@ class MarkUnknownResultHandler:
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
-                status=ExecutionAttemptStatus.UNKNOWN_RESULT,
+                status=ExecutionAttemptStatusV1.UNKNOWN_RESULT,
                 error_code=command.error_code,
                 error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
                 result_resource_ref_id=None,
@@ -133,7 +133,7 @@ class MarkUnknownResultHandler:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=transition.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -191,7 +191,7 @@ class MarkUnknownResultHandler:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_UNKNOWN_RESULT",
-                    status=ActionStatus.UNKNOWN_RESULT.value,
+                    status=ActionStatusV1.UNKNOWN_RESULT.value,
                     duration_ms=None,
                     payload_json=dumps(trace_payload, sort_keys=True),
                     created_at_ms=now_ms,

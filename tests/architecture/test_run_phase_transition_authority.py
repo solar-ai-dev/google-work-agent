@@ -45,7 +45,7 @@ def test_superseded_plan_children_cannot_regain_mutation_or_execution_authority(
     )
     for path in guarded_operations:
         source = path.read_text(encoding="utf-8")
-        assert "PlanStatus.SUPERSEDED" in source
+        assert "PlanStatusV1.SUPERSEDED" in source
         assert "superseded Plan children are history-only" in source
     claim = (ROOT / "application" / "use_cases" / "claim" / "claim_execution.py").read_text(
         encoding="utf-8"

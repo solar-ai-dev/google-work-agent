@@ -1,13 +1,13 @@
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.approval.transitions.expire_approval import transition_expire_approval
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 
 
 def test_expire_approval_is_a_coupled_mutation() -> None:
     assert transition_expire_approval(
-        action_status=ActionStatus.APPROVED,
-        approval_status=ApprovalStatus.ACTIVE,
-        plan_status=PlanStatus.WAITING_APPROVAL,
+        action_status=ActionStatusV1.APPROVED,
+        approval_status=ApprovalStatusV1.ACTIVE,
+        plan_status=PlanStatusV1.WAITING_APPROVAL,
         plan_is_current=True,
-    ) == (ActionStatus.EXPIRED, ApprovalStatus.EXPIRED)
+    ) == (ActionStatusV1.EXPIRED, ApprovalStatusV1.EXPIRED)

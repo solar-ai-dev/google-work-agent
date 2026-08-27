@@ -8,7 +8,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository 
     SQLitePlanRepository,
 )
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 
 
 class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):
@@ -30,7 +30,7 @@ class CorrectiveAwareSQLitePlanRepository(SQLitePlanRepository):
         if (
             existing.run_id != plan.run_id
             or existing.revision_no != plan.revision_no
-            or existing.status is not PlanStatus.DRAFT
+            or existing.status is not PlanStatusV1.DRAFT
             or self._connection.execute(
                 "SELECT 1 FROM actions WHERE plan_id = ? LIMIT 1;",
                 (plan.id,),

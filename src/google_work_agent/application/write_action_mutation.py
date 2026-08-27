@@ -22,6 +22,8 @@ from google_work_agent.application.feasibility import (
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
+from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.run_command_receipts import (
     ActionMutationReceiptResponse as _ActionMutationResponse,
 )
@@ -49,20 +51,18 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
     ActionCommand,
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
 )
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
 from google_work_agent.domain.action.transitions.reject_action import transition_reject_action
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.transitions.begin_verification import (
     transition_begin_verification,
@@ -70,14 +70,16 @@ from google_work_agent.domain.run.transitions.begin_verification import (
 from google_work_agent.domain.run.transitions.complete_write_run import (
     transition_complete_write_run,
 )
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
 )
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
-    {ActionStatus.PROPOSED.value, ActionStatus.MODIFIED.value, ActionStatus.APPROVED.value}
+    {ActionStatusV1.PROPOSED.value, ActionStatusV1.MODIFIED.value, ActionStatusV1.APPROVED.value}
 )
 
 
@@ -251,7 +253,7 @@ class ModifyWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status), effect_type=effect_type
+                                ActionStatusV1(action.status), effect_type=effect_type
                             )
                         ),
                         conflict_detail=(
@@ -277,7 +279,7 @@ class ModifyWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status), effect_type=effect_type
+                                ActionStatusV1(action.status), effect_type=effect_type
                             )
                         ),
                         conflict_detail=f"unsupported arguments_patch fields: {unknown_fields}",
@@ -307,7 +309,7 @@ class ModifyWriteActionService:
                         next_allowed_commands=tuple(
                             item.value
                             for item in next_allowed_action_commands(
-                                ActionStatus(action.status), effect_type=effect_type
+                                ActionStatusV1(action.status), effect_type=effect_type
                             )
                         ),
                         conflict_detail=(
@@ -346,7 +348,7 @@ class ModifyWriteActionService:
             if fresh_feasibility_risk is not None:
                 updated_risk = merge_feasibility_risk(updated_risk, fresh_feasibility_risk)
             preview = transition_modify_action(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=EffectType(action.effect_type),
@@ -360,7 +362,7 @@ class ModifyWriteActionService:
                     unit_of_work.actions.update_if_version_and_status(
                         action.id,
                         expected_version=action.version,
-                        expected_status=ActionStatus(action.status),
+                        expected_status=ActionStatusV1(action.status),
                         next_status=preview.current_status,
                         updated_at_ms=now_ms,
                         arguments_json=canonicalize_json_value(new_arguments),
@@ -607,7 +609,7 @@ def _revoke_stale_dependent_approvals(
 
     for dependent_id in unit_of_work.action_dependencies.list_dependents(modified_action_id):
         dependent = unit_of_work.actions.get_by_id(dependent_id)
-        if dependent is None or dependent.status != ActionStatus.APPROVED.value:
+        if dependent is None or dependent.status != ActionStatusV1.APPROVED.value:
             continue
         revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
         if not revoked_ids:
@@ -690,9 +692,9 @@ def _block_rejected_action_dependents(
         visited.add(dependent_id)
         dependent = unit_of_work.actions.get_by_id(dependent_id)
         if dependent is None or dependent.status not in {
-            ActionStatus.PROPOSED.value,
-            ActionStatus.MODIFIED.value,
-            ActionStatus.APPROVED.value,
+            ActionStatusV1.PROPOSED.value,
+            ActionStatusV1.MODIFIED.value,
+            ActionStatusV1.APPROVED.value,
         }:
             continue
         revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
@@ -700,8 +702,8 @@ def _block_rejected_action_dependents(
             unit_of_work.actions.update_if_version_and_status(
                 dependent_id,
                 expected_version=dependent.version,
-                expected_status=ActionStatus(dependent.status),
-                next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                expected_status=ActionStatusV1(dependent.status),
+                next_status=ActionStatusV1.DEPENDENCY_BLOCKED,
                 updated_at_ms=now_ms,
             )
             is None
@@ -712,7 +714,7 @@ def _block_rejected_action_dependents(
             "command_id": command_id,
             "blocked_by_action_id": rejected_action_id,
             "previous_status": dependent.status,
-            "new_status": ActionStatus.DEPENDENCY_BLOCKED.value,
+            "new_status": ActionStatusV1.DEPENDENCY_BLOCKED.value,
             "revoked_approval_ids": list(revoked_ids),
         }
         unit_of_work.traces.add(
@@ -720,7 +722,7 @@ def _block_rejected_action_dependents(
                 run_id=run_id,
                 action_id=dependent_id,
                 event_type="ACTION_DEPENDENCY_BLOCKED",
-                status=ActionStatus.DEPENDENCY_BLOCKED.value,
+                status=ActionStatusV1.DEPENDENCY_BLOCKED.value,
                 duration_ms=None,
                 payload_json=dumps(
                     {
@@ -806,7 +808,7 @@ class RejectWriteActionService:
                 default=None,
             )
             preview = transition_reject_action(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=EffectType(action.effect_type),
@@ -820,7 +822,7 @@ class RejectWriteActionService:
                     unit_of_work.actions.update_if_version_and_status(
                         action.id,
                         expected_version=action.version,
-                        expected_status=ActionStatus(action.status),
+                        expected_status=ActionStatusV1(action.status),
                         next_status=preview.current_status,
                         updated_at_ms=now_ms,
                     )
@@ -887,13 +889,13 @@ class RejectWriteActionService:
                 )
                 current_actions = unit_of_work.actions.list_by_plan(plan.id)
                 terminal_statuses = {
-                    ActionStatus.REJECTED.value,
-                    ActionStatus.VERIFIED.value,
-                    ActionStatus.FAILED.value,
-                    ActionStatus.BLOCKED.value,
-                    ActionStatus.DEPENDENCY_BLOCKED.value,
-                    ActionStatus.MISMATCH.value,
-                    ActionStatus.CANCELLED.value,
+                    ActionStatusV1.REJECTED.value,
+                    ActionStatusV1.VERIFIED.value,
+                    ActionStatusV1.FAILED.value,
+                    ActionStatusV1.BLOCKED.value,
+                    ActionStatusV1.DEPENDENCY_BLOCKED.value,
+                    ActionStatusV1.MISMATCH.value,
+                    ActionStatusV1.CANCELLED.value,
                 }
                 if current_actions and all(
                     item.status in terminal_statuses for item in current_actions
@@ -919,13 +921,13 @@ class RejectWriteActionService:
                     ):
                         raise RuntimeError("validated CompleteWriteRun CAS failed")
                     if plan.status in {
-                        PlanStatus.WAITING_APPROVAL,
-                        PlanStatus.ACTIVE,
+                        PlanStatusV1.WAITING_APPROVAL,
+                        PlanStatusV1.ACTIVE,
                     } and (
                         unit_of_work.plans.update_if_status(
                             plan.id,
                             expected_status=plan.status,
-                            next_status=PlanStatus.COMPLETED,
+                            next_status=PlanStatusV1.COMPLETED,
                         )
                         is None
                     ):
@@ -951,7 +953,7 @@ def _mutate_write_action(
     expected_version: int,
     command_type: str,
     transition_name: str,
-    mutate: Callable[[UnitOfWork, int], CommandResult[ActionStatus, ActionCommand]],
+    mutate: Callable[[UnitOfWork, int], CommandResult[ActionStatusV1, ActionCommand]],
 ) -> dict[str, object]:
     with unit_of_work_factory() as unit_of_work:
         existing = unit_of_work.command_receipts.get_by_command_id(command_id)

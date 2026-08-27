@@ -23,7 +23,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository
     SQLiteAuditRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
-    SQLiteCommandReceiptRepository,
+    SqliteCommandReceiptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.conversation_repository import (
     SqliteConversationRepository,
@@ -160,7 +160,7 @@ class FaultInjectingSqliteUnitOfWork:
         self.conversations = SqliteConversationRepository(sqlite_connection)
         self.runs = SQLiteRunRepository(sqlite_connection)
         self.messages = SqliteMessageRepository(sqlite_connection)
-        self.command_receipts = SQLiteCommandReceiptRepository(sqlite_connection)
+        self.command_receipts = SqliteCommandReceiptRepository(sqlite_connection)
         self.plans = SQLitePlanRepository(sqlite_connection)
         self.actions = SQLiteActionRepository(sqlite_connection)
         self.resource_refs = SqliteResourceRefRepository(sqlite_connection)

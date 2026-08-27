@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected, require_status
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected, require_status
 
-_PRE_PUBLISH = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING})
-_PUBLISHED_REVIEW = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})
+_PRE_PUBLISH = frozenset({RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING})
+_PUBLISHED_REVIEW = frozenset({RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
 _REVIEW_REENTRY_DISPOSITIONS = frozenset({"REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION"})
-_CONTEXT_ADJUSTABLE_ACTIONS = frozenset({ActionStatus.PROPOSED, ActionStatus.MODIFIED})
+_CONTEXT_ADJUSTABLE_ACTIONS = frozenset({ActionStatusV1.PROPOSED, ActionStatusV1.MODIFIED})
 
 
 def guard_begin_planning(
-    current_status: RunStatus,
+    current_status: RunStatusV1,
     *,
     durable_review_disposition: str | None = None,
     user_context_adjustment: bool = False,
     has_current_plan: bool = False,
-    current_action_statuses: Collection[ActionStatus] = (),
+    current_action_statuses: Collection[ActionStatusV1] = (),
     active_approval_count: int = 0,
     unresolved_external_effect_count: int = 0,
     expected_revisions_match: bool = True,
@@ -28,7 +28,7 @@ def guard_begin_planning(
     if user_context_adjustment:
         require_status(
             current_status,
-            frozenset({RunStatus.WAITING_APPROVAL}),
+            frozenset({RunStatusV1.WAITING_APPROVAL}),
             "begin_planning.user_context_adjustment",
         )
         if not has_current_plan:

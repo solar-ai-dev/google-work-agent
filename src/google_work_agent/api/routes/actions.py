@@ -1,5 +1,7 @@
 """Action command transport routes."""
 
+from typing import Protocol
+
 from fastapi import APIRouter, Request, Response
 
 from google_work_agent.api.dependencies.access_control import enforce_access
@@ -38,7 +40,36 @@ from google_work_agent.ports import EndpointPolicy
 router = APIRouter(prefix="/api/v1/actions")
 
 
-def _prepare(request: Request, *, payload: object, dependencies: ActionRouteDependency) -> None:
+class _VersionedPayload(Protocol):
+    api_contract_version: str
+
+
+class _ActionResult(Protocol):
+    @property
+    def applied(self) -> bool: ...
+
+    @property
+    def result_code(self) -> str: ...
+
+    @property
+    def action_id(self) -> str: ...
+
+    @property
+    def action_status(self) -> str: ...
+
+    @property
+    def action_version(self) -> int: ...
+
+    @property
+    def next_allowed_commands(self) -> tuple[str, ...]: ...
+
+    @property
+    def conflict_detail(self) -> str | None: ...
+
+
+def _prepare(
+    request: Request, *, payload: _VersionedPayload, dependencies: ActionRouteDependency
+) -> None:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -48,7 +79,7 @@ def _prepare(request: Request, *, payload: object, dependencies: ActionRouteDepe
     enforce_runtime_operation(request, operation="APPROVALS")
 
 
-def _response(result: object) -> ActionCommandResponse:
+def _response(result: _ActionResult) -> ActionCommandResponse:
     return ActionCommandResponse(
         applied=bool(result.applied),
         result_code=str(result.result_code),
@@ -58,16 +89,6 @@ def _response(result: object) -> ActionCommandResponse:
         next_allowed_commands=list(result.next_allowed_commands),
         conflict_detail=result.conflict_detail,
     )
-
-
-def _modify_gateway(dependencies: ActionRouteDependency) -> object:
-    """Temporary wiring bridge until shared API composition exposes the gateway directly."""
-    legacy_surface = dependencies.modify_action_service()
-    validator = getattr(legacy_surface, "_task_duplicates", None)
-    gateway = getattr(validator, "_gateway", None)
-    if gateway is None:
-        raise RuntimeError("modify action gateway is not configured")
-    return gateway
 
 
 @router.post("/{action_id}/approve", response_model=ActionCommandResponse)
@@ -119,10 +140,12 @@ def modify(
     dependencies: ActionRouteDependency,
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
+    if dependencies.action_gateway is None:
+        raise RuntimeError("modify action gateway is not configured")
     handler = ModifyActionHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        gateway=_modify_gateway(dependencies),
+        gateway=dependencies.action_gateway,
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,
         schedule_run_execution=dependencies.schedule_run_execution,

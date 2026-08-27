@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.determine_io_resources_projection import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.determine_io_resources_projection import (  # noqa: E501
     project_determine_io_resources_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
@@ -12,8 +12,8 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
 )
 from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports import PromptReference
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def determine_io_resources_node(

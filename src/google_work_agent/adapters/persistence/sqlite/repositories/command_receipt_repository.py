@@ -6,13 +6,13 @@ from json import dumps, loads
 from google_work_agent.domain.command_receipt.model import AnswerOnlyResponse, CommandReceiptStatus
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatus
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 
 _REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
 _RUN_AGGREGATE_TYPE = "Run"
 
 
-class SQLiteCommandReceiptRepository:
+class SqliteCommandReceiptRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
@@ -32,7 +32,7 @@ class SQLiteCommandReceiptRepository:
             response = AnswerOnlyResponse(
                 applied=bool(p["applied"]),
                 result_code=ResultCode(str(p["result_code"])),
-                current_status=RunStatus(str(p["current_status"])),
+                current_status=RunStatusV1(str(p["current_status"])),
                 current_version=int(p["current_version"]),
                 next_allowed_commands=tuple(RunCommand(str(v)) for v in p["next_allowed_commands"]),
                 conflict_detail=p["conflict_detail"],
@@ -70,6 +70,29 @@ class SQLiteCommandReceiptRepository:
                ) VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?);""",
             (command_id, command_type, request_hash, aggregate_type, aggregate_id, created_at_ms),
         )
+
+    def reserve_or_replay(
+        self,
+        *,
+        command_id: str,
+        command_type: str,
+        request_hash: str,
+        aggregate_type: str,
+        aggregate_id: str | None,
+        created_at_ms: int,
+    ) -> CommandReceiptRecord | None:
+        existing = self.get_by_command_id(command_id)
+        if existing is not None:
+            return existing
+        self.add_received(
+            command_id=command_id,
+            command_type=command_type,
+            request_hash=request_hash,
+            aggregate_type=aggregate_type,
+            aggregate_id=aggregate_id,
+            created_at_ms=created_at_ms,
+        )
+        return None
 
     def finish(
         self, *, command_id: str, response: AnswerOnlyResponse, completed_at_ms: int
@@ -109,7 +132,7 @@ class SQLiteCommandReceiptRepository:
         c = self._connection.execute(
             """UPDATE command_receipts
                SET status=?, result_code=?, result_version=?, response_json=?, completed_at_ms=?
-               WHERE command_id=?;""",
+               WHERE command_id=? AND status='RECEIVED';""",
             (
                 status.value,
                 result_code.value,
@@ -121,6 +144,25 @@ class SQLiteCommandReceiptRepository:
         )
         if c.rowcount != 1:
             raise sqlite3.IntegrityError("receipt finalize affected an unexpected row count")
+
+    def store_result(
+        self,
+        *,
+        command_id: str,
+        applied: bool,
+        result_code: ResultCode,
+        result_version: int,
+        response_json: str,
+        completed_at_ms: int,
+    ) -> None:
+        self.finish_json(
+            command_id=command_id,
+            applied=applied,
+            result_code=result_code,
+            result_version=result_version,
+            response_json=response_json,
+            completed_at_ms=completed_at_ms,
+        )
 
     def has_applied_request_cancel(self, run_id: str) -> bool:
         row = self._connection.execute(

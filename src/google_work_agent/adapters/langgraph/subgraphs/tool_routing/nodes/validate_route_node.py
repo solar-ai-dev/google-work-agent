@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.result_projection import (
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.result_projection import (  # noqa: E501
     project_result_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 from google_work_agent.application.agents.tool_routing.validate_route import validate_route
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def validate_route_node(

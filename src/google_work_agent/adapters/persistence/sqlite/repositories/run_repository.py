@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from google_work_agent.domain.run.model import Run, RunCreate, RunStatus
+from google_work_agent.domain.run.model import Run, RunCreate, RunStatusV1
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
@@ -22,7 +22,7 @@ class SQLiteRunRepository:
         return Run(
             id=str(row["id"]),
             conversation_id=str(row["conversation_id"]),
-            status=RunStatus(str(row["status"])),
+            status=RunStatusV1(str(row["status"])),
             version=int(row["version"]),
             started_at_ms=int(row["started_at_ms"]),
             finished_at_ms=(None if row["finished_at_ms"] is None else int(row["finished_at_ms"])),
@@ -88,7 +88,7 @@ class SQLiteRunRepository:
         self,
         run_id: str,
         expected_version: int,
-        expected_statuses: frozenset[RunStatus],
+        expected_statuses: frozenset[RunStatusV1],
         values: dict[str, object],
     ) -> bool:
         if not values or not expected_statuses:

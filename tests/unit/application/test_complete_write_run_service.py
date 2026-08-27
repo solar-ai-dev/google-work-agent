@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.application.write_run_completion import (
+from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
-    CompleteWriteRunService,
+    CompleteWriteRunHandler,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import UnitOfWork
 
 
@@ -81,7 +81,7 @@ class _Uow:
             RunRecord(
                 id="run-1",
                 conversation_id="conversation-1",
-                status=RunStatus.VERIFYING,
+                status=RunStatusV1.VERIFYING,
                 version=7,
                 started_at_ms=1,
                 finished_at_ms=None,
@@ -92,7 +92,7 @@ class _Uow:
                 id="plan-1",
                 run_id="run-1",
                 revision_no=1,
-                status=PlanStatus.ACTIVE,
+                status=PlanStatusV1.ACTIVE,
                 summary_text="write",
                 created_at_ms=1,
             )
@@ -109,7 +109,7 @@ class _Uow:
                 verification_policy="GET_COMPARE",
                 recovery_policy="RESOURCE_SEARCH",
                 target_resource_ref_id=None,
-                status=ActionStatus.MISMATCH.value,
+                status=ActionStatusV1.MISMATCH.value,
                 arguments_json="{}",
                 arguments_hash="hash",
                 expected_json="{}",
@@ -142,7 +142,7 @@ class _Uow:
 
 def test_complete_write_run_mismatch_guard_has_zero_run_and_plan_completion_mutations() -> None:
     uow = _Uow()
-    service = CompleteWriteRunService(
+    service = CompleteWriteRunHandler(
         unit_of_work_factory=lambda: cast(UnitOfWork, uow),
         now_ms=lambda: 100,
     )
@@ -157,7 +157,7 @@ def test_complete_write_run_mismatch_guard_has_zero_run_and_plan_completion_muta
     )
 
     assert response.applied is False
-    assert response.run_status == RunStatus.VERIFYING.value
+    assert response.run_status == RunStatusV1.VERIFYING.value
     assert response.run_version == 7
     assert "MISMATCH" in cast(str, response.conflict_detail)
     assert uow.runs.complete_calls == 0

@@ -1,40 +1,40 @@
 import pytest
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
     transition_resolve_recovery,
 )
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 def test_recheck_unknown_result_to_executed_enters_verifying() -> None:
     decision = transition_resolve_recovery(
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
         reason="UNKNOWN_RESULT",
-        pre_recovery_status=RunStatus.WAITING_APPROVAL,
+        pre_recovery_status=RunStatusV1.WAITING_APPROVAL,
         recheck_input_changed=True,
-        recovered_action_status=ActionStatus.EXECUTED,
+        recovered_action_status=ActionStatusV1.EXECUTED,
     )
 
     assert decision.applied is True
-    assert decision.current_status is RunStatus.VERIFYING
+    assert decision.current_status is RunStatusV1.VERIFYING
 
 
 def test_recheck_unknown_result_to_failed_restores_pre_recovery_status() -> None:
     decision = transition_resolve_recovery(
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
         reason="UNKNOWN_RESULT",
-        pre_recovery_status=RunStatus.CANCEL_REQUESTED,
+        pre_recovery_status=RunStatusV1.CANCEL_REQUESTED,
         recheck_input_changed=True,
-        recovered_action_status=ActionStatus.FAILED,
+        recovered_action_status=ActionStatusV1.FAILED,
     )
 
     assert decision.applied is True
-    assert decision.current_status is RunStatus.CANCEL_REQUESTED
+    assert decision.current_status is RunStatusV1.CANCEL_REQUESTED
 
 
 @pytest.mark.parametrize(
@@ -43,15 +43,15 @@ def test_recheck_unknown_result_to_failed_restores_pre_recovery_status() -> None
 )
 def test_same_input_recheck_stays_suspended(reason: str) -> None:
     decision = transition_resolve_recovery(
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
         reason=reason,  # type: ignore[arg-type]
-        pre_recovery_status=RunStatus.WAITING_APPROVAL,
+        pre_recovery_status=RunStatusV1.WAITING_APPROVAL,
     )
 
     assert decision.applied is False
     assert decision.result_code is ResultCode.NO_PROGRESS
-    assert decision.current_status is RunStatus.RECOVERY_REQUIRED
+    assert decision.current_status is RunStatusV1.RECOVERY_REQUIRED
 
 
 @pytest.mark.parametrize(
@@ -70,10 +70,10 @@ def test_reason_resolution_matrix_rejects_forbidden_combinations(
     reason: str, resolution: RecoveryResolution
 ) -> None:
     decision = transition_resolve_recovery(
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
         resolution=resolution,
         reason=reason,  # type: ignore[arg-type]
-        pre_recovery_status=RunStatus.WAITING_APPROVAL,
+        pre_recovery_status=RunStatusV1.WAITING_APPROVAL,
         irrecoverable_confirmed=True,
     )
 
@@ -83,12 +83,12 @@ def test_reason_resolution_matrix_rejects_forbidden_combinations(
 
 def test_checkpoint_recheck_requires_validated_pre_recovery_status() -> None:
     decision = transition_resolve_recovery(
-        RunStatus.RECOVERY_REQUIRED,
+        RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
         reason="CHECKPOINT_MISMATCH",
-        pre_recovery_status=RunStatus.PLANNING,
+        pre_recovery_status=RunStatusV1.PLANNING,
         recheck_input_changed=True,
-        validated_resume_status=RunStatus.RETRIEVING,
+        validated_resume_status=RunStatusV1.RETRIEVING,
     )
 
     assert decision.applied is False
@@ -97,10 +97,10 @@ def test_checkpoint_recheck_requires_validated_pre_recovery_status() -> None:
 
 def test_recheck_target_does_not_reapply() -> None:
     decision = transition_resolve_recovery(
-        RunStatus.VERIFYING,
+        RunStatusV1.VERIFYING,
         resolution=RecoveryResolution.RECHECK,
         reason="VERIFICATION_MISMATCH",
-        pre_recovery_status=RunStatus.WAITING_APPROVAL,
+        pre_recovery_status=RunStatusV1.WAITING_APPROVAL,
         recheck_input_changed=True,
     )
 

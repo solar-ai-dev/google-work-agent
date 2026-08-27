@@ -9,7 +9,7 @@ from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     PendingProjectionEvent,
     SseEventBufferPort,
@@ -35,9 +35,9 @@ class RunOutcomeHandler:
     def publish_cancel_response(self, response: WriteRunResponse) -> None:
         event_type = (
             "completed"
-            if response.run_status == RunStatus.CANCELLED.value
+            if response.run_status == RunStatusV1.CANCELLED.value
             else "recovery_required"
-            if response.run_status == RunStatus.RECOVERY_REQUIRED.value
+            if response.run_status == RunStatusV1.RECOVERY_REQUIRED.value
             else "run_status"
         )
         self.publish(

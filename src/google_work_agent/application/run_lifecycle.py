@@ -18,10 +18,10 @@ from google_work_agent.application.use_cases.run.resume_run import (
 from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunResult as ResumeRunResponse,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import UnitOfWork
 
 
@@ -74,15 +74,15 @@ class ResumeRunService:
             unknown_result_exists = False
             if latest_plan is not None:
                 unknown_result_exists = any(
-                    action.status == ActionStatus.UNKNOWN_RESULT.value
+                    action.status == ActionStatusV1.UNKNOWN_RESULT.value
                     for action in unit_of_work.actions.list_by_plan(latest_plan)
                 )
 
             allowed_statuses = {
-                "CONFIRMATION": {RunStatus.WAITING_CONFIRMATION},
-                "REAUTH_COMPLETED": {RunStatus.REAUTH_REQUIRED},
-                "SAFE_CHECKPOINT_RESUME": {RunStatus.BLOCKED},
-                "RECOVERY_RECHECK": {RunStatus.RECOVERY_REQUIRED},
+                "CONFIRMATION": {RunStatusV1.WAITING_CONFIRMATION},
+                "REAUTH_COMPLETED": {RunStatusV1.REAUTH_REQUIRED},
+                "SAFE_CHECKPOINT_RESUME": {RunStatusV1.BLOCKED},
+                "RECOVERY_RECHECK": {RunStatusV1.RECOVERY_REQUIRED},
             }
             if command.expected_run_version != run.version:
                 response = ResumeRunResponse(

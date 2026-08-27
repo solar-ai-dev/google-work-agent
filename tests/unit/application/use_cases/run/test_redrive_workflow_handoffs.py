@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryResolution
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -245,7 +245,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
             request_hash="b" * 64,
             resolution=RecoveryResolution.RECHECK,
             recheck_input_changed=True,
-            validated_resume_status=RunStatus.ANALYZING,
+            validated_resume_status=RunStatusV1.ANALYZING,
         )
     )
     assert resolved.applied

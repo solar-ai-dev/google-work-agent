@@ -10,10 +10,11 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.write_action_mutation import RejectWriteActionService
-from google_work_agent.application.write_action_mutation_contracts import (
-    RejectWriteActionCommand,
+from google_work_agent.application.use_cases.action.reject_action import (
+    RejectActionCommand,
+    RejectActionHandler,
 )
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
@@ -23,14 +24,13 @@ from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
 )
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
 )
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,
@@ -73,8 +73,8 @@ def modify_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def _service(database_path: Path, clock: FakeClockPort) -> RejectWriteActionService:
-    return RejectWriteActionService(
+def _service(database_path: Path, clock: FakeClockPort) -> RejectActionHandler:
+    return RejectActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
     )
@@ -120,18 +120,17 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
         expected_version = 1
 
     result = _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id=f"reject-{starting_status.lower()}",
             request_hash=f"reject-{starting_status}".ljust(64, "0"),
             action_id="action-1",
             expected_version=expected_version,
-            actor_account_id="account-1",
             reason_code="USER_DECLINED",
         )
     )
 
-    assert result["applied"] is True
-    assert result["action_status"] == "REJECTED"
+    assert result.applied is True
+    assert result.action_status == "REJECTED"
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
         plan = unit_of_work.plans.get_by_id("plan-1")
@@ -148,7 +147,7 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
     assert run is not None and run.status.value == "COMPLETED"
     assert attempts == ()
     if approvals:
-        assert approvals[-1].status is ApprovalStatus.REVOKED
+        assert approvals[-1].status is ApprovalStatusV1.REVOKED
     rejected = [event for event in audits if event.event_type == "ACTION_REJECTED"]
     assert len(rejected) == 1
     metadata = loads(rejected[0].metadata_json)["attributes"]
@@ -184,7 +183,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
-    assert PublishWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-independent-reject",
             request_hash="8" * 64,
@@ -195,7 +194,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
     ).applied
 
     result = _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id="reject-independent-a",
             request_hash="9" * 64,
             action_id="action-a",
@@ -203,7 +202,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
         )
     )
 
-    assert result["applied"] is True
+    assert result.applied is True
     with factory() as unit_of_work:
         action_a = unit_of_work.actions.get_by_id("action-a")
         action_b = unit_of_work.actions.get_by_id("action-b")
@@ -234,7 +233,7 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
     )
 
     result = _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id=f"reject-forbidden-{status}",
             request_hash=f"forbidden-{status}".ljust(64, "0"),
             action_id="action-1",
@@ -242,8 +241,8 @@ def test_reject_forbidden_statuses_mutate_nothing(modify_database: Path, status:
         )
     )
 
-    assert result["applied"] is False
-    assert result["result_code"] == ResultCode.STATE_CONFLICT.value
+    assert result.applied is False
+    assert result.result_code == ResultCode.STATE_CONFLICT.value
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
         audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
@@ -260,7 +259,7 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
         plan_id="plan-1",
     )
     service = _service(modify_database, clock)
-    command = RejectWriteActionCommand(
+    command = RejectActionCommand(
         command_id="reject-replay",
         request_hash="a" * 64,
         action_id="action-1",
@@ -269,7 +268,7 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
     first = service(command)
     replay = service(command)
     mismatch = service(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id="reject-replay",
             request_hash="b" * 64,
             action_id="action-1",
@@ -277,7 +276,7 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
         )
     )
     stale = service(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id="reject-stale",
             request_hash="c" * 64,
             action_id="action-1",
@@ -285,9 +284,11 @@ def test_reject_receipt_replay_hash_and_version_contract(modify_database: Path) 
         )
     )
 
-    assert replay == first
-    assert mismatch["result_code"] == ResultCode.DUPLICATE_COMMAND.value
-    assert stale["result_code"] == ResultCode.VERSION_CONFLICT.value
+    assert replay.request_replayed is True
+    assert replay.action_status == first.action_status
+    assert replay.action_version == first.action_version
+    assert mismatch.result_code == ResultCode.DUPLICATE_COMMAND.value
+    assert stale.result_code == ResultCode.VERSION_CONFLICT.value
     with sqlite_unit_of_work_factory(modify_database)() as unit_of_work:
         action = unit_of_work.actions.get_by_id("action-1")
         audits = unit_of_work.audits.list_by_aggregate(run_id="run-1", cursor_after=None, limit=100)
@@ -308,7 +309,7 @@ def test_reject_rejects_unsafe_reason_codes_before_receipt(
     )
     with pytest.raises(ValueError, match="safe uppercase identifier"):
         _service(modify_database, clock)(
-            RejectWriteActionCommand(
+            RejectActionCommand(
                 command_id="reject-invalid-reason",
                 request_hash="6" * 64,
                 action_id="action-1",
@@ -344,7 +345,7 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
-    assert PublishWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-proposed-dependency",
             request_hash="b" * 64,
@@ -355,13 +356,13 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
     ).applied
 
     assert _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id="reject-proposed-dependency",
             request_hash="c" * 64,
             action_id="action-a",
             expected_version=0,
         )
-    )["applied"]
+    ).applied
     claim = ClaimWriteActionService(
         unit_of_work_factory=factory,
         now_ms=clock.now_ms,
@@ -412,7 +413,7 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
         )
     )
     assert saved.applied is True
-    assert PublishWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-reject-chain",
             request_hash="e" * 64,
@@ -425,14 +426,14 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
         _approve(modify_database, clock, action_id)
 
     rejected = _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id="reject-chain",
             request_hash="f" * 64,
             action_id="action-a",
             expected_version=1,
         )
     )
-    assert rejected["applied"] is True
+    assert rejected.applied is True
 
     with factory() as unit_of_work:
         actions = {item.id: item for item in unit_of_work.actions.list_by_plan("plan-chain")}
@@ -443,7 +444,7 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
     assert actions["action-a"].status == "REJECTED"
     assert actions["action-b"].status == "DEPENDENCY_BLOCKED"
     assert actions["action-c"].status == "DEPENDENCY_BLOCKED"
-    assert all(item.status is ApprovalStatus.REVOKED for item in approvals.values())
+    assert all(item.status is ApprovalStatusV1.REVOKED for item in approvals.values())
     assert {
         event.action_id for event in audits if event.event_type == "ACTION_DEPENDENCY_BLOCKED"
     } == {"action-b", "action-c"}
@@ -495,7 +496,7 @@ def test_reject_preserves_verified_actions(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
-    assert PublishWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id=f"publish-preserve-{rejected_action_id}",
             request_hash="4" * 64,
@@ -509,9 +510,11 @@ def test_reject_preserves_verified_actions(
         action_id=preserved_action_id,
         status="VERIFIED",
     )
+    with connect_sqlite(modify_database) as connection:
+        connection.execute("UPDATE runs SET status = 'VERIFYING' WHERE id = 'run-1';")
 
     result = _service(modify_database, clock)(
-        RejectWriteActionCommand(
+        RejectActionCommand(
             command_id=f"reject-preserve-{rejected_action_id}",
             request_hash="5" * 64,
             action_id=rejected_action_id,
@@ -519,7 +522,7 @@ def test_reject_preserves_verified_actions(
         )
     )
 
-    assert result["applied"] is True
+    assert result.applied is True
     with factory() as unit_of_work:
         preserved = unit_of_work.actions.get_by_id(preserved_action_id)
     assert (
@@ -621,7 +624,7 @@ def test_reject_audit_failure_rolls_back_domain_mutation(modify_database: Path) 
 
     with pytest.raises(Exception, match="reject audit failure"):
         _service(modify_database, clock)(
-            RejectWriteActionCommand(
+            RejectActionCommand(
                 command_id="reject-audit-failure",
                 request_hash="2" * 64,
                 action_id="action-1",

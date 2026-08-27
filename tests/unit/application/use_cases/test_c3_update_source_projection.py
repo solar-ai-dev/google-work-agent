@@ -9,8 +9,8 @@ from google_work_agent.application.use_cases.recovery.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
@@ -81,13 +81,13 @@ def _run_update(
         arguments_json=dumps(arguments),
         expected_json=dumps(expected),
         target_resource_ref_id=None,
-        status=ActionStatus.UNKNOWN_RESULT.value,
+        status=ActionStatusV1.UNKNOWN_RESULT.value,
         version=3,
     )
     attempt = SimpleNamespace(
         id="attempt-1",
         approval_id="approval-1",
-        status=ExecutionAttemptStatus.UNKNOWN_RESULT,
+        status=ExecutionAttemptStatusV1.UNKNOWN_RESULT,
     )
     approval = SimpleNamespace(
         id="approval-1",
@@ -102,10 +102,10 @@ def _run_update(
         unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
         connector_execution=connector,  # type: ignore[arg-type]
         recover_existing_result=(
-            lambda command: recovered.append(command) or _result(ActionStatus.EXECUTED.value)
+            lambda command: recovered.append(command) or _result(ActionStatusV1.EXECUTED.value)
         ),
         resolve_as_failed=(
-            lambda command: failed.append(command) or _result(ActionStatus.FAILED.value)
+            lambda command: failed.append(command) or _result(ActionStatusV1.FAILED.value)
         ),
     )(
         RecoverUpdateCommand(
@@ -173,7 +173,7 @@ def test_tasks_update_unchanged_source_with_provider_extras_resolves_failed() ->
         },
         actual=_task_snapshot(title="before", version="1", extra={"notes": "provider-extra"}),
     )
-    assert result.action_status == ActionStatus.FAILED.value
+    assert result.action_status == ActionStatusV1.FAILED.value
     assert recovered == [] and len(failed) == 1
     assert connector.read_calls == 1 and connector.write_calls == 0
 
@@ -222,7 +222,7 @@ def test_calendar_update_policy_metadata_does_not_pollute_source_comparison(
             extra={"provider_generated": "irrelevant"},
         ),
     )
-    assert result.action_status == ActionStatus.FAILED.value
+    assert result.action_status == ActionStatusV1.FAILED.value
     assert recovered == [] and len(failed) == 1
     assert connector.read_calls == 1 and connector.write_calls == 0
 
@@ -239,7 +239,7 @@ def test_update_expected_state_with_provider_extras_recovers_existing_result() -
         source={"resource_id": "task-1", "version": "1"},
         actual=_task_snapshot(title="after", version="2", extra={"notes": "provider-extra"}),
     )
-    assert result.action_status == ActionStatus.EXECUTED.value
+    assert result.action_status == ActionStatusV1.EXECUTED.value
     assert len(recovered) == 1 and failed == []
     assert connector.read_calls == 1 and connector.write_calls == 0
 

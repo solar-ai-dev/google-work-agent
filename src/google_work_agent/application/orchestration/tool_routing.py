@@ -21,7 +21,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 if TYPE_CHECKING:
     from google_work_agent.application.orchestration.contracts import (

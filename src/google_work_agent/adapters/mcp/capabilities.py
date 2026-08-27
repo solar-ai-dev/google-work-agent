@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from google_work_agent.domain.google_workspace_tool_contracts import (
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
     GoogleWorkspaceToolContract,
     google_workspace_tool_contract,
 )

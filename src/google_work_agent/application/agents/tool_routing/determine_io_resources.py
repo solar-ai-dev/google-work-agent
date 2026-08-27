@@ -35,8 +35,8 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     provider_dispatch_budget_scope,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports.observability_events import ObservabilityContext
 
 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -116,7 +116,8 @@ def determine_io_resources(
             decision = approve_semantic_revision(retry_budget, signature=signature)
             if decision["decision"] == BudgetDecision.DENY.value:
                 raise ToolRouteValidationError(
-                    "tool route semantic candidate revision denied: same failure signature already used"
+                    "tool route semantic candidate revision denied: "
+                    "same failure signature already used"
                 ) from error
             revised = llm_runtime.invoke_structured(
                 prompt_ref=resolved_revision_ref,

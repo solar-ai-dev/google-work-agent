@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeWorkflowRuntime
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -20,6 +19,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
@@ -37,10 +37,10 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
     ListConversationsHandler,
 )
 from google_work_agent.application.write_actions import (
-    ApproveWriteActionService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,

@@ -9,7 +9,9 @@ from google_work_agent.application.read_contracts import (
     CompletedResourceRef,
     CompleteReadActionCommand,
 )
-from google_work_agent.application.read_lifecycle import CompleteReadActionService
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
@@ -141,7 +143,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
         unit_of_work.commit()
 
     factory = sqlite_unit_of_work_factory(database_path)
-    service = CompleteReadActionService(unit_of_work_factory=factory, now_ms=lambda: 3)
+    service = CompleteReadActionHandler(unit_of_work_factory=factory, now_ms=lambda: 3)
     response = service(
         CompleteReadActionCommand(
             command_id="complete-read-1",

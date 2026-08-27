@@ -11,9 +11,9 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_persistence import audit_event, cancel_pending_actions
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
@@ -142,7 +142,7 @@ class RequestCancelHandler:
                         unit_of_work.plans.update_if_status(
                             plan.id,
                             expected_status=plan.status,
-                            next_status=PlanStatus.CANCELLED,
+                            next_status=PlanStatusV1.CANCELLED,
                         )
                         is None
                     ):
@@ -241,10 +241,10 @@ class RequestCancelHandler:
     @staticmethod
     def _has_started_action(actions: tuple[object, ...]) -> bool:
         started = {
-            ActionStatus.EXECUTING.value,
-            ActionStatus.UNKNOWN_RESULT.value,
-            ActionStatus.EXECUTED.value,
-            ActionStatus.VERIFIED.value,
+            ActionStatusV1.EXECUTING.value,
+            ActionStatusV1.UNKNOWN_RESULT.value,
+            ActionStatusV1.EXECUTED.value,
+            ActionStatusV1.VERIFIED.value,
         }
         return any(getattr(action, "status", None) in started for action in actions)
 

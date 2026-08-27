@@ -9,7 +9,9 @@ from google_work_agent.application.orchestration.domain_output_validation import
     PolicyOverrideProvenanceDependency,
     build_domain_validation_output_from_v2,
 )
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 
 class _ResourceReader:

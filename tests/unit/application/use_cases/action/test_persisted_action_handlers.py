@@ -18,12 +18,12 @@ from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
 )
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
@@ -64,7 +64,7 @@ def _handoff_dependencies(unit_of_work: MagicMock):
     }
 
 
-def _action(*, status: ActionStatus, version: int = 1) -> SimpleNamespace:
+def _action(*, status: ActionStatusV1, version: int = 1) -> SimpleNamespace:
     arguments = {"payload": {"subject": "old"}}
     return SimpleNamespace(
         id="action-1",
@@ -82,18 +82,18 @@ def _action(*, status: ActionStatus, version: int = 1) -> SimpleNamespace:
 
 def test_modify_persists_revocation_review_receipt_and_audit() -> None:
     unit_of_work = _uow()
-    action = _action(status=ActionStatus.APPROVED)
+    action = _action(status=ActionStatusV1.APPROVED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.evidence.list_by_action.return_value = [object()]
-    approval = SimpleNamespace(id="approval-1", status=ApprovalStatus.ACTIVE)
+    approval = SimpleNamespace(id="approval-1", status=ApprovalStatusV1.ACTIVE)
     unit_of_work.approvals.list_by_action.return_value = [approval]
     unit_of_work.approvals.update_if_status.return_value = True
     unit_of_work.actions.update_if_version_and_status.return_value = action
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
-        status=PlanStatus.WAITING_APPROVAL,
+        status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=6,
     )
@@ -136,7 +136,7 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
 
 def _assert_terminal_modify_regression(
     *,
-    initial_status: ActionStatus,
+    initial_status: ActionStatusV1,
     initial_version: int,
     command_id: str,
 ) -> None:
@@ -145,14 +145,14 @@ def _assert_terminal_modify_regression(
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.evidence.list_by_action.return_value = [object()]
-    approval = SimpleNamespace(id="stale-approval", status=ApprovalStatus.ACTIVE)
+    approval = SimpleNamespace(id="stale-approval", status=ApprovalStatusV1.ACTIVE)
     unit_of_work.approvals.list_by_action.return_value = [approval]
     unit_of_work.approvals.update_if_status.return_value = True
     unit_of_work.actions.update_if_version_and_status.return_value = action
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
-        status=PlanStatus.WAITING_APPROVAL,
+        status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=11,
     )
@@ -183,14 +183,14 @@ def _assert_terminal_modify_regression(
 
     expected_arguments = {"payload": {"subject": "new"}}
     assert result.applied is True
-    assert result.action_status == ActionStatus.MODIFIED.value
+    assert result.action_status == ActionStatusV1.MODIFIED.value
     assert result.action_version == initial_version + 1
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
     unit_of_work.actions.update_if_version_and_status.assert_called_once_with(
         action.id,
         expected_version=initial_version,
         expected_status=initial_status,
-        next_status=ActionStatus.MODIFIED,
+        next_status=ActionStatusV1.MODIFIED,
         updated_at_ms=1500,
         arguments_json=dumps(expected_arguments, sort_keys=True, separators=(",", ":")),
         arguments_hash=calculate_canonical_json_hash(expected_arguments),
@@ -210,7 +210,7 @@ def _assert_terminal_modify_regression(
 
 def test_expired_modify_persists_modified_state_and_reopens_review() -> None:
     _assert_terminal_modify_regression(
-        initial_status=ActionStatus.EXPIRED,
+        initial_status=ActionStatusV1.EXPIRED,
         initial_version=4,
         command_id="cmd-modify-expired",
     )
@@ -218,7 +218,7 @@ def test_expired_modify_persists_modified_state_and_reopens_review() -> None:
 
 def test_failed_modify_persists_modified_state_without_execution_shortcut() -> None:
     _assert_terminal_modify_regression(
-        initial_status=ActionStatus.FAILED,
+        initial_status=ActionStatusV1.FAILED,
         initial_version=5,
         command_id="cmd-modify-failed",
     )
@@ -226,13 +226,13 @@ def test_failed_modify_persists_modified_state_without_execution_shortcut() -> N
 
 def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> None:
     unit_of_work = _uow()
-    action = _action(status=ActionStatus.PROPOSED)
+    action = _action(status=ActionStatusV1.PROPOSED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
-        status=PlanStatus.SUPERSEDED,
+        status=PlanStatusV1.SUPERSEDED,
     )
     gateway = MagicMock()
 
@@ -263,21 +263,21 @@ def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> Non
 
 def test_reject_persists_revocation_and_dependency_consequence() -> None:
     unit_of_work = _uow()
-    action = _action(status=ActionStatus.APPROVED, version=2)
-    dependent = SimpleNamespace(id="action-2", status=ActionStatus.APPROVED.value, version=1)
+    action = _action(status=ActionStatusV1.APPROVED, version=2)
+    dependent = SimpleNamespace(id="action-2", status=ActionStatusV1.APPROVED.value, version=1)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get_by_id.side_effect = lambda action_id: (
         action if action_id == action.id else dependent
     )
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
-        id=action.plan_id, run_id="run-1", status=PlanStatus.WAITING_APPROVAL
+        id=action.plan_id, run_id="run-1", status=PlanStatusV1.WAITING_APPROVAL
     )
     unit_of_work.runs.get.return_value = SimpleNamespace(
-        id="run-1", version=9, conversation_id="conversation-1", status=RunStatus.WAITING_APPROVAL
+        id="run-1", version=9, conversation_id="conversation-1", status=RunStatusV1.WAITING_APPROVAL
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.approvals.list_by_action.return_value = [
-        SimpleNamespace(id="approval-1", status=ApprovalStatus.ACTIVE)
+        SimpleNamespace(id="approval-1", status=ApprovalStatusV1.ACTIVE)
     ]
     unit_of_work.approvals.update_if_status.return_value = True
     unit_of_work.actions.update_if_version_and_status.return_value = action
@@ -309,13 +309,13 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
 
 def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     unit_of_work = _uow()
-    action = _action(status=ActionStatus.FAILED, version=5)
+    action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
-        status=PlanStatus.WAITING_APPROVAL,
+        status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED,
         review_version=10,
     )
@@ -337,7 +337,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     )
 
     assert result.applied is True
-    assert result.action_status == ActionStatus.MODIFIED.value
+    assert result.action_status == ActionStatusV1.MODIFIED.value
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
     assert unit_of_work.approvals.method_calls == []
     assert unit_of_work.execution_attempts.method_calls == []
@@ -348,13 +348,13 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
 
 def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
     unit_of_work = _uow()
-    action = _action(status=ActionStatus.FAILED, version=5)
+    action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get_by_id.return_value = action
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
-        status=PlanStatus.SUPERSEDED,
+        status=PlanStatusV1.SUPERSEDED,
     )
 
     result = PrepareWriteRetryHandler(
@@ -378,8 +378,8 @@ def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
     assert unit_of_work.execution_attempts.method_calls == []
 
 
-@pytest.mark.parametrize("status", [ActionStatus.UNKNOWN_RESULT, ActionStatus.MISMATCH])
-def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatus) -> None:
+@pytest.mark.parametrize("status", [ActionStatusV1.UNKNOWN_RESULT, ActionStatusV1.MISMATCH])
+def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatusV1) -> None:
     unit_of_work = _uow()
     action = _action(status=status, version=6)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
@@ -387,7 +387,7 @@ def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatus)
     unit_of_work.plans.get_by_id.return_value = SimpleNamespace(
         id=action.plan_id,
         run_id="run-1",
-        status=PlanStatus.WAITING_APPROVAL,
+        status=PlanStatusV1.WAITING_APPROVAL,
     )
 
     result = PrepareWriteRetryHandler(

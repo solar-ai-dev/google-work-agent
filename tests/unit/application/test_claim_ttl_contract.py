@@ -14,11 +14,11 @@ from google_work_agent.application.write_execution_integrity import (
     read_claim_token,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.claim_contract import (
+from google_work_agent.ports import MCPClientPort
+from google_work_agent.ports.connector.claim_context_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     CLAIM_CONTEXT_MAX_TTL_MS,
 )
-from google_work_agent.ports import MCPClientPort
 
 _SESSION_KEY = "11" * 32
 _SIGNING_SECRET = "application-signing-secret"

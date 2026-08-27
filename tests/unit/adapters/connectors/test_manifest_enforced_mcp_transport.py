@@ -8,6 +8,7 @@ import pytest
 from google_work_agent.adapters.connectors.google_workspace import (
     build_google_workspace_connector_descriptor,
 )
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
 from google_work_agent.adapters.mcp import (
     MCPArtifactConfig,
     build_manifest_payload,
@@ -18,19 +19,18 @@ from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
 from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
-from google_work_agent.domain.google_workspace_tool_contracts import (
-    google_workspace_tool_contract,
-)
-from google_work_agent.domain.google_workspace_tool_registry import (
-    build_google_workspace_tool_registry,
-)
 from google_work_agent.ports import (
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPClientPortError,
-    MCPClientPortErrorCode,
+)
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
+    google_workspace_tool_contract,
+)
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
+    build_google_workspace_tool_registry,
 )
 
 

@@ -7,10 +7,10 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import Protocol
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.request_confirmation import (
     transition_request_confirmation,
 )
@@ -27,10 +27,10 @@ class ResumeTargetValidator(Protocol):
 
 _UNRESOLVED = frozenset(
     {
-        ActionStatus.EXECUTING,
-        ActionStatus.UNKNOWN_RESULT,
-        ActionStatus.EXECUTED,
-        ActionStatus.MISMATCH,
+        ActionStatusV1.EXECUTING,
+        ActionStatusV1.UNKNOWN_RESULT,
+        ActionStatusV1.EXECUTED,
+        ActionStatusV1.MISMATCH,
     }
 )
 
@@ -199,7 +199,7 @@ def _published_review_facts(unit_of_work: UnitOfWork, run_id: str) -> tuple[str 
     if plan is None:
         return None, 0
     actions = unit_of_work.actions.list_by_plan(plan.id)
-    unresolved = sum(1 for action in actions if ActionStatus(action.status) in _UNRESOLVED)
+    unresolved = sum(1 for action in actions if ActionStatusV1(action.status) in _UNRESOLVED)
     return plan.review_disposition, unresolved
 
 
@@ -207,9 +207,9 @@ def _result(
     command: RequestConfirmationCommand,
     applied: bool,
     result_code: ResultCode,
-    status: RunStatus,
+    status: RunStatusV1,
     version: int,
-    pre_status: RunStatus,
+    pre_status: RunStatusV1,
     checkpoint_id: str | None,
     checkpoint_generation: int | None,
     conflict_detail: str | None = None,

@@ -59,6 +59,7 @@ class ApiContainer:
     release_version: str
     environment: str
     service_instance_id: str
+    action_gateway: Any | None = None
     api_contract_version: str = API_CONTRACT_VERSION
     local_bind_host: str = "127.0.0.1"
     local_bind_port: int = 8000

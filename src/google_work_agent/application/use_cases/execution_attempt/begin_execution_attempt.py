@@ -19,8 +19,8 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     require_run,
 )
-from google_work_agent.domain.action.model import Action, ActionStatus
-from google_work_agent.domain.approval.model import Approval, ApprovalStatus
+from google_work_agent.domain.action.model import Action, ActionStatusV1
+from google_work_agent.domain.approval.model import Approval, ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt,
@@ -28,14 +28,16 @@ from google_work_agent.domain.execution_attempt.model import (
 from google_work_agent.domain.execution_attempt.transitions.begin_execution_attempt import (
     transition_begin_execution_attempt,
 )
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
 class BeginExecutionAttemptCommand:
+    command_id: str
+    request_hash: str
     action_id: str
     claim_payload: Mapping[str, object]
 
@@ -80,11 +82,11 @@ class BeginExecutionAttemptHandler:
         cancel_intent = has_durable_cancel_intent(
             cast(CancelIntentReceiptReader, unit_of_work.command_receipts), run.id
         )
-        if cancel_intent or run.status is RunStatus.CANCEL_REQUESTED:
-            raise PermissionError("cancellation blocks connector Write dispatch")
+        if cancel_intent or run.status is RunStatusV1.CANCEL_REQUESTED:
+            raise PermissionError("cancellation forbids connector Write dispatch")
         if (
-            run.status not in {RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING}
-            or plan.status is not PlanStatus.WAITING_APPROVAL
+            run.status not in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
+            or plan.status is not PlanStatusV1.WAITING_APPROVAL
             or current_plan.id != plan.id
         ):
             raise PermissionError("claim parent authority is no longer current")
@@ -100,21 +102,22 @@ class BeginExecutionAttemptHandler:
             attempt.version,
             attempt.version,
             claim_context_current=(
-                action.status == ActionStatus.EXECUTING.value
-                and approval.status is ApprovalStatus.CONSUMED
+                action.status == ActionStatusV1.EXECUTING.value
+                and approval.status is ApprovalStatusV1.CONSUMED
             ),
             durable_cancel_intent=False,
         )
         if not decision.applied:
             raise PermissionError(decision.conflict_detail or "execution attempt is not claimable")
 
-        command_id = f"begin-execution-attempt:{attempt.id}"
-        if unit_of_work.command_receipts.get_by_command_id(command_id) is not None:
+        if calculate_canonical_json_hash(payload) != command.request_hash:
+            raise PermissionError("BeginExecutionAttempt request_hash mismatch")
+        if unit_of_work.command_receipts.get_by_command_id(command.command_id) is not None:
             raise PermissionError("BeginExecutionAttempt was already recorded")
         unit_of_work.command_receipts.add_received(
-            command_id=command_id,
+            command_id=command.command_id,
             command_type="BeginExecutionAttempt",
-            request_hash=calculate_canonical_json_hash(payload),
+            request_hash=command.request_hash,
             aggregate_type="ExecutionAttempt",
             aggregate_id=attempt.id,
             created_at_ms=now_ms,
@@ -136,14 +139,14 @@ class BeginExecutionAttemptHandler:
             audit_event(
                 run_id=run.id,
                 action_id=action.id,
-                event_type="EXECUTION_ATTEMPT_BEGUN",
+                event_type="EXECUTION_DISPATCH_STARTED",
                 outcome=ResultCode.TRANSITION_APPLIED.value,
                 metadata={"attempt_id": updated_attempt.id},
                 created_at_ms=now_ms,
             )
         )
         unit_of_work.command_receipts.finish_json(
-            command_id=command_id,
+            command_id=command.command_id,
             applied=True,
             result_code=ResultCode.TRANSITION_APPLIED,
             result_version=updated_attempt.version,

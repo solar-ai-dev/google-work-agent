@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
     ActionCommand,
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
 )
 from google_work_agent.domain.plan.model import PlanReviewStatus
-from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -100,13 +100,13 @@ class GetRunSnapshotHandler:
 
         run_status = run.status
         terminal_statuses = {
-            ActionStatus.VERIFIED.value,
-            ActionStatus.REJECTED.value,
-            ActionStatus.FAILED.value,
-            ActionStatus.MISMATCH.value,
-            ActionStatus.BLOCKED.value,
-            ActionStatus.DEPENDENCY_BLOCKED.value,
-            ActionStatus.CANCELLED.value,
+            ActionStatusV1.VERIFIED.value,
+            ActionStatusV1.REJECTED.value,
+            ActionStatusV1.FAILED.value,
+            ActionStatusV1.MISMATCH.value,
+            ActionStatusV1.BLOCKED.value,
+            ActionStatusV1.DEPENDENCY_BLOCKED.value,
+            ActionStatusV1.CANCELLED.value,
         }
         active_plan = None
         if plan is not None:
@@ -142,7 +142,7 @@ class GetRunSnapshotHandler:
             },
             recovery_summary={
                 "unknown_result_action_count": sum(
-                    action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions
+                    action.status == ActionStatusV1.UNKNOWN_RESULT.value for action in actions
                 )
             },
             result_kind=_cancel_result_kind(run_status=run_status, actions=actions),
@@ -154,7 +154,7 @@ class GetRunSnapshotHandler:
 
 
 def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionSnapshotResult:
-    status = ActionStatus(action.status)
+    status = ActionStatusV1(action.status)
     effect_type = EffectType(action.effect_type)
     return ActionSnapshotResult(
         action_id=action.id,
@@ -174,10 +174,10 @@ def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionS
 
 
 def _cancel_result_kind(
-    *, run_status: RunStatus, actions: tuple[ActionSnapshotResult, ...]
+    *, run_status: RunStatusV1, actions: tuple[ActionSnapshotResult, ...]
 ) -> str | None:
-    if run_status is not RunStatus.CANCELLED:
+    if run_status is not RunStatusV1.CANCELLED:
         return None
-    has_success = any(action.status == ActionStatus.VERIFIED.value for action in actions)
-    has_cancelled = any(action.status == ActionStatus.CANCELLED.value for action in actions)
+    has_success = any(action.status == ActionStatusV1.VERIFIED.value for action in actions)
+    has_cancelled = any(action.status == ActionStatusV1.CANCELLED.value for action in actions)
     return "PARTIAL" if has_success and has_cancelled else "CANCELLED"

@@ -24,6 +24,7 @@ from google_work_agent.application.feasibility import (
     feasibility_change_requires_reapproval,
     merge_feasibility_risk,
 )
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -39,12 +40,6 @@ from google_work_agent.application.write_action_arguments import (
 from google_work_agent.application.write_action_arguments import (
     required_argument_string as _required_argument_string,
 )
-from google_work_agent.application.write_approval import (
-    calendar_conflict_audit_metadata as _calendar_conflict_audit_metadata,
-)
-from google_work_agent.application.write_approval import (
-    feasibility_audit_metadata as _feasibility_audit_metadata,
-)
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
 )
@@ -55,17 +50,49 @@ from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
 )
 from google_work_agent.application.write_persistence import revoke_active_approvals
-from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.ports import (
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
     UnitOfWork,
 )
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
+
+
+def _calendar_conflict_audit_metadata(
+    *, risk: dict[str, object], action_id: str
+) -> dict[str, object]:
+    authority = calendar_conflict_authority(risk) or ("UNKNOWN", ())
+    value = risk.get("calendar_conflict")
+    return {
+        "action_id": action_id,
+        "decision": authority[0],
+        "matched_resource_ids": list(authority[1]),
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "freshness": value.get("freshness", "UNKNOWN")
+        if isinstance(value, dict)
+        else "UNKNOWN",
+    }
+
+
+def _feasibility_audit_metadata(risk: dict[str, object]) -> dict[str, object]:
+    value = risk.get("feasibility")
+    authority = feasibility_authority(risk)
+    return {
+        "decision": authority[0] if authority is not None else "UNKNOWN",
+        "reason_codes": value.get("reason_codes", []) if isinstance(value, dict) else [],
+        "required_duration": (
+            value.get("required_duration_minutes") if isinstance(value, dict) else None
+        ),
+        "freshness": value.get("freshness", "UNKNOWN")
+        if isinstance(value, dict)
+        else "UNKNOWN",
+    }
 
 
 class PreflightWriteGateway(
@@ -113,7 +140,7 @@ class PreflightWriteActionService:
     def __call__(self, *, action_id: str) -> dict[str, object]:
         with self._unit_of_work_factory() as unit_of_work:
             action = _require_action(unit_of_work, action_id)
-            if action.status != ActionStatus.APPROVED.value:
+            if action.status != ActionStatusV1.APPROVED.value:
                 raise PolicyViolationError("write preflight requires an approved action")
             self._registry.require(action.tool_name)
             arguments = _dict_argument(loads(action.arguments_json))
@@ -210,7 +237,7 @@ class PreflightWriteActionService:
                 )
                 current_approval = unit_of_work.approvals.get_active_by_action(action_id)
                 if (
-                    current.status != ActionStatus.APPROVED.value
+                    current.status != ActionStatusV1.APPROVED.value
                     or current.version != action_version
                     or current.arguments_hash != arguments_hash
                     or current_approval is None
@@ -228,7 +255,7 @@ class PreflightWriteActionService:
                 if must_reapprove:
                     revoke_active_approvals(unit_of_work, current.id)
                     result = transition_modify_action(
-                        ActionStatus(current.status),
+                        ActionStatusV1(current.status),
                         current.version,
                         current.version,
                         effect_type=EffectType(current.effect_type),
@@ -242,7 +269,7 @@ class PreflightWriteActionService:
                         or unit_of_work.actions.update_if_version_and_status(
                             current.id,
                             expected_version=current.version,
-                            expected_status=ActionStatus(current.status),
+                            expected_status=ActionStatusV1(current.status),
                             next_status=result.current_status,
                             updated_at_ms=now_ms,
                             arguments_json=current.arguments_json,
@@ -276,8 +303,8 @@ class PreflightWriteActionService:
                         unit_of_work.actions.update_if_version_and_status(
                             current.id,
                             expected_version=current.version,
-                            expected_status=ActionStatus(current.status),
-                            next_status=ActionStatus(current.status),
+                            expected_status=ActionStatusV1(current.status),
+                            next_status=ActionStatusV1(current.status),
                             updated_at_ms=now_ms,
                             risk=merged_risk,
                         )
@@ -348,7 +375,7 @@ class PreflightWriteActionService:
                 )
                 current_approval = unit_of_work.approvals.get_active_by_action(action_id)
                 if (
-                    current.status != ActionStatus.APPROVED.value
+                    current.status != ActionStatusV1.APPROVED.value
                     or current.version != action_version
                     or current.arguments_hash != arguments_hash
                     or current_approval is None
@@ -370,7 +397,7 @@ class PreflightWriteActionService:
                 if must_reapprove:
                     revoke_active_approvals(unit_of_work, current.id)
                     result = transition_modify_action(
-                        ActionStatus(current.status),
+                        ActionStatusV1(current.status),
                         current.version,
                         current.version,
                         effect_type=EffectType(current.effect_type),
@@ -384,7 +411,7 @@ class PreflightWriteActionService:
                         or unit_of_work.actions.update_if_version_and_status(
                             current.id,
                             expected_version=current.version,
-                            expected_status=ActionStatus(current.status),
+                            expected_status=ActionStatusV1(current.status),
                             next_status=result.current_status,
                             updated_at_ms=now_ms,
                             arguments_json=current.arguments_json,
@@ -401,8 +428,8 @@ class PreflightWriteActionService:
                         unit_of_work.actions.update_if_version_and_status(
                             current.id,
                             expected_version=current.version,
-                            expected_status=ActionStatus(current.status),
-                            next_status=ActionStatus(current.status),
+                            expected_status=ActionStatusV1(current.status),
+                            next_status=ActionStatusV1(current.status),
                             updated_at_ms=now_ms,
                             risk=merged_risk,
                         )

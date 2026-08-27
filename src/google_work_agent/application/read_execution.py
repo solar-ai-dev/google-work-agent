@@ -19,7 +19,7 @@ from google_work_agent.application.resource_ref_projection import (
     minimal_resource_metadata,
     snapshot_title,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports import (
@@ -58,7 +58,7 @@ class ExecuteReadActionService:
             action = require_action(unit_of_work, action_id)
             plan = require_plan(unit_of_work, action.plan_id)
             run = require_run(unit_of_work, plan.run_id)
-        if ActionStatus(action.status) is not ActionStatus.EXECUTING:
+        if ActionStatusV1(action.status) is not ActionStatusV1.EXECUTING:
             raise RuntimeError(f"read action must be EXECUTING before external call: {action_id}")
         dispatch = self._dispatch.get(action.tool_name)
         if dispatch is None:

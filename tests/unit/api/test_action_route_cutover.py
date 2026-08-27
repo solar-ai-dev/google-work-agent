@@ -38,12 +38,12 @@ def test_action_route_does_not_invoke_legacy_semantics_for_approve_reject_retry(
     assert "PrepareWriteRetryService" not in source
 
 
-def test_modify_legacy_surface_is_wiring_only_gateway_bridge() -> None:
+def test_modify_uses_explicit_composition_gateway_without_legacy_surface() -> None:
     source = inspect.getsource(actions)
 
-    assert "legacy_surface = dependencies.modify_action_service()" in source
-    assert "legacy_surface(" not in source
-    assert "gateway=_modify_gateway(dependencies)" in source
+    assert "modify_action_service()" not in source
+    assert "_modify_gateway" not in source
+    assert "gateway=dependencies.action_gateway" in source
     assert "ModifyActionHandler(" in source
 
 

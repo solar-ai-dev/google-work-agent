@@ -229,7 +229,7 @@ def _route_revision_budget_deny(
         raise RevisionBudgetBlockBoundaryRequired(
             f"{reason_code} requires injected Application BlockRun boundary and command context"
         )
-    from google_work_agent.application.run_terminal import BlockRunCommand
+    from google_work_agent.application.use_cases.run.block_run import BlockRunCommand
 
     response = block_run(
         BlockRunCommand(

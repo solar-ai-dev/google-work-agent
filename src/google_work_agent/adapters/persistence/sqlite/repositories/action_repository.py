@@ -3,12 +3,15 @@
 import sqlite3
 
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.action_risk import canonicalize_action_risk, parse_action_risk_json
+from google_work_agent.domain.action.model import (
+    ActionStatusV1,
+    canonicalize_action_risk,
+    parse_action_risk_json,
+)
 
 
 class SQLiteActionRepository:
-    _SELECT = "SELECT id, plan_id, connector_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms FROM actions"
+    _SELECT = "SELECT id, plan_id, connector_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms FROM actions"  # noqa: E501
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
@@ -47,7 +50,7 @@ class SQLiteActionRepository:
         if not action.connector_id:
             raise ValueError("action persistence requires connector_id")
         self._connection.execute(
-            "INSERT INTO actions (id, plan_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms, connector_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            "INSERT INTO actions (id, plan_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms, connector_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
             (
                 action.id,
                 action.plan_id,
@@ -81,8 +84,8 @@ class SQLiteActionRepository:
         action_id: str,
         *,
         expected_version: int,
-        expected_status: ActionStatus,
-        next_status: ActionStatus,
+        expected_status: ActionStatusV1,
+        next_status: ActionStatusV1,
         updated_at_ms: int,
         arguments_json: str | None = None,
         arguments_hash: str | None = None,
@@ -92,7 +95,7 @@ class SQLiteActionRepository:
         if current is None:
             return None
         cursor = self._connection.execute(
-            "UPDATE actions SET status=?, version=version+1, updated_at_ms=?, arguments_json=COALESCE(?, arguments_json), arguments_hash=COALESCE(?, arguments_hash), risk_json=COALESCE(?, risk_json) WHERE id=? AND version=? AND status=?;",
+            "UPDATE actions SET status=?, version=version+1, updated_at_ms=?, arguments_json=COALESCE(?, arguments_json), arguments_hash=COALESCE(?, arguments_hash), risk_json=COALESCE(?, risk_json) WHERE id=? AND version=? AND status=?;",  # noqa: E501
             (
                 next_status.value,
                 updated_at_ms,
@@ -119,7 +122,7 @@ class SQLiteActionRepository:
     def list_ready_actions(self, plan_id: str) -> tuple[ActionRecord, ...]:
         rows = self._connection.execute(
             self._SELECT
-            + " AS a WHERE a.plan_id=? AND a.status='PROPOSED' AND NOT EXISTS (SELECT 1 FROM action_dependencies AS d JOIN actions AS dep ON dep.id=d.depends_on_action_id WHERE d.action_id=a.id AND dep.status <> 'VERIFIED') ORDER BY a.position ASC;",
+            + " AS a WHERE a.plan_id=? AND a.status='PROPOSED' AND NOT EXISTS (SELECT 1 FROM action_dependencies AS d JOIN actions AS dep ON dep.id=d.depends_on_action_id WHERE d.action_id=a.id AND dep.status <> 'VERIFIED') ORDER BY a.position ASC;",  # noqa: E501
             (plan_id,),
         ).fetchall()
         return tuple(self._record(r) for r in rows)

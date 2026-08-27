@@ -3,7 +3,7 @@
 from typing import Protocol
 
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 
 
 class PlanRepository(Protocol):
@@ -13,8 +13,8 @@ class PlanRepository(Protocol):
         self,
         plan_id: str,
         *,
-        expected_status: PlanStatus,
-        next_status: PlanStatus,
+        expected_status: PlanStatusV1,
+        next_status: PlanStatusV1,
     ) -> PlanRecord | None: ...
     def update_review_if_version_and_status(
         self,

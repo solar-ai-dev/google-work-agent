@@ -19,7 +19,7 @@ from google_work_agent.domain.conversation.model import Conversation as Conversa
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.audit_repository import PersistedAuditEventRecord
 from google_work_agent.ports.persistence.trace_repository import PersistedTraceEventRecord
@@ -352,7 +352,7 @@ def _stored_success(
         result_code=ResultCode.TRANSITION_APPLIED.value,
         run_id=run_id,
         conversation_id=command.conversation_id,
-        run_status=RunStatus.CREATED.value,
+        run_status=RunStatusV1.CREATED.value,
         run_version=0,
         user_message_id=user_message_id,
         workflow_key=workflow_key,
@@ -400,7 +400,7 @@ def _run_created_trace(
         run_id=run_id,
         action_id=None,
         event_type="RUN_CREATED",
-        status=RunStatus.CREATED.value,
+        status=RunStatusV1.CREATED.value,
         duration_ms=None,
         payload_json=dumps(
             {
@@ -474,7 +474,7 @@ def _seed_complete_aggregate(
     uow.runs.records[run_id] = RunRecord(
         id=run_id,
         conversation_id=command.conversation_id,
-        status=RunStatus.ANALYZING,
+        status=RunStatusV1.ANALYZING,
         version=1,
         started_at_ms=10,
         finished_at_ms=None,
@@ -628,7 +628,7 @@ def test_received_receipt_with_applied_aggregate_finishes_receipt_without_duplic
     result = _handler(uow)(command)
 
     assert result.applied is True
-    assert result.run_status == RunStatus.CREATED.value
+    assert result.run_status == RunStatusV1.CREATED.value
     assert result.run_version == 0
     assert result.enqueued is False
     assert result.request_replayed is True
@@ -798,7 +798,7 @@ def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
     uow.runs.records["run-1"] = RunRecord(
         id="run-1",
         conversation_id=command.conversation_id,
-        status=RunStatus.CREATED,
+        status=RunStatusV1.CREATED,
         version=0,
         started_at_ms=10,
         finished_at_ms=None,
@@ -819,7 +819,7 @@ def test_received_receipt_with_run_and_handoff_but_no_message_fails_closed() -> 
     uow.runs.records["run-1"] = RunRecord(
         id="run-1",
         conversation_id=command.conversation_id,
-        status=RunStatus.CREATED,
+        status=RunStatusV1.CREATED,
         version=0,
         started_at_ms=10,
         finished_at_ms=None,

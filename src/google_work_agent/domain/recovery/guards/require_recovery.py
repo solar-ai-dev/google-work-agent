@@ -2,12 +2,12 @@
 
 from google_work_agent.domain.run.model import (
     TERMINAL_RUN_STATUSES,
-    RunStatus,
+    RunStatusV1,
     RunTransitionRejected,
 )
 
 
-def guard_require_recovery(current_status: RunStatus) -> None:
+def guard_require_recovery(current_status: RunStatusV1) -> None:
     """Recovery may only suspend a non-terminal Run."""
     if current_status in TERMINAL_RUN_STATUSES:
         raise RunTransitionRejected(

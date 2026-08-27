@@ -1,17 +1,17 @@
 """Verification outcome transition authority."""
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.verification.model import VerificationCommand, VerificationStatus
 
 
 def transition_store_verification(
-    current_status: ActionStatus,
+    current_status: ActionStatusV1,
     *,
     current_version: int,
     expected_version: int,
     verification_status: VerificationStatus,
-) -> CommandResult[ActionStatus, VerificationCommand]:
+) -> CommandResult[ActionStatusV1, VerificationCommand]:
     if expected_version != current_version:
         return CommandResult(
             False,
@@ -21,7 +21,7 @@ def transition_store_verification(
             (),
             "expected_version does not match current_version",
         )
-    if current_status is not ActionStatus.EXECUTED:
+    if current_status is not ActionStatusV1.EXECUTED:
         return CommandResult(
             False,
             ResultCode.STATE_CONFLICT,
@@ -36,8 +36,8 @@ def transition_store_verification(
     }:
         raise ValueError("durable verification status must be VERIFIED or MISMATCH")
     target = (
-        ActionStatus.VERIFIED
+        ActionStatusV1.VERIFIED
         if verification_status is VerificationStatus.VERIFIED
-        else ActionStatus.MISMATCH
+        else ActionStatusV1.MISMATCH
     )
     return CommandResult(True, ResultCode.TRANSITION_APPLIED, target, current_version + 1, ())

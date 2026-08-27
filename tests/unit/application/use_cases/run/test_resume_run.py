@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthHandler,
+)
 from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand,
     ResumeRunHandler,
@@ -13,7 +16,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -76,7 +79,7 @@ class _Receipts:
 
 
 class _Runs:
-    def __init__(self, status: RunStatus, version: int = 4) -> None:
+    def __init__(self, status: RunStatusV1, version: int = 4) -> None:
         self.record = RunRecord("run-1", "conv-1", status, version, 1, None)
         self.calls = []
 
@@ -90,12 +93,12 @@ class _Runs:
             or self.record.status not in expected_statuses
         ):
             return None
-        target = RunStatus(values["status"])
-        if self.record.status is RunStatus.REAUTH_REQUIRED:
-            name = "resume_after_reauth"
-        elif target is RunStatus.RECOVERY_REQUIRED:
+        target = RunStatusV1(values["status"])
+        if target is RunStatusV1.RECOVERY_REQUIRED:
             name = "require_recovery"
-        elif self.record.status is RunStatus.RECOVERY_REQUIRED:
+        elif self.record.status is RunStatusV1.REAUTH_REQUIRED:
+            name = "resume_after_reauth"
+        elif self.record.status is RunStatusV1.RECOVERY_REQUIRED:
             name = "resolve_recovery"
         else:
             name = "resume_confirmation"
@@ -131,7 +134,7 @@ class _Runs:
         return self._move("resume_after_reauth", resume_status)
 
     def require_recovery(self, run_id, *, expected_version, finished_at_ms=None):
-        return self._move("require_recovery", RunStatus.RECOVERY_REQUIRED)
+        return self._move("require_recovery", RunStatusV1.RECOVERY_REQUIRED)
 
     def resolve_recovery(
         self,
@@ -237,6 +240,19 @@ class _Harness:
             ),
         )
 
+    def reauth_handler(self):
+        return ResumeAfterReauthHandler(
+            unit_of_work_factory=lambda: self.uow,
+            now_ms=lambda: 100,
+            resolve_resume_authority=lambda **kwargs: self.authority,
+            id_generator=SimpleNamespace(next_id=lambda: "handoff-1"),
+            resume_target_registry=SimpleNamespace(validate=lambda target: None),
+            schedule_run_execution=lambda command: (
+                self.enqueues.append({"handoff_id": command.handoff_id})
+                or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+            ),
+        )
+
 
 class _Handoffs:
     def __init__(self) -> None:
@@ -267,7 +283,7 @@ def _reauth_authority(
 
 def test_generic_resume_rejects_confirmation_without_mutation_or_enqueue() -> None:
     h = _Harness(
-        _Uow(RunStatus.WAITING_CONFIRMATION),
+        _Uow(RunStatusV1.WAITING_CONFIRMATION),
         {"resume_status": "PLANNING", "interrupt_id": "int-1"},
         [],
     )
@@ -280,8 +296,8 @@ def test_generic_resume_rejects_confirmation_without_mutation_or_enqueue() -> No
 
 
 def test_reauth_resume_applies_safe_checkpoint_transition_and_server_target() -> None:
-    h = _Harness(_Uow(RunStatus.REAUTH_REQUIRED), _reauth_authority(), [])
-    result = h.handler()(_command("REAUTH_COMPLETED"), request_id="req")
+    h = _Harness(_Uow(RunStatusV1.REAUTH_REQUIRED), _reauth_authority(), [])
+    result = h.reauth_handler()(_command("REAUTH_COMPLETED"), request_id="req")
     assert result.applied and result.run_status == "WAITING_APPROVAL" and result.run_version == 5
     assert h.uow.runs.calls == ["resume_after_reauth"] and len(h.enqueues) == 1
     assert h.uow.workflow_handoffs.stages[0].execution.resume_target.stage_id == "PREFLIGHT"
@@ -290,12 +306,12 @@ def test_reauth_resume_applies_safe_checkpoint_transition_and_server_target() ->
 
 def test_reauth_dispatched_write_facts_fail_safe_to_recovery_without_runtime_resume() -> None:
     for action_status in ("EXECUTING", "UNKNOWN_RESULT", "EXECUTED"):
-        h = _Harness(_Uow(RunStatus.REAUTH_REQUIRED, (action_status,)), _reauth_authority(), [])
-        result = h.handler()(_command("REAUTH_COMPLETED"), request_id="req")
+        h = _Harness(_Uow(RunStatusV1.REAUTH_REQUIRED, (action_status,)), _reauth_authority(), [])
+        result = h.reauth_handler()(_command("REAUTH_COMPLETED"), request_id="req")
         assert (
-            result.applied and result.run_status == "RECOVERY_REQUIRED" and result.run_version == 6
+            result.applied and result.run_status == "RECOVERY_REQUIRED" and result.run_version == 5
         )
-        assert h.uow.runs.calls == ["resume_after_reauth", "require_recovery"]
+        assert h.uow.runs.record.status is RunStatusV1.RECOVERY_REQUIRED
         assert h.uow.commits == 1 and h.enqueues == []
         assert not hasattr(h.uow, "execution_attempts") and not hasattr(h.uow, "approvals")
         assert len(h.uow.recovery_contexts.stored) == 1
@@ -305,22 +321,22 @@ def test_reauth_dispatched_write_facts_fail_safe_to_recovery_without_runtime_res
         assert context["version"] == 0
         assert [item.event_type for item in h.uow.audits.items] == [
             "RECOVERY_REQUIRED",
-            "RUN_RESUMED",
+            "RUN_REAUTH_RESUMED",
         ]
 
 
 def test_reauth_recovery_checkpoint_restores_domain_truth_without_runtime_recovery_selection() -> (
     None
 ):
-    h = _Harness(_Uow(RunStatus.REAUTH_REQUIRED), {"resume_status": "RECOVERY_REQUIRED"}, [])
-    result = h.handler()(_command("REAUTH_COMPLETED"), request_id="req")
+    h = _Harness(_Uow(RunStatusV1.REAUTH_REQUIRED), {"resume_status": "RECOVERY_REQUIRED"}, [])
+    result = h.reauth_handler()(_command("REAUTH_COMPLETED"), request_id="req")
     assert result.applied and result.run_status == "RECOVERY_REQUIRED" and result.run_version == 5
-    assert h.uow.runs.calls == ["resume_after_reauth"]
+    assert h.uow.runs.record.status is RunStatusV1.RECOVERY_REQUIRED
     assert h.uow.commits == 1 and h.enqueues == []
 
 
 def test_recovery_recheck_moves_to_verifying_without_new_attempt_or_approval() -> None:
-    h = _Harness(_Uow(RunStatus.RECOVERY_REQUIRED), None, [])
+    h = _Harness(_Uow(RunStatusV1.RECOVERY_REQUIRED), None, [])
     h.uow.recovery_contexts.current = {
         "run_id": "run-1",
         "reason": "VERIFICATION_MISMATCH",
@@ -334,7 +350,7 @@ def test_recovery_recheck_moves_to_verifying_without_new_attempt_or_approval() -
 
 
 def test_terminal_blocked_safe_checkpoint_resume_is_rejected_without_enqueue() -> None:
-    h = _Harness(_Uow(RunStatus.BLOCKED), None, [])
+    h = _Harness(_Uow(RunStatusV1.BLOCKED), None, [])
     result = h.handler()(_command("SAFE_CHECKPOINT_RESUME"), request_id="req")
     assert not result.applied and result.result_code == ResultCode.STATE_CONFLICT.value
     assert result.run_status == "BLOCKED" and result.run_version == 4
@@ -345,7 +361,7 @@ def test_terminal_blocked_safe_checkpoint_resume_is_rejected_without_enqueue() -
 def test_safe_checkpoint_resume_fails_closed_when_no_canonical_ordinary_state_is_registered() -> (
     None
 ):
-    h = _Harness(_Uow(RunStatus.PLANNING), None, [])
+    h = _Harness(_Uow(RunStatusV1.PLANNING), None, [])
     result = h.handler()(_command("SAFE_CHECKPOINT_RESUME"), request_id="req")
     assert not result.applied and result.result_code == ResultCode.STATE_CONFLICT.value
     assert h.uow.runs.calls == [] and h.enqueues == []
@@ -353,7 +369,7 @@ def test_safe_checkpoint_resume_fails_closed_when_no_canonical_ordinary_state_is
 
 def test_invalid_status_does_not_transition_or_enqueue() -> None:
     h = _Harness(
-        _Uow(RunStatus.ANALYZING), {"resume_status": "PLANNING", "interrupt_id": "int-1"}, []
+        _Uow(RunStatusV1.ANALYZING), {"resume_status": "PLANNING", "interrupt_id": "int-1"}, []
     )
     result = h.handler()(
         _command("CONFIRMATION"), request_id="req", resume_payload={"interrupt_id": "int-1"}
@@ -363,7 +379,7 @@ def test_invalid_status_does_not_transition_or_enqueue() -> None:
 
 
 def test_invalid_resume_kind_does_not_transition_or_enqueue() -> None:
-    h = _Harness(_Uow(RunStatus.BLOCKED), None, [])
+    h = _Harness(_Uow(RunStatusV1.BLOCKED), None, [])
     result = h.handler()(_command("NOT_REGISTERED"), request_id="req")
     assert not result.applied and result.result_code == ResultCode.STATE_CONFLICT.value
     assert h.uow.runs.calls == [] and h.enqueues == []
@@ -371,7 +387,7 @@ def test_invalid_resume_kind_does_not_transition_or_enqueue() -> None:
 
 def test_confirmation_interrupt_must_match_persisted_checkpoint_authority() -> None:
     h = _Harness(
-        _Uow(RunStatus.WAITING_CONFIRMATION),
+        _Uow(RunStatusV1.WAITING_CONFIRMATION),
         {"resume_status": "PLANNING", "interrupt_id": "int-1"},
         [],
     )
@@ -383,8 +399,8 @@ def test_confirmation_interrupt_must_match_persisted_checkpoint_authority() -> N
 
 
 def test_same_hash_replay_returns_prior_result_without_second_mutation_or_enqueue() -> None:
-    h = _Harness(_Uow(RunStatus.REAUTH_REQUIRED), _reauth_authority(), [])
-    handler = h.handler()
+    h = _Harness(_Uow(RunStatusV1.REAUTH_REQUIRED), _reauth_authority(), [])
+    handler = h.reauth_handler()
     command = _command("REAUTH_COMPLETED")
     first = handler(command, request_id="req")
     second = handler(command, request_id="req")
@@ -393,8 +409,8 @@ def test_same_hash_replay_returns_prior_result_without_second_mutation_or_enqueu
 
 
 def test_hash_mismatch_is_conflict_with_zero_second_mutation_and_enqueue() -> None:
-    h = _Harness(_Uow(RunStatus.REAUTH_REQUIRED), _reauth_authority(), [])
-    handler = h.handler()
+    h = _Harness(_Uow(RunStatusV1.REAUTH_REQUIRED), _reauth_authority(), [])
+    handler = h.reauth_handler()
     first = handler(_command("REAUTH_COMPLETED"), request_id="req")
     second = handler(_command("REAUTH_COMPLETED", request_hash="different"), request_id="req")
     assert (

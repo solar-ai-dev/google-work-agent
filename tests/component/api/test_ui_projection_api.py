@@ -3,11 +3,15 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway, FakeWorkflowRuntime
+from tests.support.fakes import (
+    DeterministicUUID,
+    FakeClockPort,
+    FakeGoogleGateway,
+    FakeWorkflowRuntime,
+)
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.workflow_admission import build_test_admission_callbacks
 
-from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -22,6 +26,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
+from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
@@ -34,9 +39,6 @@ from google_work_agent.api.security.sessions import (
 )
 from google_work_agent.application.queries import QueryService
 from google_work_agent.application.resource_queries import ResourceQueryService
-from google_work_agent.application.start_run import (
-    RejectWriteActionService,
-)
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -53,11 +55,12 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
+from google_work_agent.application.write_action_mutation import RejectWriteActionService
 from google_work_agent.application.write_actions import (
-    ApproveWriteActionService,
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
+from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     LauncherProbeDecision,
     ReadinessCheckResult,
@@ -139,7 +142,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         now_ms=clock.now_ms(),
     )
     session_manager = InMemoryLocalSessionManager()
-    coordinator_stub = type(
+    _coordinator_stub = type(
         "CoordinatorStub",
         (),
         {

@@ -18,7 +18,7 @@ from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceR
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunCreate as RunCreateRecord
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.start_run import transition_start_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import SelectedResourceRef
@@ -150,7 +150,7 @@ class StartRunHandler:
                 result_code=ResultCode.STATE_CONFLICT.value,
                 run_id=run_id,
                 conversation_id=command.conversation_id,
-                run_status=RunStatus.CREATED.value,
+                run_status=RunStatusV1.CREATED.value,
                 run_version=0,
                 user_message_id=user_message_id,
                 workflow_key=workflow_key,
@@ -169,7 +169,7 @@ class StartRunHandler:
                 id=run_id,
                 conversation_id=command.conversation_id,
                 entry_mode=command.entry_mode,
-                status=RunStatus.CREATED,
+                status=RunStatusV1.CREATED,
                 langgraph_thread_id=workflow_key,
                 requested_mode=command.requested_mode,
                 actual_runtime=None,
@@ -462,7 +462,7 @@ class StartRunHandler:
                 result_code=ResultCode.TRANSITION_APPLIED.value,
                 run_id=run.id,
                 conversation_id=command.conversation_id,
-                run_status=RunStatus.CREATED.value,
+                run_status=RunStatusV1.CREATED.value,
                 run_version=0,
                 user_message_id=message.id,
                 workflow_key=handoff.execution.langgraph_thread_id,
@@ -707,7 +707,7 @@ class StartRunHandler:
         payload = cls._event_payload(event.payload_json, evidence_kind="Trace")
         if (
             event.action_id is not None
-            or event.status != RunStatus.CREATED.value
+            or event.status != RunStatusV1.CREATED.value
             or cls._event_field(payload, "command_id") != command.command_id
             or (
                 workflow_key is not None
@@ -787,7 +787,7 @@ class StartRunHandler:
         current_open: object,
     ) -> StartRunResult:
         if current_open is None:
-            run_status = RunStatus.CREATED.value
+            run_status = RunStatusV1.CREATED.value
             run_version = 0
         else:
             run_status = current_open.status.value

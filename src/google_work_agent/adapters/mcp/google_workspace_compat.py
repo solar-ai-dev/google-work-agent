@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    MCPArtifactConfig,
+    MCPConnectorDescriptor,
+    build_manifest_payload_for_registry,
+)
 from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
@@ -9,18 +14,13 @@ from google_work_agent.adapters.mcp.capabilities import (
 from google_work_agent.adapters.mcp.delivery_transport import (
     DeliveryAwareStdioMCPClientAdapter,
 )
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
-    MCPArtifactConfig,
-    MCPConnectorDescriptor,
-    build_manifest_payload_for_registry,
-)
-from google_work_agent.domain.google_workspace_tool_contracts import (
+from google_work_agent.ports import ArtifactSignatureVerifier
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
     google_workspace_tool_contract,
 )
-from google_work_agent.domain.google_workspace_tool_registry import (
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
-from google_work_agent.ports import ArtifactSignatureVerifier
 
 
 def build_manifest_payload() -> dict[str, object]:

@@ -11,10 +11,10 @@ from google_work_agent.adapters.mcp.capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.domain.google_workspace_tool_contracts import (
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
     google_workspace_tool_contract,
 )
-from google_work_agent.domain.google_workspace_tool_registry import (
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
 
@@ -34,9 +34,7 @@ def main() -> None:
                 "protocol_version": "2026-08-07.p0",
                 "manifest_version": request["manifest_version"],
                 "tool_registry_version": request["tool_registry_version"],
-                "internal_capability_registry_version": (
-                    INTERNAL_CAPABILITY_REGISTRY_VERSION
-                ),
+                "internal_capability_registry_version": (INTERNAL_CAPABILITY_REGISTRY_VERSION),
             }
         elif message_type == "list_tools":
             payload = {

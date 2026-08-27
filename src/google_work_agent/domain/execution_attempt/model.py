@@ -3,11 +3,11 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1
 from google_work_agent.domain.results import ResultCode
 
 
-class ExecutionAttemptStatus(StrEnum):
+class ExecutionAttemptStatusV1(StrEnum):
     CLAIMED = "CLAIMED"
     EXECUTING = "EXECUTING"
     UNKNOWN_RESULT = "UNKNOWN_RESULT"
@@ -36,7 +36,7 @@ class ExecutionAttempt:
     id: str
     approval_id: str
     attempt_no: int
-    status: ExecutionAttemptStatus
+    status: ExecutionAttemptStatusV1
     version: int
     result_resource_ref_id: str | None
     response_metadata_json: str | None
@@ -50,14 +50,14 @@ class ExecutionAttempt:
 class ExecutionAttemptTransitionDecision:
     applied: bool
     result_code: ResultCode
-    action_status: ActionStatus
+    action_status: ActionStatusV1
     action_version: int
-    attempt_status: ExecutionAttemptStatus
+    attempt_status: ExecutionAttemptStatusV1
     attempt_version: int
     conflict_detail: str | None = None
 
     @property
-    def current_status(self) -> ActionStatus:
+    def current_status(self) -> ActionStatusV1:
         return self.action_status
 
     @property

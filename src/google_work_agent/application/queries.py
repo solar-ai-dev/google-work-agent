@@ -10,12 +10,12 @@ from sqlite3 import Row
 from google_work_agent.application.cancel_intent import is_applied_request_cancel_receipt
 from google_work_agent.domain.action.model import (
     ActionCommand,
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
+    parse_action_risk_json,
 )
-from google_work_agent.domain.action_risk import parse_action_risk_json
-from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.ports import (
     QueryConnectionFactory,
     RuntimeStatusProvider,
@@ -194,7 +194,7 @@ class QueryService:
                     for row in action_rows
                 )
                 recovery_count = sum(
-                    1 for action in actions if action.status == ActionStatus.UNKNOWN_RESULT.value
+                    1 for action in actions if action.status == ActionStatusV1.UNKNOWN_RESULT.value
                 )
                 approvals = tuple(
                     {
@@ -244,7 +244,7 @@ class QueryService:
                     ),
                 }
 
-        run_status = RunStatus(str(run_row["status"]))
+        run_status = RunStatusV1(str(run_row["status"]))
         active_plan = None
         if plan_row is not None:
             active_plan = {
@@ -263,13 +263,13 @@ class QueryService:
                 for action in actions
                 if action.status
                 in {
-                    ActionStatus.VERIFIED.value,
-                    ActionStatus.REJECTED.value,
-                    ActionStatus.FAILED.value,
-                    ActionStatus.MISMATCH.value,
-                    ActionStatus.BLOCKED.value,
-                    ActionStatus.DEPENDENCY_BLOCKED.value,
-                    ActionStatus.CANCELLED.value,
+                    ActionStatusV1.VERIFIED.value,
+                    ActionStatusV1.REJECTED.value,
+                    ActionStatusV1.FAILED.value,
+                    ActionStatusV1.MISMATCH.value,
+                    ActionStatusV1.BLOCKED.value,
+                    ActionStatusV1.DEPENDENCY_BLOCKED.value,
+                    ActionStatusV1.CANCELLED.value,
                 }
             ),
         }
@@ -421,7 +421,7 @@ class QueryService:
         base = self._runtime_status_provider.get_summary()
         open_runs = self.list_open_runs()
         recovery_required = tuple(
-            run.run_id for run in open_runs if run.status == RunStatus.RECOVERY_REQUIRED.value
+            run.run_id for run in open_runs if run.status == RunStatusV1.RECOVERY_REQUIRED.value
         )
         return RuntimeSummary(
             google=base.google,
@@ -491,12 +491,12 @@ class QueryService:
 
 
 def _cancel_result_kind(
-    *, run_status: RunStatus, actions: tuple[ActionSnapshot, ...]
+    *, run_status: RunStatusV1, actions: tuple[ActionSnapshot, ...]
 ) -> str | None:
-    if run_status is not RunStatus.CANCELLED:
+    if run_status is not RunStatusV1.CANCELLED:
         return None
-    has_success = any(action.status == ActionStatus.VERIFIED.value for action in actions)
-    has_cancelled = any(action.status == ActionStatus.CANCELLED.value for action in actions)
+    has_success = any(action.status == ActionStatusV1.VERIFIED.value for action in actions)
+    has_cancelled = any(action.status == ActionStatusV1.CANCELLED.value for action in actions)
     return "PARTIAL" if has_success and has_cancelled else "CANCELLED"
 
 
@@ -529,7 +529,7 @@ def _conversation_item_from_row(row: Row) -> ConversationListItem:
 
 
 def _action_snapshot_from_row(row: Row, *, approval_allowed: bool = True) -> ActionSnapshot:
-    status = ActionStatus(str(row["status"]))
+    status = ActionStatusV1(str(row["status"]))
     effect_type = EffectType(str(row["effect_type"]))
     return ActionSnapshot(
         action_id=str(row["id"]),

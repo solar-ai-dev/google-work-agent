@@ -21,6 +21,7 @@ from google_work_agent.application.feasibility import (
     feasibility_authority,
     feasibility_change_requires_reapproval,
 )
+from google_work_agent.application.policy import ApprovalIntegrityInput, validate_approval_integrity
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_duplicate_authority,
@@ -57,29 +58,30 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt as _resolve_existing_action_receipt,
 )
-from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.claim.transitions.claim_execution import transition_claim_execution
-from google_work_agent.domain.claim_contract import (
-    CLAIM_CONTEXT_DEFAULT_TTL_MS,
-    validate_claim_ttl_ms,
-)
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.policy import ApprovalIntegrityInput, validate_approval_integrity
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     AttachmentDescriptor,
     AttachmentDescriptorVerifier,
     AttachmentStagingError,
     UnitOfWork,
+)
+from google_work_agent.ports.connector.claim_context_contract import (
+    CLAIM_CONTEXT_DEFAULT_TTL_MS,
+    validate_claim_ttl_ms,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
 )
 
 
@@ -166,8 +168,8 @@ class ClaimWriteActionService:
                 return response
 
             if (
-                run.status not in {RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING}
-                or plan.status is not PlanStatus.WAITING_APPROVAL
+                run.status not in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
+                or plan.status is not PlanStatusV1.WAITING_APPROVAL
                 or current_plan is None
                 or current_plan.id != plan.id
             ):
@@ -325,7 +327,7 @@ class ClaimWriteActionService:
                 return response
 
             preview = transition_claim_execution(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=EffectType(action.effect_type),
@@ -341,7 +343,7 @@ class ClaimWriteActionService:
             if not unit_of_work.approvals.update_if_status(
                 approval.id,
                 expected_status=approval.status,
-                next_status=ApprovalStatus.CONSUMED,
+                next_status=ApprovalStatusV1.CONSUMED,
                 consumed_at_ms=now_ms,
             ):
                 raise RuntimeError("validated ConsumeApproval CAS failed")
@@ -349,7 +351,7 @@ class ClaimWriteActionService:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -362,7 +364,7 @@ class ClaimWriteActionService:
                 id=command.attempt_id,
                 approval_id=approval.id,
                 attempt_no=len(unit_of_work.execution_attempts.list_by_approval(approval.id)) + 1,
-                status=ExecutionAttemptStatus.CLAIMED,
+                status=ExecutionAttemptStatusV1.CLAIMED,
                 version=0,
                 result_resource_ref_id=None,
                 response_metadata_json=None,
@@ -392,7 +394,7 @@ class ClaimWriteActionService:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_CLAIMED",
-                    status=ActionStatus.EXECUTING.value,
+                    status=ActionStatusV1.EXECUTING.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"approval_id": approval.id, "attempt_id": attempt.id}, sort_keys=True

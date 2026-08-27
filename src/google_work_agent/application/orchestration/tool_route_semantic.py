@@ -43,12 +43,12 @@ from google_work_agent.application.orchestration.tool_routing import (
     normalize_resource_type,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports.observability_events import ObservabilityContext
 
 

@@ -19,6 +19,7 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
@@ -29,7 +30,6 @@ from google_work_agent.application.write_execution_contracts import (
     MarkWriteActionFailedCommand,
 )
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -237,7 +237,7 @@ def test_mark_write_action_failed_propagates_dependency_blocked_through_persiste
     save_service = SaveWritePlanService(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
-    publish_service = PublishWritePlanService(
+    publish_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     approve_service = ApproveWriteActionService(

@@ -1,5 +1,4 @@
 import google_work_agent.application.write_actions as write_actions
-import google_work_agent.application.write_approval as write_approval
 import google_work_agent.application.write_cancellation as write_cancellation
 import google_work_agent.application.write_claim as write_claim
 import google_work_agent.application.write_execution as write_execution
@@ -14,7 +13,7 @@ import google_work_agent.application.write_verification as write_verification
 def test_write_actions_remains_a_compatibility_facade() -> None:
     assert write_actions.SaveWritePlanService is write_plan.SaveWritePlanService
     assert write_actions.SaveWritePlanCommand is write_plan_contracts.SaveWritePlanCommand
-    assert write_actions.ApproveWriteActionService is write_approval.ApproveWriteActionService
+    assert not hasattr(write_actions, "ApproveWriteActionService")
     assert write_actions.ClaimWriteActionService is write_claim.ClaimWriteActionService
     assert write_actions.ExecuteWriteActionService is write_execution.ExecuteWriteActionService
     assert write_actions.VerifyWriteActionService is write_verification.VerifyWriteActionService

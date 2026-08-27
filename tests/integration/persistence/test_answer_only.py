@@ -8,12 +8,12 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.answer_only import (
+from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
-    CompleteAnswerOnlyRunService,
+    CompleteAnswerOnlyRunHandler,
 )
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 @pytest.fixture()
@@ -52,7 +52,7 @@ def answer_only_database(tmp_path: Path) -> Path:
 
 
 def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
         message_id_factory=lambda: "message-1",
@@ -71,7 +71,7 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
 
     assert response.applied is True
     assert response.result_code is ResultCode.TRANSITION_APPLIED
-    assert response.current_status is RunStatus.COMPLETED
+    assert response.current_status is RunStatusV1.COMPLETED
     assert response.current_version == 1
     assert response.assistant_message_id == "message-1"
 
@@ -149,7 +149,7 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
 
 
 def test_same_command_id_and_hash_returns_stored_result(answer_only_database: Path) -> None:
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
         message_id_factory=lambda: "message-1",
@@ -179,7 +179,7 @@ def test_same_command_id_and_hash_returns_stored_result(answer_only_database: Pa
 
 
 def test_same_command_id_and_different_hash_is_blocked(answer_only_database: Path) -> None:
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
         message_id_factory=lambda: "message-1",
@@ -208,7 +208,7 @@ def test_same_command_id_and_different_hash_is_blocked(answer_only_database: Pat
 
     assert duplicate.applied is False
     assert duplicate.result_code is ResultCode.DUPLICATE_COMMAND
-    assert duplicate.current_status is RunStatus.COMPLETED
+    assert duplicate.current_status is RunStatusV1.COMPLETED
 
     connection = connect_sqlite(answer_only_database)
     try:
@@ -218,7 +218,7 @@ def test_same_command_id_and_different_hash_is_blocked(answer_only_database: Pat
 
 
 def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> None:
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
         message_id_factory=lambda: "message-1",
@@ -237,7 +237,7 @@ def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> N
 
     assert response.applied is False
     assert response.result_code is ResultCode.VERSION_CONFLICT
-    assert response.current_status is RunStatus.ANALYZING
+    assert response.current_status is RunStatusV1.ANALYZING
     assert response.current_version == 0
 
     connection = connect_sqlite(answer_only_database)
@@ -262,7 +262,7 @@ def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> N
 def test_answer_only_failure_rolls_back_receipt_message_run_trace_and_audit(
     answer_only_database: Path,
 ) -> None:
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
         message_id_factory=lambda: "message-1",
@@ -333,7 +333,7 @@ def test_received_receipt_is_recovered_from_completed_run(answer_only_database: 
     finally:
         connection.close()
 
-    service = CompleteAnswerOnlyRunService(
+    service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 2000,
         message_id_factory=lambda: "message-2",
@@ -350,7 +350,7 @@ def test_received_receipt_is_recovered_from_completed_run(answer_only_database: 
     )
 
     assert response.applied is True
-    assert response.current_status is RunStatus.COMPLETED
+    assert response.current_status is RunStatusV1.COMPLETED
     assert response.assistant_message_id == "message-1"
 
     connection = connect_sqlite(answer_only_database)

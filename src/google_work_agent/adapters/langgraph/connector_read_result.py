@@ -12,17 +12,19 @@ from google_work_agent.application.read_contracts import (
     CompleteReadActionCommand,
     ReadActionCommandResponse,
 )
-from google_work_agent.application.read_lifecycle import CompleteReadActionService
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
 from google_work_agent.ports import UnitOfWork
 
 
-class ConnectorBoundCompleteReadActionService(CompleteReadActionService):
+class ConnectorBoundCompleteReadActionHandler(CompleteReadActionHandler):
     """Backward-compatible facade; connector persistence is explicit in delegate."""
 
     def __init__(
         self,
         *,
-        delegate: CompleteReadActionService,
+        delegate: CompleteReadActionHandler,
         unit_of_work_factory: Callable[[], UnitOfWork],
     ) -> None:
         self._delegate = delegate

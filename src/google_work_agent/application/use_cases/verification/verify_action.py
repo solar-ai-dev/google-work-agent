@@ -31,12 +31,12 @@ from google_work_agent.application.write_verification_projection import (
     normalize_actual_verification_projection,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import canonicalize_json_value
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
@@ -145,7 +145,7 @@ class VerifyActionHandler:
                     attempt=attempt,
                     detail="verification attempt does not belong to the requested action",
                 )
-            if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
+            if attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED:
                 return self._store_state_conflict(
                     unit_of_work=unit_of_work,
                     command=command,
@@ -210,7 +210,7 @@ class VerifyActionHandler:
                     attempt=attempt,
                     detail="verification attempt does not belong to the requested action",
                 )
-            if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
+            if attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED:
                 return self._store_state_conflict(
                     unit_of_work=unit_of_work,
                     command=command,
@@ -264,7 +264,7 @@ class VerifyActionHandler:
                 )
 
             preview = transition_store_verification(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 current_version=action.version,
                 expected_version=command.expected_action_version,
                 verification_status=verification_status,
@@ -298,7 +298,7 @@ class VerifyActionHandler:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )

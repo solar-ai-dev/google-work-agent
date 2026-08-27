@@ -77,7 +77,6 @@ from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     RequestedRuntimeMode,
@@ -87,6 +86,10 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    ConnectorToolCatalog,
+    build_p0_tool_registry,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"

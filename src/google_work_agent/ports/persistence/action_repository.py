@@ -3,7 +3,7 @@
 from typing import Protocol
 
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 
 
 class ActionRepository(Protocol):
@@ -15,8 +15,8 @@ class ActionRepository(Protocol):
         action_id: str,
         *,
         expected_version: int,
-        expected_status: ActionStatus,
-        next_status: ActionStatus,
+        expected_status: ActionStatusV1,
+        next_status: ActionStatusV1,
         updated_at_ms: int,
         arguments_json: str | None = None,
         arguments_hash: str | None = None,

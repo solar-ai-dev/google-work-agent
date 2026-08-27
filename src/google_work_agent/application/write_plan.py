@@ -7,6 +7,7 @@ from json import dumps
 from typing import cast
 
 from google_work_agent.application.plan_invariants import validate_plan_structure
+from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, duplicate_authority
 from google_work_agent.application.write_persistence import (
     audit_event as _audit_event,
@@ -18,23 +19,23 @@ from google_work_agent.application.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.write_persistence import (
-    require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
     require_run as _require_run,
 )
 from google_work_agent.application.write_persistence import (
     resolve_json_receipt as _resolve_json_receipt,
 )
 from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
     PublishWritePlanResponse,
     SaveWritePlanCommand,
     SaveWritePlanResponse,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus, EffectType
-from google_work_agent.domain.action_risk import canonicalize_action_risk, normalize_action_risk
+from google_work_agent.domain.action.model import (
+    ActionStatusV1,
+    EffectType,
+    canonicalize_action_risk,
+    normalize_action_risk,
+)
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
@@ -42,15 +43,16 @@ from google_work_agent.domain.canonical import (
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.plan.transitions.publish_plan import transition_publish_plan
-from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    SignedToolRegistry,
+    build_p0_tool_registry,
 )
 
 
@@ -93,7 +95,7 @@ class SaveWritePlanService:
                     run_status=run.status.value,
                     run_version=run.version,
                     plan_id=command.plan_id,
-                    plan_status=PlanStatus.DRAFT.value,
+                    plan_status=PlanStatusV1.DRAFT.value,
                     action_ids=tuple(action.action_id for action in command.actions),
                     conflict_detail="expected_version does not match current_version",
                 )
@@ -102,14 +104,14 @@ class SaveWritePlanService:
                 )
                 unit_of_work.commit()
                 return response
-            if run.status is not RunStatus.PLANNING:
+            if run.status is not RunStatusV1.PLANNING:
                 response = SaveWritePlanResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
                     run_status=run.status.value,
                     run_version=run.version,
                     plan_id=command.plan_id,
-                    plan_status=PlanStatus.DRAFT.value,
+                    plan_status=PlanStatusV1.DRAFT.value,
                     action_ids=tuple(action.action_id for action in command.actions),
                     conflict_detail="write plan can only be saved while run is PLANNING",
                 )
@@ -124,7 +126,7 @@ class SaveWritePlanService:
                 id=command.plan_id,
                 run_id=command.run_id,
                 revision_no=command.revision_no,
-                status=PlanStatus.DRAFT,
+                status=PlanStatusV1.DRAFT,
                 summary_text=command.summary_text,
                 created_at_ms=now_ms,
             )
@@ -160,7 +162,7 @@ class SaveWritePlanService:
                         verification_policy=entry.verification_policy.value,
                         recovery_policy=entry.recovery_policy.value,
                         target_resource_ref_id=action.target_resource_ref_id,
-                        status=ActionStatus.PROPOSED.value,
+                        status=ActionStatusV1.PROPOSED.value,
                         arguments_json=canonicalize_json_value(action.arguments),
                         arguments_hash=calculate_canonical_json_hash(action.arguments),
                         expected_json=canonicalize_json_value(action.expected),
@@ -207,7 +209,7 @@ class SaveWritePlanService:
                     run_id=command.run_id,
                     action_id=None,
                     event_type="WRITE_PLAN_SAVED",
-                    status=PlanStatus.DRAFT.value,
+                    status=PlanStatusV1.DRAFT.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"command_id": command.command_id, "plan_id": command.plan_id},
@@ -232,150 +234,10 @@ class SaveWritePlanService:
                 run_status=run.status.value,
                 run_version=run.version,
                 plan_id=command.plan_id,
-                plan_status=PlanStatus.DRAFT.value,
+                plan_status=PlanStatusV1.DRAFT.value,
                 action_ids=tuple(action.action_id for action in command.actions),
             )
             _finish_json_receipt(unit_of_work, command.command_id, response, run.version, now_ms)
-            unit_of_work.commit()
-            return response
-
-
-class PublishWritePlanService:
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: PublishWritePlanCommand) -> PublishWritePlanResponse:
-        with self._unit_of_work_factory() as unit_of_work:
-            existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
-            if existing is not None:
-                return resolve_existing_plan_receipt(
-                    unit_of_work=unit_of_work,
-                    receipt=existing,
-                    request_hash=command.request_hash,
-                    plan_id=command.plan_id,
-                    run_id=command.run_id,
-                    now_ms=self._now_ms(),
-                    response_type=PublishWritePlanResponse,
-                )
-
-            now_ms = self._now_ms()
-            unit_of_work.command_receipts.add_received(
-                command_id=command.command_id,
-                command_type="PublishWritePlan",
-                request_hash=command.request_hash,
-                aggregate_type="Run",
-                aggregate_id=command.run_id,
-                created_at_ms=now_ms,
-            )
-            plan = _require_plan(unit_of_work, command.plan_id)
-            run = _require_run(unit_of_work, command.run_id)
-            actions = unit_of_work.actions.list_by_plan(command.plan_id)
-            if plan.run_id != command.run_id:
-                raise LookupError(f"plan {command.plan_id} does not belong to run {command.run_id}")
-            if plan.status is not PlanStatus.DRAFT:
-                response = PublishWritePlanResponse(
-                    applied=False,
-                    result_code=ResultCode.STATE_CONFLICT.value,
-                    run_status=run.status.value,
-                    run_version=run.version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail="plan must be DRAFT before publish",
-                )
-                _finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
-                unit_of_work.commit()
-                return response
-            if len(actions) == 0:
-                response = PublishWritePlanResponse(
-                    applied=False,
-                    result_code=ResultCode.STATE_CONFLICT.value,
-                    run_status=run.status.value,
-                    run_version=run.version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail="write plan requires at least one action",
-                )
-                _finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
-                unit_of_work.commit()
-                return response
-
-            if run.version != command.expected_run_version:
-                response = PublishWritePlanResponse(
-                    applied=False,
-                    result_code=ResultCode.VERSION_CONFLICT.value,
-                    run_status=run.status.value,
-                    run_version=run.version,
-                    plan_id=plan.id,
-                    plan_status=plan.status.value,
-                    conflict_detail="expected_version does not match current_version",
-                )
-                _finish_json_receipt(
-                    unit_of_work, command.command_id, response, run.version, now_ms
-                )
-                unit_of_work.commit()
-                return response
-            next_run_status, next_plan_status = transition_publish_plan(
-                run.status,
-                plan.status,
-                review_status=plan.review_status,
-            )
-            if not unit_of_work.runs.update_if_version_and_status(
-                run.id,
-                run.version,
-                frozenset({run.status}),
-                {"status": next_run_status.value, "version": run.version + 1},
-            ):
-                raise RuntimeError("validated PublishPlan Run CAS failed")
-            if (
-                unit_of_work.plans.update_if_status(
-                    plan.id,
-                    expected_status=plan.status,
-                    next_status=next_plan_status,
-                )
-                is None
-            ):
-                raise RuntimeError("validated PublishPlan Plan CAS failed")
-            unit_of_work.traces.add(
-                TraceEventRecord(
-                    run_id=command.run_id,
-                    action_id=None,
-                    event_type="WRITE_PLAN_PUBLISHED",
-                    status=PlanStatus.WAITING_APPROVAL.value,
-                    duration_ms=None,
-                    payload_json=dumps(
-                        {"command_id": command.command_id, "plan_id": plan.id}, sort_keys=True
-                    ),
-                    created_at_ms=now_ms,
-                )
-            )
-            unit_of_work.audits.add(
-                _audit_event(
-                    run_id=command.run_id,
-                    action_id=None,
-                    event_type="COMMAND_APPLIED",
-                    outcome=ResultCode.TRANSITION_APPLIED.value,
-                    metadata={"command_id": command.command_id, "plan_id": plan.id},
-                    created_at_ms=now_ms,
-                )
-            )
-            response = PublishWritePlanResponse(
-                applied=True,
-                result_code=ResultCode.TRANSITION_APPLIED.value,
-                run_status=next_run_status.value,
-                run_version=run.version + 1,
-                plan_id=plan.id,
-                plan_status=PlanStatus.WAITING_APPROVAL.value,
-            )
-            _finish_json_receipt(
-                unit_of_work, command.command_id, response, run.version + 1, now_ms
-            )
             unit_of_work.commit()
             return response
 

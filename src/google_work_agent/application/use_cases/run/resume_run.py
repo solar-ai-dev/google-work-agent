@@ -7,13 +7,10 @@ from dataclasses import asdict, dataclass
 from json import dumps
 from typing import cast
 
+from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.run_command_receipts import (
     finish_json_receipt,
     resolve_existing_receipt,
-)
-from google_work_agent.application.use_cases.recovery.require_recovery import (
-    RequireRecoveryCommand,
-    RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
@@ -22,14 +19,10 @@ from google_work_agent.application.use_cases.run.resume_confirmation import Resu
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
-from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.run.transitions.resume_after_reauth import (
-    transition_resume_after_reauth,
-)
+from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -68,16 +61,16 @@ class ResumeRunResult:
 class _PersistedRunDecision:
     applied: bool
     result_code: ResultCode
-    current_status: RunStatus
+    current_status: RunStatusV1
     current_version: int
     conflict_detail: str | None
 
 
 _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES = frozenset(
     {
-        ActionStatus.EXECUTING.value,
-        ActionStatus.UNKNOWN_RESULT.value,
-        ActionStatus.EXECUTED.value,
+        ActionStatusV1.EXECUTING.value,
+        ActionStatusV1.UNKNOWN_RESULT.value,
+        ActionStatusV1.EXECUTED.value,
     }
 )
 
@@ -173,7 +166,7 @@ class ResumeRunHandler:
                 () if latest_plan is None else unit_of_work.actions.list_by_plan(latest_plan.id)
             )
             unknown_result_exists = any(
-                action.status == ActionStatus.UNKNOWN_RESULT.value for action in actions
+                action.status == ActionStatusV1.UNKNOWN_RESULT.value for action in actions
             )
             reauth_dispatch_uncertain = any(
                 action.status in _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES for action in actions
@@ -203,11 +196,16 @@ class ResumeRunHandler:
                 )
             if response.applied:
                 metadata = {"command_id": command.command_id, "resume_kind": command.resume_kind}
+                event_type = (
+                    "RUN_REAUTH_RESUMED"
+                    if command.resume_kind == "REAUTH_COMPLETED"
+                    else "RUN_RESUMED"
+                )
                 unit_of_work.traces.add(
                     TraceEventRecord(
                         run_id=run.id,
                         action_id=None,
-                        event_type="RUN_RESUMED",
+                        event_type=event_type,
                         status=response.run_status,
                         duration_ms=None,
                         payload_json=dumps(metadata, sort_keys=True),
@@ -222,7 +220,7 @@ class ResumeRunHandler:
                         actor_type="USER",
                         actor_id="local_user",
                         actor_display=None,
-                        event_type="RUN_RESUMED",
+                        event_type=event_type,
                         outcome=response.result_code,
                         metadata_json=dumps(metadata, sort_keys=True),
                         created_at_ms=now_ms,
@@ -291,8 +289,8 @@ class ResumeRunHandler:
                 "expected_run_version does not match current version",
             )
         allowed = {
-            "REAUTH_COMPLETED": RunStatus.REAUTH_REQUIRED,
-            "RECOVERY_RECHECK": RunStatus.RECOVERY_REQUIRED,
+            "REAUTH_COMPLETED": RunStatusV1.REAUTH_REQUIRED,
+            "RECOVERY_RECHECK": RunStatusV1.RECOVERY_REQUIRED,
         }
         if allowed.get(command.resume_kind) is not status:
             return ResumeRunResult(
@@ -335,7 +333,7 @@ class ResumeRunHandler:
         if command.resume_kind == "REAUTH_COMPLETED":
             assert authority is not None
             try:
-                resume_status = RunStatus(cast(str, authority["resume_status"]))
+                resume_status = RunStatusV1(cast(str, authority["resume_status"]))
             except ValueError:
                 return ResumeRunResult(
                     False,
@@ -347,7 +345,7 @@ class ResumeRunHandler:
                     False,
                     "persisted reauth resume status is invalid",
                 )
-            if resume_status is not RunStatus.RECOVERY_REQUIRED and not isinstance(
+            if resume_status is not RunStatusV1.RECOVERY_REQUIRED and not isinstance(
                 authority.get("continuation_target"), str
             ):
                 return ResumeRunResult(
@@ -362,8 +360,8 @@ class ResumeRunHandler:
                 )
         return None
 
-    @staticmethod
     def _apply_canonical_transition(
+        self,
         unit_of_work: UnitOfWork,
         command: ResumeRunCommand,
         current_version: int,
@@ -372,74 +370,7 @@ class ResumeRunHandler:
         reauth_dispatch_uncertain: bool,
         now_ms: int,
     ):
-        if command.resume_kind == "REAUTH_COMPLETED":
-            run = unit_of_work.runs.get(command.run_id)
-            if run is None:
-                raise LookupError(f"run not found: {command.run_id}")
-            resume_status = RunStatus(cast(str, authority["resume_status"]))
-            next_status = transition_resume_after_reauth(
-                run.status,
-                resume_status=resume_status,
-            )
-            if run.version != current_version:
-                restored = CommandResult(
-                    False,
-                    ResultCode.VERSION_CONFLICT,
-                    run.status,
-                    run.version,
-                    (),
-                    "expected_version does not match current_version",
-                )
-                return restored, False
-            if not unit_of_work.runs.update_if_version_and_status(
-                run.id,
-                run.version,
-                frozenset({run.status}),
-                {"status": next_status.value, "version": run.version + 1},
-            ):
-                raise RuntimeError("validated ResumeAfterReauth CAS failed")
-            restored = CommandResult(
-                True, ResultCode.TRANSITION_APPLIED, next_status, run.version + 1, ()
-            )
-            if restored.current_status is RunStatus.RECOVERY_REQUIRED:
-                return restored, False
-            if reauth_dispatch_uncertain:
-                pre_recovery_status = restored.current_status.value
-                fingerprint = calculate_canonical_json_hash(
-                    {
-                        "command_id": command.command_id,
-                        "run_id": command.run_id,
-                        "pre_recovery_status": pre_recovery_status,
-                    }
-                )
-                require_recovery_command = RequireRecoveryCommand(
-                    run_id=command.run_id,
-                    expected_version=restored.current_version,
-                    command_id=f"system:reauth-dispatch-uncertain-recovery:{command.command_id}",
-                    request_hash=fingerprint,
-                    reason="CHECKPOINT_MISMATCH",
-                    scope="RUN",
-                    recovery_fingerprint=fingerprint,
-                    contract_or_checkpoint_fingerprint=fingerprint,
-                )
-                recovery = RequireRecoveryHandler.apply_in_unit_of_work(
-                    unit_of_work,
-                    require_recovery_command,
-                    now_ms=now_ms,
-                )
-                if not recovery.applied:
-                    raise RuntimeError("reauth recovery fail-safe transition was not applied")
-                return (
-                    _PersistedRunDecision(
-                        applied=recovery.applied,
-                        result_code=ResultCode(recovery.result_code),
-                        current_status=RunStatus(recovery.current_status),
-                        current_version=recovery.current_version,
-                        conflict_detail=recovery.conflict_detail,
-                    ),
-                    False,
-                )
-            return restored, True
+        del authority, reauth_dispatch_uncertain, now_ms
         if command.resume_kind == "RECOVERY_RECHECK":
             decision = ResolveRecoveryHandler.recheck_in_unit_of_work(
                 unit_of_work,
@@ -450,6 +381,13 @@ class ResumeRunHandler:
         raise AssertionError(
             f"unvalidated resume kind reached transition authority: {command.resume_kind}"
         )
+
+
+def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
+    checker = getattr(unit_of_work.command_receipts, "has_applied_request_cancel", None)
+    if not callable(checker):
+        return False
+    return has_durable_cancel_intent(unit_of_work.command_receipts, run_id)
 
 
 __all__ = ["ResumeRunCommand", "ResumeRunHandler", "ResumeRunResult"]

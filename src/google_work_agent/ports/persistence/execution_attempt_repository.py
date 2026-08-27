@@ -6,7 +6,7 @@ from typing import Literal, Protocol
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 
 type ExecutionReconciliationCandidateKindV1 = Literal[
     "POST_BEGIN_ORPHAN",
@@ -34,8 +34,8 @@ class ExecutionAttemptRepository(Protocol):
         attempt_id: str,
         *,
         expected_version: int,
-        expected_status: ExecutionAttemptStatus,
-        status: ExecutionAttemptStatus,
+        expected_status: ExecutionAttemptStatusV1,
+        status: ExecutionAttemptStatusV1,
         error_code: str | None,
         error_detail_json: str | None,
         result_resource_ref_id: str | None,

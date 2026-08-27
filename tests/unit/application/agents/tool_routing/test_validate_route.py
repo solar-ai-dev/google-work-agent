@@ -14,7 +14,10 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     validate_route,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    ConnectorToolCatalog,
+    build_p0_tool_registry,
+)
 
 
 def _catalog() -> ConnectorToolCatalog:

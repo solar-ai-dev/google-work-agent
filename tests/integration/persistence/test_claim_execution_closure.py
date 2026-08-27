@@ -12,9 +12,9 @@ from google_work_agent.adapters.persistence.sqlite.repositories.audit_repository
     SQLiteAuditRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
-    SQLiteCommandReceiptRepository,
+    SqliteCommandReceiptRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (
+from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
     SQLiteExecutionAttemptRepository,
 )
 from google_work_agent.application.use_cases.claim.claim_execution import (
@@ -26,7 +26,7 @@ from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
 from google_work_agent.application.write_execution_integrity import read_claim_token
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_write_actions import (
     FakeClockPort,
@@ -59,7 +59,7 @@ def _approve(*, write_database: Path, clock: FakeClockPort, suffix: str) -> None
         )
     )
     assert approved.applied is True
-    assert approved.action_status == ActionStatus.APPROVED.value
+    assert approved.action_status == ActionStatusV1.APPROVED.value
 
 
 def _handler(write_database: Path, clock: FakeClockPort) -> ClaimExecutionHandler:
@@ -141,7 +141,7 @@ def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
 
     assert first.applied is True
     assert first.result_code is ResultCode.TRANSITION_APPLIED
-    assert first.current_status is ActionStatus.EXECUTING
+    assert first.current_status is ActionStatusV1.EXECUTING
     assert first.current_version == 2
     assert first.approval_id == f"approval-{suffix}"
     assert first.attempt_id == f"attempt-{suffix}"
@@ -322,7 +322,7 @@ def test_transaction_failure_rolls_back_claim_children_and_observability(
     if failure_point == "audit":
         monkeypatch.setattr(SQLiteAuditRepository, "add", fail)
     else:
-        monkeypatch.setattr(SQLiteCommandReceiptRepository, "finish_json", fail)
+        monkeypatch.setattr(SqliteCommandReceiptRepository, "finish_json", fail)
 
     with pytest.raises(RuntimeError, match=f"injected {failure_point} failure"):
         _handler(write_database, clock)(_command(suffix))
@@ -357,14 +357,16 @@ def test_transaction_failure_rolls_back_claim_children_and_observability(
         )
         assert (
             connection.execute(
-                "SELECT COUNT(*) FROM trace_events WHERE action_id = ? AND event_type = 'EXECUTION_CLAIMED';",
+                "SELECT COUNT(*) FROM trace_events WHERE action_id = ? "
+                "AND event_type = 'EXECUTION_CLAIMED';",
                 (f"action-{suffix}",),
             ).fetchone()[0]
             == 0
         )
         assert (
             connection.execute(
-                "SELECT COUNT(*) FROM audit_events WHERE action_id = ? AND event_type IN ('APPROVAL_CONSUMED', 'EXECUTION_CLAIMED');",
+                "SELECT COUNT(*) FROM audit_events WHERE action_id = ? "
+                "AND event_type IN ('APPROVAL_CONSUMED', 'EXECUTION_CLAIMED');",
                 (f"action-{suffix}",),
             ).fetchone()[0]
             == 0

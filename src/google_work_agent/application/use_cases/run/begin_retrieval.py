@@ -11,7 +11,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import (
-    RunStatus,
+    RunStatusV1,
     RunTransitionRejected,
     next_allowed_run_commands,
 )
@@ -70,7 +70,7 @@ class BeginRetrievalHandler:
 
     @staticmethod
     def _apply(
-        unit_of_work: UnitOfWork, command: BeginRetrievalCommand, status: RunStatus, version: int
+        unit_of_work: UnitOfWork, command: BeginRetrievalCommand, status: RunStatusV1, version: int
     ) -> BeginRetrievalResult:
         if version != command.expected_version:
             return _result(False, ResultCode.VERSION_CONFLICT, status, version, "version mismatch")
@@ -108,7 +108,7 @@ class BeginRetrievalHandler:
             return _result(
                 False,
                 ResultCode.DUPLICATE_COMMAND,
-                RunStatus.CREATED if run is None else run.status,
+                RunStatusV1.CREATED if run is None else run.status,
                 0 if run is None else run.version,
                 "command_id already exists with a different request_hash",
             )
@@ -122,7 +122,7 @@ class BeginRetrievalHandler:
 def _result(
     applied: bool,
     result_code: ResultCode,
-    status: RunStatus,
+    status: RunStatusV1,
     version: int,
     conflict_detail: str | None = None,
 ) -> BeginRetrievalResult:

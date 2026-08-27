@@ -4,6 +4,11 @@
 
 from __future__ import annotations
 
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommand,
+    ResolveRecoveryHandler,
+)
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -12,8 +17,8 @@ from tests.integration.persistence.test_write_actions import (
     ExecuteWriteActionService,
     FakeClockPort,
     FakeGoogleGateway,
+    FinalizeCancelHandler,
     FinalizeRunCancellationCommand,
-    FinalizeRunCancellationService,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
     GoogleWorkspaceErrorCode,
@@ -85,6 +90,17 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
             expected_run_version=1,
         )
     )
+    cancelled = FinalizeCancelHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-cancel-1",
+            request_hash="w4" * 32,
+            run_id="run-1",
+            expected_run_version=cancelled.run_version,
+        )
+    )
     assert cancelled.applied is True
     assert cancelled.run_status == "CANCELLED"
 
@@ -134,7 +150,7 @@ def test_pre_plan_cancel_finalizes_without_creating_children(
         connection.commit()
     finally:
         connection.close()
-    result = RequestRunCancellationService(
+    requested = RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=lambda: 1000,
     )(
@@ -143,6 +159,18 @@ def test_pre_plan_cancel_finalizes_without_creating_children(
             request_hash="c7" * 32,
             run_id="run-1",
             expected_run_version=0,
+        )
+    )
+
+    result = FinalizeCancelHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=lambda: 1000,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id=f"finalize-pre-plan-{run_status}",
+            request_hash="c8" * 32,
+            run_id="run-1",
+            expected_run_version=requested.run_version,
         )
     )
 
@@ -204,7 +232,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
     assert _cancel_child_snapshot(write_database) == (
         "WAITING_APPROVAL",
         1,
-        "ACTIVE",
+        "WAITING_APPROVAL",
         "APPROVED",
         1,
         "ACTIVE",
@@ -217,12 +245,25 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
         expected_run_version=1,
     )
     first = service(command)
-    snapshot = _cancel_child_snapshot(write_database)
     replay = service(command)
 
     assert first == replay
     # B: a same-hash idempotent replay is not a rejection.
     assert _command_rejected_hash_mismatch_events(write_database) == ()
+
+    finalized = FinalizeCancelHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id="finalize-atomic-success",
+            request_hash="ea" * 32,
+            run_id="run-1",
+            expected_run_version=first.run_version,
+        )
+    )
+    assert finalized.run_status == "CANCELLED"
+    snapshot = _cancel_child_snapshot(write_database)
 
     hash_conflict = service(
         RequestRunCancellationCommand(
@@ -350,7 +391,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
             action_id="action-cancel-executed",
             attempt_id="attempt-cancel-executed",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -371,7 +412,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
             expected_run_version=_run_version(write_database),
         )
     )
-    finalized = FinalizeRunCancellationService(
+    finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -383,7 +424,9 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
         )
     )
 
-    assert finalized.run_status == "VERIFYING"
+    assert finalized.applied is False
+    assert finalized.run_status == "CANCEL_REQUESTED"
+    assert "awaits verification" in (finalized.conflict_detail or "")
     assert finalized.result_kind is None
     snapshot = QueryService(
         database_path=write_database,
@@ -435,7 +478,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
             action_id="action-cancel-partial",
             attempt_id="attempt-cancel-partial",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -486,7 +529,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
             expected_run_version=_run_version(write_database),
         )
     )
-    finalized = FinalizeRunCancellationService(
+    finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -538,13 +581,29 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
 
 def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
 ) -> None:
     clock = FakeClockPort(1000)
-    _prepare_claimed_action(
+    claimed = _prepare_claimed_action(
         write_database=write_database,
         clock=clock,
         suffix="cancel-unknown",
     )
+    fixture_gateway.queue_fault(
+        operation="create_task",
+        fault=GoogleGatewayFault(GoogleGatewayFaultKind.TIMEOUT_AFTER_DELIVERY),
+    )
+    with pytest.raises(GoogleWorkspaceGatewayError):
+        ExecuteWriteActionService(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            gateway=fixture_gateway,
+            now_ms=clock.now_ms,
+            signing_secret="phase-e-secret",
+            service_instance_id="write-svc-1",
+        )(
+            action_id="action-cancel-unknown",
+            claim_token=claimed.claim_token or "",
+        )
     MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -555,7 +614,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
             action_id="action-cancel-unknown",
             attempt_id="attempt-cancel-unknown",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
             error_detail="dispatch outcome unknown",
         )
@@ -577,7 +636,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
             expected_run_version=_run_version(write_database),
         )
     )
-    finalized = FinalizeRunCancellationService(
+    finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -627,7 +686,7 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
         status="PROPOSED",
     )
 
-    result = RequestRunCancellationService(
+    requested = RequestRunCancellationService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -636,6 +695,18 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
             request_hash="ab" * 32,
             run_id="run-1",
             expected_run_version=_run_version(write_database),
+        )
+    )
+
+    result = FinalizeCancelHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        FinalizeRunCancellationCommand(
+            command_id=f"finalize-{suffix}",
+            request_hash="ac" * 32,
+            run_id="run-1",
+            expected_run_version=requested.run_version,
         )
     )
 
@@ -686,7 +757,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
             action_id="action-cancel-recovery",
             attempt_id="attempt-cancel-recovery",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=error_info.value.code.value,
             error_detail=str(error_info.value),
         )
@@ -710,7 +781,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
     )
     assert cancellation_requested.run_status == "CANCEL_REQUESTED"
     assert _cancel_marker_count(write_database) == 1
-    recovery_required = FinalizeRunCancellationService(
+    recovery_required = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -734,10 +805,24 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
             action_id="action-cancel-recovery",
             attempt_id="attempt-cancel-recovery",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
     assert recovered.action_status == "EXECUTED"
+    resumed = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ResolveRecoveryCommand(
+            run_id="run-1",
+            expected_version=_run_version(write_database),
+            command_id="recheck-cancel-recovery",
+            request_hash="c0" * 32,
+            resolution=RecoveryResolution.RECHECK,
+            recheck_input_changed=True,
+        )
+    )
+    assert resumed.current_status == "VERIFYING"
     verified = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -754,7 +839,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
     )
     assert verified.action_status == "VERIFIED"
 
-    finalized = FinalizeRunCancellationService(
+    finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -793,7 +878,7 @@ def test_recovery_without_successful_cancel_marker_cannot_finalize_cancel(
     finally:
         connection.close()
 
-    result = FinalizeRunCancellationService(
+    result = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -849,7 +934,7 @@ def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
         runtime_status_provider=None,  # type: ignore[arg-type]
     )
     assert query_service.has_cancel_intent("run-1") is False
-    result = FinalizeRunCancellationService(
+    result = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
@@ -898,7 +983,7 @@ def test_cancel_marker_does_not_bypass_current_run_domain_guard(
     finally:
         connection.close()
 
-    result = FinalizeRunCancellationService(
+    result = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(

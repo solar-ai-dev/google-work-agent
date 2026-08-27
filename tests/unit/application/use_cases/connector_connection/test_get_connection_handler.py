@@ -3,10 +3,6 @@ from __future__ import annotations
 import pytest
 
 from google_work_agent.application.google_connection import GetGoogleConnectionService
-from google_work_agent.ports.connectors.failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
-)
 from google_work_agent.application.use_cases.connector_connection.get_connection import (
     GetConnectionHandler,
     GetConnectionQuery,
@@ -16,7 +12,14 @@ from google_work_agent.ports import (
     GoogleConnectionStatus,
     OAuthEnvironment,
 )
-from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError, MCPClientPortErrorCode
+from google_work_agent.ports.connector.mcp_client_port import (
+    MCPClientPortError,
+    MCPClientPortErrorCode,
+)
+from google_work_agent.ports.connectors.failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
 
 
 def _status(

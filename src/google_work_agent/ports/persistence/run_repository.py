@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from google_work_agent.domain.run.model import Run, RunCreate, RunStatus
+from google_work_agent.domain.run.model import Run, RunCreate, RunStatusV1
 
 
 class RunAlreadyOpenConflictError(RuntimeError):
@@ -22,6 +22,6 @@ class RunRepository(Protocol):
         self,
         run_id: str,
         expected_version: int,
-        expected_statuses: frozenset[RunStatus],
+        expected_statuses: frozenset[RunStatusV1],
         values: dict[str, object],
     ) -> bool: ...

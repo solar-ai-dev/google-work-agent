@@ -2,18 +2,18 @@
 
 from dataclasses import dataclass
 
-from google_work_agent.domain.action.model import ActionStatus, EffectType, PolicyViolationError
-from google_work_agent.domain.approval.model import ApprovalStatus
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
+from google_work_agent.domain.approval.model import ApprovalStatusV1
+from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 @dataclass(frozen=True, slots=True)
 class ClaimExecutionGuardInput:
-    action_status: ActionStatus
+    action_status: ActionStatusV1
     effect_type: EffectType
     action_version: int
-    approval_status: ApprovalStatus
+    approval_status: ApprovalStatusV1
     approval_action_version: int
     approval_arguments_hash: str
     current_arguments_hash: str
@@ -25,8 +25,8 @@ class ClaimExecutionGuardInput:
     current_tool_schema_version: str
     expires_at_ms: int
     now_ms: int
-    run_status: RunStatus
-    plan_status: PlanStatus
+    run_status: RunStatusV1
+    plan_status: PlanStatusV1
     plan_is_current: bool
     durable_cancel_intent: bool
     predecessor_verified: bool
@@ -36,9 +36,9 @@ class ClaimExecutionGuardInput:
 def guard_claim_execution(value: ClaimExecutionGuardInput) -> None:
     if value.effect_type is EffectType.READ:
         raise PolicyViolationError("READ action cannot acquire a write claim")
-    if value.action_status is not ActionStatus.APPROVED:
+    if value.action_status is not ActionStatusV1.APPROVED:
         raise PolicyViolationError("write claim requires APPROVED action")
-    if value.approval_status is not ApprovalStatus.ACTIVE:
+    if value.approval_status is not ApprovalStatusV1.ACTIVE:
         raise PolicyViolationError("write claim requires ACTIVE approval")
     if value.action_version != value.approval_action_version:
         raise PolicyViolationError("approval action version is stale")
@@ -54,9 +54,9 @@ def guard_claim_execution(value: ClaimExecutionGuardInput) -> None:
         raise PolicyViolationError("approval expired")
     if value.durable_cancel_intent:
         raise PolicyViolationError("run state forbids a new write claim")
-    if value.run_status not in {RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING}:
+    if value.run_status not in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}:
         raise PolicyViolationError("parent Run status forbids a new write claim")
-    if value.plan_status is not PlanStatus.WAITING_APPROVAL or not value.plan_is_current:
+    if value.plan_status is not PlanStatusV1.WAITING_APPROVAL or not value.plan_is_current:
         raise PolicyViolationError("claim requires the current published Plan")
     if not value.predecessor_verified:
         raise PolicyViolationError("action dependency is not VERIFIED")

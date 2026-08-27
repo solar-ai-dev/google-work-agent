@@ -9,7 +9,7 @@ from tests.unit.application.test_start_run_receipt_recovery import (
 )
 
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
@@ -33,7 +33,7 @@ def test_existing_open_run_remains_a_start_run_conflict() -> None:
     uow.runs.records["other-run"] = RunRecord(
         id="other-run",
         conversation_id="conversation-1",
-        status=RunStatus.ANALYZING,
+        status=RunStatusV1.ANALYZING,
         version=2,
         started_at_ms=5,
         finished_at_ms=None,
@@ -57,7 +57,7 @@ def test_insert_integrity_race_reconciles_to_open_run_conflict() -> None:
         uow.runs.records["racing-run"] = RunRecord(
             id="racing-run",
             conversation_id="conversation-1",
-            status=RunStatus.CREATED,
+            status=RunStatusV1.CREATED,
             version=0,
             started_at_ms=19,
             finished_at_ms=None,

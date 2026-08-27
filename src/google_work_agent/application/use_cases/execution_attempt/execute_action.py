@@ -85,7 +85,12 @@ class ExecuteActionHandler:
 
         try:
             begun = self._begin_execution_attempt(
-                BeginExecutionAttemptCommand(action_id=action_id, claim_payload=payload)
+                BeginExecutionAttemptCommand(
+                    command_id=f"begin-execution-attempt:{payload['attempt_id']}",
+                    request_hash=calculate_canonical_json_hash(payload),
+                    action_id=action_id,
+                    claim_payload=payload,
+                )
             )
             action = begun.action
             approval = begun.approval

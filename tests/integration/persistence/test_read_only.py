@@ -21,21 +21,25 @@ from google_work_agent.application.read_contracts import (
     SaveReadOnlyPlanCommand,
 )
 from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.read_lifecycle import (
-    ClaimReadActionService,
-    CompleteReadActionService,
-    FailReadActionService,
-    FinalizeReadActionService,
-)
 from google_work_agent.application.read_plan import (
-    PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
 )
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
+    PublishReadOnlyPlanHandler,
+)
 from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
@@ -91,11 +95,11 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
@@ -103,11 +107,11 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         gateway=fixture_gateway,
     )
-    complete_service = CompleteReadActionService(
+    complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1030,
     )
-    finalize_service = FinalizeReadActionService(
+    finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1040,
     )
@@ -143,7 +147,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         )
     )
     assert saved.applied is True
-    assert saved.plan_status == PlanStatus.DRAFT.value
+    assert saved.plan_status == PlanStatusV1.DRAFT.value
 
     published = publish_service(
         PublishReadOnlyPlanCommand(
@@ -155,8 +159,8 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         )
     )
     assert published.applied is True
-    assert published.plan_status == PlanStatus.ACTIVE.value
-    assert published.run_status == RunStatus.EXECUTING.value
+    assert published.plan_status == PlanStatusV1.ACTIVE.value
+    assert published.run_status == RunStatusV1.EXECUTING.value
     assert published.run_version == 1
 
     claimed = claim_service(
@@ -266,7 +270,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         connection.close()
 
 
-def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch_running(
+def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_branch(
     read_only_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
@@ -274,15 +278,15 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
-    fail_service = FailReadActionService(
+    fail_service = FailReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1030,
     )
@@ -290,11 +294,11 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         gateway=fixture_gateway,
     )
-    complete_service = CompleteReadActionService(
+    complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1040,
     )
-    finalize_service = FinalizeReadActionService(
+    finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1050,
     )
@@ -432,8 +436,8 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
         )
     )
     assert finalized.applied is True
-    assert finalized.plan_completed is True
-    assert finalized.run_completed is True
+    assert finalized.plan_completed is False
+    assert finalized.run_completed is False
     assert finalized.partial is True
 
     connection = connect_sqlite(read_only_database)
@@ -448,13 +452,13 @@ def test_read_only_failure_marks_dependency_blocked_and_keeps_independent_branch
 
         assert [(row["id"], row["status"]) for row in status_rows] == [
             ("action-root", "FAILED"),
-            ("action-dependent", "DEPENDENCY_BLOCKED"),
+            ("action-dependent", "PROPOSED"),
             ("action-branch", "VERIFIED"),
         ]
-        assert run_row["status"] == "COMPLETED"
-        assert run_row["version"] == 2
-        assert run_row["finished_at_ms"] == 1050
-        assert plan_row["status"] == "COMPLETED"
+        assert run_row["status"] == "EXECUTING"
+        assert run_row["version"] == 1
+        assert run_row["finished_at_ms"] is None
+        assert plan_row["status"] == "ACTIVE"
     finally:
         connection.close()
 
@@ -583,11 +587,11 @@ def test_claim_read_action_rejects_stale_version_without_gateway_call(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
@@ -719,7 +723,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
         run_id="run-1",
         expected_run_version=0,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1010,
     )
@@ -740,7 +744,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
         action_id="action-received",
         expected_version=0,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
@@ -770,7 +774,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
         resource_refs=executed.resource_refs,
         evidence=executed.evidence,
     )
-    complete_service = CompleteReadActionService(
+    complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1030,
     )
@@ -791,7 +795,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
         action_id="action-received",
         expected_version=2,
     )
-    finalize_service = FinalizeReadActionService(
+    finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1040,
     )
@@ -821,7 +825,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
                 ) AS applied_receipts;
             """
         ).fetchone()
-        assert tuple(counts) == (1, 1, 1, 5)
+        assert tuple(counts) == (1, 1, 1, 6)
     finally:
         connection.close()
 
@@ -837,7 +841,7 @@ def test_received_receipts_recover_already_applied_complete_and_finalize_without
     _reset_receipt_to_received(read_only_database, "complete-1")
     _reset_receipt_to_received(read_only_database, "finalize-1")
 
-    complete_service = CompleteReadActionService(
+    complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 2000,
     )
@@ -876,7 +880,7 @@ def test_received_receipts_recover_already_applied_complete_and_finalize_without
     )
     assert complete_response.applied is True
 
-    finalize_service = FinalizeReadActionService(
+    finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 2010,
     )
@@ -910,7 +914,7 @@ def test_received_receipt_partial_complete_returns_recovery_required_without_mor
     read_only_database: Path,
 ) -> None:
     _prepare_received_complete_partial_state(read_only_database)
-    service = CompleteReadActionService(
+    service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 2000,
     )
@@ -1009,7 +1013,7 @@ def test_received_receipts_recover_already_applied_save_publish_and_claim(
         run_id="run-1",
         expected_run_version=0,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1010,
     )
@@ -1026,7 +1030,7 @@ def test_received_receipts_recover_already_applied_save_publish_and_claim(
         action_id="action-applied",
         expected_version=0,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
@@ -1069,7 +1073,7 @@ def test_received_receipts_can_resume_and_recover_fail(
         retryable=True,
         safe_error_detail="timeout",
     )
-    fail_service = FailReadActionService(
+    fail_service = FailReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 2000,
     )
@@ -1161,11 +1165,11 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1020,
     )
@@ -1256,11 +1260,11 @@ def _prepare_fail_action_state(database_path: Path, *, action_id: str, plan_id: 
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1020,
     )

@@ -118,7 +118,7 @@ def test_gmail_send_uses_approval_claim_sent_lookup_and_verification(
             action_id="action-send",
             attempt_id="attempt-send",
             expected_action_version=claimed.action_version,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -189,7 +189,7 @@ def test_calendar_delete_uses_preflight_claim_get_absent_and_verification(
             action_id="action-delete",
             attempt_id="attempt-delete",
             expected_action_version=claimed.action_version,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )
@@ -316,7 +316,7 @@ def test_task_delete_uses_preflight_claim_get_absent_and_verification(
             action_id="action-task-delete",
             attempt_id="attempt-task-delete",
             expected_action_version=claimed.action_version,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             snapshot=executed.snapshot,
         )
     )

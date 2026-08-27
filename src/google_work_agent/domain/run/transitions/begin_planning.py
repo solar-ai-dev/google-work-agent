@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.guards.begin_planning import guard_begin_planning
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 def transition_begin_planning(
-    current_status: RunStatus,
+    current_status: RunStatusV1,
     *,
     durable_review_disposition: str | None = None,
     user_context_adjustment: bool = False,
     has_current_plan: bool = False,
-    current_action_statuses: Collection[ActionStatus] = (),
+    current_action_statuses: Collection[ActionStatusV1] = (),
     active_approval_count: int = 0,
     unresolved_external_effect_count: int = 0,
     expected_revisions_match: bool = True,
-) -> RunStatus:
+) -> RunStatusV1:
     """Return the next Run status after enforcing the canonical guard."""
     guard_begin_planning(
         current_status,
@@ -31,4 +31,4 @@ def transition_begin_planning(
         unresolved_external_effect_count=unresolved_external_effect_count,
         expected_revisions_match=expected_revisions_match,
     )
-    return RunStatus.PLANNING
+    return RunStatusV1.PLANNING

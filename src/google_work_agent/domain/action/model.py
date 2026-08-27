@@ -2,13 +2,18 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from json import JSONDecodeError, dumps, loads
+from math import isfinite
+from typing import cast
+
+from google_work_agent.domain.results import InvariantViolationError
 
 
 class PolicyViolationError(Exception):
     """A deterministic Action policy rejected the requested operation."""
 
 
-class ActionStatus(StrEnum):
+class ActionStatusV1(StrEnum):
     PROPOSED = "PROPOSED"
     MODIFIED = "MODIFIED"
     APPROVED = "APPROVED"
@@ -50,6 +55,65 @@ class RecoveryPolicy(StrEnum):
     GET_TARGET = "GET_TARGET"
     RESOURCE_SEARCH = "RESOURCE_SEARCH"
     MESSAGE_SEARCH = "MESSAGE_SEARCH"
+
+
+MAX_ACTION_RISK_JSON_BYTES = 16 * 1024
+
+
+def canonicalize_action_risk(risk: object) -> str:
+    """Validate and deterministically serialize one server-owned risk object."""
+
+    _validate_json_value(risk, path="risk")
+    if not isinstance(risk, dict):
+        raise InvariantViolationError("action risk must be a JSON object")
+    serialized = dumps(
+        risk,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+    )
+    if len(serialized.encode("utf-8")) > MAX_ACTION_RISK_JSON_BYTES:
+        raise InvariantViolationError("action risk exceeds the 16 KiB storage limit")
+    return serialized
+
+
+def normalize_action_risk(risk: object) -> dict[str, object]:
+    """Return an isolated structured copy after applying the risk contract."""
+
+    return cast(dict[str, object], loads(canonicalize_action_risk(risk)))
+
+
+def parse_action_risk_json(serialized: str) -> dict[str, object]:
+    """Decode persisted risk without accepting corrupt or non-object JSON."""
+
+    if len(serialized.encode("utf-8")) > MAX_ACTION_RISK_JSON_BYTES:
+        raise InvariantViolationError("persisted action risk exceeds the 16 KiB storage limit")
+    try:
+        value = loads(serialized)
+    except JSONDecodeError as error:
+        raise InvariantViolationError("persisted action risk is not valid JSON") from error
+    return normalize_action_risk(value)
+
+
+def _validate_json_value(value: object, *, path: str) -> None:
+    if value is None or isinstance(value, (bool, int, str)):
+        return
+    if isinstance(value, float):
+        if isfinite(value):
+            return
+        raise InvariantViolationError(f"{path} contains a non-finite number")
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_json_value(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise InvariantViolationError(f"{path} contains a non-string object key")
+            _validate_json_value(item, path=f"{path}.{key}")
+        return
+    raise InvariantViolationError(f"{path} contains a non-JSON value")
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,46 +166,46 @@ class ActionCommand(StrEnum):
 
 
 def next_allowed_action_commands(
-    current_status: ActionStatus, *, effect_type: EffectType
+    current_status: ActionStatusV1, *, effect_type: EffectType
 ) -> tuple[ActionCommand, ...]:
     """Project only commands owned by the Action aggregate."""
     if effect_type is EffectType.READ:
         by_status = {
-            ActionStatus.PROPOSED: (
+            ActionStatusV1.PROPOSED: (
                 ActionCommand.MODIFY_ACTION,
                 ActionCommand.REJECT_ACTION,
                 ActionCommand.CLAIM_READ_ACTION,
             ),
-            ActionStatus.EXECUTING: (
+            ActionStatusV1.EXECUTING: (
                 ActionCommand.COMPLETE_READ_ACTION,
                 ActionCommand.FAIL_READ_ACTION,
             ),
-            ActionStatus.EXECUTED: (ActionCommand.FINALIZE_READ_ACTION,),
-            ActionStatus.FAILED: (ActionCommand.MODIFY_ACTION,),
+            ActionStatusV1.EXECUTED: (ActionCommand.FINALIZE_READ_ACTION,),
+            ActionStatusV1.FAILED: (ActionCommand.MODIFY_ACTION,),
         }
     else:
         by_status = {
-            ActionStatus.PROPOSED: (
+            ActionStatusV1.PROPOSED: (
                 ActionCommand.APPROVE_ACTION,
                 ActionCommand.MODIFY_ACTION,
                 ActionCommand.REJECT_ACTION,
             ),
-            ActionStatus.MODIFIED: (
+            ActionStatusV1.MODIFIED: (
                 ActionCommand.APPROVE_ACTION,
                 ActionCommand.MODIFY_ACTION,
                 ActionCommand.REJECT_ACTION,
             ),
-            ActionStatus.APPROVED: (
+            ActionStatusV1.APPROVED: (
                 ActionCommand.MODIFY_ACTION,
                 ActionCommand.REJECT_ACTION,
                 ActionCommand.CANCEL_PENDING_ACTION,
             ),
-            ActionStatus.EXPIRED: (
+            ActionStatusV1.EXPIRED: (
                 ActionCommand.REFRESH_EXPIRED_ACTION,
                 ActionCommand.MODIFY_ACTION,
                 ActionCommand.CANCEL_PENDING_ACTION,
             ),
-            ActionStatus.FAILED: (
+            ActionStatusV1.FAILED: (
                 ActionCommand.PREPARE_WRITE_RETRY,
                 ActionCommand.MODIFY_ACTION,
             ),

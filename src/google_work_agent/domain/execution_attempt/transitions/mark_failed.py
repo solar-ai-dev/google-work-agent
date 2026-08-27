@@ -1,19 +1,19 @@
 """Joint deterministic execution-failure transition authority."""
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import (
-    ExecutionAttemptStatus,
+    ExecutionAttemptStatusV1,
     ExecutionAttemptTransitionDecision,
 )
 from google_work_agent.domain.results import InvariantViolationError, ResultCode
 
 
 def transition_mark_failed(
-    action_status: ActionStatus,
+    action_status: ActionStatusV1,
     *,
     action_version: int,
     expected_action_version: int,
-    attempt_status: ExecutionAttemptStatus,
+    attempt_status: ExecutionAttemptStatusV1,
     attempt_version: int,
     expected_attempt_version: int,
     delivery_certainty: str,
@@ -31,8 +31,8 @@ def transition_mark_failed(
             "expected version does not match current version",
         )
     if (
-        action_status is not ActionStatus.EXECUTING
-        or attempt_status is not ExecutionAttemptStatus.EXECUTING
+        action_status is not ActionStatusV1.EXECUTING
+        or attempt_status is not ExecutionAttemptStatusV1.EXECUTING
     ):
         return ExecutionAttemptTransitionDecision(
             False,
@@ -46,8 +46,8 @@ def transition_mark_failed(
     return ExecutionAttemptTransitionDecision(
         True,
         ResultCode.TRANSITION_APPLIED,
-        ActionStatus.FAILED,
+        ActionStatusV1.FAILED,
         action_version + 1,
-        ExecutionAttemptStatus.FAILED,
+        ExecutionAttemptStatusV1.FAILED,
         attempt_version + 1,
     )

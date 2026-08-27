@@ -1,20 +1,20 @@
 """Guard for restoring the pre-confirmation safe Run phase."""
 
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 
 _SAFE = frozenset(
     {
-        RunStatus.ANALYZING,
-        RunStatus.RETRIEVING,
-        RunStatus.PLANNING,
-        RunStatus.WAITING_APPROVAL,
-        RunStatus.VERIFYING,
+        RunStatusV1.ANALYZING,
+        RunStatusV1.RETRIEVING,
+        RunStatusV1.PLANNING,
+        RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.VERIFYING,
     }
 )
 
 
-def guard_resume_confirmation(current_status: RunStatus, *, resume_status: RunStatus) -> None:
-    if current_status is not RunStatus.WAITING_CONFIRMATION:
+def guard_resume_confirmation(current_status: RunStatusV1, *, resume_status: RunStatusV1) -> None:
+    if current_status is not RunStatusV1.WAITING_CONFIRMATION:
         raise RunTransitionRejected("resume_confirmation requires WAITING_CONFIRMATION")
     if resume_status not in _SAFE:
         raise RunTransitionRejected(

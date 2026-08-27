@@ -21,14 +21,18 @@ from google_work_agent.application.read_contracts import (
     SaveReadOnlyPlanCommand,
 )
 from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.read_lifecycle import (
-    ClaimReadActionService,
-    CompleteReadActionService,
-    FinalizeReadActionService,
-)
 from google_work_agent.application.read_plan import (
-    PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
+)
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
+    PublishReadOnlyPlanHandler,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import (
@@ -95,7 +99,7 @@ def test_complete_read_action_fault_rolls_back_resource_evidence_receipt_and_act
         gateway=fault_gateway,
     )
     executed = execute_service(action_id="action-fault")
-    complete_service = CompleteReadActionService(
+    complete_service = CompleteReadActionHandler(
         unit_of_work_factory=fault_injecting_unit_of_work_factory(
             read_only_fault_database,
             SQLiteFaultPlan(stage=SQLiteFaultStage.AFTER_TRACE_INSERT),
@@ -162,7 +166,7 @@ def test_finalize_read_action_fault_rolls_back_parent_aggregate_reconciliation(
         gateway=fault_gateway,
     )
     executed = execute_service(action_id="action-finalize")
-    CompleteReadActionService(
+    CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
         now_ms=lambda: 1030,
     )(
@@ -176,7 +180,7 @@ def test_finalize_read_action_fault_rolls_back_parent_aggregate_reconciliation(
             evidence=executed.evidence,
         )
     )
-    finalize_service = FinalizeReadActionService(
+    finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=fault_injecting_unit_of_work_factory(
             read_only_fault_database,
             SQLiteFaultPlan(stage=SQLiteFaultStage.AFTER_AGGREGATE_UPDATE),
@@ -237,11 +241,11 @@ def _prepare_single_action_plan(database_path: Path, *, plan_id: str, action_id:
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )
-    publish_service = PublishReadOnlyPlanService(
+    publish_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1010,
     )
-    claim_service = ClaimReadActionService(
+    claim_service = ClaimReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1020,
     )

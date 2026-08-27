@@ -3,23 +3,26 @@
 from google_work_agent.domain.action.guards.current_plan_authority import (
     guard_current_plan_authority,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.approval.model import ApprovalStatus
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.model import ApprovalStatusV1
+from google_work_agent.domain.plan.model import PlanStatusV1
 
 
 def transition_expire_approval(
     *,
-    action_status: ActionStatus,
-    approval_status: ApprovalStatus,
-    plan_status: PlanStatus,
+    action_status: ActionStatusV1,
+    approval_status: ApprovalStatusV1,
+    plan_status: PlanStatusV1,
     plan_is_current: bool,
-) -> tuple[ActionStatus, ApprovalStatus]:
+) -> tuple[ActionStatusV1, ApprovalStatusV1]:
     authority_conflict = guard_current_plan_authority(
         plan_status=plan_status, plan_is_current=plan_is_current
     )
     if authority_conflict is not None:
         raise ValueError(authority_conflict)
-    if action_status is not ActionStatus.APPROVED or approval_status is not ApprovalStatus.ACTIVE:
+    if (
+        action_status is not ActionStatusV1.APPROVED
+        or approval_status is not ApprovalStatusV1.ACTIVE
+    ):
         raise ValueError("only an ACTIVE approval for an APPROVED action may expire")
-    return ActionStatus.EXPIRED, ApprovalStatus.EXPIRED
+    return ActionStatusV1.EXPIRED, ApprovalStatusV1.EXPIRED

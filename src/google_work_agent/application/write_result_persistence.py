@@ -9,7 +9,7 @@ from google_work_agent.application.resource_ref_projection import (
     resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
-    AbortClaimedExecutionCommand,
+    AbortClaimedExecutionCommandV1,
     AbortClaimedExecutionHandler,
 )
 from google_work_agent.application.write_execution_contracts import (
@@ -41,8 +41,9 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.application.write_persistence import (
     upsert_resource_ref as _upsert_resource_ref,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.mark_failed import (
     transition_mark_failed,
 )
@@ -97,7 +98,7 @@ class StoreWriteActionSuccessService:
                 resource_ref=resource_ref,
             )
             preview = transition_store_success(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action_version=action.version,
                 expected_action_version=command.expected_action_version,
                 attempt_status=attempt.status,
@@ -124,7 +125,7 @@ class StoreWriteActionSuccessService:
                 attempt.id,
                 expected_version=command.expected_attempt_version,
                 expected_status=attempt.status,
-                status=ExecutionAttemptStatus.SUCCEEDED,
+                status=ExecutionAttemptStatusV1.SUCCEEDED,
                 error_code=None,
                 error_detail_json=None,
                 result_resource_ref_id=persisted_resource_ref.id,
@@ -138,7 +139,7 @@ class StoreWriteActionSuccessService:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )
@@ -152,7 +153,7 @@ class StoreWriteActionSuccessService:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_EXECUTED",
-                    status=ActionStatus.EXECUTED.value,
+                    status=ActionStatusV1.EXECUTED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"attempt_id": attempt.id, "resource_ref_id": persisted_resource_ref.id},
@@ -222,10 +223,21 @@ class MarkWriteActionFailedService:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            if attempt.status is ExecutionAttemptStatus.CLAIMED:
+            if attempt.status is ExecutionAttemptStatusV1.CLAIMED:
                 decision = AbortClaimedExecutionHandler.apply_in_unit_of_work(
                     unit_of_work,
-                    AbortClaimedExecutionCommand(
+                    AbortClaimedExecutionCommandV1(
+                        command_id=f"abort-claimed-execution:{attempt.id}:{command.command_id}",
+                        request_hash=calculate_canonical_json_hash(
+                            {
+                                "action_id": action.id,
+                                "attempt_id": attempt.id,
+                                "expected_action_version": command.expected_action_version,
+                                "expected_attempt_version": command.expected_attempt_version,
+                                "error_code": command.error_code,
+                                "error_detail": command.error_detail,
+                            }
+                        ),
                         action_id=action.id,
                         attempt_id=attempt.id,
                         expected_action_version=command.expected_action_version,
@@ -241,7 +253,7 @@ class MarkWriteActionFailedService:
                 result_version = decision.action_version
             else:
                 preview = transition_mark_failed(
-                    ActionStatus(action.status),
+                    ActionStatusV1(action.status),
                     action_version=action.version,
                     expected_action_version=command.expected_action_version,
                     attempt_status=attempt.status,
@@ -255,7 +267,7 @@ class MarkWriteActionFailedService:
                     attempt.id,
                     expected_version=command.expected_attempt_version,
                     expected_status=attempt.status,
-                    status=ExecutionAttemptStatus.FAILED,
+                    status=ExecutionAttemptStatusV1.FAILED,
                     error_code=command.error_code,
                     error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
                     result_resource_ref_id=None,
@@ -266,7 +278,7 @@ class MarkWriteActionFailedService:
                     unit_of_work.actions.update_if_version_and_status(
                         action.id,
                         expected_version=action.version,
-                        expected_status=ActionStatus(action.status),
+                        expected_status=ActionStatusV1(action.status),
                         next_status=preview.current_status,
                         updated_at_ms=now_ms,
                     )
@@ -287,7 +299,7 @@ class MarkWriteActionFailedService:
                     run_id=plan.run_id,
                     action_id=action.id,
                     event_type="WRITE_ACTION_FAILED",
-                    status=ActionStatus.FAILED.value,
+                    status=ActionStatusV1.FAILED.value,
                     duration_ms=None,
                     payload_json=dumps(
                         {"attempt_id": attempt.id, "error_code": command.error_code},

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatus
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 
 
 class DuplicateCommandError(Exception):
@@ -37,7 +37,7 @@ class CommandReceipt:
 class AnswerOnlyResponse:
     applied: bool
     result_code: ResultCode
-    current_status: RunStatus
+    current_status: RunStatusV1
     current_version: int
     next_allowed_commands: tuple[RunCommand, ...]
     conflict_detail: str | None = None

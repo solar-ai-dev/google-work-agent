@@ -16,7 +16,6 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, cast
 
-from google_work_agent.domain.tool_registry import SignedToolRegistry
 from google_work_agent.ports import (
     ArtifactSignatureDecision,
     ArtifactSignatureVerifier,
@@ -26,6 +25,7 @@ from google_work_agent.ports import (
     MCPRuntimeMetadata,
     MCPToolResponse,
 )
+from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
 
 JsonObject = dict[str, object]
 PROTOCOL_VERSION = "2026-08-07.p0"

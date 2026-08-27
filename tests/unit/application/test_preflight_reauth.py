@@ -18,13 +18,13 @@ from google_work_agent.application.write_actions import (
     RecoverUnknownDeleteActionService,
     RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionService,
-    RequireWriteReauthService,
+    RequireReauthHandler,
     StoreWriteActionSuccessService,
     VerifyWriteActionService,
     WriteRunResponse,
 )
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
@@ -87,7 +87,7 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
             applied=True,
             result_code=ResultCode.TRANSITION_APPLIED.value,
             run_id="run-1",
-            run_status=RunStatus.REAUTH_REQUIRED.value,
+            run_status=RunStatusV1.REAUTH_REQUIRED.value,
             run_version=8,
             plan_id="plan-1",
             plan_status="ACTIVE",
@@ -109,7 +109,7 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
         verify_write=cast(VerifyWriteActionService, unused),
         mark_write_failed=cast(MarkWriteActionFailedService, unused),
         mark_write_unknown=cast(MarkWriteActionUnknownResultService, unused),
-        require_write_reauth=cast(RequireWriteReauthService, reauth),
+        require_write_reauth=cast(RequireReauthHandler, reauth),
         recover_unknown_create=cast(RecoverUnknownCreateActionService, unused),
         recover_unknown_send=cast(RecoverUnknownSendActionService, unused),
         recover_unknown_delete=cast(RecoverUnknownDeleteActionService, unused),

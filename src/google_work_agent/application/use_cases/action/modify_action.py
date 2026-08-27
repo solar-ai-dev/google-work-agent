@@ -21,6 +21,8 @@ from google_work_agent.application.feasibility import (
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
+from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
@@ -33,6 +35,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.write_persistence import (
+    append_approval_revoked_audits,
     audit_event,
     emit_command_rejected_hash_mismatch,
     require_plan_review,
@@ -41,25 +44,25 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
     ActionCommand,
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
 )
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
 from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UUIDPort,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -70,11 +73,11 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
     {
-        ActionStatus.PROPOSED.value,
-        ActionStatus.MODIFIED.value,
-        ActionStatus.APPROVED.value,
-        ActionStatus.EXPIRED.value,
-        ActionStatus.FAILED.value,
+        ActionStatusV1.PROPOSED.value,
+        ActionStatusV1.MODIFIED.value,
+        ActionStatusV1.APPROVED.value,
+        ActionStatusV1.EXPIRED.value,
+        ActionStatusV1.FAILED.value,
     }
 )
 
@@ -154,7 +157,7 @@ class ModifyActionHandler:
             snapshot_plan = unit_of_work.plans.get_by_id(snapshot.plan_id)
             if snapshot_plan is None:
                 raise LookupError(f"plan not found: {snapshot.plan_id}")
-            plan_superseded = snapshot_plan.status is PlanStatus.SUPERSEDED
+            plan_superseded = snapshot_plan.status is PlanStatusV1.SUPERSEDED
             if (
                 not plan_superseded
                 and snapshot.tool_name == TASK_CREATE_TOOL
@@ -219,7 +222,7 @@ class ModifyActionHandler:
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
-            if plan.status is PlanStatus.SUPERSEDED:
+            if plan.status is PlanStatusV1.SUPERSEDED:
                 return self._finish(
                     unit_of_work,
                     command,
@@ -309,7 +312,7 @@ class ModifyActionHandler:
                 updated_risk = merge_feasibility_risk(updated_risk, fresh_feasibility_risk)
 
             preview = transition_modify_action(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 action.version,
                 command.expected_version,
                 effect_type=effect_type,
@@ -319,13 +322,21 @@ class ModifyActionHandler:
             revoked_approval_ids: tuple[str, ...] = ()
             if preview.applied:
                 revoked_approval_ids = revoke_active_approvals(unit_of_work, action.id)
+                append_approval_revoked_audits(
+                    unit_of_work,
+                    run_id=plan.run_id,
+                    action_id=action.id,
+                    approval_ids=revoked_approval_ids,
+                    command_id=command.command_id,
+                    created_at_ms=now_ms,
+                )
 
             if (
                 preview.applied
                 and unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                     arguments_json=canonicalize_json_value(new_arguments),
@@ -544,7 +555,7 @@ class ModifyActionHandler:
             next_allowed_commands=tuple(
                 item.value
                 for item in next_allowed_action_commands(
-                    ActionStatus(action.status),
+                    ActionStatusV1(action.status),
                     effect_type=EffectType(action.effect_type),
                 )
             ),
@@ -590,11 +601,19 @@ class ModifyActionHandler:
     ) -> None:
         for dependent_id in unit_of_work.action_dependencies.list_dependents(modified_action_id):
             dependent = unit_of_work.actions.get_by_id(dependent_id)
-            if dependent is None or dependent.status != ActionStatus.APPROVED.value:
+            if dependent is None or dependent.status != ActionStatusV1.APPROVED.value:
                 continue
             revoked_ids = revoke_active_approvals(unit_of_work, dependent_id)
             if not revoked_ids:
                 continue
+            append_approval_revoked_audits(
+                unit_of_work,
+                run_id=run_id,
+                action_id=dependent_id,
+                approval_ids=revoked_ids,
+                command_id=command_id,
+                created_at_ms=now_ms,
+            )
             unit_of_work.traces.add(
                 TraceEventRecord(
                     run_id=run_id,

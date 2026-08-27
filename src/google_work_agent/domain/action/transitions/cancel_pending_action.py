@@ -3,24 +3,29 @@
 from google_work_agent.domain.action.guards.current_plan_authority import (
     guard_current_plan_authority,
 )
-from google_work_agent.domain.action.model import ActionCommand, ActionStatus, EffectType
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 
 _ALLOWED = frozenset(
-    {ActionStatus.PROPOSED, ActionStatus.MODIFIED, ActionStatus.APPROVED, ActionStatus.EXPIRED}
+    {
+        ActionStatusV1.PROPOSED,
+        ActionStatusV1.MODIFIED,
+        ActionStatusV1.APPROVED,
+        ActionStatusV1.EXPIRED,
+    }
 )
 
 
 def transition_cancel_pending_action(
-    current_status: ActionStatus,
+    current_status: ActionStatusV1,
     current_version: int,
     expected_version: int,
     *,
     effect_type: EffectType,
-    plan_status: PlanStatus,
+    plan_status: PlanStatusV1,
     plan_is_current: bool,
-) -> CommandResult[ActionStatus, ActionCommand]:
+) -> CommandResult[ActionStatusV1, ActionCommand]:
     authority_conflict = guard_current_plan_authority(
         plan_status=plan_status, plan_is_current=plan_is_current
     )
@@ -54,5 +59,5 @@ def transition_cancel_pending_action(
             f"CANCEL_PENDING_ACTION is not allowed from {current_status.value}",
         )
     return CommandResult(
-        True, ResultCode.TRANSITION_APPLIED, ActionStatus.CANCELLED, current_version + 1, ()
+        True, ResultCode.TRANSITION_APPLIED, ActionStatusV1.CANCELLED, current_version + 1, ()
     )

@@ -63,18 +63,11 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow impor
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.application.answer_only import (
-    CompleteAnswerOnlyRunCommand,
-    CompleteAnswerOnlyRunService,
-)
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
-from google_work_agent.application.execution_phase import (
-    BeginWriteVerificationService,
-    WriteExecutionPhaseCoordinator,
-)
+from google_work_agent.application.execution_phase import WriteExecutionPhaseCoordinator
 from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
@@ -149,6 +142,7 @@ from google_work_agent.application.orchestration.supervisor import (
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.read_contracts import (
     ClaimReadActionCommand,
     CompleteReadActionCommand,
@@ -160,19 +154,10 @@ from google_work_agent.application.read_contracts import (
     SaveReadOnlyPlanCommand,
 )
 from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.read_lifecycle import (
-    ClaimReadActionService,
-    CompleteReadActionService,
-    FailReadActionService,
-    FinalizeReadActionService,
-)
 from google_work_agent.application.read_plan import (
-    PublishReadOnlyPlanService,
     SaveReadOnlyPlanService,
 )
 from google_work_agent.application.run_terminal import (
-    BlockRunCommand,
-    BlockRunService,
     FailRunCommand,
     FailRunService,
     derive_finalize_intent,
@@ -180,6 +165,18 @@ from google_work_agent.application.run_terminal import (
 from google_work_agent.application.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
+)
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
+    PublishReadOnlyPlanHandler,
 )
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
@@ -193,9 +190,25 @@ from google_work_agent.application.use_cases.run.begin_retrieval import (
     BeginRetrievalCommand,
     BeginRetrievalHandler,
 )
+from google_work_agent.application.use_cases.run.begin_verification import (
+    BeginVerificationHandler,
+)
+from google_work_agent.application.use_cases.run.block_run import (
+    BlockRunCommand,
+    BlockRunHandler,
+)
+from google_work_agent.application.use_cases.run.complete_answer_only_run import (
+    CompleteAnswerOnlyRunCommand,
+    CompleteAnswerOnlyRunHandler,
+)
+from google_work_agent.application.use_cases.run.complete_write_run import (
+    CompleteWriteRunCommand,
+    CompleteWriteRunHandler,
+)
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationHandler,
 )
+from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
 from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
@@ -205,7 +218,6 @@ from google_work_agent.application.write_actions import (
     ExecuteWriteActionService,
 )
 from google_work_agent.application.write_plan import (
-    PublishWritePlanService,
     SaveWritePlanService,
 )
 from google_work_agent.application.write_plan_contracts import (
@@ -215,7 +227,6 @@ from google_work_agent.application.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_reauth import RequireWriteReauthService
 from google_work_agent.application.write_recovery import (
     MarkWriteActionUnknownResultService,
     RecoverUnknownCreateActionService,
@@ -230,26 +241,20 @@ from google_work_agent.application.write_result_persistence import (
     MarkWriteActionFailedService,
     StoreWriteActionSuccessService,
 )
-from google_work_agent.application.write_run_completion import (
-    CompleteWriteRunCommand,
-    CompleteWriteRunService,
-)
 from google_work_agent.application.write_verification import VerifyWriteActionService
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.calendar_conflict import CalendarWorkHours
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     AttachmentDescriptorVerifier,
     GoogleWorkspaceGateway,
@@ -267,6 +272,7 @@ from google_work_agent.ports import (
 from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
 )
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 
 JsonObject = dict[str, object]
@@ -459,16 +465,16 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             )
         self._domain_validation = DomainValidationService()
 
-        self._complete_answer_only = CompleteAnswerOnlyRunService(
+        self._complete_answer_only = CompleteAnswerOnlyRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
             message_id_factory=id_factory,
         )
-        self._complete_write_run = CompleteWriteRunService(
+        self._complete_write_run = CompleteWriteRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._block_run = BlockRunService(
+        self._block_run = BlockRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
@@ -484,11 +490,11 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._publish_read_plan = PublishReadOnlyPlanService(
+        self._publish_read_plan = PublishReadOnlyPlanHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._claim_read = ClaimReadActionService(
+        self._claim_read = ClaimReadActionHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
@@ -496,19 +502,19 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             unit_of_work_factory=unit_of_work_factory,
             gateway=gateway,
         )
-        self._complete_read = CompleteReadActionService(
+        self._complete_read = CompleteReadActionHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._finalize_read = FinalizeReadActionService(
+        self._finalize_read = FinalizeReadActionHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._fail_read = FailReadActionService(
+        self._fail_read = FailReadActionHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._publish_write_plan = PublishWritePlanService(
+        self._publish_write_plan = PublishPlanHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
@@ -549,7 +555,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             now_ms=now_ms,
             gateway=connector_execution,
         )
-        self._require_write_reauth = RequireWriteReauthService(
+        self._require_write_reauth = RequireReauthHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
@@ -573,8 +579,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             now_ms=now_ms,
             gateway=connector_execution,
         )
-        self._begin_write_verification = BeginWriteVerificationService(
+        self._begin_write_verification = BeginVerificationHandler(
             unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
         )
         self._write_execution_phase = WriteExecutionPhaseCoordinator(
             unit_of_work_factory=unit_of_work_factory,
@@ -989,10 +996,10 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 review_version=int(resume_payload.get("review_version", -1)),
             )
         if self._current_run_status(cast(str, state["run_id"])) in {
-            RunStatus.COMPLETED.value,
-            RunStatus.BLOCKED.value,
-            RunStatus.FAILED.value,
-            RunStatus.CANCELLED.value,
+            RunStatusV1.COMPLETED.value,
+            RunStatusV1.BLOCKED.value,
+            RunStatusV1.FAILED.value,
+            RunStatusV1.CANCELLED.value,
         }:
             return {**state, "__target__": "end"}
         return {
@@ -1632,17 +1639,17 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         verification_statuses: list[str] = []
         for action in actions:
             if action.status in {
-                ActionStatus.VERIFIED.value,
-                ActionStatus.FAILED.value,
-                ActionStatus.BLOCKED.value,
-                ActionStatus.DEPENDENCY_BLOCKED.value,
-                ActionStatus.REJECTED.value,
-                ActionStatus.EXPIRED.value,
-                ActionStatus.MISMATCH.value,
+                ActionStatusV1.VERIFIED.value,
+                ActionStatusV1.FAILED.value,
+                ActionStatusV1.BLOCKED.value,
+                ActionStatusV1.DEPENDENCY_BLOCKED.value,
+                ActionStatusV1.REJECTED.value,
+                ActionStatusV1.EXPIRED.value,
+                ActionStatusV1.MISMATCH.value,
             }:
                 verification_statuses.append(action.status)
                 continue
-            if action.status != ActionStatus.PROPOSED.value:
+            if action.status != ActionStatusV1.PROPOSED.value:
                 continue
             claimed = self._claim_read(
                 ClaimReadActionCommand(
@@ -1713,9 +1720,9 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         result: Any
         if transition_name == "start_analysis":
             if run.status in {
-                RunStatus.ANALYZING,
-                RunStatus.RETRIEVING,
-                RunStatus.PLANNING,
+                RunStatusV1.ANALYZING,
+                RunStatusV1.RETRIEVING,
+                RunStatusV1.PLANNING,
             }:
                 return
             result = self._start_analysis_handler(
@@ -1729,7 +1736,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 )
             )
         elif transition_name == "begin_retrieval":
-            if run.status is RunStatus.RETRIEVING:
+            if run.status is RunStatusV1.RETRIEVING:
                 return
             result = self._begin_retrieval_handler(
                 BeginRetrievalCommand(
@@ -1742,7 +1749,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 )
             )
         elif transition_name == "begin_planning":
-            if run.status is RunStatus.PLANNING:
+            if run.status is RunStatusV1.PLANNING:
                 return
             result = self._begin_planning_handler(
                 BeginPlanningCommand(
@@ -1802,7 +1809,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _has_executed_action(self, run_id: str) -> bool:
         return any(
-            action.status == ActionStatus.EXECUTED.value
+            action.status == ActionStatusV1.EXECUTED.value
             for plan in self._plans_for_run(run_id)
             for action in self._list_actions(plan.id)
         )
@@ -1837,10 +1844,10 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         marked_any = False
         for plan in self._plans_for_run(run_id):
             for action in self._list_actions(plan.id):
-                if action.status != ActionStatus.EXECUTING.value:
+                if action.status != ActionStatusV1.EXECUTING.value:
                     continue
                 attempt = self._latest_attempt(action.id)
-                if attempt.status != ExecutionAttemptStatus.CLAIMED.value:
+                if attempt.status != ExecutionAttemptStatusV1.CLAIMED.value:
                     continue
                 response = self._mark_write_unknown(
                     MarkWriteActionUnknownResultCommand(
@@ -1867,7 +1874,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             return
         actions = self._list_actions(plan_id)
         if not actions or not all(
-            action.status == ActionStatus.VERIFIED.value for action in actions
+            action.status == ActionStatusV1.VERIFIED.value for action in actions
         ):
             return
         response = self._complete_write_run(
@@ -1889,7 +1896,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 return True
         return self._current_run_status(
             run_id
-        ) == RunStatus.CANCEL_REQUESTED.value or self._has_persisted_cancel_intent(run_id)
+        ) == RunStatusV1.CANCEL_REQUESTED.value or self._has_persisted_cancel_intent(run_id)
 
     def _has_persisted_cancel_intent(self, run_id: str) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
@@ -1917,7 +1924,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 return None
             latest_plan = sorted(plans, key=lambda item: (item.revision_no, item.created_at_ms))[-1]
             for action in unit_of_work.actions.list_by_plan(latest_plan.id):
-                if action.status != ActionStatus.UNKNOWN_RESULT.value:
+                if action.status != ActionStatusV1.UNKNOWN_RESULT.value:
                     continue
                 approvals = unit_of_work.approvals.list_by_action(action.id)
                 for approval in sorted(approvals, key=lambda item: item.approval_no, reverse=True):

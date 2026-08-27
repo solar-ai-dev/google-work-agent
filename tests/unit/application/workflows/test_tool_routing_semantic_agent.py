@@ -26,11 +26,6 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteValidationError,
     output_routes,
 )
-from google_work_agent.domain.tool_registry import (
-    ConnectorToolCatalog,
-    SignedToolRegistry,
-    build_p0_tool_registry,
-)
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -39,6 +34,11 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    ConnectorToolCatalog,
+    SignedToolRegistry,
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 

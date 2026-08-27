@@ -13,7 +13,9 @@ from google_work_agent.adapters.mcp import MCPArtifactConfig
 from google_work_agent.adapters.mcp.capabilities import (
     build_google_workspace_internal_capabilities,
 )
-from google_work_agent.domain.tool_registry import build_p0_tool_registry
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    build_p0_tool_registry,
+)
 
 
 def test_verified_server_declared_surface_maps_to_handlers() -> None:

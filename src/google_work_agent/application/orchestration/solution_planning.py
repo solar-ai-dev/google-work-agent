@@ -41,14 +41,17 @@ from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.domain.action.model import EffectType, PolicyViolationError
-from google_work_agent.domain.policy import EvidencePolicyInput, validate_evidence_policy
-from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    SignedToolRegistry,
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 

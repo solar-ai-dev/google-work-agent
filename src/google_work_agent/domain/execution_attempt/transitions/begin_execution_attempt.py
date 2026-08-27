@@ -2,19 +2,19 @@
 
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptCommand,
-    ExecutionAttemptStatus,
+    ExecutionAttemptStatusV1,
 )
 from google_work_agent.domain.results import CommandResult, ResultCode
 
 
 def transition_begin_execution_attempt(
-    current_status: ExecutionAttemptStatus,
+    current_status: ExecutionAttemptStatusV1,
     current_version: int,
     expected_version: int,
     *,
     claim_context_current: bool,
     durable_cancel_intent: bool,
-) -> CommandResult[ExecutionAttemptStatus, ExecutionAttemptCommand]:
+) -> CommandResult[ExecutionAttemptStatusV1, ExecutionAttemptCommand]:
     if expected_version != current_version:
         return CommandResult(
             False,
@@ -24,7 +24,7 @@ def transition_begin_execution_attempt(
             (),
             "expected_version does not match current_version",
         )
-    if current_status is not ExecutionAttemptStatus.CLAIMED:
+    if current_status is not ExecutionAttemptStatusV1.CLAIMED:
         return CommandResult(
             False,
             ResultCode.STATE_CONFLICT,
@@ -45,7 +45,7 @@ def transition_begin_execution_attempt(
     return CommandResult(
         True,
         ResultCode.TRANSITION_APPLIED,
-        ExecutionAttemptStatus.EXECUTING,
+        ExecutionAttemptStatusV1.EXECUTING,
         current_version + 1,
         (),
     )

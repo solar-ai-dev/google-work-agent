@@ -34,11 +34,11 @@ from google_work_agent.adapters.mcp.manifest_guard import (
     ManifestEnforcedMCPClientPort,
     RestartableManifestDelegate,
 )
-from google_work_agent.domain.google_workspace_tool_registry import (
+from google_work_agent.ports import MCPClientPort, MCPRuntimeMetadata
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_registry import (
     build_google_workspace_tool_registry,
 )
-from google_work_agent.domain.tool_registry import SignedToolRegistry
-from google_work_agent.ports import MCPClientPort, MCPRuntimeMetadata
+from google_work_agent.ports.connector.migration_contracts.tool_registry import SignedToolRegistry
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
 _VERIFIED_MCP_MODULE_NAME = "google_work_agent.adapters.connectors.google.mcp.verified_server"

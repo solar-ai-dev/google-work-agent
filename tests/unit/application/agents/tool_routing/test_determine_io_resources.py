@@ -7,7 +7,6 @@ from google_work_agent.application.agents.tool_routing.determine_io_resources im
     determine_io_resources,
 )
 from google_work_agent.application.orchestration.contracts import build_default_run_budget
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog, build_p0_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -16,6 +15,10 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    ConnectorToolCatalog,
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 
@@ -55,7 +58,7 @@ class FakeLLMRuntime:
         )
 
 
-def test_determine_io_resources__task_create__produces_semantic_candidate_without_tool_identity() -> (
+def test_task_create_produces_semantic_candidate_without_tool_identity() -> (
     None
 ):
     catalog = ConnectorToolCatalog()

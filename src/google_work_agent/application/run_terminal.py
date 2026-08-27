@@ -18,12 +18,10 @@ from google_work_agent.application.orchestration.contracts import (
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.write_persistence import revoke_active_approvals
-from google_work_agent.domain.action.model import ActionStatus
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
-from google_work_agent.domain.plan.model import PlanStatus
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
@@ -31,12 +29,10 @@ from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import (
     RunCommand,
-    RunStatus,
+    RunStatusV1,
     RunTransitionRejected,
     next_allowed_run_commands,
 )
-from google_work_agent.domain.run.transitions.block_run import transition_block_run
-from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
@@ -44,25 +40,7 @@ from google_work_agent.ports import (
 
 
 @dataclass(frozen=True, slots=True)
-class BlockRunCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    expected_version: int
-    reason_code: str
-
-
-@dataclass(frozen=True, slots=True)
 class FailRunCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    expected_version: int
-    reason_code: str
-
-
-@dataclass(frozen=True, slots=True)
-class RequireReauthCommand:
     command_id: str
     request_hash: str
     run_id: str
@@ -83,30 +61,6 @@ class RunTransitionResponse:
     conflict_detail: str | None = None
 
 
-class BlockRunService:
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: BlockRunCommand) -> RunTransitionResponse:
-        return _apply_run_transition(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-            command_id=command.command_id,
-            command_type="BlockRun",
-            request_hash=command.request_hash,
-            run_id=command.run_id,
-            expected_version=command.expected_version,
-            reason_code=command.reason_code,
-            target_status=RunStatus.BLOCKED,
-            event_type="RUN_BLOCKED",
-            actor_id="block_run",
-            persist_finished_at_ms=True,
-        )
-
-
 class FailRunService:
     def __init__(
         self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
@@ -124,33 +78,9 @@ class FailRunService:
             run_id=command.run_id,
             expected_version=command.expected_version,
             reason_code=command.reason_code,
-            target_status=RunStatus.RECOVERY_REQUIRED,
+            target_status=RunStatusV1.RECOVERY_REQUIRED,
             event_type="RUN_RECOVERY_REQUIRED",
             actor_id="fail_run",
-            persist_finished_at_ms=False,
-        )
-
-
-class RequireReauthService:
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: RequireReauthCommand) -> RunTransitionResponse:
-        return _apply_run_transition(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-            command_id=command.command_id,
-            command_type="RequireReauth",
-            request_hash=command.request_hash,
-            run_id=command.run_id,
-            expected_version=command.expected_version,
-            reason_code=command.reason_code,
-            target_status=RunStatus.REAUTH_REQUIRED,
-            event_type="RUN_REAUTH_REQUIRED",
-            actor_id="require_reauth",
             persist_finished_at_ms=False,
         )
 
@@ -257,7 +187,7 @@ def _apply_run_transition(
     run_id: str,
     expected_version: int,
     reason_code: str,
-    target_status: RunStatus,
+    target_status: RunStatusV1,
     event_type: str,
     actor_id: str,
     persist_finished_at_ms: bool,
@@ -287,18 +217,13 @@ def _apply_run_transition(
         run = _require_run(unit_of_work, run_id)
         conversation = _require_conversation(unit_of_work, run.conversation_id)
         result = _run_transition_result(
+            unit_of_work=unit_of_work,
             run=run,
             expected_version=expected_version,
             target_status=target_status,
         )
         if result.applied:
-            if target_status is RunStatus.BLOCKED:
-                _cleanup_plans_for_block(
-                    unit_of_work=unit_of_work,
-                    run_id=run_id,
-                    updated_at_ms=completed_at_ms,
-                )
-            elif target_status is RunStatus.RECOVERY_REQUIRED:
+            if target_status is RunStatusV1.RECOVERY_REQUIRED:
                 _revoke_active_approvals_for_run(unit_of_work=unit_of_work, run_id=run_id)
             values: dict[str, object] = {
                 "status": result.current_status.value,
@@ -381,8 +306,12 @@ def _apply_run_transition(
 
 
 def _run_transition_result(
-    *, run: RunRecord, expected_version: int, target_status: RunStatus
-) -> CommandResult[RunStatus, RunCommand]:
+    *,
+    unit_of_work: UnitOfWork,
+    run: RunRecord,
+    expected_version: int,
+    target_status: RunStatusV1,
+) -> CommandResult[RunStatusV1, RunCommand]:
     if run.version != expected_version:
         return CommandResult(
             False,
@@ -393,11 +322,7 @@ def _run_transition_result(
             "expected_version does not match current_version",
         )
     try:
-        if target_status is RunStatus.BLOCKED:
-            next_status = transition_block_run(run.status)
-        elif target_status is RunStatus.REAUTH_REQUIRED:
-            next_status = transition_require_reauth(run.status)
-        elif target_status is RunStatus.RECOVERY_REQUIRED:
+        if target_status is RunStatusV1.RECOVERY_REQUIRED:
             next_status = transition_require_recovery(run.status)
         else:
             raise ValueError(f"unsupported exact Run transition target: {target_status.value}")
@@ -425,7 +350,7 @@ def _handle_existing_receipt(
     receipt: CommandReceiptRecord,
     request_hash: str,
     run_id: str,
-    target_status: RunStatus,
+    target_status: RunStatusV1,
     reason_code: str,
     completed_at_ms: int,
 ) -> RunTransitionResponse:
@@ -535,59 +460,6 @@ def _require_conversation(unit_of_work: UnitOfWork, conversation_id: str) -> Con
     return conversation
 
 
-def _cleanup_plans_for_block(
-    *,
-    unit_of_work: UnitOfWork,
-    run_id: str,
-    updated_at_ms: int,
-) -> None:
-    """Close every non-superseded planning aggregate before Run BLOCKED.
-
-    NFR-019 has immediate SQLite triggers: an APPROVED Action cannot leave
-    APPROVED while an ACTIVE Approval exists, and a Plan cannot become
-    inactive while such an Approval exists. Therefore the trigger-safe SQL
-    order inside this *single* UoW is Approval revoke -> pending Action
-    terminalization -> Plan CANCELLED -> Run BLOCKED. The committed aggregate
-    snapshot is the canonical BlockRun cleanup; there is no intermediate
-    commit or externally observable partial state.
-    """
-    pending = {
-        ActionStatus.PROPOSED.value,
-        ActionStatus.MODIFIED.value,
-        ActionStatus.APPROVED.value,
-        ActionStatus.EXPIRED.value,
-    }
-    for plan in unit_of_work.plans.list_by_run(run_id):
-        if plan.status in {PlanStatus.SUPERSEDED, PlanStatus.COMPLETED, PlanStatus.CANCELLED}:
-            continue
-        actions = unit_of_work.actions.list_by_plan(plan.id)
-        for action in actions:
-            revoke_active_approvals(unit_of_work, action.id)
-        for action in actions:
-            if action.status not in pending:
-                continue
-            if (
-                unit_of_work.actions.update_if_version_and_status(
-                    action.id,
-                    expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
-                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
-                    updated_at_ms=updated_at_ms,
-                )
-                is None
-            ):
-                raise RuntimeError(f"BlockRun could not terminalize pending action {action.id}")
-        if (
-            unit_of_work.plans.update_if_status(
-                plan.id,
-                expected_status=plan.status,
-                next_status=PlanStatus.CANCELLED,
-            )
-            is None
-        ):
-            raise RuntimeError(f"BlockRun could not cancel Plan {plan.id}")
-
-
 def _revoke_active_approvals_for_run(*, unit_of_work: UnitOfWork, run_id: str) -> None:
     for plan in unit_of_work.plans.list_by_run(run_id):
         for action in unit_of_work.actions.list_by_plan(plan.id):
@@ -612,13 +484,9 @@ def _acquisition_failure_reason(acquisition_result: dict[str, object]) -> str:
 
 
 __all__ = [
-    "BlockRunCommand",
-    "BlockRunService",
     "build_finalize_state_update",
     "FailRunCommand",
     "FailRunService",
-    "RequireReauthCommand",
-    "RequireReauthService",
     "RunTransitionResponse",
     "derive_finalize_intent",
 ]

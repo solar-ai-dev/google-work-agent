@@ -16,11 +16,6 @@ from pathlib import Path
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPConnectorDescriptor
 from google_work_agent.adapters.mcp.manifest_guard import ManifestEnforcedMCPClientPort
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.google_workspace_tool_contracts import (
-    ToolContractViolation,
-    validate_tool_input,
-    validate_tool_output,
-)
 from google_work_agent.ports import (
     DeliveryCertainty,
     MCPClientPortError,
@@ -28,6 +23,11 @@ from google_work_agent.ports import (
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
+)
+from google_work_agent.ports.connector.migration_contracts.google_workspace_tool_contracts import (
+    ToolContractViolation,
+    validate_tool_input,
+    validate_tool_output,
 )
 
 

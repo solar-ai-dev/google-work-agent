@@ -48,21 +48,21 @@ from google_work_agent.application.read_contracts import (
 from google_work_agent.application.read_execution import (
     ExecuteReadActionService as ExecuteReadActionService,
 )
-from google_work_agent.application.read_lifecycle import (
-    ClaimReadActionService as ClaimReadActionService,
-)
-from google_work_agent.application.read_lifecycle import (
-    CompleteReadActionService as CompleteReadActionService,
-)
-from google_work_agent.application.read_lifecycle import (
-    FailReadActionService as FailReadActionService,
-)
-from google_work_agent.application.read_lifecycle import (
-    FinalizeReadActionService as FinalizeReadActionService,
-)
-from google_work_agent.application.read_plan import (
-    PublishReadOnlyPlanService as PublishReadOnlyPlanService,
-)
 from google_work_agent.application.read_plan import (
     SaveReadOnlyPlanService as SaveReadOnlyPlanService,
+)
+from google_work_agent.application.use_cases.action.claim_read_action import (
+    ClaimReadActionHandler as ClaimReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler as CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.fail_read_action import (
+    FailReadActionHandler as FailReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler as FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
+    PublishReadOnlyPlanHandler as PublishReadOnlyPlanHandler,
 )

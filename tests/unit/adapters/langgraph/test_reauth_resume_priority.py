@@ -4,7 +4,7 @@ from typing import cast
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 
 
 class _UnusedGraph:
@@ -29,7 +29,7 @@ def _coordinator(
     unknown: bool = False,
     executed: bool = False,
     stalled: bool = False,
-    run_status: str = RunStatus.REAUTH_REQUIRED.value,
+    run_status: str = RunStatusV1.REAUTH_REQUIRED.value,
 ) -> WorkflowInvocationCoordinator:
     def recovery(values: GraphState) -> GraphState:
         calls.append("recovery")
@@ -112,7 +112,7 @@ def test_reauth_resume_requires_explicit_checkpoint_proof() -> None:
 
 def test_reauth_checkpoint_does_not_resume_when_domain_status_is_not_reauth() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(calls, run_status=RunStatus.EXECUTING.value)
+    coordinator = _coordinator(calls, run_status=RunStatusV1.EXECUTING.value)
 
     result = coordinator._continue_from_domain_facts(values=_state(), run_id="run-1")
 

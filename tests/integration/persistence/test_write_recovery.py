@@ -6,6 +6,11 @@ from __future__ import annotations
 
 from json import loads as _loads
 
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommand,
+    ResolveRecoveryHandler,
+)
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from tests.integration.persistence.test_write_actions import (
     DeliveryCertainty,
     ExecuteWriteActionService,
@@ -14,11 +19,11 @@ from tests.integration.persistence.test_write_actions import (
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
     GoogleWorkspaceErrorCode,
-    McpConnectorWriteAdapter,
     GoogleWorkspaceGateway,
     GoogleWorkspaceGatewayError,
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
+    McpConnectorWriteAdapter,
     Path,
     PrepareWriteRetryCommand,
     PrepareWriteRetryService,
@@ -32,6 +37,7 @@ from tests.integration.persistence.test_write_actions import (
     RecoverUnknownUpdateActionService,
     ResultCode,
     _approve_effect_action,
+    _begin_claimed_action,
     _claim_effect_action,
     _insert_calendar_event_reference,
     _insert_task_delete_reference,
@@ -111,7 +117,7 @@ def test_unknown_task_delete_recovers_from_target_absence_without_redelete(
             action_id="action-recover-task-delete",
             attempt_id="attempt-recover-task-delete",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 
@@ -139,11 +145,16 @@ def test_unknown_task_delete_with_present_target_requires_reapproval_not_redelet
         clock=clock,
         suffix="recover-task-delete-present",
     )
-    _claim_effect_action(
+    claimed = _claim_effect_action(
         write_database=write_database,
         clock=clock,
         suffix="recover-task-delete-present",
         expected_version=approved.action_version,
+    )
+    _begin_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        claimed=claimed,
     )
     _mark_effect_unknown(
         write_database=write_database,
@@ -168,7 +179,7 @@ def test_unknown_task_delete_with_present_target_requires_reapproval_not_redelet
             action_id="action-recover-task-delete-present",
             attempt_id="attempt-recover-task-delete-present",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 
@@ -234,7 +245,7 @@ def test_unknown_gmail_send_recovers_by_fingerprint_without_resending(
             action_id="action-recover-send",
             attempt_id="attempt-recover-send",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 
@@ -304,7 +315,7 @@ def test_unknown_calendar_delete_recovers_from_target_absence_without_redelete(
             action_id="action-recover-delete",
             attempt_id="attempt-recover-delete",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 
@@ -332,11 +343,16 @@ def test_unknown_calendar_delete_with_present_target_requires_reapproval_not_red
         clock=clock,
         suffix="recover-delete-present",
     )
-    _claim_effect_action(
+    claimed = _claim_effect_action(
         write_database=write_database,
         clock=clock,
         suffix="recover-delete-present",
         expected_version=approved.action_version,
+    )
+    _begin_claimed_action(
+        write_database=write_database,
+        clock=clock,
+        claimed=claimed,
     )
     _mark_effect_unknown(
         write_database=write_database,
@@ -361,7 +377,7 @@ def test_unknown_calendar_delete_with_present_target_requires_reapproval_not_red
             action_id="action-recover-delete-present",
             attempt_id="attempt-recover-delete-present",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 
@@ -409,7 +425,7 @@ def test_unknown_result_create_recovery_and_retry_flow(
             action_id="action-recover-create",
             attempt_id="attempt-recover-create",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=error_info.value.code.value,
             error_detail=str(error_info.value),
         )
@@ -429,11 +445,25 @@ def test_unknown_result_create_recovery_and_retry_flow(
             action_id="action-recover-create",
             attempt_id="attempt-recover-create",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
     assert recovered.applied is True
     assert recovered.action_status == "EXECUTED"
+    resumed = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ResolveRecoveryCommand(
+            run_id="run-1",
+            expected_version=2,
+            command_id="recheck-recover-create",
+            request_hash="u3" * 32,
+            resolution=RecoveryResolution.RECHECK,
+            recheck_input_changed=True,
+        )
+    )
+    assert resumed.current_status == "VERIFYING"
 
     connection = connect_sqlite(write_database)
     try:
@@ -497,7 +527,7 @@ def test_unknown_result_mcp_request_id_persists_on_trace_and_audit(
             action_id="action-recover-unknown-mcp",
             attempt_id="attempt-recover-unknown-mcp",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=error_info.value.code.value,
             error_detail=str(error_info.value),
             mcp_request_id="req-simulated-77",
@@ -544,7 +574,7 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
             action_id="action-update",
             attempt_id="attempt-update",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
             error_detail="timeout after delivery",
         )
@@ -562,7 +592,7 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
             action_id="action-update",
             attempt_id="attempt-update",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
     assert resolved.applied is True
@@ -605,7 +635,7 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
             action_id="action-boundary-update",
             attempt_id="attempt-boundary-update",
             expected_action_version=2,
-            expected_attempt_version=0,
+            expected_attempt_version=1,
             error_code=GoogleWorkspaceErrorCode.TIMEOUT.value,
             error_detail="timeout after delivery",
         )
@@ -631,7 +661,7 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
             action_id="action-boundary-update",
             attempt_id="attempt-boundary-update",
             expected_action_version=3,
-            expected_attempt_version=1,
+            expected_attempt_version=2,
         )
     )
 

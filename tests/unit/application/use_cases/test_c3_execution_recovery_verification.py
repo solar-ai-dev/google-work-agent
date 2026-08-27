@@ -38,13 +38,13 @@ from google_work_agent.application.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 _SIGNING_SECRET = "c3-signing-secret"
@@ -124,7 +124,7 @@ class _Dependencies:
 
 class _Actions(_ByIdRepo):
     def __init__(
-        self, values: dict[str, object], verification_status: ActionStatus | None = None
+        self, values: dict[str, object], verification_status: ActionStatusV1 | None = None
     ) -> None:
         super().__init__(values)
         self.verification_status = verification_status
@@ -150,7 +150,7 @@ class _Runs(_ByIdRepo):
         self, value_id: str, *args: object, **kwargs: object
     ) -> object | None:
         updated = super().update_if_version_and_status(value_id, *args, **kwargs)
-        if updated is not None and RunStatus(updated.status) is RunStatus.RECOVERY_REQUIRED:
+        if updated is not None and RunStatusV1(updated.status) is RunStatusV1.RECOVERY_REQUIRED:
             self.recovery_required += 1
         return updated
 
@@ -164,7 +164,7 @@ class _Uow:
         approval: object | None = None,
         plan: object | None = None,
         run: object | None = None,
-        verification_status: ActionStatus | None = None,
+        verification_status: ActionStatusV1 | None = None,
     ) -> None:
         self.actions = _Actions({action.id: action}, verification_status)
         self.execution_attempts = _ByIdRepo({attempt.id: attempt})
@@ -265,8 +265,8 @@ def _task_snapshot(
 
 def _execution_fixture(
     *,
-    attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CLAIMED,
-    run_status: RunStatus = RunStatus.WAITING_APPROVAL,
+    attempt_status: ExecutionAttemptStatusV1 = ExecutionAttemptStatusV1.CLAIMED,
+    run_status: RunStatusV1 = RunStatusV1.WAITING_APPROVAL,
 ) -> tuple[_Uow, str, _ExecutionConnector]:
     arguments = {"task_list_id": "list-1", "payload": {"title": "C3"}}
     arguments_hash = calculate_canonical_json_hash(arguments)
@@ -276,20 +276,20 @@ def _execution_fixture(
         tool_name="tasks_create_task",
         arguments_json=dumps(arguments),
         arguments_hash=arguments_hash,
-        status=ActionStatus.EXECUTING.value,
+        status=ActionStatusV1.EXECUTING.value,
         version=1,
     )
     approval = SimpleNamespace(
         id="approval-1",
         action_id="action-1",
-        status=ApprovalStatus.CONSUMED,
+        status=ApprovalStatusV1.CONSUMED,
         recovery_fingerprint="fp-1",
     )
     attempt = SimpleNamespace(
         id="attempt-1", approval_id="approval-1", status=attempt_status, version=1
     )
     plan = SimpleNamespace(
-        id="plan-1", run_id="run-1", status=PlanStatus.WAITING_APPROVAL, revision_no=1
+        id="plan-1", run_id="run-1", status=PlanStatusV1.WAITING_APPROVAL, revision_no=1
     )
     run = SimpleNamespace(id="run-1", status=run_status, version=1)
     uow = _Uow(action=action, attempt=attempt, approval=approval, plan=plan, run=run)
@@ -342,7 +342,7 @@ def test_execute_action_rejects_invalid_and_expired_tokens_before_connector() ->
         },
         signing_secret="wrong-secret",
     )
-    with pytest.raises(Exception):
+    with pytest.raises(PermissionError):
         handler(ExecuteActionCommand("action-1", bad_token))
     expired = _execute_handler(uow, connector, 31_000)
     with pytest.raises(PermissionError, match="expired"):
@@ -351,13 +351,13 @@ def test_execute_action_rejects_invalid_and_expired_tokens_before_connector() ->
 
 
 def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> None:
-    cancelled_uow, token, connector = _execution_fixture(run_status=RunStatus.CANCEL_REQUESTED)
+    cancelled_uow, token, connector = _execution_fixture(run_status=RunStatusV1.CANCEL_REQUESTED)
     with pytest.raises(PermissionError, match="cancellation"):
         _execute_handler(cancelled_uow, connector)(ExecuteActionCommand("action-1", token))
     assert connector.execute_calls == 0
 
     nonclaimed_uow, token2, connector2 = _execution_fixture(
-        attempt_status=ExecutionAttemptStatus.SUCCEEDED
+        attempt_status=ExecutionAttemptStatusV1.SUCCEEDED
     )
     with pytest.raises(PermissionError, match="CLAIMED"):
         _execute_handler(nonclaimed_uow, connector2)(ExecuteActionCommand("action-1", token2))
@@ -394,11 +394,11 @@ def _recovery_uow(
         arguments_json=dumps(arguments or {}),
         expected_json=dumps(expected or {}),
         target_resource_ref_id=None,
-        status=ActionStatus.UNKNOWN_RESULT.value,
+        status=ActionStatusV1.UNKNOWN_RESULT.value,
         version=3,
     )
     attempt = SimpleNamespace(
-        id="attempt-1", approval_id="approval-1", status=ExecutionAttemptStatus.UNKNOWN_RESULT
+        id="attempt-1", approval_id="approval-1", status=ExecutionAttemptStatusV1.UNKNOWN_RESULT
     )
     approval = SimpleNamespace(
         id="approval-1",
@@ -409,7 +409,7 @@ def _recovery_uow(
     return _Uow(action=action, attempt=attempt, approval=approval)
 
 
-def _applied_response(status: str = ActionStatus.EXECUTED.value) -> WriteActionResponse:
+def _applied_response(status: str = ActionStatusV1.EXECUTED.value) -> WriteActionResponse:
     return WriteActionResponse(
         True, ResultCode.TRANSITION_APPLIED.value, "action-1", status, 4, (), attempt_id="attempt-1"
     )
@@ -472,20 +472,20 @@ def test_update_recovery_uses_canonical_subset_projection_for_all_three_states()
                 recovered.append(command) or _applied_response()
             ),
             resolve_as_failed=lambda command: (
-                failed.append(command) or _applied_response(ActionStatus.FAILED.value)
+                failed.append(command) or _applied_response(ActionStatusV1.FAILED.value)
             ),
         )(RecoverUpdateCommand(command_id, "hash", "action-1", "attempt-1", 3, 1))
 
     expected_result = run(
         _task_snapshot(title="after", version="2", extra={"notes": "provider-extra"}), "cmd-e"
     )
-    assert expected_result.action_status == ActionStatus.EXECUTED.value
+    assert expected_result.action_status == ActionStatusV1.EXECUTED.value
     assert len(recovered) == 1 and failed == []
 
     source_result = run(
         _task_snapshot(title="before", version="1", extra={"notes": "irrelevant-extra"}), "cmd-s"
     )
-    assert source_result.action_status == ActionStatus.FAILED.value
+    assert source_result.action_status == ActionStatusV1.FAILED.value
     assert len(failed) == 1
 
     third_result = run(
@@ -498,8 +498,8 @@ def test_update_recovery_uses_canonical_subset_projection_for_all_three_states()
 def _verification_uow(
     *,
     expected_title: str = "C3",
-    verification_status: ActionStatus = ActionStatus.VERIFIED,
-    attempt_status: ExecutionAttemptStatus = ExecutionAttemptStatus.SUCCEEDED,
+    verification_status: ActionStatusV1 = ActionStatusV1.VERIFIED,
+    attempt_status: ExecutionAttemptStatusV1 = ExecutionAttemptStatusV1.SUCCEEDED,
     approval_action_id: str = "action-1",
 ) -> _Uow:
     action = SimpleNamespace(
@@ -511,7 +511,7 @@ def _verification_uow(
         ),
         expected_json=dumps({"payload": {"title": expected_title}}),
         target_resource_ref_id=None,
-        status=ActionStatus.EXECUTED.value,
+        status=ActionStatusV1.EXECUTED.value,
         effect_type="UPDATE",
         version=1,
     )
@@ -520,7 +520,7 @@ def _verification_uow(
     )
     approval = SimpleNamespace(id="approval-1", action_id=approval_action_id)
     plan = SimpleNamespace(id="plan-1", run_id="run-1")
-    run = SimpleNamespace(id="run-1", status=RunStatus.VERIFYING, version=1)
+    run = SimpleNamespace(id="run-1", status=RunStatusV1.VERIFYING, version=1)
     return _Uow(
         action=action,
         attempt=attempt,
@@ -549,18 +549,18 @@ def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None
         connector_execution=valid_connector,  # type: ignore[arg-type]
     )(VerifyActionCommand("verify-ok", "hash", "action-1", "attempt-1", 1, "verification-1"))
     assert valid.applied is True
-    assert valid.action_status == ActionStatus.VERIFIED.value
+    assert valid.action_status == ActionStatusV1.VERIFIED.value
     assert valid_connector.read_calls == 1
 
     mismatch_uow = _verification_uow(
-        expected_title="expected", verification_status=ActionStatus.MISMATCH
+        expected_title="expected", verification_status=ActionStatusV1.MISMATCH
     )
     mismatch = VerifyActionHandler(
         unit_of_work_factory=lambda: mismatch_uow,  # type: ignore[arg-type]
         now_ms=lambda: 10_000,
         connector_execution=_VerificationConnector(snapshot=_task_snapshot(title="actual")),  # type: ignore[arg-type]
     )(VerifyActionCommand("verify-m", "hash", "action-1", "attempt-1", 1, "verification-2"))
-    assert mismatch.action_status == ActionStatus.MISMATCH.value
+    assert mismatch.action_status == ActionStatusV1.MISMATCH.value
     assert mismatch_uow.runs.recovery_required == 1
 
 
@@ -579,7 +579,7 @@ def test_verification_foreign_succeeded_attempt_fails_closed_before_read() -> No
 
 
 def test_verification_unknown_result_fails_closed_before_read() -> None:
-    uow = _verification_uow(attempt_status=ExecutionAttemptStatus.UNKNOWN_RESULT)
+    uow = _verification_uow(attempt_status=ExecutionAttemptStatusV1.UNKNOWN_RESULT)
     connector = _VerificationConnector(snapshot=_task_snapshot(title="C3"))
     result = VerifyActionHandler(
         unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]

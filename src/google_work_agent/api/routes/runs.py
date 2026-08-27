@@ -52,6 +52,9 @@ from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
 )
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthHandler,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationHandler,
 )
@@ -277,7 +280,10 @@ def resume_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler = ResumeRunHandler(
+    handler_type = (
+        ResumeAfterReauthHandler if payload.resume_kind == "REAUTH_COMPLETED" else ResumeRunHandler
+    )
+    handler = handler_type(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         resolve_resume_authority=dependencies.resolve_resume_authority,

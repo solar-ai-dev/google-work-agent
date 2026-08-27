@@ -47,7 +47,6 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
-from google_work_agent.domain.tool_registry import SignedToolRegistry, build_p0_tool_registry
 from google_work_agent.ports import (
     OutputSchemaDefinition,
     PromptReference,
@@ -55,6 +54,10 @@ from google_work_agent.ports import (
     ToolCallProviderResponse,
     ToolDefinition,
     WorkflowStartRequest,
+)
+from google_work_agent.ports.connector.migration_contracts.tool_registry import (
+    SignedToolRegistry,
+    build_p0_tool_registry,
 )
 from google_work_agent.ports.observability_events import ObservabilityContext
 

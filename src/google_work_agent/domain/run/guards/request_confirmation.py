@@ -1,13 +1,13 @@
 """Canonical guard for entering a confirmation interrupt."""
 
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected, require_status
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected, require_status
 
-_PRE_PUBLISH = frozenset({RunStatus.ANALYZING, RunStatus.RETRIEVING, RunStatus.PLANNING})
-_PUBLISHED_REVIEW = frozenset({RunStatus.WAITING_APPROVAL, RunStatus.VERIFYING})
+_PRE_PUBLISH = frozenset({RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING, RunStatusV1.PLANNING})
+_PUBLISHED_REVIEW = frozenset({RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
 
 
 def guard_request_confirmation(
-    current_status: RunStatus,
+    current_status: RunStatusV1,
     *,
     durable_review_disposition: str | None = None,
     unresolved_external_effect_count: int = 0,

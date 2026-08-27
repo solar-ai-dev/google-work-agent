@@ -9,11 +9,11 @@ from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
     ApproveActionHandler,
 )
-from google_work_agent.domain.action.model import ActionStatus, EffectType
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
@@ -54,7 +54,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
         plan_id="plan-1",
         tool_name="gmail_create_draft",
         effect_type=EffectType.CREATE.value,
-        status=ActionStatus.PROPOSED.value,
+        status=ActionStatusV1.PROPOSED.value,
         version=1,
         arguments_json=dumps(arguments, sort_keys=True, separators=(",", ":")),
         arguments_hash=calculate_canonical_json_hash(arguments),
@@ -64,7 +64,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     plan = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
-        status=PlanStatus.WAITING_APPROVAL,
+        status=PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.PASSED,
         review_version=3,
     )
@@ -74,7 +74,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.plans.get_by_id.return_value = plan
     unit_of_work.plans.list_by_run.return_value = [plan]
     unit_of_work.runs.get.return_value = SimpleNamespace(
-        id="run-1", conversation_id="conversation-1", status=RunStatus.WAITING_APPROVAL
+        id="run-1", conversation_id="conversation-1", status=RunStatusV1.WAITING_APPROVAL
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.resource_refs.get.return_value = resource_ref
@@ -110,8 +110,8 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.actions.update_if_version_and_status.assert_called_once_with(
         "action-1",
         expected_version=1,
-        expected_status=ActionStatus.PROPOSED,
-        next_status=ActionStatus.APPROVED,
+        expected_status=ActionStatusV1.PROPOSED,
+        next_status=ActionStatusV1.APPROVED,
         updated_at_ms=1000,
     )
     approval = unit_of_work.approvals.insert.call_args.args[0]
@@ -138,7 +138,7 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
         plan_id="plan-1",
         tool_name="gmail_create_draft",
         effect_type=EffectType.CREATE.value,
-        status=ActionStatus.PROPOSED.value,
+        status=ActionStatusV1.PROPOSED.value,
         version=1,
     )
     unit_of_work.command_receipts.get_by_command_id.return_value = None
@@ -146,14 +146,14 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
     plan = SimpleNamespace(
         id="plan-1",
         run_id="run-1",
-        status=PlanStatus.SUPERSEDED,
+        status=PlanStatusV1.SUPERSEDED,
     )
     unit_of_work.plans.get_by_id.return_value = plan
     unit_of_work.plans.list_by_run.return_value = [plan]
     unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1",
         conversation_id="conversation-1",
-        status=RunStatus.WAITING_APPROVAL,
+        status=RunStatusV1.WAITING_APPROVAL,
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
 

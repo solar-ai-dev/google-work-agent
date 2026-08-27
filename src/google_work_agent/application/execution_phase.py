@@ -6,6 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from google_work_agent.application.use_cases.run.begin_verification import (
+    BeginVerificationCommand,
+    BeginVerificationHandler,
+    BeginVerificationResult,
+)
 from google_work_agent.application.write_actions import (
     ClaimWriteActionCommand,
     ClaimWriteActionService,
@@ -23,20 +28,16 @@ from google_work_agent.application.write_actions import (
     RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionCommand,
     RecoverUnknownUpdateActionService,
+    RequireReauthHandler,
     RequireWriteReauthCommand,
-    RequireWriteReauthService,
     StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
     VerifyWriteActionCommand,
     VerifyWriteActionService,
     WriteActionResponse,
 )
-from google_work_agent.domain.action.model import ActionStatus, PolicyViolationError
-from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatus
-from google_work_agent.domain.run.transitions.begin_verification import (
-    transition_begin_verification,
-)
+from google_work_agent.domain.action.model import ActionStatusV1, PolicyViolationError
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
@@ -85,45 +86,6 @@ class UnknownRecoveryPhaseRequest:
     attempt_version: int
 
 
-class BeginWriteVerificationService:
-    """Apply BeginVerification and expose its CommandResult to the coordinator."""
-
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-
-    def __call__(self, run_id: str) -> CommandResult[RunStatus, RunCommand]:
-        with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get(run_id)
-            if run is None:
-                raise LookupError(f"run not found: {run_id}")
-            if run.status is RunStatus.VERIFYING:
-                return CommandResult(
-                    applied=True,
-                    result_code=ResultCode.TRANSITION_APPLIED,
-                    current_status=run.status,
-                    current_version=run.version,
-                    next_allowed_commands=(),
-                    conflict_detail=None,
-                )
-            next_status = transition_begin_verification(run.status)
-            if not unit_of_work.runs.update_if_version_and_status(
-                run.id,
-                run.version,
-                frozenset({run.status}),
-                {"status": next_status.value, "version": run.version + 1},
-            ):
-                raise RuntimeError("validated BeginVerification CAS failed")
-            unit_of_work.commit()
-            return CommandResult(
-                applied=True,
-                result_code=ResultCode.TRANSITION_APPLIED,
-                current_status=next_status,
-                current_version=run.version + 1,
-                next_allowed_commands=(),
-                conflict_detail=None,
-            )
-
-
 class WriteExecutionPhaseCoordinator:
     """Sequence write safety services and consume every mutation result."""
 
@@ -138,11 +100,11 @@ class WriteExecutionPhaseCoordinator:
         claim_write: ClaimWriteActionService,
         execute_write: ExecuteWriteActionService,
         store_write_success: StoreWriteActionSuccessService,
-        begin_verification: Callable[[str], CommandResult[RunStatus, RunCommand] | None],
+        begin_verification: BeginVerificationHandler,
         verify_write: VerifyWriteActionService,
         mark_write_failed: MarkWriteActionFailedService,
         mark_write_unknown: MarkWriteActionUnknownResultService,
-        require_write_reauth: RequireWriteReauthService,
+        require_write_reauth: RequireReauthHandler,
         recover_unknown_create: RecoverUnknownCreateActionService,
         recover_unknown_send: RecoverUnknownSendActionService,
         recover_unknown_delete: RecoverUnknownDeleteActionService,
@@ -180,7 +142,7 @@ class WriteExecutionPhaseCoordinator:
                     current_status=reauth.run_status,
                     current_version=reauth.run_version,
                 )
-            if self._action_status(request.action_id) == ActionStatus.MODIFIED.value:
+            if self._action_status(request.action_id) == ActionStatusV1.MODIFIED.value:
                 return WriteExecutionPhaseResult(
                     disposition=WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED,
                 )
@@ -286,7 +248,16 @@ class WriteExecutionPhaseCoordinator:
                 )
             )
 
-        begin = self._begin_verification(request.run_id)
+        begin: BeginVerificationResult | None
+        begin = self._begin_verification(
+            BeginVerificationCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash(
+                    {"kind": "begin_verification", "run_id": request.run_id}
+                ),
+                run_id=request.run_id,
+            )
+        )
         if begin is not None and not begin.applied:
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
@@ -380,7 +351,7 @@ class WriteExecutionPhaseCoordinator:
                         ResultCode.RECOVERY_REQUIRED.value if reauth.applied else reauth.result_code
                     ),
                     action_id=request.action_id,
-                    action_status=ActionStatus.UNKNOWN_RESULT.value,
+                    action_status=ActionStatusV1.UNKNOWN_RESULT.value,
                     action_version=request.action_version,
                     next_allowed_commands=(),
                     attempt_id=request.attempt_id,
@@ -388,7 +359,7 @@ class WriteExecutionPhaseCoordinator:
                     conflict_detail=None if reauth.applied else reauth.conflict_detail,
                 )
             raise
-        if response.applied and response.action_status == ActionStatus.EXECUTED.value:
+        if response.applied and response.action_status == ActionStatusV1.EXECUTED.value:
             return self.verify_executed(
                 action_id=request.action_id,
                 action_version=response.action_version,

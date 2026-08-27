@@ -18,7 +18,7 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 def normalize_resource_type(value: str) -> str:
@@ -137,7 +137,8 @@ def _eligible_bindings(
             matches.append((connector_id, tuple(entry.tool_name for entry in entries)))
     if len(matches) != 1:
         raise ToolRouteValidationError(
-            f"resource/effect must resolve to exactly one connector: {resource_type}/{effect_type.value}"
+            "resource/effect must resolve to exactly one connector: "
+            f"{resource_type}/{effect_type.value}"
         )
     return matches[0]
 

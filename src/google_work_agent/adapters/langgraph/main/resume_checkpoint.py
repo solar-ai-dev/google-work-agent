@@ -10,7 +10,7 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorTarget
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import WorkflowInvocationResult, WorkflowOutcome, WorkflowResumeRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
@@ -41,7 +41,7 @@ class ResumeCheckpointMixin:
                 authority["continuation_target"] = continuation_target
             return authority
         if resume_kind == "RECOVERY_RECHECK":
-            return {"resume_status": RunStatus.VERIFYING.value}
+            return {"resume_status": RunStatusV1.VERIFYING.value}
         return None
 
     def resolve_resume_domain_status(
@@ -224,21 +224,21 @@ def _reauth_resume_status(state: GraphState) -> str | None:
     if not isinstance(phase, str):
         return None
     mapping = {
-        WorkflowPhase.REQUEST_ANALYSIS.value: RunStatus.ANALYZING,
-        WorkflowPhase.TOOL_ROUTING.value: RunStatus.ANALYZING,
-        WorkflowPhase.WORK_ANALYSIS.value: RunStatus.ANALYZING,
-        WorkflowPhase.SOURCE_PLANNING.value: RunStatus.RETRIEVING,
-        WorkflowPhase.API_ACQUISITION.value: RunStatus.RETRIEVING,
-        WorkflowPhase.CONTEXT_RETRIEVAL.value: RunStatus.RETRIEVING,
-        WorkflowPhase.CONTEXT_EVALUATION.value: RunStatus.RETRIEVING,
-        WorkflowPhase.SOLUTION_PLANNING.value: RunStatus.PLANNING,
-        WorkflowPhase.PLAN_REVIEW.value: RunStatus.PLANNING,
-        WorkflowPhase.DOMAIN_VALIDATION.value: RunStatus.PLANNING,
-        WorkflowPhase.WAITING_APPROVAL.value: RunStatus.WAITING_APPROVAL,
-        WorkflowPhase.PREFLIGHT.value: RunStatus.WAITING_APPROVAL,
-        WorkflowPhase.ACTION_EXECUTION.value: RunStatus.WAITING_APPROVAL,
-        WorkflowPhase.VERIFICATION.value: RunStatus.VERIFYING,
-        WorkflowPhase.RECOVERY.value: RunStatus.RECOVERY_REQUIRED,
+        WorkflowPhase.REQUEST_ANALYSIS.value: RunStatusV1.ANALYZING,
+        WorkflowPhase.TOOL_ROUTING.value: RunStatusV1.ANALYZING,
+        WorkflowPhase.WORK_ANALYSIS.value: RunStatusV1.ANALYZING,
+        WorkflowPhase.SOURCE_PLANNING.value: RunStatusV1.RETRIEVING,
+        WorkflowPhase.API_ACQUISITION.value: RunStatusV1.RETRIEVING,
+        WorkflowPhase.CONTEXT_RETRIEVAL.value: RunStatusV1.RETRIEVING,
+        WorkflowPhase.CONTEXT_EVALUATION.value: RunStatusV1.RETRIEVING,
+        WorkflowPhase.SOLUTION_PLANNING.value: RunStatusV1.PLANNING,
+        WorkflowPhase.PLAN_REVIEW.value: RunStatusV1.PLANNING,
+        WorkflowPhase.DOMAIN_VALIDATION.value: RunStatusV1.PLANNING,
+        WorkflowPhase.WAITING_APPROVAL.value: RunStatusV1.WAITING_APPROVAL,
+        WorkflowPhase.PREFLIGHT.value: RunStatusV1.WAITING_APPROVAL,
+        WorkflowPhase.ACTION_EXECUTION.value: RunStatusV1.WAITING_APPROVAL,
+        WorkflowPhase.VERIFICATION.value: RunStatusV1.VERIFYING,
+        WorkflowPhase.RECOVERY.value: RunStatusV1.RECOVERY_REQUIRED,
     }
     target = mapping.get(phase)
     return None if target is None else target.value

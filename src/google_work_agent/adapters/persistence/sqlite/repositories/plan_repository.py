@@ -3,7 +3,7 @@
 import sqlite3
 
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 
 
 class SQLitePlanRepository:
@@ -16,7 +16,7 @@ class SQLitePlanRepository:
             id=str(row["id"]),
             run_id=str(row["run_id"]),
             revision_no=int(row["revision_no"]),
-            status=PlanStatus(str(row["status"])),
+            status=PlanStatusV1(str(row["status"])),
             summary_text=None if row["summary_text"] is None else str(row["summary_text"]),
             created_at_ms=int(row["created_at_ms"]),
             review_status=PlanReviewStatus(str(row["review_status"])),
@@ -65,7 +65,7 @@ class SQLitePlanRepository:
         if (
             existing.run_id != plan.run_id
             or existing.revision_no != plan.revision_no
-            or existing.status is not PlanStatus.DRAFT
+            or existing.status is not PlanStatusV1.DRAFT
             or has_actions
         ):
             raise sqlite3.IntegrityError(
@@ -77,7 +77,7 @@ class SQLitePlanRepository:
         )
 
     def update_if_status(
-        self, plan_id: str, *, expected_status: PlanStatus, next_status: PlanStatus
+        self, plan_id: str, *, expected_status: PlanStatusV1, next_status: PlanStatusV1
     ) -> PlanRecord | None:
         cursor = self._connection.execute(
             "UPDATE plans SET status=? WHERE id=? AND status=?;",

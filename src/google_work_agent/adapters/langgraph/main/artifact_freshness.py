@@ -37,10 +37,10 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
 )
 from google_work_agent.application.run_terminal import RunTransitionResponse
-from google_work_agent.application.write_run_completion import CompleteWriteRunCommand
-from google_work_agent.domain.action.model import ActionStatus
-from google_work_agent.domain.plan.model import PlanStatus
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.application.use_cases.run.complete_write_run import CompleteWriteRunCommand
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     WorkflowInvocationResult,
     WorkflowOutcome,
@@ -91,8 +91,8 @@ class ArtifactFreshnessMixin:
                 and plan_id
                 and request.domain_status
                 in {
-                    RunStatus.PLANNING.value,
-                    RunStatus.WAITING_APPROVAL.value,
+                    RunStatusV1.PLANNING.value,
+                    RunStatusV1.WAITING_APPROVAL.value,
                 }
             ):
                 return self._resume_corrective_plan_safely(
@@ -181,7 +181,10 @@ class ArtifactFreshnessMixin:
         # Run/Plan pair is authoritative; no Planning node and no persistence
         # service is invoked again. If a stale checkpoint still carries the
         # one-shot destination marker, reconcile it to WAITING_APPROVAL.
-        if run.status is RunStatus.WAITING_APPROVAL and plan.status is PlanStatus.WAITING_APPROVAL:
+        if (
+            run.status is RunStatusV1.WAITING_APPROVAL
+            and plan.status is PlanStatusV1.WAITING_APPROVAL
+        ):
             if state.get("__reserved_corrective_plan_id__") == plan.id:
                 translation = self._route_translator.translate(
                     SupervisorTarget.WAITING_APPROVAL.value
@@ -202,7 +205,7 @@ class ArtifactFreshnessMixin:
                 run_id=request.run_id,
             )
 
-        if run.status is not RunStatus.PLANNING or plan.status is not PlanStatus.DRAFT:
+        if run.status is not RunStatusV1.PLANNING or plan.status is not PlanStatusV1.DRAFT:
             return self._corrective_resume_conflict(
                 request,
                 reason="corrective continuation requires PLANNING/DRAFT durable state",
@@ -308,7 +311,7 @@ class ArtifactFreshnessMixin:
             return None
         actions = self._list_actions(plan_id)
         if not actions or not all(
-            action.status == ActionStatus.VERIFIED.value for action in actions
+            action.status == ActionStatusV1.VERIFIED.value for action in actions
         ):
             return None
         return self._complete_write_run(

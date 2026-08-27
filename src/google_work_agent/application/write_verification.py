@@ -47,9 +47,9 @@ from google_work_agent.application.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import canonicalize_json_value
-from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
@@ -163,7 +163,7 @@ class VerifyWriteActionService:
 
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
-            if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
+            if attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED:
                 now_ms = self._now_ms()
                 unit_of_work.command_receipts.add_received(
                     command_id=command.command_id,
@@ -252,7 +252,7 @@ class VerifyWriteActionService:
             action = _require_action(unit_of_work, command.action_id)
             attempt = _require_attempt(unit_of_work, command.attempt_id)
             plan = _require_plan(unit_of_work, action.plan_id)
-            if attempt.status is not ExecutionAttemptStatus.SUCCEEDED:
+            if attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED:
                 response = WriteActionResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,
@@ -307,7 +307,7 @@ class VerifyWriteActionService:
                     VerificationStatus.VERIFIED if len(diff) == 0 else VerificationStatus.MISMATCH
                 )
             preview = transition_store_verification(
-                ActionStatus(action.status),
+                ActionStatusV1(action.status),
                 current_version=action.version,
                 expected_version=command.expected_action_version,
                 verification_status=verification_status,
@@ -341,7 +341,7 @@ class VerifyWriteActionService:
                 unit_of_work.actions.update_if_version_and_status(
                     action.id,
                     expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
+                    expected_status=ActionStatusV1(action.status),
                     next_status=preview.current_status,
                     updated_at_ms=now_ms,
                 )

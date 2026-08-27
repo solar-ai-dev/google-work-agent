@@ -4,6 +4,7 @@ import ast
 from importlib import import_module
 from inspect import Parameter, signature
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
@@ -27,6 +28,82 @@ MODEL_AUTHORITIES = {
     "audit_event.model": ("AuditEvent",),
 }
 
+VOCABULARY_AUTHORITIES = {
+    "run.model": "RunStatusV1",
+    "action.model": "ActionStatusV1",
+    "plan.model": "PlanStatusV1",
+    "approval.model": "ApprovalStatusV1",
+    "execution_attempt.model": "ExecutionAttemptStatusV1",
+    "recovery.model": "RecoveryReasonV1",
+}
+
+TRANSITION_AUTHORITIES = {
+    "run.start_run",
+    "run.start_analysis",
+    "run.begin_retrieval",
+    "run.begin_planning",
+    "run.request_confirmation",
+    "run.resume_confirmation",
+    "run.complete_answer_only_run",
+    "run.complete_read_only_run",
+    "run.block_run",
+    "run.begin_verification",
+    "run.complete_write_run",
+    "run.request_cancel",
+    "run.finalize_cancel",
+    "run.require_reauth",
+    "run.resume_after_reauth",
+    "plan.publish_plan",
+    "plan.publish_read_only_plan",
+    "recovery.require_recovery",
+    "recovery.resolve_recovery",
+    "action.approve_action",
+    "action.modify_action",
+    "action.reject_action",
+    "action.cancel_pending_action",
+    "action.refresh_expired_action",
+    "action.claim_read_action",
+    "action.complete_read_action",
+    "action.finalize_read_action",
+    "action.fail_read_action",
+    "action.prepare_write_retry",
+    "approval.expire_approval",
+    "claim.claim_execution",
+    "execution_attempt.begin_execution_attempt",
+    "execution_attempt.abort_claimed_execution",
+    "execution_attempt.store_success",
+    "execution_attempt.mark_failed",
+    "execution_attempt.mark_unknown_result",
+    "execution_attempt.recover_existing_result",
+    "execution_attempt.resolve_as_failed",
+    "verification.store_verification",
+}
+
+APPLICATION_OWNER_AUTHORITIES = {
+    "run.complete_answer_only_run": "CompleteAnswerOnlyRunHandler",
+    "run.complete_read_only_run": "CompleteReadOnlyRunHandler",
+    "run.begin_verification": "BeginVerificationHandler",
+    "run.complete_write_run": "CompleteWriteRunHandler",
+    "run.finalize_cancel": "FinalizeCancelHandler",
+    "run.require_reauth": "RequireReauthHandler",
+    "run.resume_after_reauth": "ResumeAfterReauthHandler",
+    "run.block_run": "BlockRunHandler",
+    "plan.publish_plan": "PublishPlanHandler",
+    "plan.publish_read_only_plan": "PublishReadOnlyPlanHandler",
+    "action.approve_action": "ApproveActionHandler",
+    "action.modify_action": "ModifyActionHandler",
+    "action.reject_action": "RejectActionHandler",
+    "action.cancel_pending_action": "CancelPendingActionHandler",
+    "action.refresh_expired_action": "RefreshExpiredActionHandler",
+    "action.claim_read_action": "ClaimReadActionHandler",
+    "action.complete_read_action": "CompleteReadActionHandler",
+    "action.finalize_read_action": "FinalizeReadActionHandler",
+    "action.fail_read_action": "FailReadActionHandler",
+    "approval.expire_approval": "ExpireApprovalHandler",
+    "execution_attempt.begin_execution_attempt": "BeginExecutionAttemptHandler",
+    "execution_attempt.abort_claimed_execution": "AbortClaimedExecutionHandler",
+}
+
 REMOVED_AUTHORITIES = (
     DOMAIN / "enums.py",
     DOMAIN / "exceptions.py",
@@ -42,6 +119,19 @@ REMOVED_AUTHORITIES = (
     DOMAIN / "run" / "queries.py",
     DOMAIN / "execution_attempt" / "transitions" / "decision.py",
     DOMAIN / "policy_confirmation_receipt" / "__init__.py",
+    DOMAIN / "action_risk.py",
+    DOMAIN / "calendar_conflict.py",
+    DOMAIN / "feasibility.py",
+    DOMAIN / "task_duplicate.py",
+    DOMAIN / "policy.py",
+    DOMAIN / "tool_registry.py",
+    DOMAIN / "google_workspace_tool_registry.py",
+    DOMAIN / "google_workspace_tool_contracts.py",
+    DOMAIN / "claim_contract.py",
+    SRC / "application" / "answer_only.py",
+    SRC / "application" / "read_lifecycle.py",
+    SRC / "application" / "write_reauth.py",
+    SRC / "application" / "write_run_completion.py",
 )
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -88,6 +178,14 @@ def test_closed_owner_vocabularies_have_no_legacy_family_or_observation_values()
     }
 
 
+def test_all_six_closed_vocabularies_use_exact_versioned_symbols() -> None:
+    for module_name, symbol in VOCABULARY_AUTHORITIES.items():
+        module = import_module(f"google_work_agent.domain.{module_name}")
+        vocabulary = getattr(module, symbol)
+        assert get_args(vocabulary) or vocabulary.__module__ == module.__name__
+        assert not hasattr(module, symbol.removesuffix("V1"))
+
+
 def test_exact_transition_tree_has_thirty_nine_mirrored_operations() -> None:
     sources = sorted(
         path
@@ -102,10 +200,61 @@ def test_exact_transition_tree_has_thirty_nine_mirrored_operations() -> None:
     expected_mirrors = {path.relative_to(DOMAIN).with_name(f"test_{path.name}") for path in sources}
     actual_mirrors = {path.relative_to(ROOT / "tests" / "unit" / "domain") for path in mirrors}
     assert actual_mirrors == expected_mirrors
+    actual_authorities = {
+        ".".join(path.relative_to(DOMAIN).with_suffix("").parts).replace(".transitions.", ".")
+        for path in sources
+    }
+    assert actual_authorities == TRANSITION_AUTHORITIES
+
+
+def test_formal_domain_ledger_universe_is_exactly_sixty_one_rows() -> None:
+    assert (
+        1
+        + sum(map(len, MODEL_AUTHORITIES.values()))
+        + len(VOCABULARY_AUTHORITIES)
+        + len(TRANSITION_AUTHORITIES)
+        == 61
+    )
+
+
+@pytest.mark.parametrize(("owner", "handler"), APPLICATION_OWNER_AUTHORITIES.items())
+def test_corrected_domain_callers_have_exact_application_owner_and_test(
+    owner: str, handler: str
+) -> None:
+    module = import_module(f"google_work_agent.application.use_cases.{owner}")
+    assert getattr(module, handler).__module__ == module.__name__
+    owner_name, operation = owner.split(".")
+    test_path = (
+        ROOT / "tests" / "unit" / "application" / "use_cases" / owner_name / f"test_{operation}.py"
+    )
+    assert test_path.is_file()
 
 
 def test_removed_lifecycle_authorities_are_absent() -> None:
     assert all(not path.exists() for path in REMOVED_AUTHORITIES)
+
+
+def test_corrected_action_commands_have_no_legacy_production_caller_or_export() -> None:
+    forbidden_symbols = {
+        "ApproveWriteActionService",
+        "ModifyWriteActionService",
+        "RejectWriteActionService",
+    }
+    legacy_sources = {
+        SRC / "application" / "write_approval.py",
+        SRC / "application" / "write_action_mutation.py",
+    }
+    violations: list[str] = []
+    for path in SRC.rglob("*.py"):
+        if path in legacy_sources:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in forbidden_symbols:
+                violations.append(f"{path.relative_to(ROOT)}:{node.id}")
+            if isinstance(node, ast.Attribute) and node.attr in forbidden_symbols:
+                violations.append(f"{path.relative_to(ROOT)}:{node.attr}")
+    assert violations == []
 
 
 def test_every_domain_transition_authority_is_owner_local_and_exact() -> None:
@@ -189,12 +338,7 @@ def test_lifecycle_repositories_expose_only_query_persistence_and_cas() -> None:
         / "sqlite"
         / "repositories"
         / "execution_attempt_repository.py",
-        SRC
-        / "adapters"
-        / "persistence"
-        / "sqlite"
-        / "repositories"
-        / "verification_repository.py",
+        SRC / "adapters" / "persistence" / "sqlite" / "repositories" / "verification_repository.py",
     )
     methods: set[str] = set()
     for path in repository_files:

@@ -17,11 +17,11 @@ from google_work_agent.application.execution_phase import (
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult
-from google_work_agent.domain.run.model import RunCommand, RunStatus
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 
 
 class WriteRecoveryCoordinator:
@@ -40,7 +40,7 @@ class WriteRecoveryCoordinator:
         complete_write_run_if_verified: Callable[[str, str], RunTransitionResponse | None],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
-        begin_verification: Callable[[str], CommandResult[RunStatus, RunCommand] | None],
+        begin_verification: Callable[[str], CommandResult[RunStatusV1, RunCommand] | None],
         latest_attempt_id: Callable[[str], str],
     ) -> None:
         self._latest_unknown_action = latest_unknown_action
@@ -83,7 +83,7 @@ class WriteRecoveryCoordinator:
                 response=response,
                 outcome="DOMAIN_RECONCILE",
             )
-        if response.action_status != ActionStatus.VERIFIED.value:
+        if response.action_status != ActionStatusV1.VERIFIED.value:
             return self._suspend_action_response(
                 state=state,
                 action_id=action.id,
@@ -125,7 +125,9 @@ class WriteRecoveryCoordinator:
 
     def recover_executed(self, state: GraphState, run_id: str) -> GraphState:
         plans = tuple(
-            plan for plan in self._plans_for_run(run_id) if plan.status is not PlanStatus.SUPERSEDED
+            plan
+            for plan in self._plans_for_run(run_id)
+            if plan.status is not PlanStatusV1.SUPERSEDED
         )
         if not plans:
             return self._suspend(
@@ -138,7 +140,7 @@ class WriteRecoveryCoordinator:
         verification_started = False
 
         for action in self._list_actions(latest_plan.id):
-            if action.status != ActionStatus.EXECUTED.value:
+            if action.status != ActionStatusV1.EXECUTED.value:
                 statuses.append(action.status)
                 continue
 
@@ -238,7 +240,7 @@ class WriteRecoveryCoordinator:
         self,
         *,
         state: GraphState,
-        result: CommandResult[RunStatus, RunCommand],
+        result: CommandResult[RunStatusV1, RunCommand],
         source: str,
         verification_statuses: list[str],
     ) -> GraphState:

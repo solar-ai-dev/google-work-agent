@@ -24,7 +24,7 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
     RunScopedEvidenceStore,
 )
 from google_work_agent.application.write_actions import (
-    PublishWritePlanService,
+    PublishPlanHandler,
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,
     ResolveMismatchRecoveryService,
@@ -156,7 +156,7 @@ class _CorrectivePersistenceHarness:
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )
-        self._publish_delegate = PublishWritePlanService(
+        self._publish_delegate = PublishPlanHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )
@@ -173,7 +173,7 @@ class _CorrectivePersistenceHarness:
         self.publish_calls += 1
         if self._fail_publish_once:
             self._fail_publish_once = False
-            raise RuntimeError("injected publish failure before PublishWritePlanService")
+            raise RuntimeError("injected publish failure before PublishPlanHandler")
         return self._publish_delegate(command)
 
     @staticmethod

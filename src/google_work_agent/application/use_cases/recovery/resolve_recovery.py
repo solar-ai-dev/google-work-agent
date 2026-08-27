@@ -7,21 +7,21 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 
 from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.write_persistence import revoke_active_approvals
-from google_work_agent.domain.action.model import ActionStatus, EffectType
-from google_work_agent.domain.action.transitions.cancel_pending_action import (
-    transition_cancel_pending_action,
+from google_work_agent.application.write_persistence import (
+    cancel_pending_actions,
+    revoke_active_approvals,
 )
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatus
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
     transition_resolve_recovery,
 )
 from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.model import RunStatus, next_allowed_run_commands
+from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -37,8 +37,8 @@ class ResolveRecoveryCommand:
     terminal_snapshot: bool = False
     irrecoverable_confirmed: bool = False
     recheck_input_changed: bool = False
-    recovered_action_status: ActionStatus | None = None
-    validated_resume_status: RunStatus | None = None
+    recovered_action_status: ActionStatusV1 | None = None
+    validated_resume_status: RunStatusV1 | None = None
     unresolved_external_effect_count: int = 0
 
 
@@ -84,7 +84,7 @@ class ResolveRecoveryHandler:
                 run.status,
                 resolution=command.resolution,
                 reason=context["reason"],
-                pre_recovery_status=RunStatus(context["pre_recovery_status"]),
+                pre_recovery_status=RunStatusV1(context["pre_recovery_status"]),
                 recheck_input_changed=command.recheck_input_changed,
                 recovered_action_status=self._recovered_action_status(
                     unit_of_work, command, context
@@ -136,7 +136,7 @@ class ResolveRecoveryHandler:
                     "status": target.value,
                     "version": run.version + 1,
                 }
-                if target in {RunStatus.COMPLETED, RunStatus.CANCELLED, RunStatus.FAILED}:
+                if target in {RunStatusV1.COMPLETED, RunStatusV1.CANCELLED, RunStatusV1.FAILED}:
                     values["finished_at_ms"] = now_ms
                 applied = unit_of_work.runs.update_if_version_and_status(
                     run.id, run.version, frozenset({run.status}), values
@@ -231,7 +231,7 @@ class ResolveRecoveryHandler:
             run.status,
             resolution=RecoveryResolution.RECHECK,
             reason=context["reason"],
-            pre_recovery_status=RunStatus(context["pre_recovery_status"]),
+            pre_recovery_status=RunStatusV1(context["pre_recovery_status"]),
             recheck_input_changed=True,
             recovered_action_status=ResolveRecoveryHandler._recovered_action_status(
                 unit_of_work,
@@ -245,7 +245,7 @@ class ResolveRecoveryHandler:
                 context,
             ),
             validated_resume_status=(
-                RunStatus(context["pre_recovery_status"])
+                RunStatusV1(context["pre_recovery_status"])
                 if context["reason"] in {"CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"}
                 else None
             ),
@@ -278,14 +278,14 @@ class ResolveRecoveryHandler:
         unit_of_work: UnitOfWork,
         command: ResolveRecoveryCommand,
         context: dict[str, object],
-    ) -> ActionStatus | None:
+    ) -> ActionStatusV1 | None:
         if command.recovered_action_status is not None:
             return command.recovered_action_status
         action_id = context.get("action_id")
         if action_id is None:
             return None
         action = unit_of_work.actions.get_by_id(str(action_id))
-        return None if action is None else ActionStatus(action.status)
+        return None if action is None else ActionStatusV1(action.status)
 
     def _apply_resolution_effects(
         self,
@@ -310,16 +310,21 @@ class ResolveRecoveryHandler:
         if (
             action is None
             or action.plan_id != plan.id
-            or action.status != ActionStatus.MISMATCH.value
+            or action.status != ActionStatusV1.MISMATCH.value
         ):
             raise RuntimeError("mismatch recovery requires the current MISMATCH action")
         if has_durable_cancel_intent(unit_of_work.command_receipts, command.run_id):
             raise RuntimeError("mismatch recovery is forbidden while cancel intent is active")
         if command.resolution is RecoveryResolution.ACCEPT_PARTIAL:
-            self._cancel_pending_actions(unit_of_work, plan=plan, now_ms=now_ms)
+            cancel_pending_actions(
+                unit_of_work=unit_of_work,
+                run_id=command.run_id,
+                plan_id=plan.id,
+                updated_at_ms=now_ms,
+            )
             if (
                 unit_of_work.plans.update_if_status(
-                    plan.id, expected_status=plan.status, next_status=PlanStatus.COMPLETED
+                    plan.id, expected_status=plan.status, next_status=PlanStatusV1.COMPLETED
                 )
                 is None
             ):
@@ -330,7 +335,7 @@ class ResolveRecoveryHandler:
             revoke_active_approvals(unit_of_work, candidate.id)
         if (
             unit_of_work.plans.update_if_status(
-                plan.id, expected_status=plan.status, next_status=PlanStatus.SUPERSEDED
+                plan.id, expected_status=plan.status, next_status=PlanStatusV1.SUPERSEDED
             )
             is None
         ):
@@ -341,46 +346,12 @@ class ResolveRecoveryHandler:
             id=self._next_id(),
             run_id=command.run_id,
             revision_no=max(item.revision_no for item in plans) + 1,
-            status=PlanStatus.DRAFT,
+            status=PlanStatusV1.DRAFT,
             summary_text=f"Corrective plan for mismatch action {action.id}",
             created_at_ms=now_ms,
         )
         unit_of_work.plans.insert_draft(corrective)
         return corrective, "CORRECTIVE_PLAN_REQUIRED"
-
-    @staticmethod
-    def _cancel_pending_actions(unit_of_work: UnitOfWork, *, plan: PlanRecord, now_ms: int) -> None:
-        pending = {
-            ActionStatus.PROPOSED.value,
-            ActionStatus.MODIFIED.value,
-            ActionStatus.APPROVED.value,
-            ActionStatus.EXPIRED.value,
-        }
-        for action in unit_of_work.actions.list_by_plan(plan.id):
-            if action.status not in pending:
-                continue
-            revoke_active_approvals(unit_of_work, action.id)
-            result = transition_cancel_pending_action(
-                ActionStatus(action.status),
-                action.version,
-                action.version,
-                effect_type=EffectType(action.effect_type),
-                plan_status=plan.status,
-                plan_is_current=True,
-            )
-            if not result.applied:
-                raise RuntimeError(f"pending action cancellation failed: {action.id}")
-            if (
-                unit_of_work.actions.update_if_version_and_status(
-                    action.id,
-                    expected_version=action.version,
-                    expected_status=ActionStatus(action.status),
-                    next_status=result.current_status,
-                    updated_at_ms=now_ms,
-                )
-                is None
-            ):
-                raise RuntimeError(f"pending action cancellation CAS failed: {action.id}")
 
     @staticmethod
     def _replay_or_reject_duplicate(

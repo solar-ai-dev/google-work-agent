@@ -4,30 +4,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.domain.action.model import ActionStatus
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.recovery.guards.resolve_recovery import guard_resolve_recovery
 from google_work_agent.domain.recovery.model import RecoveryReasonV1, RecoveryResolution
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 
 
 @dataclass(frozen=True, slots=True)
 class RecoveryResolutionDecision:
     applied: bool
     result_code: ResultCode
-    current_status: RunStatus
+    current_status: RunStatusV1
     conflict_detail: str | None = None
 
 
 def transition_resolve_recovery(
-    current_status: RunStatus,
+    current_status: RunStatusV1,
     *,
     resolution: RecoveryResolution,
     reason: RecoveryReasonV1,
-    pre_recovery_status: RunStatus,
+    pre_recovery_status: RunStatusV1,
     recheck_input_changed: bool = False,
-    recovered_action_status: ActionStatus | None = None,
-    validated_resume_status: RunStatus | None = None,
+    recovered_action_status: ActionStatusV1 | None = None,
+    validated_resume_status: RunStatusV1 | None = None,
     cancel_intent_active: bool = False,
     unresolved_external_effect_count: int = 0,
     irrecoverable_confirmed: bool = False,
@@ -69,9 +69,9 @@ def transition_resolve_recovery(
                 f"{resolution.value} is forbidden while cancel intent is active",
             )
         return _applied(
-            RunStatus.COMPLETED
+            RunStatusV1.COMPLETED
             if resolution is RecoveryResolution.ACCEPT_PARTIAL
-            else RunStatus.PLANNING
+            else RunStatusV1.PLANNING
         )
 
     if resolution is RecoveryResolution.CANCEL:
@@ -82,15 +82,15 @@ def transition_resolve_recovery(
                 "CANCEL requires durable cancel intent and no unresolved external effect",
             )
         if reason == "UNKNOWN_RESULT" and recovered_action_status not in {
-            ActionStatus.EXECUTED,
-            ActionStatus.FAILED,
+            ActionStatusV1.EXECUTED,
+            ActionStatusV1.FAILED,
         }:
             return _reject(
                 ResultCode.RESOLUTION_NOT_ALLOWED,
                 current_status,
                 "UNKNOWN_RESULT must be settled before CANCEL",
             )
-        return _applied(RunStatus.CANCELLED)
+        return _applied(RunStatusV1.CANCELLED)
 
     if resolution is RecoveryResolution.FAIL:
         if reason == "UNKNOWN_RESULT" or not irrecoverable_confirmed:
@@ -105,7 +105,7 @@ def transition_resolve_recovery(
                 current_status,
                 "FAIL requires resolved external delivery uncertainty",
             )
-        return _applied(RunStatus.FAILED)
+        return _applied(RunStatusV1.FAILED)
 
     return _reject(ResultCode.RESOLUTION_NOT_ALLOWED, current_status, "unknown recovery resolution")
 
@@ -113,49 +113,49 @@ def transition_resolve_recovery(
 def _resolve_recheck(
     *,
     reason: RecoveryReasonV1,
-    pre_recovery_status: RunStatus,
+    pre_recovery_status: RunStatusV1,
     recheck_input_changed: bool,
-    recovered_action_status: ActionStatus | None,
-    validated_resume_status: RunStatus | None,
+    recovered_action_status: ActionStatusV1 | None,
+    validated_resume_status: RunStatusV1 | None,
 ) -> RecoveryResolutionDecision:
     if not recheck_input_changed:
         return _reject(
             ResultCode.NO_PROGRESS,
-            RunStatus.RECOVERY_REQUIRED,
+            RunStatusV1.RECOVERY_REQUIRED,
             "RECHECK requires changed recovery input",
         )
     if reason == "UNKNOWN_RESULT":
-        if recovered_action_status is ActionStatus.EXECUTED:
-            return _applied(RunStatus.VERIFYING)
-        if recovered_action_status is ActionStatus.FAILED:
+        if recovered_action_status is ActionStatusV1.EXECUTED:
+            return _applied(RunStatusV1.VERIFYING)
+        if recovered_action_status is ActionStatusV1.FAILED:
             return _applied(pre_recovery_status)
         return _reject(
             ResultCode.NO_PROGRESS,
-            RunStatus.RECOVERY_REQUIRED,
+            RunStatusV1.RECOVERY_REQUIRED,
             "UNKNOWN_RESULT remains unresolved after recheck",
         )
     if reason == "VERIFICATION_MISMATCH":
-        return _applied(RunStatus.VERIFYING)
+        return _applied(RunStatusV1.VERIFYING)
     if reason in {"CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"}:
         if (
             validated_resume_status is None
             or validated_resume_status is not pre_recovery_status
-            or validated_resume_status is RunStatus.RECOVERY_REQUIRED
+            or validated_resume_status is RunStatusV1.RECOVERY_REQUIRED
         ):
             return _reject(
                 ResultCode.NO_PROGRESS,
-                RunStatus.RECOVERY_REQUIRED,
+                RunStatusV1.RECOVERY_REQUIRED,
                 "RECHECK requires the validated pre-recovery resume status",
             )
         return _applied(validated_resume_status)
-    return _reject(ResultCode.NO_PROGRESS, RunStatus.RECOVERY_REQUIRED, "unknown recovery reason")
+    return _reject(ResultCode.NO_PROGRESS, RunStatusV1.RECOVERY_REQUIRED, "unknown recovery reason")
 
 
-def _applied(next_status: RunStatus) -> RecoveryResolutionDecision:
+def _applied(next_status: RunStatusV1) -> RecoveryResolutionDecision:
     return RecoveryResolutionDecision(True, ResultCode.TRANSITION_APPLIED, next_status)
 
 
 def _reject(
-    result_code: ResultCode, current_status: RunStatus, detail: str
+    result_code: ResultCode, current_status: RunStatusV1, detail: str
 ) -> RecoveryResolutionDecision:
     return RecoveryResolutionDecision(False, result_code, current_status, detail)

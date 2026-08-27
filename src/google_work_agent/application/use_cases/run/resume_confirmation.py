@@ -16,7 +16,7 @@ from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventR
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatus, RunTransitionRejected
+from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.resume_confirmation import (
     transition_resume_confirmation,
 )
@@ -162,12 +162,12 @@ class ResumeConfirmationHandler:
         self,
         unit_of_work: UnitOfWork,
         command: ResumeConfirmationCommand,
-        status: RunStatus,
+        status: RunStatusV1,
         version: int,
         now_ms: int,
     ) -> ResumeConfirmationResult:
         try:
-            resume_status = RunStatus(command.pre_confirmation_status)
+            resume_status = RunStatusV1(command.pre_confirmation_status)
             next_status = transition_resume_confirmation(status, resume_status=resume_status)
         except (ValueError, RunTransitionRejected) as error:
             return _result(
@@ -182,7 +182,7 @@ class ResumeConfirmationHandler:
         applied = unit_of_work.runs.update_if_version_and_status(
             command.run_id,
             command.expected_version,
-            frozenset({RunStatus.WAITING_CONFIRMATION}),
+            frozenset({RunStatusV1.WAITING_CONFIRMATION}),
             {"status": next_status.value, "version": version + 1},
         )
         if not applied:
@@ -255,7 +255,7 @@ class ResumeConfirmationHandler:
     ) -> ResumeConfirmationResult:
         if receipt.request_hash != command.request_hash:
             run = unit_of_work.runs.get(command.run_id)
-            status = RunStatus.CREATED if run is None else run.status
+            status = RunStatusV1.CREATED if run is None else run.status
             version = 0 if run is None else run.version
             return _result(
                 command,
@@ -295,7 +295,7 @@ def _result(
     command: ResumeConfirmationCommand,
     applied: bool,
     code: ResultCode,
-    status: RunStatus,
+    status: RunStatusV1,
     version: int,
     handoff_id: str | None,
     detail: str | None = None,

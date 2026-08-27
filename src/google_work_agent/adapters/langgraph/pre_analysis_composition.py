@@ -48,7 +48,7 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
     SourceFetchPlanBuilder,
 )
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.domain.tool_registry import ConnectorToolCatalog
+from google_work_agent.ports.connector.migration_contracts.tool_registry import ConnectorToolCatalog
 
 
 @dataclass(frozen=True, slots=True)

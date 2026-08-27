@@ -7,6 +7,10 @@ from enum import StrEnum
 from json import dumps, loads
 from typing import Any, Protocol, cast
 
+from google_work_agent.application.use_cases.action.cancel_pending_action import (
+    CancelPendingActionCommand,
+    CancelPendingActionHandler,
+)
 from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
@@ -18,27 +22,25 @@ from google_work_agent.application.write_plan_contracts import (
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
     ActionCommand,
-    ActionStatus,
+    ActionStatusV1,
     EffectType,
     next_allowed_action_commands,
 )
-from google_work_agent.domain.action.transitions.cancel_pending_action import (
-    transition_cancel_pending_action,
-)
 from google_work_agent.domain.approval.model import Approval as ApprovalRecord
-from google_work_agent.domain.approval.model import ApprovalStatus
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatus
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatus
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports import (
     UnitOfWork,
@@ -67,16 +69,38 @@ class ReceiptResponse(Protocol):
 def revoke_active_approvals(unit_of_work: UnitOfWork, action_id: str) -> tuple[str, ...]:
     revoked: list[str] = []
     for approval in unit_of_work.approvals.list_by_action(action_id):
-        if approval.status is not ApprovalStatus.ACTIVE:
+        if approval.status is not ApprovalStatusV1.ACTIVE:
             continue
         if not unit_of_work.approvals.update_if_status(
             approval.id,
             expected_status=approval.status,
-            next_status=ApprovalStatus.REVOKED,
+            next_status=ApprovalStatusV1.REVOKED,
         ):
             raise RuntimeError(f"validated RevokeApproval CAS failed: {approval.id}")
         revoked.append(approval.id)
     return tuple(revoked)
+
+
+def append_approval_revoked_audits(
+    unit_of_work: UnitOfWork,
+    *,
+    run_id: str,
+    action_id: str,
+    approval_ids: tuple[str, ...],
+    command_id: str,
+    created_at_ms: int,
+) -> None:
+    for approval_id in approval_ids:
+        unit_of_work.audits.add(
+            audit_event(
+                run_id=run_id,
+                action_id=action_id,
+                event_type="APPROVAL_REVOKED",
+                outcome=ResultCode.TRANSITION_APPLIED.value,
+                metadata={"approval_id": approval_id, "command_id": command_id},
+                created_at_ms=created_at_ms,
+            )
+        )
 
 
 def require_plan_review(unit_of_work: UnitOfWork, plan_id: str) -> int:
@@ -84,7 +108,7 @@ def require_plan_review(unit_of_work: UnitOfWork, plan_id: str) -> int:
     plan = unit_of_work.plans.get_by_id(plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
-    if plan.status not in {PlanStatus.WAITING_APPROVAL, PlanStatus.ACTIVE}:
+    if plan.status not in {PlanStatusV1.WAITING_APPROVAL, PlanStatusV1.ACTIVE}:
         raise RuntimeError(f"Plan review cannot be invalidated from {plan.status.value}")
     updated = unit_of_work.plans.update_review_if_version_and_status(
         plan.id,
@@ -285,54 +309,34 @@ def emit_command_rejected_hash_mismatch(
 def cancel_pending_actions(
     *, unit_of_work: UnitOfWork, run_id: str, plan_id: str, updated_at_ms: int
 ) -> None:
-    plan = require_plan(unit_of_work, plan_id)
-    current_plan = require_latest_plan_for_run(unit_of_work, plan.run_id)
+    require_plan(unit_of_work, plan_id)
     pending_statuses = {
-        ActionStatus.PROPOSED.value,
-        ActionStatus.MODIFIED.value,
-        ActionStatus.APPROVED.value,
-        ActionStatus.EXPIRED.value,
+        ActionStatusV1.PROPOSED.value,
+        ActionStatusV1.MODIFIED.value,
+        ActionStatusV1.APPROVED.value,
+        ActionStatusV1.EXPIRED.value,
     }
     for action in unit_of_work.actions.list_by_plan(plan_id):
         if action.status not in pending_statuses:
             continue
-        if action.status == ActionStatus.APPROVED.value:
-            revoke_active_approvals(unit_of_work, action.id)
-        result = transition_cancel_pending_action(
-            ActionStatus(action.status),
-            action.version,
-            action.version,
-            effect_type=EffectType(action.effect_type),
-            plan_status=plan.status,
-            plan_is_current=current_plan.id == plan.id,
+        child_payload = {
+            "action_id": action.id,
+            "expected_version": action.version,
+            "parent_plan_id": plan_id,
+            "parent_run_id": run_id,
+        }
+        result = CancelPendingActionHandler.apply_in_unit_of_work(
+            unit_of_work,
+            CancelPendingActionCommand(
+                command_id=f"system:cancel-pending-action:{run_id}:{action.id}:{action.version}",
+                request_hash=calculate_canonical_json_hash(child_payload),
+                action_id=action.id,
+                expected_version=action.version,
+            ),
+            now_ms=updated_at_ms,
         )
         if not result.applied:
             raise RuntimeError(f"pending action cancellation failed: {action.id}")
-        if (
-            unit_of_work.actions.update_if_version_and_status(
-                action.id,
-                expected_version=action.version,
-                expected_status=ActionStatus(action.status),
-                next_status=result.current_status,
-                updated_at_ms=updated_at_ms,
-            )
-            is None
-        ):
-            raise RuntimeError(f"pending action cancellation CAS failed: {action.id}")
-        unit_of_work.audits.add(
-            audit_event(
-                run_id=run_id,
-                action_id=action.id,
-                event_type="ACTION_CANCELLED",
-                outcome=ResultCode.TRANSITION_APPLIED.value,
-                metadata={
-                    "plan_id": plan_id,
-                    "previous_status": action.status,
-                    "new_status": ActionStatus.CANCELLED.value,
-                },
-                created_at_ms=updated_at_ms,
-            )
-        )
 
 
 def resolve_existing_run_receipt(
@@ -362,11 +366,11 @@ def resolve_existing_run_receipt(
         plans = unit_of_work.plans.list_by_run(run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
         applied_statuses = {
-            RunStatus.CANCEL_REQUESTED.value,
-            RunStatus.CANCELLED.value,
-            RunStatus.REAUTH_REQUIRED.value,
-            RunStatus.RECOVERY_REQUIRED.value,
-            RunStatus.VERIFYING.value,
+            RunStatusV1.CANCEL_REQUESTED.value,
+            RunStatusV1.CANCELLED.value,
+            RunStatusV1.REAUTH_REQUIRED.value,
+            RunStatusV1.RECOVERY_REQUIRED.value,
+            RunStatusV1.VERIFYING.value,
         }
         return WriteRunResponse(
             applied=run.status.value in applied_statuses,
@@ -442,7 +446,7 @@ def upsert_resource_ref(
 
 
 def action_response_from_result[CommandType: StrEnum](
-    *, action_id: str, result: CommandResult[ActionStatus, CommandType]
+    *, action_id: str, result: CommandResult[ActionStatusV1, CommandType]
 ) -> WriteActionResponse:
     return WriteActionResponse(
         applied=result.applied,
@@ -497,13 +501,13 @@ def resolve_existing_action_receipt(
     if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
         action = require_action(unit_of_work, action_id)
         applied_statuses = {
-            ActionStatus.FAILED.value,
-            ActionStatus.UNKNOWN_RESULT.value,
-            ActionStatus.EXECUTED.value,
-            ActionStatus.VERIFIED.value,
-            ActionStatus.MODIFIED.value,
-            ActionStatus.MISMATCH.value,
-            ActionStatus.DEPENDENCY_BLOCKED.value,
+            ActionStatusV1.FAILED.value,
+            ActionStatusV1.UNKNOWN_RESULT.value,
+            ActionStatusV1.EXECUTED.value,
+            ActionStatusV1.VERIFIED.value,
+            ActionStatusV1.MODIFIED.value,
+            ActionStatusV1.MISMATCH.value,
+            ActionStatusV1.DEPENDENCY_BLOCKED.value,
         }
         return WriteActionResponse(
             applied=action.status in applied_statuses,
@@ -547,17 +551,17 @@ def propagate_dependency_blocked(
         visited.add(dependent_action_id)
         dependent = unit_of_work.actions.get_by_id(dependent_action_id)
         if dependent is not None and dependent.status in {
-            ActionStatus.PROPOSED.value,
-            ActionStatus.MODIFIED.value,
-            ActionStatus.APPROVED.value,
+            ActionStatusV1.PROPOSED.value,
+            ActionStatusV1.MODIFIED.value,
+            ActionStatusV1.APPROVED.value,
         }:
             revoke_active_approvals(unit_of_work, dependent_action_id)
             if (
                 unit_of_work.actions.update_if_version_and_status(
                     dependent_action_id,
                     expected_version=dependent.version,
-                    expected_status=ActionStatus(dependent.status),
-                    next_status=ActionStatus.DEPENDENCY_BLOCKED,
+                    expected_status=ActionStatusV1(dependent.status),
+                    next_status=ActionStatusV1.DEPENDENCY_BLOCKED,
                     updated_at_ms=updated_at_ms,
                 )
                 is None
@@ -571,7 +575,7 @@ def propagate_dependency_blocked(
                 run_id=run_id,
                 action_id=blocked_action_id,
                 event_type="WRITE_DEPENDENCY_BLOCKED",
-                status=ActionStatus.DEPENDENCY_BLOCKED.value,
+                status=ActionStatusV1.DEPENDENCY_BLOCKED.value,
                 duration_ms=None,
                 payload_json=dumps({"blocked_by_action_id": action_id}, sort_keys=True),
                 created_at_ms=updated_at_ms,
@@ -591,5 +595,5 @@ def propagate_dependency_blocked(
 
 def next_allowed_write_commands_for_record(action: ActionRecord) -> tuple[ActionCommand, ...]:
     return next_allowed_action_commands(
-        ActionStatus(action.status), effect_type=EffectType(action.effect_type)
+        ActionStatusV1(action.status), effect_type=EffectType(action.effect_type)
     )
