@@ -9,6 +9,9 @@ The operational Phase-2 Canonical ↔ Current implementation mapping baseline.
 This directory intentionally contains only the files required to operate the mapping.
 Validation reports, temporary audit notes, cycle reports, and artifact manifests are not operational authority and are excluded.
 
+Issue #104 final Domain implementation correction evidence:
+`domain-closure-final-correction-b0e7de4c.md`.
+
 
 ## Authority read order
 
