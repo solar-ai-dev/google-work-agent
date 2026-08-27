@@ -21,7 +21,6 @@ from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
     ClaimExecutionHandler,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -33,6 +32,7 @@ from tests.integration.persistence.test_write_actions import (
     FakeGoogleGateway,
     _prepare_write_plan,
 )
+from tests.support.legacy_write_approval import ApproveWriteActionService
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 

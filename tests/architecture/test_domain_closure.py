@@ -132,6 +132,8 @@ REMOVED_AUTHORITIES = (
     SRC / "application" / "read_lifecycle.py",
     SRC / "application" / "write_reauth.py",
     SRC / "application" / "write_run_completion.py",
+    SRC / "application" / "write_approval.py",
+    SRC / "application" / "write_action_mutation.py",
 )
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -240,14 +242,8 @@ def test_corrected_action_commands_have_no_legacy_production_caller_or_export() 
         "ModifyWriteActionService",
         "RejectWriteActionService",
     }
-    legacy_sources = {
-        SRC / "application" / "write_approval.py",
-        SRC / "application" / "write_action_mutation.py",
-    }
     violations: list[str] = []
     for path in SRC.rglob("*.py"):
-        if path in legacy_sources:
-            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id in forbidden_symbols:

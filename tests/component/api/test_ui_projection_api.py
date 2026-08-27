@@ -10,6 +10,8 @@ from tests.support.fakes import (
     FakeWorkflowRuntime,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write_action_mutation import RejectWriteActionService
+from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
@@ -55,12 +57,10 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.application.write_action_mutation import RejectWriteActionService
 from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     LauncherProbeDecision,
     ReadinessCheckResult,

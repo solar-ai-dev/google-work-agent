@@ -15,7 +15,6 @@ from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionHandler,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -40,6 +39,7 @@ from tests.integration.persistence.test_write_action_dependency_persistence impo
     _task_draft,
 )
 from tests.support.fakes import FakeClockPort
+from tests.support.legacy_write_approval import ApproveWriteActionService
 
 
 @pytest.fixture()

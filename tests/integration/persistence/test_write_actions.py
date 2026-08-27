@@ -35,7 +35,6 @@ from google_work_agent.application.write_actions import (
     classify_write_delivery,
     is_reauth_required_error,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -105,6 +104,7 @@ from tests.support.fakes import (
     GoogleGatewayFaultKind,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write_approval import ApproveWriteActionService
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 TEST_CONNECTOR_ID = "google_workspace"

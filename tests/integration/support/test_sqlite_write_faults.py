@@ -12,7 +12,6 @@ from google_work_agent.adapters.persistence import (
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -43,6 +42,7 @@ from tests.support.fakes import (
     fault_injecting_unit_of_work_factory,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write_approval import ApproveWriteActionService
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 

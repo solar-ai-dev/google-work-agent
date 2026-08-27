@@ -17,6 +17,11 @@ from tests.support.fakes import (
     GoogleGatewayFaultKind,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write_action_mutation import (
+    ModifyWriteActionService,
+    RejectWriteActionService,
+)
+from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.prompt_manifests import (
     write_draft_manifest,
     write_manifest_with_legacy_profile_slots,
@@ -61,15 +66,10 @@ from google_work_agent.application.orchestration.tool_routing import (
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
-from google_work_agent.application.write_action_mutation import (
-    ModifyWriteActionService,
-    RejectWriteActionService,
-)
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )

@@ -20,6 +20,9 @@ from google_work_agent.application.write_persistence import (
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.command_receipt.model import (
+    CommandReceipt as CommandReceiptRecord,
+)
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.abort_claimed_execution import (
@@ -200,7 +203,7 @@ class AbortClaimedExecutionHandler:
     def _replay(
         unit_of_work: UnitOfWork,
         command: AbortClaimedExecutionCommandV1,
-        receipt: object,
+        receipt: CommandReceiptRecord,
     ) -> AbortClaimedExecutionResultV1:
         action = require_action(unit_of_work, command.action_id)
         attempt = require_attempt(unit_of_work, command.attempt_id)

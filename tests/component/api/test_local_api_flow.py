@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeWorkflowRuntime
+from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
@@ -40,7 +41,6 @@ from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,

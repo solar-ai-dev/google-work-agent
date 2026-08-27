@@ -20,7 +20,6 @@ from google_work_agent.adapters.persistence import (
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -43,6 +42,7 @@ from google_work_agent.application.write_result_persistence import (
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import FakeClockPort
+from tests.support.legacy_write_approval import ApproveWriteActionService
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}
 

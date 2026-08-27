@@ -25,6 +25,11 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write_action_mutation import (
+    ModifyWriteActionService,
+    RejectWriteActionService,
+)
+from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.workflow_admission import build_test_admission_callbacks
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
@@ -68,15 +73,10 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
-from google_work_agent.application.write_action_mutation import (
-    ModifyWriteActionService,
-    RejectWriteActionService,
-)
 from google_work_agent.application.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
-from google_work_agent.application.write_approval import ApproveWriteActionService
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,
