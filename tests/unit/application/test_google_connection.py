@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from google_work_agent.application.google_connection import GetGoogleConnectionService
-from google_work_agent.ports import CredentialState, GoogleConnectionStatus, OAuthEnvironment
+from google_work_agent.application.use_cases.connector_connection.models import (
+    CredentialState,
+    GoogleConnectionStatus,
+)
+from google_work_agent.ports.connector.oauth_credential_port import (
+    ConnectionMetadataV1,
+    OAuthEnvironment,
+)
 
 
 class _FakeProvider:
@@ -13,8 +20,17 @@ class _FakeProvider:
     def start_oauth(self) -> object:
         raise NotImplementedError
 
-    def get_connection_status(self) -> GoogleConnectionStatus:
-        return self._status
+    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+        assert connector_id == "google_workspace"
+        return ConnectionMetadataV1(
+            schema_version=1,
+            connector_id=connector_id,
+            account_id=self._status.account_email,
+            display_email=self._status.account_email,
+            connection_status="CONNECTED" if self._status.connected else "DISCONNECTED",
+            granted_scopes=self._status.granted_scopes,
+            missing_required_scopes=self._status.missing_scopes,
+        )
 
     def disconnect(self) -> object:
         raise NotImplementedError
@@ -55,7 +71,7 @@ def test_provisions_account_when_connected_with_resolved_email() -> None:
     status = service()
 
     assert status.connected is True
-    assert provisioner.calls == [("user@example.com", "Display Name", 5_000)]
+    assert provisioner.calls == [("user@example.com", None, 5_000)]
 
 
 def test_does_not_provision_when_not_connected() -> None:

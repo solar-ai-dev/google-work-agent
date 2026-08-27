@@ -806,13 +806,20 @@ def build_container(
         launcher_probe_verifier=DevelopmentLauncherProbeVerifier(service_instance_id),
         bootstrap_grant_store=grant_store,
         local_session_manager=session_manager,
-        start_google_oauth_service=StartGoogleOAuthService(provider=google_provider),
+        start_google_oauth_service=StartGoogleOAuthService(
+            provider=google_provider,
+            operation_ref_factory=id_generator.new_uuid,
+            now_ms=clock.now_ms,
+        ),
         get_google_connection_service=GetGoogleConnectionService(
             provider=google_provider,
             account_provisioner=query_service,
             now_ms=clock.now_ms,
         ),
-        disconnect_google_service=DisconnectGoogleService(provider=google_provider),
+        disconnect_google_service=DisconnectGoogleService(
+            provider=google_provider,
+            operation_ref_factory=id_generator.new_uuid,
+        ),
         resource_query_service=OpaqueResourceQueryService(
             ResourceQueryService(
                 gateway=read_projection,

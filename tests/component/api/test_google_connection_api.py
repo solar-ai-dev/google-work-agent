@@ -169,9 +169,16 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         local_session_manager=session_manager,
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
         client_address_resolver=lambda _request: "127.0.0.1",
-        start_google_oauth_service=StartGoogleOAuthService(provider=provider),
+        start_google_oauth_service=StartGoogleOAuthService(
+            provider=provider,
+            operation_ref_factory=lambda: "oauth-start-operation",
+            now_ms=clock.now_ms,
+        ),
         get_google_connection_service=GetGoogleConnectionService(provider=provider),
-        disconnect_google_service=DisconnectGoogleService(provider=provider),
+        disconnect_google_service=DisconnectGoogleService(
+            provider=provider,
+            operation_ref_factory=lambda: "oauth-disconnect-operation",
+        ),
     )
     headers = {
         "Origin": "http://127.0.0.1:8766",
@@ -215,7 +222,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             runtime = client.get("/api/v1/runtime", headers=headers)
             assert runtime.status_code == 200
             summary = runtime.json()["summary"]
-            assert summary["google_connection"]["connected"] is False
+            assert summary["google_connection"]["connection_status"] == "DISCONNECTED"
             assert summary["mcp_runtime"]["process_status"] == "READY"
 
             disconnected = client.post("/api/v1/google/disconnect", headers=headers, json={})

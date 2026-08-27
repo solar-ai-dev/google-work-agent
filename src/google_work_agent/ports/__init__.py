@@ -18,14 +18,6 @@ from google_work_agent.ports.connector.mcp_client_port import (
     MCPRuntimeMetadata,
     MCPToolResponse,
 )
-from google_work_agent.ports.google_oauth import (
-    CredentialState,
-    DisconnectResult,
-    GoogleConnectionStatus,
-    GoogleOAuthCredentialProvider,
-    OAuthEnvironment,
-    OAuthStartResult,
-)
 from google_work_agent.ports.google_workspace import (
     DeliveryCertainty,
     FreeBusyCalendar,
@@ -158,8 +150,6 @@ __all__ = [
     "ClockPort",
     "CommandReceiptRepository",
     "ConversationRepository",
-    "CredentialState",
-    "DisconnectResult",
     "EndpointPolicy",
     "EvidenceRepository",
     "ExecutionAttemptRepository",
@@ -167,8 +157,6 @@ __all__ = [
     "FreeBusyInterval",
     "GmailAttachmentMetadata",
     "GmailThreadDetail",
-    "GoogleConnectionStatus",
-    "GoogleOAuthCredentialProvider",
     "GoogleWorkspaceErrorCode",
     "DeliveryCertainty",
     "GoogleWorkspaceGatewayError",
@@ -193,9 +181,7 @@ __all__ = [
     "MaintenanceGate",
     "MaintenanceWindow",
     "MessageRepository",
-    "OAuthEnvironment",
     "OllamaRuntimeProbe",
-    "OAuthStartResult",
     "OperationalLogRecord",
     "OperationalLogSink",
     "OutputSchemaDefinition",

@@ -7,14 +7,17 @@ from google_work_agent.application.use_cases.connector_connection.get_connection
     GetConnectionHandler,
     GetConnectionQuery,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.connector_connection.models import (
     CredentialState,
     GoogleConnectionStatus,
-    OAuthEnvironment,
 )
 from google_work_agent.ports.connector.mcp_client_port import (
     MCPClientPortError,
     MCPClientPortErrorCode,
+)
+from google_work_agent.ports.connector.oauth_credential_port import (
+    ConnectionMetadataV1,
+    OAuthEnvironment,
 )
 from google_work_agent.ports.connectors.failure import (
     ConnectorFailureCode,
@@ -139,8 +142,16 @@ def test_get_connection_handler_rejects_unknown_connector_before_read() -> None:
 
 
 class _Provider:
-    def get_connection_status(self) -> GoogleConnectionStatus:
-        return _status(connected=True, email="legacy@example.com")
+    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+        return ConnectionMetadataV1(
+            schema_version=1,
+            connector_id=connector_id,
+            account_id="legacy@example.com",
+            display_email="legacy@example.com",
+            connection_status="CONNECTED",
+            granted_scopes=("scope-a",),
+            missing_required_scopes=(),
+        )
 
     def start_oauth(self) -> object:
         raise AssertionError("not expected")
@@ -174,4 +185,4 @@ def test_legacy_get_connection_service_delegates_to_canonical_handler_semantics(
     result = service()
 
     assert result.account_email == "legacy@example.com"
-    assert provisioner.calls == [("legacy@example.com", "Display Name", 7_000)]
+    assert provisioner.calls == [("legacy@example.com", None, 7_000)]

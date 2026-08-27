@@ -17,7 +17,11 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_set
     GoogleOAuthSettings,
 )
 from google_work_agent.application.google_connection import GetGoogleConnectionService
-from google_work_agent.ports import CredentialState, GoogleConnectionStatus, OAuthEnvironment
+from google_work_agent.ports.connector.oauth_credential_port import (
+    ConnectionMetadataV1,
+)
+
+CredentialState = server.CredentialState
 
 
 def _fake_id_token(claims: dict[str, object]) -> str:
@@ -572,18 +576,18 @@ def test_google_connection_provisions_after_valid_token_identity_recovery(
     provisioned: list[str] = []
 
     class Provider:
-        def get_connection_status(self) -> GoogleConnectionStatus:
+        def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
             payload = server._control_call(state, method="google.connection.get")
-            return GoogleConnectionStatus(
-                connected=bool(payload["connected"]),
-                credential_state=CredentialState(str(payload["credential_state"])),
-                account_email=payload["account_email"],
-                display_name=None,
+            return ConnectionMetadataV1(
+                schema_version=1,
+                connector_id=connector_id,
+                account_id=payload["account_email"],
+                display_email=payload["account_email"],
+                connection_status=(
+                    "CONNECTED" if bool(payload["connected"]) else "DISCONNECTED"
+                ),
                 granted_scopes=(),
-                missing_scopes=(),
-                reauth_required=False,
-                oauth_environment=OAuthEnvironment.DEVELOPMENT,
-                last_checked_at_ms=int(payload["last_checked_at_ms"]),
+                missing_required_scopes=(),
             )
 
     class Provisioner:

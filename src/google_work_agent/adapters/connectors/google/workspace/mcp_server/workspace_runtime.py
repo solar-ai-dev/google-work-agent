@@ -21,6 +21,7 @@ from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import getaddresses, parseaddr
+from enum import StrEnum
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,7 +47,16 @@ from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
     StagedAttachmentDescriptorV1,
 )
-from google_work_agent.ports import CredentialState, OAuthEnvironment, SecretStorePort, TimeRange
+from google_work_agent.ports import SecretStorePort, TimeRange
+from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
+
+
+class CredentialState(StrEnum):
+    NOT_CONNECTED = "NOT_CONNECTED"
+    CONNECTED = "CONNECTED"
+    REAUTH_REQUIRED = "REAUTH_REQUIRED"
+    KEYRING_UNAVAILABLE = "KEYRING_UNAVAILABLE"
+    ERROR = "ERROR"
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"

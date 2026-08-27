@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from google_work_agent.application.use_cases.connector_connection.models import (
+    GoogleConnectionStatus,
+)
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 from google_work_agent.ports.connectors.failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_mcp_transport_failure,
 )
-from google_work_agent.ports import GoogleConnectionStatus
-from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 
 
 class GetConnectionAccess(Protocol):

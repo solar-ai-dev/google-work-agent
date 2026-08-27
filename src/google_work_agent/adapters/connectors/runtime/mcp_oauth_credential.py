@@ -9,9 +9,9 @@ from google_work_agent.ports.connector.mcp_client_port import JsonValue, MCPClie
 from google_work_agent.ports.connector.oauth_credential_port import (
     AuthorizationStartV1,
     ConnectionMetadataV1,
+    OAuthEnvironment,
     RevokeResultV1,
 )
-from google_work_agent.ports.google_oauth import OAuthEnvironment
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )

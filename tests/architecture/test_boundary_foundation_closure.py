@@ -123,6 +123,7 @@ def test_removed_boundary_authorities_and_compatibility_paths_are_absent() -> No
         "adapters/mcp/google_workspace_compat.py",
         "ports/connector/migration_contracts",
         "ports/connectors/connector_runtime.py",
+        "ports/google_oauth.py",
         "adapters/llm/ollama/credential.py",
     )
 
@@ -132,6 +133,9 @@ def test_removed_boundary_authorities_and_compatibility_paths_are_absent() -> No
         if (SRC / relative).is_file()
         or ((SRC / relative).is_dir() and any((SRC / relative).glob("*.py")))
     ]
+
+    production = "\n".join(path.read_text(encoding="utf-8") for path in SRC.rglob("*.py"))
+    assert "GoogleOAuthCredentialProvider" not in production
 
 
 def test_boundary_adapter_packages_do_not_reexport_concrete_owners() -> None:

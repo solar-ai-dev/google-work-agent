@@ -1,16 +1,9 @@
-"""Google OAuth credential provider contracts."""
-
-from __future__ import annotations
+"""Application projections for the current Google connection API."""
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
 
-
-class OAuthEnvironment(StrEnum):
-    DEVELOPMENT = "DEVELOPMENT"
-    STAGING = "STAGING"
-    PRODUCTION = "PRODUCTION"
+from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 
 
 class CredentialState(StrEnum):
@@ -55,14 +48,9 @@ class DisconnectResult:
     credential_state: CredentialState
 
 
-class GoogleOAuthCredentialProvider(Protocol):
-    """Own the desktop OAuth flow and secret lifecycle."""
-
-    def start_oauth(self) -> OAuthStartResult:
-        """Start one desktop OAuth flow and return browser metadata."""
-
-    def get_connection_status(self) -> GoogleConnectionStatus:
-        """Return sanitized Google connection metadata."""
-
-    def disconnect(self) -> DisconnectResult:
-        """Disconnect the current Google account and clear credentials."""
+__all__ = [
+    "CredentialState",
+    "DisconnectResult",
+    "GoogleConnectionStatus",
+    "OAuthStartResult",
+]

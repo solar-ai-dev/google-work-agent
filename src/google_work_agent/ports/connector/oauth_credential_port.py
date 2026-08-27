@@ -1,14 +1,20 @@
 """Connector-parameterized OAuth credential boundary."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Literal, Protocol
 
-from google_work_agent.ports.google_oauth import OAuthEnvironment
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )
 
 type AccessContextHandle = str
+
+
+class OAuthEnvironment(StrEnum):
+    DEVELOPMENT = "DEVELOPMENT"
+    STAGING = "STAGING"
+    PRODUCTION = "PRODUCTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,5 +76,6 @@ __all__ = [
     "AuthorizationStartV1",
     "ConnectionMetadataV1",
     "OAuthCredentialPort",
+    "OAuthEnvironment",
     "RevokeResultV1",
 ]
