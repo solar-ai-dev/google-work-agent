@@ -14,6 +14,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     MaterializedRetrievalRead,
@@ -28,7 +31,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.retrieval_read_cache import (
     RunScopedReadResultCache,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,

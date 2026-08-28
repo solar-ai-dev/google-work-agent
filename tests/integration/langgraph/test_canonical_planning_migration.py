@@ -38,6 +38,11 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
 )
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputRoutePlanV1,
+    OutputToolRouteV1,
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     EvidenceDraftV1,
@@ -48,11 +53,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.planning_arguments import (
     PlanningArgumentBindingError,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    InputRoutePlanV1,
-    OutputToolRouteV1,
-    ToolRoutePlanV2,
 )
 from google_work_agent.ports.llm import LLMInvocationError
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome

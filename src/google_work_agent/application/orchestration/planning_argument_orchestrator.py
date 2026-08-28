@@ -14,6 +14,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     ConfirmationRequiredV1,
@@ -36,7 +39,6 @@ from google_work_agent.application.orchestration.planning_arguments import (
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.ports.llm import (
     PromptReference,
     StructuredLLMResult,

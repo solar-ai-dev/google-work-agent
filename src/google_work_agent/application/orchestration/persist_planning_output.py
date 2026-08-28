@@ -9,13 +9,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     EvidenceDraftV1,
     RequestIntentV2,
 )
 from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
 )

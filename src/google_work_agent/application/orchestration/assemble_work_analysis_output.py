@@ -16,6 +16,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Literal, NotRequired, Protocol, TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     BlockedSignalV1,
     ConfirmationRequiredV1,
@@ -36,7 +39,6 @@ from google_work_agent.application.orchestration.state_artifacts import (
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports.llm import OutputSchemaDefinition
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 

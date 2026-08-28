@@ -45,7 +45,6 @@ from google_work_agent.application.orchestration.retrieval_read_executor import 
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     SourceFetchPlanBuilder,
 )
-from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
@@ -67,7 +66,6 @@ def build_pre_analysis_subgraphs(
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_manifest_path: Path | None,
-    tool_route_agent: ToolRouteAgent,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
     retrieval_query_planner: RetrievalQueryPlannerAgent,
     context_agent: ContextRetrievalAgent,
@@ -108,9 +106,10 @@ def build_pre_analysis_subgraphs(
         ).build(),
         tool_route=build_tool_routing_subgraph(
             tool_catalog=tool_catalog,
+            llm_runtime=llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             merge_decision=merge_decision,
-            semantic_agent=tool_route_agent,
             graph_profile=graph_profile,
             confirm_inline=confirm_tool_route_inline,
         ),

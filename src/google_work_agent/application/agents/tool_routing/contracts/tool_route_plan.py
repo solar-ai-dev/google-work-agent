@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal, Required, TypedDict
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
@@ -69,3 +70,43 @@ class ToolRouteResultV1(TypedDict):
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: ScopeExpansionRequiredV1 | None
     reason_codes: list[str]
+
+
+class ToolRouteDisposition(StrEnum):
+    ROUTE_READY = "ROUTE_READY"
+    NO_TOOL_NEEDED = "NO_TOOL_NEEDED"
+    NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    BLOCKED = "BLOCKED"
+
+
+def allowed_input_sources(plan: ToolRoutePlanV2) -> frozenset[str]:
+    return frozenset(
+        _resource_source(route["resource_type"])
+        for route in plan["input_plan"]["input_routes"]
+    )
+
+
+def allowed_read_tool_ids(plan: ToolRoutePlanV2, *, source: str) -> frozenset[str]:
+    return frozenset(
+        tool_id
+        for route in plan["input_plan"]["input_routes"]
+        if _resource_source(route["resource_type"]) == source
+        for tool_id in route["allowed_read_tool_ids"]
+    )
+
+
+def output_routes(plan: ToolRoutePlanV2) -> tuple[OutputToolRouteV1, ...]:
+    output_plan = plan["output_plan"]
+    if output_plan["output_mode"] == "ANSWER":
+        return ()
+    return tuple(output_plan["output_routes"])
+
+
+def _resource_source(resource_type: str) -> str:
+    if resource_type.startswith("GMAIL_"):
+        return "GMAIL"
+    if resource_type in {"TASK", "TASK_LIST"}:
+        return "TASKS"
+    if resource_type.startswith("CALENDAR"):
+        return "CALENDAR"
+    raise ValueError(f"resource type has no source projection: {resource_type}")

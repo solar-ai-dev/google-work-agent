@@ -73,7 +73,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
@@ -97,7 +97,7 @@ class SingleWorkflowSubgraph:
         acquisition_agent: ApiDiscoveryAcquisitionAgent,
         planning_agent: SolutionPlanningAgent,
         review_agent: PlanReviewAgent,
-        tool_route_coordinator: ToolRouteCoordinator,
+        tool_catalog: SignedToolRegistry,
         evidence_store: RunScopedEvidenceStore,
         request_source_prompt_ref: PromptReference,
         reason_plan_prompt_ref: PromptReference,
@@ -111,7 +111,7 @@ class SingleWorkflowSubgraph:
         self._acquisition_agent = acquisition_agent
         self._planning_agent = planning_agent
         self._review_agent = review_agent
-        self._tool_route_coordinator = tool_route_coordinator
+        self._tool_catalog = tool_catalog
         self._evidence_store = evidence_store
         self._request_source_prompt_ref = request_source_prompt_ref
         self._reason_plan_prompt_ref = reason_plan_prompt_ref
@@ -233,7 +233,7 @@ class SingleWorkflowSubgraph:
         request_intent, tool_route_plan = build_profile_tool_route_plan(
             prompt_output["request_intent"],
             id_factory=self._id_factory,
-            coordinator=self._tool_route_coordinator,
+            tool_catalog=self._tool_catalog,
         )
         updated_local = dict(local_state)
         updated_local["node_state"] = "PLAN_VALIDATED"

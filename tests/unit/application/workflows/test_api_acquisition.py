@@ -8,6 +8,9 @@ from typing import TypedDict, cast
 
 import pytest
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     RetrievalBudget,
@@ -38,7 +41,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     TemporalRelation,
     Weekday,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadResultV1,

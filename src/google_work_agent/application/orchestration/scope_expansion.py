@@ -1,11 +1,11 @@
 """Policy Precondition scope comparison and Confirmation Receipt construction.
 
 Owns exactly two small, deterministic responsibilities kept separate from
-``ToolRouteCoordinator`` (route orchestration) and the LangGraph subgraph
+the exact Tool Routing operations and the LangGraph subgraph
 (interrupt/checkpoint plumbing):
 
 * ``ScopeExpansionResolver`` compares the mandatory Policy Precondition reads
-  ``PolicyPreconditionResolver`` already computes against the user's own
+  ``resolve_policy_preconditions`` computes against the user's own
   explicit ``RequestIntentV2`` SCOPE constraints, and recognizes an
   already-APPROVED ``PolicyConfirmationReceiptV1`` covering the same content.
 * ``build_policy_confirmation_receipt`` is the sole Receipt construction
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 PolicyReadTriple = tuple[str, str, str]
 """``(connector_id, resource_type, reason_code)`` -- the shape returned by
-``PolicyPreconditionResolver.required_reads``."""
+``resolve_policy_preconditions``."""
 
 
 class ScopeExpansionResolver:

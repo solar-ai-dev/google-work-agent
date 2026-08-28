@@ -39,12 +39,12 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.state import Planni
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
 )
-from google_work_agent.application.orchestration.planning_argument_orchestrator import (
-    RouteArgumentResult,
-)
-from google_work_agent.application.orchestration.tool_routing import (
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
     output_routes,
+)
+from google_work_agent.application.orchestration.planning_argument_orchestrator import (
+    RouteArgumentResult,
 )
 from google_work_agent.ports.llm import StructuredLLMResult
 

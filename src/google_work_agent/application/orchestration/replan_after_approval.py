@@ -11,6 +11,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Required, TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+    output_routes,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     StateArtifactRefV1,
@@ -26,7 +30,6 @@ from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2, output_routes
 
 PostApprovalReplanTriggerV1 = Literal["REVISE", "RETRIEVE_MORE"]
 PostApprovalReplanPhaseV1 = Literal["ROLLOVER_REQUIRED", "IDENTITY_PREALLOCATED"]

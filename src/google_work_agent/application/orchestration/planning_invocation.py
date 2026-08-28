@@ -12,6 +12,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+    output_routes,
+)
 from google_work_agent.application.orchestration.assemble_planning_answer import (
     AnswerDraftCandidateV2,
     materialize_answer_draft_v2,
@@ -41,10 +45,6 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
     validate_planning_return_v2,
 )
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
-from google_work_agent.application.orchestration.tool_routing import (
-    ToolRoutePlanV2,
-    output_routes,
-)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 

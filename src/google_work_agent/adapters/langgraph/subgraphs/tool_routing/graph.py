@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -29,6 +30,9 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.select_to
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.validate_route_node import (
     validate_route_node,
 )
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_bind_registry_candidates import (  # noqa: E501
+    route_after_bind_registry_candidates,
+)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_confirmation import (  # noqa: E501
     route_after_confirmation,
 )
@@ -38,9 +42,18 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_a
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import (  # noqa: E501
     route_after_finalize_route,
 )
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_select_tool_if_needed import (  # noqa: E501
+    route_after_select_tool_if_needed,
+)
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_validate_route import (  # noqa: E501
+    route_after_validate_route,
+)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
+    ToolRouteStateV1,
     ToolRoutingInputState,
-    ToolRoutingState,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ScopeExpansionRequiredV1,
 )
 from google_work_agent.application.orchestration.confirmation import (
     build_user_interrupt_v1,
@@ -58,16 +71,18 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.application.orchestration.tool_routing import (
-    ScopeExpansionRequiredV1,
-    ToolRouteCoordinator,
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path,
+    load_prompt_reference,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
-    [ToolRoutingState], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
+    [ToolRouteStateV1], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
 ]
 
 
@@ -87,27 +102,37 @@ class ToolRoutingSubgraph:
     def __init__(
         self,
         *,
-        coordinator: ToolRouteCoordinator,
-        semantic_agent: ToolRouteAgent,
+        llm_runtime: StructuredLLMRuntime,
+        tool_catalog: SignedToolRegistry,
+        prompt_manifest_path: Path | None,
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
         confirm_inline: ConfirmInline,
         id_factory: Callable[[], str],
     ) -> None:
-        self._coordinator = coordinator
-        self._semantic_agent = semantic_agent
+        self._llm_runtime = llm_runtime
+        self._tool_catalog = tool_catalog
+        manifest_path = prompt_manifest_path or default_prompt_manifest_path()
+        self._determine_prompt_ref = load_prompt_reference(
+            "tool_route.determine_io_resources", manifest_path
+        )
+        self._determine_revision_prompt_ref = load_prompt_reference(
+            "tool_route.determine_io_resources.revise", manifest_path
+        )
+        self._select_prompt_ref = load_prompt_reference(
+            "tool_route.select_tool_if_needed", manifest_path
+        )
+        self._select_revision_prompt_ref = load_prompt_reference(
+            "tool_route.select_tool_if_needed.revise", manifest_path
+        )
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
         self._confirm_inline = confirm_inline
         self._id_factory = id_factory
 
-    @property
-    def _tool_catalog(self):
-        return self._semantic_agent._tool_catalog
-
     def build(self) -> Any:
         graph = StateGraph(
-            ToolRoutingState, input_schema=ToolRoutingInputState, output_schema=ParentGraphState
+            ToolRouteStateV1, input_schema=ToolRoutingInputState, output_schema=ParentGraphState
         )
         graph.add_node("initialize", self._initialize_node)
         graph.add_node("determine_io_resources", self._determine_io_resources_node)
@@ -127,8 +152,19 @@ class ToolRoutingSubgraph:
                 "bind_registry_candidates": "bind_registry_candidates",
             },
         )
-        graph.add_edge("bind_registry_candidates", "select_tool_if_needed")
-        graph.add_edge("select_tool_if_needed", "finalize_route")
+        graph.add_conditional_edges(
+            "bind_registry_candidates",
+            route_after_bind_registry_candidates,
+            {
+                "confirm": "prepare_confirmation",
+                "select_tool_if_needed": "select_tool_if_needed",
+            },
+        )
+        graph.add_conditional_edges(
+            "select_tool_if_needed",
+            route_after_select_tool_if_needed,
+            {"finalize_route": "finalize_route"},
+        )
         graph.add_conditional_edges(
             "finalize_route",
             route_after_finalize_route,
@@ -140,17 +176,19 @@ class ToolRoutingSubgraph:
             route_after_confirmation,
             {
                 "determine_io_resources": "determine_io_resources",
-                "finalize_route": "finalize_route",
+                "bind_registry_candidates": "bind_registry_candidates",
                 "validate_route": "validate_route",
             },
         )
-        graph.add_edge("validate_route", END)
+        graph.add_conditional_edges(
+            "validate_route", route_after_validate_route, {"end": END}
+        )
         return graph.compile(name="tool_routing_subgraph")
 
-    def _initialize_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _initialize_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         invocation_id = self._id_factory()
         return cast(
-            ToolRoutingState,
+            ToolRouteStateV1,
             {
                 **state,
                 "tr_invocation_id": invocation_id,
@@ -162,19 +200,19 @@ class ToolRoutingSubgraph:
                     agent_invocation_id=invocation_id,
                     subgraph_namespace="tool_routing",
                     node_name="init",
-                    prompt_ref=self._semantic_agent._prompt_ref,
+                    prompt_ref=self._determine_prompt_ref,
                     agent_invocation_increment=1,
                 ),
             },
         )
 
-    def _determine_io_resources_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _determine_io_resources_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         patch = determine_io_resources_node(
             state,
-            llm_runtime=self._semantic_agent._llm_runtime,
+            llm_runtime=self._llm_runtime,
             tool_catalog=self._tool_catalog,
-            prompt_ref=self._semantic_agent._prompt_ref,
-            revision_prompt_ref=self._semantic_agent._determine_io_resources_revision_prompt_ref,
+            prompt_ref=self._determine_prompt_ref,
+            revision_prompt_ref=self._determine_revision_prompt_ref,
         )
         request = request_from_state(state)
         return {
@@ -183,12 +221,12 @@ class ToolRoutingSubgraph:
                 state,
                 node_name="determine_io_resources",
                 llm_call_id=f"{request.run_id}:tool_route.determine_io_resources",
-                prompt_ref=self._semantic_agent._prompt_ref,
+                prompt_ref=self._determine_prompt_ref,
                 llm_call_increment=1,
             ),
         }
 
-    def _bind_registry_candidates_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _bind_registry_candidates_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         return {
             **bind_registry_candidates_node(
                 state, tool_catalog=self._tool_catalog, id_factory=self._id_factory
@@ -196,7 +234,7 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(state, node_name="bind_registry_candidates"),
         }
 
-    def _select_tool_if_needed_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _select_tool_if_needed_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         binding = _require_state_value(state.get("tr_binding"), "tr_binding")
         llm_call_count = sum(
             len(candidate.eligible_tool_ids) != 1 for candidate in binding.output_candidates
@@ -205,9 +243,9 @@ class ToolRoutingSubgraph:
         return {
             **select_tool_if_needed_node(
                 state,
-                llm_runtime=self._semantic_agent._llm_runtime,
-                prompt_ref=self._semantic_agent._select_tool_prompt_ref,
-                revision_prompt_ref=self._semantic_agent._select_tool_revision_prompt_ref,
+                llm_runtime=self._llm_runtime,
+                prompt_ref=self._select_prompt_ref,
+                revision_prompt_ref=self._select_revision_prompt_ref,
             ),
             "trace_context": self._trace(
                 state,
@@ -216,24 +254,23 @@ class ToolRoutingSubgraph:
                     f"{request.run_id}:tool_route.select_tool_if_needed" if llm_call_count else None
                 ),
                 prompt_ref=(
-                    self._semantic_agent._select_tool_prompt_ref if llm_call_count else None
+                    self._select_prompt_ref if llm_call_count else None
                 ),
                 llm_call_increment=llm_call_count,
             ),
         }
 
-    def _finalize_route_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _finalize_route_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         return {
             **finalize_route_node(
                 state,
                 tool_catalog=self._tool_catalog,
                 id_factory=self._id_factory,
-                scope_expansion=self._coordinator._scope_expansion,
             ),
             "trace_context": self._trace(state, node_name="finalize_route"),
         }
 
-    def _prepare_confirmation_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _prepare_confirmation_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         result = state.get("tr_result")
         if result is None:
             raise ValueError("tool-routing confirmation result is required")
@@ -305,11 +342,11 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(state, node_name="prepare_confirmation"),
         }
 
-    def _confirm_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _confirm_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         confirmation_response, early_return_patch = self._confirm_inline(state)
         if early_return_patch is not None:
             return cast(
-                ToolRoutingState,
+                ToolRouteStateV1,
                 {
                     **state,
                     **early_return_patch,
@@ -355,7 +392,7 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(state, node_name="confirm"),
         }
 
-    def _validate_route_node(self, state: ToolRoutingState) -> ToolRoutingState:
+    def _validate_route_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         patch = validate_route_node(state, tool_catalog=self._tool_catalog)
         result = _require_state_value(state.get("tr_result"), "tr_result")
         decision = route_supervisor(
@@ -384,11 +421,11 @@ class ToolRoutingSubgraph:
             "tr_invocation_id",
         ):
             merged.pop(key, None)
-        return cast(ToolRoutingState, merged)
+        return cast(ToolRouteStateV1, merged)
 
     def _trace(
         self,
-        state: ToolRoutingState,
+        state: ToolRouteStateV1,
         *,
         node_name: str,
         llm_call_id: str | None = None,
@@ -415,15 +452,17 @@ class ToolRoutingSubgraph:
 def build_tool_routing_subgraph(
     *,
     tool_catalog: SignedToolRegistry,
+    llm_runtime: StructuredLLMRuntime,
+    prompt_manifest_path: Path | None,
     id_factory: Callable[[], str],
     merge_decision: MergeDecision,
-    semantic_agent: ToolRouteAgent,
     graph_profile: GraphProfile,
     confirm_inline: ConfirmInline,
 ) -> Any:
     return ToolRoutingSubgraph(
-        coordinator=ToolRouteCoordinator(tool_catalog=tool_catalog, id_factory=id_factory),
-        semantic_agent=semantic_agent,
+        llm_runtime=llm_runtime,
+        tool_catalog=tool_catalog,
+        prompt_manifest_path=prompt_manifest_path,
         graph_profile=graph_profile,
         merge_decision=merge_decision,
         confirm_inline=confirm_inline,

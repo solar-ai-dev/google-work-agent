@@ -8,6 +8,12 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
     RetrievalV2ValidationError,
@@ -15,10 +21,6 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SemanticRetrievalConstraintV1,
     SourceFetchPlanV1,
     validate_retrieval_query_plan_v2,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    InputToolRouteV1,
-    coarse_resource_category,
 )
 
 

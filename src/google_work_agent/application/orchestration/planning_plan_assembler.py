@@ -16,6 +16,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from typing import Literal, Required, TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     EvidenceDraftV1,
@@ -23,7 +26,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.planning_arguments import ToolArgumentCandidateV1
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )

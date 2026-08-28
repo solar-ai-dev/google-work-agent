@@ -15,6 +15,12 @@ from functools import partial
 from typing import cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError,
 )
@@ -41,10 +47,6 @@ from google_work_agent.application.orchestration.insufficient_data import (
     InsufficientDataIssue,
     ResolutionSource,
     decide_insufficient_data,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    ToolRoutePlanV2,
-    coarse_resource_category,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition
 

@@ -6,6 +6,10 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, Required, TypedDict, cast
 
 if TYPE_CHECKING:
+    from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+        ScopeExpansionRequiredV1,
+        ToolRoutePlanV2,
+    )
     from google_work_agent.application.orchestration.handoff_contracts import (
         AcquisitionResultV1,
         ActionPlanDraftV1,
@@ -15,14 +19,10 @@ if TYPE_CHECKING:
         RequestIntentV2,
         RetrievalRequiredV1,
         RetrievalResultV1,
+        RouteReconsiderationRequiredV1,
         SourceFetchPlanV1,
         StateArtifactMetaV1,
         WorkAnalysisResultV1,
-    )
-    from google_work_agent.application.orchestration.tool_routing import (
-        RouteReconsiderationRequiredV1,
-        ScopeExpansionRequiredV1,
-        ToolRoutePlanV2,
     )
 
 

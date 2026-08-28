@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
 from google_work_agent.application.orchestration.api_acquisition import RetrievalBudget
 from google_work_agent.application.orchestration.handoff_contracts import (
     CalendarReadMode,
@@ -16,7 +19,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourceFetchPlanV1 as LegacySourceFetchPlanV1,
 )
 from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
-from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 
 
 class SourceFetchPlanExecutionProjectionError(ValueError):

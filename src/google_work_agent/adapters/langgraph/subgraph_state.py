@@ -9,6 +9,11 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+    ToolRouteResultV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
@@ -27,6 +32,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
+    RouteReconsiderationRequiredV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
     SufficiencyResultV2,
@@ -40,12 +46,6 @@ from google_work_agent.application.orchestration.retrieval_attempts import Query
 from google_work_agent.application.orchestration.retrieval_ranking import RagCandidateV1
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as V2SourceFetchPlanV1,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    RouteReconsiderationRequiredV1,
-    ScopeExpansionRequiredV1,
-    ToolRoutePlanV2,
-    ToolRouteResultV1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 

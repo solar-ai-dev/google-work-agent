@@ -17,7 +17,9 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.use_cases.action.validate_action_arguments import (
     ValidateActionArgumentsHandler,
     ValidateActionArgumentsQueryV1,

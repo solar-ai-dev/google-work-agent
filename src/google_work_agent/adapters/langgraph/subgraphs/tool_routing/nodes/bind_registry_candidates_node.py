@@ -2,21 +2,48 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.semantic_candidate_projection import (  # noqa: E501
-    project_semantic_candidate_input,
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.bind_registry_candidates_projection import (  # noqa: E501
+    project_bind_registry_candidates_input,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
+)
+from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
+    resolve_policy_preconditions,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 def bind_registry_candidates_node(
-    state: ToolRoutingState, *, tool_catalog: SignedToolRegistry, id_factory: Callable[[], str]
-) -> ToolRoutingState:
-    candidate = project_semantic_candidate_input(state)["candidate"]
-    binding = bind_registry_candidates(
-        candidate=candidate, tool_catalog=tool_catalog, id_factory=id_factory
+    state: ToolRouteStateV1, *, tool_catalog: SignedToolRegistry, id_factory: Callable[[], str]
+) -> ToolRouteStateV1:
+    projection = project_bind_registry_candidates_input(state)
+    resolution = resolve_policy_preconditions(
+        request_intent=projection["request_intent"],
+        candidate=projection["candidate"],
+        policy_confirmation_receipts=projection["policy_confirmation_receipts"],
+        current_interrupt_id=state.get("tr_current_interrupt_id"),
     )
-    return {"tr_binding": binding}
+    if resolution.workflow_signal is not None:
+        return {
+            "tr_binding": None,
+            "tr_result": {
+                "schema_version": 1,
+                "disposition": "NEEDS_CONFIRMATION",
+                "tool_route_plan": None,
+                "workflow_signal": resolution.workflow_signal,
+                "reason_codes": ["SCOPE_EXPANSION_REQUIRED"],
+            },
+        }
+    binding = bind_registry_candidates(
+        candidate=resolution.candidate,
+        tool_catalog=tool_catalog,
+        id_factory=id_factory,
+    )
+    return {
+        "tr_semantic_candidate": resolution.candidate,
+        "tr_binding": binding,
+        "tr_result": None,
+        "tr_current_interrupt_id": None,
+    }

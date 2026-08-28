@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from json import loads
 from typing import Literal, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     StateArtifactRefV1,
@@ -28,7 +31,6 @@ from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from google_work_agent.adapters.langgraph.main.state import request_from_state
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.selection_projection import (
-    project_selection_input,
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.select_tool_if_needed_projection import (  # noqa: E501
+    project_select_tool_if_needed_input,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
@@ -16,13 +16,13 @@ from google_work_agent.ports.llm import PromptReference
 
 
 def select_tool_if_needed_node(
-    state: ToolRoutingState,
+    state: ToolRouteStateV1,
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_ref: PromptReference | None,
     revision_prompt_ref: PromptReference | None,
-) -> ToolRoutingState:
-    binding = project_selection_input(state)["binding"]
+) -> ToolRouteStateV1:
+    binding = project_select_tool_if_needed_input(state)["binding"]
     retry_budget = state.get("tr_retry_budget", state["retry_budget"])
     request = request_from_state(state)
     selected: dict[tuple[str, str], str] = {}

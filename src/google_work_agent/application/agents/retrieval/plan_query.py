@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
@@ -18,7 +21,6 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalV2ValidationError,
     validate_retrieval_query_plan_v2,
 )
-from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

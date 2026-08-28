@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import RetrievalResultV1
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 
 MAX_RETRIEVAL_ROUNDS = 3
 

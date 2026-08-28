@@ -3,7 +3,7 @@ from __future__ import annotations
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.determine_io_resources_projection import (  # noqa: E501
     project_determine_io_resources_input,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.determine_io_resources import (
     determine_io_resources,
 )
@@ -19,13 +19,13 @@ from google_work_agent.ports.llm import PromptReference
 
 
 def determine_io_resources_node(
-    state: ToolRoutingState,
+    state: ToolRouteStateV1,
     *,
     llm_runtime: StructuredLLMRuntime,
     tool_catalog: SignedToolRegistry,
     prompt_ref: PromptReference | None,
     revision_prompt_ref: PromptReference | None,
-) -> ToolRoutingState:
+) -> ToolRouteStateV1:
     projection = project_determine_io_resources_input(state)
     try:
         candidate, retry_budget = determine_io_resources(

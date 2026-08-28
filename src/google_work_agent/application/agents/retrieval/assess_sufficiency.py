@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     RunBudgetV1,
@@ -20,7 +23,6 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
     source_statuses_prompt_projection,
     validate_sufficiency_result_v2,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

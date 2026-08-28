@@ -20,6 +20,9 @@ from typing import cast
 
 import google_work_agent.application.orchestration.solution_planning as _planning
 import google_work_agent.application.orchestration.work_analysis as _analysis
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -36,7 +39,6 @@ from google_work_agent.application.orchestration.solution_planning import (
     ANSWER_DRAFT_OUTPUT_SCHEMA,
     SolutionPlanningAgent,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.orchestration.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     WorkAnalysisAgent,

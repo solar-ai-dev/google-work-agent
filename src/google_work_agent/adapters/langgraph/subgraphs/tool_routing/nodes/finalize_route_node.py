@@ -2,23 +2,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.binding_projection import (  # noqa: E501
-    project_binding_input,
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.finalize_route_projection import (  # noqa: E501
+    project_finalize_route_input,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
-from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 
 def finalize_route_node(
-    state: ToolRoutingState,
+    state: ToolRouteStateV1,
     *,
     tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
-    scope_expansion: ScopeExpansionResolver | None,
-) -> ToolRoutingState:
-    projection = project_binding_input(state)
+) -> ToolRouteStateV1:
+    projection = project_finalize_route_input(state)
     result = finalize_route(
         request_intent=projection["request_intent"],
         binding=projection["binding"],
@@ -26,8 +24,5 @@ def finalize_route_node(
         tool_catalog=tool_catalog,
         id_factory=id_factory,
         previous_plan=projection["previous_plan"],
-        policy_confirmation_receipts=projection["policy_confirmation_receipts"],
-        current_interrupt_id=state.get("tr_current_interrupt_id"),
-        scope_expansion=scope_expansion,
     )
-    return {"tr_result": result, "tr_current_interrupt_id": None}
+    return {"tr_result": result}

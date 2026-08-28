@@ -14,6 +14,11 @@ from json import dumps
 from typing import Final, NotRequired, cast
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+    ToolRouteResultV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
@@ -33,6 +38,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
+    RouteReconsiderationRequiredV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
     SubgraphReturnV2,
@@ -45,12 +51,6 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
 from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    RouteReconsiderationRequiredV1,
-    ScopeExpansionRequiredV1,
-    ToolRoutePlanV2,
-    ToolRouteResultV1,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource

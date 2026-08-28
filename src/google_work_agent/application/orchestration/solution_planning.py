@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Final, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.confirmation import (
     build_clarification_question_v1,
 )
@@ -33,7 +36,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )

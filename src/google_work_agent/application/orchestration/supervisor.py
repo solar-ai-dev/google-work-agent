@@ -7,6 +7,10 @@ from dataclasses import asdict, is_dataclass
 from enum import StrEnum
 from typing import TypedDict, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRouteDisposition,
+    ToolRouteResultV1,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     build_source_planning_clarification_question,
 )
@@ -49,6 +53,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalNeedV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
+    RouteReconsiderationRequiredV1,
     SourcePlanningOutputV1,
     WorkAnalysisResultV1,
 )
@@ -65,11 +70,6 @@ from google_work_agent.application.orchestration.plan_review import (
 )
 from google_work_agent.application.orchestration.solution_planning import (
     build_solution_planning_clarification_question,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    RouteReconsiderationRequiredV1,
-    ToolRouteDisposition,
-    ToolRouteResultV1,
 )
 from google_work_agent.application.orchestration.work_analysis import (
     build_work_analysis_clarification_question,

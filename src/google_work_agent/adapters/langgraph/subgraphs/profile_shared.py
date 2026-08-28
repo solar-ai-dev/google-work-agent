@@ -22,6 +22,20 @@ from google_work_agent.application.agents.request_understanding.finalize_intent 
 from google_work_agent.application.agents.request_understanding.validate_intent import (
     validate_intent,
 )
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    bind_registry_candidates,
+    normalize_resource_type,
+)
+from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
+    SemanticRouteCandidate,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
+from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
+from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
+    resolve_policy_preconditions,
+)
 from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
@@ -45,10 +59,8 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.tool_routing import (
-    ToolRouteCoordinator,
-    ToolRoutePlanV2,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.domain.action.model import EffectType
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
@@ -61,7 +73,7 @@ def build_profile_tool_route_plan(
     request_intent: object,
     *,
     id_factory: Callable[[], str],
-    coordinator: ToolRouteCoordinator,
+    tool_catalog: SignedToolRegistry,
 ) -> tuple[RequestIntentV2, ToolRoutePlanV2]:
     """Materialize profile intent identity and freeze the shared Tool Route contract."""
 
@@ -81,7 +93,57 @@ def build_profile_tool_route_plan(
         candidate["ambiguity"],
         artifact_id=id_factory(),
     )
-    result = coordinator.route(request_intent=materialized)
+    resource_hints = tuple(
+        dict.fromkeys(
+            normalize_resource_type(item)
+            for item in materialized.get("requested_resource_hints", [])
+        )
+    )
+    effects = tuple(
+        EffectType(item) for item in materialized.get("requested_effect_hints", [])
+    )
+    write_effects = tuple(effect for effect in effects if effect is not EffectType.READ)
+    if write_effects and not resource_hints:
+        raise ProfileToolRouteError("ACTION route requires resource and effect hints")
+    if len(write_effects) == 1:
+        output_pairs = tuple((resource, write_effects[0]) for resource in resource_hints)
+    elif len(write_effects) == len(resource_hints):
+        output_pairs = tuple(zip(resource_hints, write_effects, strict=True))
+    elif write_effects:
+        raise ProfileToolRouteError("resource/effect hint cardinality is ambiguous")
+    else:
+        output_pairs = ()
+    candidate = SemanticRouteCandidate(
+        input_resource_types=resource_hints,
+        output_pairs=output_pairs,
+        output_mode="ACTION" if write_effects else "ANSWER",
+        analysis_requirement=materialized.get("analysis_requirement", "REQUIRED"),
+    )
+    preconditions = resolve_policy_preconditions(
+        request_intent=materialized,
+        candidate=candidate,
+    )
+    if preconditions.workflow_signal is not None:
+        raise ProfileToolRouteError("profile route requires scope expansion confirmation")
+    binding = bind_registry_candidates(
+        candidate=preconditions.candidate,
+        tool_catalog=tool_catalog,
+        id_factory=id_factory,
+    )
+    selected_tools = {
+        (bound.resource_type, bound.effect): bound.eligible_tool_ids[0]
+        for bound in binding.output_candidates
+        if len(bound.eligible_tool_ids) == 1
+    }
+    if len(selected_tools) != len(binding.output_candidates):
+        raise ProfileToolRouteError("profile route requires ambiguous tool selection")
+    result = finalize_route(
+        request_intent=materialized,
+        binding=binding,
+        selected_tools=selected_tools,
+        tool_catalog=tool_catalog,
+        id_factory=id_factory,
+    )
     plan = result["tool_route_plan"]
     if plan is None:
         reasons = ", ".join(result["reason_codes"]) or result["disposition"]

@@ -12,3 +12,4 @@ class SemanticRouteCandidate:
     output_pairs: tuple[tuple[str, EffectType], ...]
     output_mode: Literal["ANSWER", "ACTION"]
     analysis_requirement: Literal["NONE", "REQUIRED"]
+    input_reason_codes: tuple[tuple[str, str], ...] = ()

@@ -13,6 +13,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -32,7 +35,6 @@ from google_work_agent.application.orchestration.planning_arguments import (
     validate_tool_argument_candidate_v1,
 )
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _default_prompt_manifest_path,
 )

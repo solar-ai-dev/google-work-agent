@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.contracts import (
     DomainValidationOutputV1,
     PolicyConfirmationReceiptV1,
@@ -35,7 +38,6 @@ from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 

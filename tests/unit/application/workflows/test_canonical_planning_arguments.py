@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -30,7 +33,6 @@ from google_work_agent.application.orchestration.planning_plan_assembler import 
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,

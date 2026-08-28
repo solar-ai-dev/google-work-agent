@@ -16,6 +16,10 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestGoalCandidateV1,
     RequestIntentV2,
 )
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     FinalizeIntentV1,
@@ -31,13 +35,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     PlanReviewResultV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
+    RouteReconsiderationRequiredV1,
     SourceFetchPlanV1,
     WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    RouteReconsiderationRequiredV1,
-    ScopeExpansionRequiredV1,
-    ToolRoutePlanV2,
 )
 
 

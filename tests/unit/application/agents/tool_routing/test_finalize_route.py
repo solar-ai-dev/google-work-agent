@@ -16,12 +16,19 @@ def _catalog() -> SignedToolRegistry:
     return load_signed_tool_registry()
 
 
-def test_finalize_route__task_create__adds_policy_precondition_and_freezes_v2_plan() -> None:
+def test_finalize_route__freezes_prebound_v2_plan_without_reowning_preconditions() -> None:
     catalog = _catalog()
     ids = iter(f"id-{index}" for index in range(30))
     binding = bind_registry_candidates(
         candidate=SemanticRouteCandidate(
-            ("TASK",), (("TASK", EffectType.CREATE),), "ACTION", "REQUIRED"
+            ("TASK", "TASK_LIST"),
+            (("TASK", EffectType.CREATE),),
+            "ACTION",
+            "REQUIRED",
+            (
+                ("TASK", "POLICY_TASK_DUPLICATE_CHECK"),
+                ("TASK_LIST", "POLICY_TASK_DUPLICATE_CHECK"),
+            ),
         ),
         tool_catalog=catalog,
         id_factory=lambda: next(ids),

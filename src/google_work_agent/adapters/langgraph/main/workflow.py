@@ -130,8 +130,6 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
-from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
-from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
@@ -402,11 +400,6 @@ class WorkflowRuntimeCore:
             unit_of_work_factory=canonical_uow_factory,
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
-        )
-        self._tool_route_agent = ToolRouteAgent(
-            llm_runtime=llm_runtime,
-            tool_catalog=tool_catalog,
-            manifest_path=prompt_manifest_path,
         )
         self._read_result_cache = RunScopedReadResultCache()
         self._acquisition = ApiDiscoveryAcquisitionAgent(
@@ -700,7 +693,6 @@ class WorkflowRuntimeCore:
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
-            tool_route_agent=self._tool_route_agent,
             acquisition_agent=self._acquisition,
             retrieval_query_planner=self._retrieval_query_planner,
             context_agent=self._context,
@@ -756,10 +748,7 @@ class WorkflowRuntimeCore:
             self._three_stage_one_subgraph = ThreeStageOneSubgraph(
                 llm_runtime=self._llm_runtime,
                 acquisition_agent=self._acquisition,
-                tool_route_coordinator=ToolRouteCoordinator(
-                    tool_catalog=tool_catalog,
-                    id_factory=id_factory,
-                ),
+                tool_catalog=tool_catalog,
                 prompt_ref=self._three_stage1_prompt_ref,
                 id_factory=id_factory,
                 graph_profile=self._graph_profile,
@@ -793,10 +782,7 @@ class WorkflowRuntimeCore:
                 acquisition_agent=self._acquisition,
                 planning_agent=self._planning,
                 review_agent=self._single_review,
-                tool_route_coordinator=ToolRouteCoordinator(
-                    tool_catalog=tool_catalog,
-                    id_factory=id_factory,
-                ),
+                tool_catalog=tool_catalog,
                 evidence_store=self._evidence_store,
                 request_source_prompt_ref=self._single_request_source_prompt_ref,
                 reason_plan_prompt_ref=self._single_reason_plan_prompt_ref,

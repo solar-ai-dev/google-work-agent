@@ -9,6 +9,9 @@ from typing import Any, Literal, TypedDict, cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextBudget,
     ContextRetrievalAgent,
@@ -37,7 +40,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (

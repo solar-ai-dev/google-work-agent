@@ -49,6 +49,9 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
@@ -64,10 +67,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    coarse_resource_category,
-    determine_semantic_routes,
 )
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
@@ -367,26 +366,27 @@ class _QueuedLLMRuntime:
 def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[str, object]:
     """Fake response for tool_route.determine_io_resources.
 
-    Mirrors what ``determine_semantic_routes`` (the deterministic
-    compatibility path Tool Route falls back to without an LLM candidate)
-    derives from the same request_intent, so the resulting ToolRoutePlanV2
-    is identical to what these tests were originally written against.
-    Raises ToolRouteValidationError the same way determine_semantic_routes
-    does for an unsupported hint combination -- ToolRouteCoordinator.route()
-    already catches that from its semantic_candidate_provider and reports
-    NEEDS_CONFIRMATION, so ambiguous-intent test cases are unaffected.
+    It projects only the current RequestIntent hints into the exact Product
+    Prompt response schema used by ``determine_io_resources``.
     """
 
-    candidate = determine_semantic_routes(request_intent)
+    resources = tuple(request_intent.get("requested_resource_hints", []))
+    effects = tuple(
+        effect
+        for effect in request_intent.get("requested_effect_hints", [])
+        if effect != "READ"
+    )
+    if effects and not resources:
+        raise ValueError("ACTION route requires resource and effect hints")
+    if len(effects) not in {0, 1, len(resources)}:
+        raise ValueError("resource/effect hint cardinality is ambiguous")
     return {
         "schema_version": 1,
-        "input_resource_types": sorted(
-            {coarse_resource_category(item) for item in candidate.input_resource_types}
+        "input_resource_types": sorted({coarse_resource_category(item) for item in resources}),
+        "output_resource_types": (
+            sorted({coarse_resource_category(item) for item in resources}) if effects else []
         ),
-        "output_resource_types": sorted(
-            {coarse_resource_category(resource) for resource, _effect in candidate.output_pairs}
-        ),
-        "output_effects": [effect.value for _resource, effect in candidate.output_pairs],
+        "output_effects": list(effects),
         "disposition": "ROUTE_READY",
     }
 

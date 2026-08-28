@@ -12,6 +12,14 @@ from pathlib import Path
 from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+    allowed_input_sources,
+    allowed_read_tool_ids,
+)
 from google_work_agent.application.orchestration.confirmation import (
     build_clarification_question_v1,
 )
@@ -49,12 +57,6 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
     RunScopedReadResultCache,
 )
 from google_work_agent.application.orchestration.temporal_query import resolve_temporal_query
-from google_work_agent.application.orchestration.tool_routing import (
-    ToolRoutePlanV2,
-    allowed_input_sources,
-    allowed_read_tool_ids,
-    coarse_resource_category,
-)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )

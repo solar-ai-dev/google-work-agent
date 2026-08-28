@@ -13,7 +13,9 @@ from datetime import datetime
 from typing import Literal, Required, TypedDict, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
 
 RetrievalConstraintKindV1 = Literal[
     "TEMPORAL_RANGE",

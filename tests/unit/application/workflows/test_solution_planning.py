@@ -9,6 +9,9 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     PlanningResult,
     WorkflowPhase,
@@ -32,7 +35,6 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,

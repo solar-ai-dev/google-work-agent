@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import cast
 
 from google_work_agent.application.agents.tool_routing.contracts.route_binding_candidate import (
@@ -82,6 +82,7 @@ def bind_registry_candidates(
         tool_catalog=tool_catalog,
         id_factory=id_factory,
         reason_code="REQUESTED_INPUT",
+        reason_codes_by_resource=dict(candidate.input_reason_codes),
     )
     existing = {route["resource_type"] for route in input_routes}
     for resource_type, reason_code in _read_dependencies(candidate.input_resource_types):
@@ -93,6 +94,7 @@ def bind_registry_candidates(
                 tool_catalog=tool_catalog,
                 id_factory=id_factory,
                 reason_code=reason_code,
+                reason_codes_by_resource={},
             )
         )
         existing.add(resource_type)
@@ -109,6 +111,7 @@ def _bind_input_routes(
     tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     reason_code: str,
+    reason_codes_by_resource: Mapping[str, str],
 ) -> list[InputToolRouteV1]:
     routes: list[InputToolRouteV1] = []
     for resource_type in sorted(set(resource_types)):
@@ -120,7 +123,7 @@ def _bind_input_routes(
                 "connector_id": connector_id,
                 "allowed_read_tool_ids": list(candidates),
                 "required": True,
-                "reason_codes": [reason_code],
+                "reason_codes": [reason_codes_by_resource.get(resource_type, reason_code)],
             }
         )
     return routes

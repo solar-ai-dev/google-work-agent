@@ -37,6 +37,13 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+    allowed_read_tool_ids,
+)
 from google_work_agent.application.orchestration.api_acquisition import retrieval_query_hash
 from google_work_agent.application.orchestration.confirmation import (
     build_user_interrupt_v1,
@@ -103,11 +110,6 @@ from google_work_agent.application.orchestration.supervisor import (
     RetrievalRouteResultV1,
     SupervisorDecisionV1,
     route_supervisor,
-)
-from google_work_agent.application.orchestration.tool_routing import (
-    InputToolRouteV1,
-    allowed_read_tool_ids,
-    coarse_resource_category,
 )
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 

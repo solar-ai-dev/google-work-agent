@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from google_work_agent.application.orchestration.api_acquisition import RetrievalBudget
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
-from google_work_agent.application.orchestration.tool_routing import (
-    InputToolRouteV1,
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
+from google_work_agent.application.orchestration.api_acquisition import RetrievalBudget
+from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 def initial_retrieval_planner_input(

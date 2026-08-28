@@ -20,6 +20,7 @@ ROLES = {
     },
     "tool_routing": {
         "determine_io_resources",
+        "resolve_policy_preconditions",
         "bind_registry_candidates",
         "select_tool_if_needed",
         "finalize_route",

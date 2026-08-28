@@ -69,10 +69,10 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
         'graph.add_edge(START, "initialize")',
         'graph.add_edge("initialize", "determine_io_resources")',
         '"bind_registry_candidates": "bind_registry_candidates"',
-        'graph.add_edge("bind_registry_candidates", "select_tool_if_needed")',
-        'graph.add_edge("select_tool_if_needed", "finalize_route")',
+        'graph.add_conditional_edges(\n            "bind_registry_candidates"',
+        'graph.add_conditional_edges(\n            "select_tool_if_needed"',
         '"validate_route": "validate_route"',
-        'graph.add_edge("validate_route", END)',
+        'graph.add_conditional_edges(\n            "validate_route"',
     )
     positions = [graph_source.index(fragment) for fragment in canonical_topology]
     assert positions == sorted(positions)
@@ -89,7 +89,7 @@ def test_selection_consumes_previously_bound_candidate_set_only() -> None:
     selection_path = TR / "nodes/select_tool_if_needed_node.py"
     source = _source(selection_path)
     imports = _imports(selection_path)
-    assert "project_selection_input" in _called_names(selection_path)
+    assert "project_select_tool_if_needed_input" in _called_names(selection_path)
     assert "binding.output_candidates" in source
     assert "eligible_tool_ids=bound.eligible_tool_ids" in source
     assert not any(name.endswith("bind_registry_candidates") for name in imports)
@@ -116,9 +116,13 @@ def test_preselected_or_selected_tool_cannot_bypass_bound_eligibility() -> None:
 
 def test_final_validation_runs_after_selection_and_finalization() -> None:
     graph_source = _source(TR / "graph.py")
-    selection_edge = graph_source.index('graph.add_edge("select_tool_if_needed", "finalize_route")')
+    selection_edge = graph_source.index(
+        'graph.add_conditional_edges(\n            "select_tool_if_needed"'
+    )
     validation_edge = graph_source.index('"validate_route": "validate_route"')
-    terminal_edge = graph_source.index('graph.add_edge("validate_route", END)')
+    terminal_edge = graph_source.index(
+        'graph.add_conditional_edges(\n            "validate_route"'
+    )
     assert selection_edge < validation_edge < terminal_edge
     assert "validate_route(" in _source(TR / "nodes/validate_route_node.py")
 
@@ -200,10 +204,10 @@ def test_projection_allowlists_are_owner_local() -> None:
     }
     assert {path.stem for path in (TR / "projections").glob("*_projection.py")} == {
         "determine_io_resources_projection",
-        "semantic_candidate_projection",
-        "selection_projection",
-        "binding_projection",
-        "result_projection",
+        "bind_registry_candidates_projection",
+        "select_tool_if_needed_projection",
+        "finalize_route_projection",
+        "validate_route_projection",
     }
 
 

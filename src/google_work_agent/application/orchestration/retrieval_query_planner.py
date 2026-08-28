@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
@@ -21,7 +24,6 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     RouteConstraintPolicy,
 )
-from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )

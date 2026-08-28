@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Literal, cast
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     EvidenceDraftV1,
@@ -19,7 +22,6 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
     missing_information_projection,
     source_statuses_prompt_projection,
 )
-from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 
 
 def finalize_retrieval(

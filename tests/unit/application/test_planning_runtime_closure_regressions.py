@@ -1,5 +1,8 @@
 import pytest
 
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
@@ -11,7 +14,6 @@ from google_work_agent.application.orchestration.planning_plan_assembler import 
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
 
 
 def _task_create_route() -> OutputToolRouteV1:
