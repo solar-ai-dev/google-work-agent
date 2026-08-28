@@ -34,6 +34,7 @@ def test_application_root_contains_no_semantic_production_authority() -> None:
 def test_retired_parallel_authorities_and_packages_are_absent() -> None:
     absent = (
         "adapters/persistence/sqlite/query_service.py",
+        "adapters/persistence/secret_boundary.py",
         "adapters/connectors/google_workspace.py",
         "adapters/connectors/connector_not_registered_error.py",
         "adapters/mcp/delivery_transport.py",
@@ -73,6 +74,8 @@ def test_legacy_symbols_and_import_paths_have_zero_production_callers() -> None:
         "LLMCredentialStore",
         "LLMRuntimeStatusReader",
         "LLMRuntimeRouter",
+        "SecretBoundaryAuditEventRepository",
+        "SecretBoundaryTraceEventRepository",
         "from google_work_agent.ports import",
         "google_work_agent.application.start_run",
         "google_work_agent.application.run_lifecycle",
