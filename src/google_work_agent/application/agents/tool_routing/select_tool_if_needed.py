@@ -8,6 +8,7 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
 )
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
+    ConfirmationResponseProjectionV1,
     RunBudgetV1,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
@@ -57,32 +58,34 @@ def select_tool_if_needed(
     request: WorkflowStartRequest,
     retry_budget: RunBudgetV1,
     prompt_ref: PromptReference | None = None,
-    revision_prompt_ref: PromptReference | None = None,
     manifest_path: Path | None = None,
+    confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> tuple[str, RunBudgetV1]:
     if len(eligible_tool_ids) == 1:
         return eligible_tool_ids[0], retry_budget
     if not eligible_tool_ids:
         raise ToolRouteValidationError("tool selection requires Registry-eligible candidates")
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
-        "tool_route.select_tool_if_needed", manifest_path or default_prompt_manifest_path()
+        "tool_routing.select_tool_if_needed",
+        manifest_path or default_prompt_manifest_path(),
     )
-    resolved_revision_ref = revision_prompt_ref or load_prompt_reference(
-        "tool_route.select_tool_if_needed.revise", manifest_path or default_prompt_manifest_path()
-    )
-    base_projection = {
-        "route_id": route_id,
-        "connector_id": connector_id,
-        "resource_type": resource_type,
-        "effect": effect,
-        "eligible_tool_ids": list(eligible_tool_ids),
+    base_projection: dict[str, object] = {
+        "route_candidate": {
+            "route_id": route_id,
+            "connector_id": connector_id,
+            "resource_type": resource_type,
+            "effect": effect,
+        },
+        "registered_candidates": [{"tool_id": tool_id} for tool_id in eligible_tool_ids],
     }
+    if confirmation_response is not None:
+        base_projection["confirmation_response"] = dict(confirmation_response)
     with provider_dispatch_budget_scope(retry_budget):
         result = llm_runtime.invoke_structured(
             prompt_ref=resolved_prompt_ref,
             prompt_input=base_projection,
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
-            trace_context=_trace(request, "tool_route.select_tool_if_needed"),
+            trace_context=_trace(request, "route.select_tool"),
         )
         selected = _validated_selection(
             result.structured_output, eligible_tool_ids=eligible_tool_ids
@@ -91,7 +94,7 @@ def select_tool_if_needed(
             return selected, legacy_post_call_projection(retry_budget)
         failure_code = "TOOL_SELECTION_INVALID"
         signature = build_semantic_failure_signature_v1(
-            node_id="tool_route.select_tool_if_needed", failure_reason_codes=[failure_code]
+            node_id="route.select_tool", failure_reason_codes=[failure_code]
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
@@ -99,7 +102,7 @@ def select_tool_if_needed(
                 "tool selection revision denied: same failure signature already used"
             )
         revised = llm_runtime.invoke_structured(
-            prompt_ref=resolved_revision_ref,
+            prompt_ref=resolved_prompt_ref,
             prompt_input={
                 "base_projection": dict(base_projection),
                 "candidate_output": result.structured_output,
@@ -114,7 +117,7 @@ def select_tool_if_needed(
                 ),
             },
             output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
-            trace_context=_trace(request, "tool_route.select_tool_if_needed.semantic_revision"),
+            trace_context=_trace(request, "route.select_tool.semantic_revision"),
         )
         selected = _validated_selection(
             revised.structured_output, eligible_tool_ids=eligible_tool_ids

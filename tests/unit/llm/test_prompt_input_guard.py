@@ -8,6 +8,7 @@ from tests.support.legacy_prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
 
+from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
     PromptInputGuardedProvider,
 )
@@ -129,3 +130,69 @@ def test_valid_prompt_input_dispatches_once(tmp_path: Path) -> None:
     )
 
     assert delegate.calls == 1
+
+
+def test_semantic_revision_validates_base_projection_without_widening_contract(
+    tmp_path: Path,
+) -> None:
+    delegate = _Provider()
+    guarded = PromptInputGuardedProvider(
+        delegate=delegate,
+        validator=PromptRuntimeInputContractValidator(_manifest(tmp_path)),
+    )
+    failure = build_failure_record_v1(
+        failure_reason_code="SEMANTIC_CANDIDATE_INVALID",
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_DOMAIN_VALIDATOR",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REVISION",
+        affected_field_paths=["$.goal"],
+    )
+
+    guarded.invoke_structured(
+        prompt_ref=_prompt_ref(),
+        prompt_input={
+            "base_projection": {"user_request": "hello"},
+            "candidate_output": {"goal": ""},
+            "failure_record": failure,
+        },
+        output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+        runtime_policy=RuntimePolicy(),
+        api_key=None,
+    )
+
+    assert delegate.calls == 1
+
+
+def test_semantic_revision_rejects_unknown_base_projection_field(tmp_path: Path) -> None:
+    delegate = _Provider()
+    guarded = PromptInputGuardedProvider(
+        delegate=delegate,
+        validator=PromptRuntimeInputContractValidator(_manifest(tmp_path)),
+    )
+    failure = build_failure_record_v1(
+        failure_reason_code="SEMANTIC_CANDIDATE_INVALID",
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_DOMAIN_VALIDATOR",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REVISION",
+        affected_field_paths=["$.goal"],
+    )
+
+    with pytest.raises(LLMInvocationError):
+        guarded.invoke_structured(
+            prompt_ref=_prompt_ref(),
+            prompt_input={
+                "base_projection": {
+                    "user_request": "hello",
+                    "interrupt_id": "forged",
+                },
+                "candidate_output": {"goal": ""},
+                "failure_record": failure,
+            },
+            output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
+            runtime_policy=RuntimePolicy(),
+            api_key=None,
+        )
+
+    assert delegate.calls == 0

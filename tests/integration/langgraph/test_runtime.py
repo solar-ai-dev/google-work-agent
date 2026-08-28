@@ -111,10 +111,8 @@ _SYNTHESIZE_RETRIEVAL_QUERY_PLAN = object()
 _RUNTIME_ACTIVE_PROMPT_IDS = {
     "request_understanding.identify_goal",
     "request_understanding.detect_ambiguity",
-    "tool_route.determine_io_resources",
-    "tool_route.determine_io_resources.revise",
-    "tool_route.select_tool_if_needed",
-    "tool_route.select_tool_if_needed.revise",
+    "tool_routing.determine_io_resources",
+    "tool_routing.select_tool_if_needed",
     "retrieval.plan_query",
     "retrieval.plan_query.revise",
     "retrieval.select_evidence",
@@ -281,7 +279,7 @@ class _QueuedLLMRuntime:
             ambiguity = self._pending_request_intent["ambiguity"]
             self._pending_request_intent = None
             return _llm_result(ambiguity)
-        if getattr(prompt_ref, "prompt_id", None) == "tool_route.determine_io_resources":
+        if getattr(prompt_ref, "prompt_id", None) == "tool_routing.determine_io_resources":
             # Tool Route's semantic LLM call has no fixture-authored payload
             # in these tests -- it is synthesized here from the same
             # request_intent every other queued payload was authored
@@ -301,7 +299,7 @@ class _QueuedLLMRuntime:
             # written against an older acquisition.plan_sources-first flow.
             # Synthesize a structurally valid INITIAL SEARCH plan over
             # whatever routes Tool Route actually froze, same rationale as
-            # the tool_route.determine_io_resources synthesis above: these
+            # the tool_routing.determine_io_resources synthesis above: these
             # tests control their actual semantic outcome via the queued
             # select_evidence/assess_sufficiency payloads, not via
             # plan_query's content. Only INITIAL is synthesized -- a
@@ -364,7 +362,7 @@ class _QueuedLLMRuntime:
 
 
 def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[str, object]:
-    """Fake response for tool_route.determine_io_resources.
+    """Fake response for tool_routing.determine_io_resources.
 
     It projects only the current RequestIntent hints into the exact Product
     Prompt response schema used by ``determine_io_resources``.
@@ -372,9 +370,7 @@ def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[st
 
     resources = tuple(request_intent.get("requested_resource_hints", []))
     effects = tuple(
-        effect
-        for effect in request_intent.get("requested_effect_hints", [])
-        if effect != "READ"
+        effect for effect in request_intent.get("requested_effect_hints", []) if effect != "READ"
     )
     if effects and not resources:
         raise ValueError("ACTION route requires resource and effect hints")
@@ -1225,10 +1221,8 @@ def _start_write_request() -> WorkflowStartRequest:
 _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "request_understanding.identify_goal",
     "request_understanding.detect_ambiguity",
-    "tool_route.determine_io_resources",
-    "tool_route.determine_io_resources.revise",
-    "tool_route.select_tool_if_needed",
-    "tool_route.select_tool_if_needed.revise",
+    "tool_routing.determine_io_resources",
+    "tool_routing.select_tool_if_needed",
     "retrieval.plan_query",
     "retrieval.plan_query.revise",
     "retrieval.select_evidence",

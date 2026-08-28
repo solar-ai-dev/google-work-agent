@@ -114,16 +114,10 @@ class ToolRoutingSubgraph:
         self._tool_catalog = tool_catalog
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
         self._determine_prompt_ref = load_prompt_reference(
-            "tool_route.determine_io_resources", manifest_path
-        )
-        self._determine_revision_prompt_ref = load_prompt_reference(
-            "tool_route.determine_io_resources.revise", manifest_path
+            "tool_routing.determine_io_resources", manifest_path
         )
         self._select_prompt_ref = load_prompt_reference(
-            "tool_route.select_tool_if_needed", manifest_path
-        )
-        self._select_revision_prompt_ref = load_prompt_reference(
-            "tool_route.select_tool_if_needed.revise", manifest_path
+            "tool_routing.select_tool_if_needed", manifest_path
         )
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
@@ -180,9 +174,7 @@ class ToolRoutingSubgraph:
                 "validate_route": "validate_route",
             },
         )
-        graph.add_conditional_edges(
-            "validate_route", route_after_validate_route, {"end": END}
-        )
+        graph.add_conditional_edges("validate_route", route_after_validate_route, {"end": END})
         return graph.compile(name="tool_routing_subgraph")
 
     def _initialize_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
@@ -212,7 +204,6 @@ class ToolRoutingSubgraph:
             llm_runtime=self._llm_runtime,
             tool_catalog=self._tool_catalog,
             prompt_ref=self._determine_prompt_ref,
-            revision_prompt_ref=self._determine_revision_prompt_ref,
         )
         request = request_from_state(state)
         return {
@@ -220,7 +211,7 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(
                 state,
                 node_name="determine_io_resources",
-                llm_call_id=f"{request.run_id}:tool_route.determine_io_resources",
+                llm_call_id=f"{request.run_id}:route.determine_resources",
                 prompt_ref=self._determine_prompt_ref,
                 llm_call_increment=1,
             ),
@@ -245,17 +236,12 @@ class ToolRoutingSubgraph:
                 state,
                 llm_runtime=self._llm_runtime,
                 prompt_ref=self._select_prompt_ref,
-                revision_prompt_ref=self._select_revision_prompt_ref,
             ),
             "trace_context": self._trace(
                 state,
                 node_name="select_tool_if_needed",
-                llm_call_id=(
-                    f"{request.run_id}:tool_route.select_tool_if_needed" if llm_call_count else None
-                ),
-                prompt_ref=(
-                    self._select_prompt_ref if llm_call_count else None
-                ),
+                llm_call_id=(f"{request.run_id}:route.select_tool" if llm_call_count else None),
+                prompt_ref=(self._select_prompt_ref if llm_call_count else None),
                 llm_call_increment=llm_call_count,
             ),
         }

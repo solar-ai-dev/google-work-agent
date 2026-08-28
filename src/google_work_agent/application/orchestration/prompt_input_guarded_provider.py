@@ -8,7 +8,9 @@ from typing import Protocol, runtime_checkable
 
 from google_work_agent.application.orchestration.failure_record import (
     FAILURE_RECORD_FIELDS,
+    FailureRecordValidationError,
     build_failure_record_v1,
+    validate_failure_record_v1,
 )
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
@@ -140,8 +142,14 @@ class PromptInputGuardedProvider:
 
     def _validate(self, *, prompt_ref: PromptReference, prompt_input: Mapping[str, object]) -> None:
         try:
-            self.validator.validate(prompt_id=prompt_ref.prompt_id, prompt_input=prompt_input)
-        except PromptRuntimeInputContractError as error:
+            self.validator.validate(
+                prompt_id=prompt_ref.prompt_id,
+                prompt_input=_base_projection_for_validation(
+                    prompt_input,
+                    prompt_id=prompt_ref.prompt_id,
+                ),
+            )
+        except (PromptRuntimeInputContractError, FailureRecordValidationError) as error:
             # No dedicated public LLM error code exists for input-contract
             # violations. RUNTIME_VERSION_MISMATCH is the closest existing
             # fail-closed runtime-contract classification and avoids falsely
@@ -152,6 +160,36 @@ class PromptInputGuardedProvider:
             ) from error
 
 
+def _base_projection_for_validation(
+    prompt_input: Mapping[str, object],
+    *,
+    prompt_id: str,
+) -> Mapping[str, object]:
+    """Validate revision metadata without widening the base input contract."""
+
+    failure_record = prompt_input.get("failure_record")
+    is_semantic_revision = (
+        isinstance(failure_record, Mapping)
+        and failure_record.get("experiment_disposition") == "RUN_REVISION"
+    )
+    if (
+        not is_semantic_revision
+        or prompt_id.endswith((".repair", ".revise", ".recheck"))
+        or set(prompt_input)
+        != {
+            "base_projection",
+            "candidate_output",
+            "failure_record",
+        }
+    ):
+        return prompt_input
+    base_projection = prompt_input["base_projection"]
+    if not isinstance(base_projection, Mapping):
+        raise PromptRuntimeInputContractError("semantic revision base_projection must be an object")
+    validate_failure_record_v1(prompt_input["failure_record"])
+    return base_projection
+
+
 def _canonical_prompt_input(prompt_input: Mapping[str, object]) -> Mapping[str, object]:
     """Normalize the already-3-root Generic Repair envelope to FailureRecordV1.
 
@@ -159,8 +197,9 @@ def _canonical_prompt_input(prompt_input: Mapping[str, object]) -> Mapping[str, 
     already emitted the exact nine FailureRecord field names but used two
     pre-v1.26 enum spellings (``RUNTIME`` and
     ``STRUCTURED_OUTPUT_VALIDATOR``). Only that exact legacy shape is
-    normalized. Bespoke semantic-revision shapes are not accepted here and
-    are rejected by the nested Prompt Input Guard instead.
+    normalized. The exact repair/revision envelope is assembly metadata: its
+    base projection remains subject to the unchanged Product Prompt input
+    contract, while FailureRecordV1 carries bounded allowed-change paths.
     """
 
     raw = prompt_input.get("failure_record")

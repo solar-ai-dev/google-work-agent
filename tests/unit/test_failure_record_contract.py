@@ -64,7 +64,7 @@ def test_prompt_input_guard_validates_nested_failure_record_exactly(tmp_path: Pa
             {
                 "forbidden_runtime_fields": [],
                 "slots": {
-                    "tool_route.select_tool_if_needed.revise": {
+                    "retrieval.plan_query.revise": {
                         "allowed_root_fields": [
                             "base_projection",
                             "candidate_output",
@@ -83,7 +83,7 @@ def test_prompt_input_guard_validates_nested_failure_record_exactly(tmp_path: Pa
         "failure_record": _record(),
     }
     validator.validate(
-        prompt_id="tool_route.select_tool_if_needed.revise",
+        prompt_id="retrieval.plan_query.revise",
         prompt_input=valid_input,
     )
 
@@ -93,6 +93,6 @@ def test_prompt_input_guard_validates_nested_failure_record_exactly(tmp_path: Pa
     }
     with pytest.raises(PromptInputContractError, match="failure_record is invalid"):
         validator.validate(
-            prompt_id="tool_route.select_tool_if_needed.revise",
+            prompt_id="retrieval.plan_query.revise",
             prompt_input=invalid_input,
         )

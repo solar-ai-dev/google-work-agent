@@ -22,7 +22,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
             "request_understanding.detect_ambiguity",
         }
     ),
-    "tool_route.finalize": frozenset({"tool_route.determine_io_resources"}),
+    "tool_route.finalize": frozenset({"tool_routing.determine_io_resources"}),
     "acquisition.plan_sources": frozenset(
         {
             "retrieval.plan_query",

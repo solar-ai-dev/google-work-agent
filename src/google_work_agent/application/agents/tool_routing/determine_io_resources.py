@@ -89,15 +89,12 @@ def determine_io_resources(
     request: WorkflowStartRequest,
     retry_budget: RunBudgetV1,
     prompt_ref: PromptReference | None = None,
-    revision_prompt_ref: PromptReference | None = None,
     manifest_path: Path | None = None,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
-        "tool_route.determine_io_resources", manifest_path or default_prompt_manifest_path()
-    )
-    resolved_revision_ref = revision_prompt_ref or load_prompt_reference(
-        "tool_route.determine_io_resources.revise", manifest_path or default_prompt_manifest_path()
+        "tool_routing.determine_io_resources",
+        manifest_path or default_prompt_manifest_path(),
     )
     base_projection: dict[str, object] = {
         "request_intent": request_intent,
@@ -110,14 +107,14 @@ def determine_io_resources(
             prompt_ref=resolved_prompt_ref,
             prompt_input=base_projection,
             output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
-            trace_context=_trace(request, "tool_route.determine_io_resources"),
+            trace_context=_trace(request, "route.determine_resources"),
         )
         try:
             raw = _validate_candidate(result.structured_output)
         except ToolRouteValidationError as error:
             failure_code = "SEMANTIC_CANDIDATE_INVALID"
             signature = build_semantic_failure_signature_v1(
-                node_id="tool_route.determine_io_resources", failure_reason_codes=[failure_code]
+                node_id="route.determine_resources", failure_reason_codes=[failure_code]
             )
             decision = approve_semantic_revision(retry_budget, signature=signature)
             if decision["decision"] == BudgetDecision.DENY.value:
@@ -126,7 +123,7 @@ def determine_io_resources(
                     "same failure signature already used"
                 ) from error
             revised = llm_runtime.invoke_structured(
-                prompt_ref=resolved_revision_ref,
+                prompt_ref=resolved_prompt_ref,
                 prompt_input={
                     "base_projection": dict(base_projection),
                     "candidate_output": result.structured_output,
@@ -146,9 +143,7 @@ def determine_io_resources(
                     ),
                 },
                 output_schema=ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
-                trace_context=_trace(
-                    request, "tool_route.determine_io_resources.semantic_revision"
-                ),
+                trace_context=_trace(request, "route.determine_resources.semantic_revision"),
             )
             raw = _validate_candidate(revised.structured_output)
             retry_budget = decision["run_budget"]

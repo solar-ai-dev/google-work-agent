@@ -33,7 +33,7 @@ class _InitialSearchLLM:
         prompt_ref = kwargs["prompt_ref"]
         prompt_id = prompt_ref.prompt_id
         prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
-        if prompt_id == "tool_route.determine_io_resources":
+        if prompt_id == "tool_routing.determine_io_resources":
             return _llm_result(
                 _synthesize_tool_route_candidate(cast(Any, prompt_input["request_intent"]))
             )

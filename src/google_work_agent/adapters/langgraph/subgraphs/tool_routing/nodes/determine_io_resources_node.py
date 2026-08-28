@@ -24,7 +24,6 @@ def determine_io_resources_node(
     llm_runtime: StructuredLLMRuntime,
     tool_catalog: SignedToolRegistry,
     prompt_ref: PromptReference | None,
-    revision_prompt_ref: PromptReference | None,
 ) -> ToolRouteStateV1:
     projection = project_determine_io_resources_input(state)
     try:
@@ -35,7 +34,6 @@ def determine_io_resources_node(
             request=projection["request"],
             retry_budget=projection["retry_budget"],
             prompt_ref=prompt_ref,
-            revision_prompt_ref=revision_prompt_ref,
             confirmation_response=projection["confirmation_response"],
         )
     except ToolRouteValidationError as error:

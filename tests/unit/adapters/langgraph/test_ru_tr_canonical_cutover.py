@@ -72,7 +72,7 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
         'graph.add_conditional_edges(\n            "bind_registry_candidates"',
         'graph.add_conditional_edges(\n            "select_tool_if_needed"',
         '"validate_route": "validate_route"',
-        'graph.add_conditional_edges(\n            "validate_route"',
+        'graph.add_conditional_edges("validate_route"',
     )
     positions = [graph_source.index(fragment) for fragment in canonical_topology]
     assert positions == sorted(positions)
@@ -120,9 +120,7 @@ def test_final_validation_runs_after_selection_and_finalization() -> None:
         'graph.add_conditional_edges(\n            "select_tool_if_needed"'
     )
     validation_edge = graph_source.index('"validate_route": "validate_route"')
-    terminal_edge = graph_source.index(
-        'graph.add_conditional_edges(\n            "validate_route"'
-    )
+    terminal_edge = graph_source.index('graph.add_conditional_edges("validate_route"')
     assert selection_edge < validation_edge < terminal_edge
     assert "validate_route(" in _source(TR / "nodes/validate_route_node.py")
 

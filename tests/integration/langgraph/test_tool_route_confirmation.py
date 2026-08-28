@@ -68,7 +68,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import Workflow
 
 class _ToolRouteQueuedLLMRuntime:
     """Like the shared ``_QueuedLLMRuntime``, but WITHOUT the unconditional
-    ``tool_route.determine_io_resources`` auto-synthesis -- these tests need
+    ``tool_routing.determine_io_resources`` auto-synthesis -- these tests need
     to control that response directly (to force NEEDS_CONFIRMATION), which
     the shared fixture's synthesis would otherwise silently override.
     Retrieval's own ``plan_query`` INITIAL-round synthesis is kept, purely
@@ -104,7 +104,7 @@ class _ToolRouteQueuedLLMRuntime:
             # Request Understanding must always classify cleanly in these
             # tests -- Tool Route, not Request Understanding, is what these
             # tests need to pause. Fixed (defaulting to _clear_intent()), not
-            # drawn from the queue reserved for tool_route.determine_io_resources
+            # drawn from the queue reserved for tool_routing.determine_io_resources
             # + downstream steps. C2-B tests override it via classify_intent to
             # carry a SCOPE constraint.
             intent = self._classify_intent or _clear_intent()
@@ -289,7 +289,7 @@ def test_tool_route_ambiguity_pauses_inside_own_nested_task(tmp_path: Path) -> N
     semantic_calls = [
         call
         for call in llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_routing.determine_io_resources"
     ]
     assert len(semantic_calls) == 1
 
@@ -359,7 +359,7 @@ def test_tool_route_resume_makes_exactly_one_more_semantic_call_and_completes(
     semantic_calls = [
         call
         for call in resumed_llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_routing.determine_io_resources"
     ]
     # T2: exactly one more real semantic-candidate call -- not a restart of
     # "route" (which would still only cost one call here structurally, but
@@ -448,7 +448,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
     round1_reclassify_calls = [
         call
         for call in round2_llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_routing.determine_io_resources"
     ]
     assert len(round1_reclassify_calls) == 1
 
@@ -498,7 +498,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
     round2_reclassify_calls = [
         call
         for call in round3_llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+        if getattr(call["prompt_ref"], "prompt_id", None) == "tool_routing.determine_io_resources"
     ]
     assert len(round2_reclassify_calls) == 1
 
@@ -721,7 +721,8 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         semantic_calls = [
             call
             for call in llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None)
+            == "tool_routing.determine_io_resources"
         ]
         assert len(semantic_calls) == 1
     finally:
@@ -841,7 +842,8 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
         semantic_calls = [
             call
             for call in resumed_llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None)
+            == "tool_routing.determine_io_resources"
         ]
         assert semantic_calls == []
 
@@ -945,7 +947,8 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
         semantic_calls = [
             call
             for call in resumed_llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None) == "tool_route.determine_io_resources"
+            if getattr(call["prompt_ref"], "prompt_id", None)
+            == "tool_routing.determine_io_resources"
         ]
         assert semantic_calls == []
 

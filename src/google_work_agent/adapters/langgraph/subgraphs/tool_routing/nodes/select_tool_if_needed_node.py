@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+from typing import cast
+
 from google_work_agent.adapters.langgraph.main.state import request_from_state
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.select_tool_if_needed_projection import (  # noqa: E501
     project_select_tool_if_needed_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
+from google_work_agent.application.agents.tool_routing.contracts.route_binding_candidate import (
+    RouteBindingCandidateV1,
+)
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
-from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
+from google_work_agent.application.orchestration.contracts import (
+    ConfirmationResponseProjectionV1,
+    consume_llm_provider_calls,
+)
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
@@ -20,9 +28,13 @@ def select_tool_if_needed_node(
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_ref: PromptReference | None,
-    revision_prompt_ref: PromptReference | None,
 ) -> ToolRouteStateV1:
-    binding = project_select_tool_if_needed_input(state)["binding"]
+    projection = project_select_tool_if_needed_input(state)
+    binding = cast(RouteBindingCandidateV1, projection["binding"])
+    confirmation_response = cast(
+        ConfirmationResponseProjectionV1 | None,
+        projection["confirmation_response"],
+    )
     retry_budget = state.get("tr_retry_budget", state["retry_budget"])
     request = request_from_state(state)
     selected: dict[tuple[str, str], str] = {}
@@ -40,7 +52,7 @@ def select_tool_if_needed_node(
             request=request,
             retry_budget=retry_budget,
             prompt_ref=prompt_ref,
-            revision_prompt_ref=revision_prompt_ref,
+            confirmation_response=confirmation_response,
         )
         retry_budget = consume_llm_provider_calls(retry_budget)
         selected[(bound.resource_type, bound.effect)] = tool_id
