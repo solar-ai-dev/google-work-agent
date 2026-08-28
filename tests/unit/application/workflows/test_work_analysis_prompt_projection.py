@@ -14,20 +14,18 @@ from dataclasses import dataclass, field
 from typing import Literal, cast
 
 import pytest
+from tests.support.legacy_prompt_input_contract import (
+    PromptRuntimeInputContractValidator,
+)
+from tests.support.prompt_manifests import canonical_prompt_manifest_path
 
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
     RetrievalResultV1,
 )
-from google_work_agent.application.orchestration.prompt_input_contract import (
-    PromptRuntimeInputContractValidator,
-)
 from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
     PromptInputGuardedProvider,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path,
 )
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.ports.events.observability_events import ObservabilityContext
@@ -176,7 +174,7 @@ def _evidence_drafts() -> list[EvidenceDraftV1]:
 
 
 def _real_validator() -> PromptRuntimeInputContractValidator:
-    return PromptRuntimeInputContractValidator(manifest_path=default_prompt_manifest_path())
+    return PromptRuntimeInputContractValidator(manifest_path=canonical_prompt_manifest_path())
 
 
 def _dummy_output_schema() -> OutputSchemaDefinition:

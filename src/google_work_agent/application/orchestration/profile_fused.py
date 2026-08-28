@@ -23,12 +23,6 @@ from google_work_agent.application.orchestration.plan_review import (
     load_plan_review_inspect_prompt_reference,
     validate_plan_review_result_v1,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.request_understanding import (
     validate_request_intent_v2,
 )
@@ -38,6 +32,12 @@ from google_work_agent.application.orchestration.solution_planning import (
 )
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,

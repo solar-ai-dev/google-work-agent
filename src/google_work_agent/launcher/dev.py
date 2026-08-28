@@ -97,12 +97,12 @@ from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
     resolve_instruction_text,
 )
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )

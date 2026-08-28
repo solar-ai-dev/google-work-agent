@@ -9,7 +9,7 @@ from google_work_agent.application.agents.request_understanding.validate_intent 
     validate_intent,
 )
 from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
-from google_work_agent.application.orchestration.prompt_registry import (
+from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -102,7 +102,7 @@ def identify_goal(
     manifest_path: Path | None = None,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> RequestIntentCandidateV1:
-    """Invoke the existing broad classify PromptRef once; atomic placement does not add LLM calls."""
+    """Invoke the existing broad classify PromptRef without adding another LLM call."""
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
         "request_understanding.classify", manifest_path or default_prompt_manifest_path()
     )

@@ -11,7 +11,7 @@ from google_work_agent.application.orchestration.failure_record import (
     build_failure_record_v1,
     validate_failure_record_v1,
 )
-from google_work_agent.application.orchestration.prompt_input_contract import (
+from tests.support.legacy_prompt_input_contract import (
     PromptInputContractError,
     PromptRuntimeInputContractValidator,
 )

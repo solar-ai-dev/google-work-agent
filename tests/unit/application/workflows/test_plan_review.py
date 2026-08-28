@@ -36,11 +36,11 @@ from google_work_agent.application.orchestration.plan_review import (
     resolve_review_target,
     validate_plan_review_result_v1,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
 )

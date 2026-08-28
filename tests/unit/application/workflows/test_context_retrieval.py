@@ -34,11 +34,11 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SufficiencyIssueV2,
     SufficiencyResultV2,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,

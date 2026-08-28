@@ -27,12 +27,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
@@ -40,6 +34,12 @@ from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
+)
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )

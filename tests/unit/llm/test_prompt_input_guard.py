@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 
 import pytest
-
-from google_work_agent.application.orchestration.prompt_input_contract import (
+from tests.support.legacy_prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
+
 from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
     PromptInputGuardedProvider,
 )

@@ -62,7 +62,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
@@ -73,6 +72,7 @@ from google_work_agent.application.orchestration.tool_routing import (
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,

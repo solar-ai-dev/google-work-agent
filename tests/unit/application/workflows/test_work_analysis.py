@@ -19,7 +19,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     RetrievalResultV1,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     WorkAnalysisAgent,
@@ -29,6 +28,7 @@ from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
     validate_work_analysis_result_v1_from_retrieval_result,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,

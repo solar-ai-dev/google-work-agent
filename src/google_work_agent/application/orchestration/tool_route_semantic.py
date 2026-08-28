@@ -25,12 +25,6 @@ from google_work_agent.application.orchestration.contracts import (
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
@@ -40,6 +34,12 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteValidationError,
     coarse_resource_category,
     normalize_resource_type,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (

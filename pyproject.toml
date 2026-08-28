@@ -25,6 +25,8 @@ include = ["google_work_agent*"]
 google_work_agent = [
     "adapters/persistence/migrations/*.sql",
     "application/tool_registry/*.json",
+    "application/prompt_runtime/*.json",
+    "application/prompt_runtime/sources/*.md",
     "adapters/connectors/runtime/*.json",
     "adapters/connectors/google/workspace/mcp_server/*.json",
 ]

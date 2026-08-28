@@ -14,7 +14,7 @@ from tests.support.prompt_manifests import (
 )
 
 from google_work_agent.application.orchestration.contracts import PROMPT_SELECTION_KEY_FIELDS
-from google_work_agent.application.orchestration.prompt_registry import (
+from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,
     discover_canonical_prompt_manifest_path,
@@ -24,7 +24,7 @@ from google_work_agent.application.orchestration.prompt_registry import (
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
-def test_default_prompt_manifest_path_uses_canonical_r91_bundle(
+def test_default_prompt_manifest_path_uses_canonical_prompt_runtime_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
@@ -32,8 +32,8 @@ def test_default_prompt_manifest_path_uses_canonical_r91_bundle(
         str(Path("C:/tmp/arbitrary-manifest.json")),
     )
 
-    assert default_prompt_manifest_path() == canonical_prompt_manifest_path()
-    assert default_prompt_manifest_path().name == "prompt-manifest-v0.9.1.json"
+    assert default_prompt_manifest_path() != canonical_prompt_manifest_path()
+    assert default_prompt_manifest_path().name == "prompt_manifest.json"
 
 
 def test_discover_canonical_prompt_manifest_path_picks_highest_semver(tmp_path: Path) -> None:

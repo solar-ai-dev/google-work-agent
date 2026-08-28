@@ -56,12 +56,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     SufficiencyResultV2,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
@@ -83,6 +77,12 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
+)
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

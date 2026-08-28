@@ -25,13 +25,13 @@ from google_work_agent.application.orchestration.contracts import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path,
-    load_prompt_reference,
-)
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path,
+    load_prompt_reference,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (

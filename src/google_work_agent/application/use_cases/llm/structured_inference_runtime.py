@@ -627,7 +627,7 @@ class PromptRepairSchemaRepairer:
         failure_reason_code: str,
         validator_errors: tuple[str, ...],
     ) -> object:
-        from google_work_agent.application.orchestration.prompt_registry import (
+        from google_work_agent.application.prompt_runtime.prompt_registry import (
             InactivePromptArtifactError,
             default_prompt_manifest_path,
             load_prompt_reference,
@@ -739,7 +739,7 @@ class PromptRepairToolCallRepairer:
         validator_errors: tuple[str, ...],
     ) -> object:
         del output_schema  # shape re-check happens in _validate_or_repair_tool_call after mapping
-        from google_work_agent.application.orchestration.prompt_registry import (
+        from google_work_agent.application.prompt_runtime.prompt_registry import (
             InactivePromptArtifactError,
             default_prompt_manifest_path,
             load_prompt_reference,

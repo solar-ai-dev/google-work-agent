@@ -10,12 +10,11 @@ from google_work_agent.application.orchestration.failure_record import (
     FAILURE_RECORD_FIELDS,
     build_failure_record_v1,
 )
-from google_work_agent.application.orchestration.prompt_input_contract import (
-    PromptInputContractError,
-    PromptRuntimeInputContractValidator,
-)
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
+)
+from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input_contract import (
+    PromptRuntimeInputContractError,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -45,6 +44,10 @@ class _StructuredProvider(Protocol):
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ProviderResponsePayload: ...
+
+
+class _PromptInputValidator(Protocol):
+    def validate(self, *, prompt_id: str, prompt_input: Mapping[str, object]) -> None: ...
 
 
 class _ToolCallingProvider(Protocol):
@@ -79,7 +82,7 @@ class PromptInputGuardedProvider:
     """
 
     delegate: _StructuredProvider
-    validator: PromptRuntimeInputContractValidator
+    validator: _PromptInputValidator
 
     @property
     def provider_name(self) -> str:
@@ -138,7 +141,7 @@ class PromptInputGuardedProvider:
     def _validate(self, *, prompt_ref: PromptReference, prompt_input: Mapping[str, object]) -> None:
         try:
             self.validator.validate(prompt_id=prompt_ref.prompt_id, prompt_input=prompt_input)
-        except PromptInputContractError as error:
+        except PromptRuntimeInputContractError as error:
             # No dedicated public LLM error code exists for input-contract
             # violations. RUNTIME_VERSION_MISMATCH is the closest existing
             # fail-closed runtime-contract classification and avoids falsely

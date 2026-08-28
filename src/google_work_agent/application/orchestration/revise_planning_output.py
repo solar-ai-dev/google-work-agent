@@ -44,7 +44,6 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
     PlanningResultV2,
     validate_planning_return_v2,
 )
-from google_work_agent.application.orchestration.prompt_registry import load_prompt_reference
 from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
     ReviewIssueV1,
@@ -54,6 +53,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     output_routes,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

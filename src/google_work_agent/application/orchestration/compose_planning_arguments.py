@@ -31,14 +31,14 @@ from google_work_agent.application.orchestration.planning_arguments import (
     ToolArgumentCandidateV1,
     validate_tool_argument_candidate_v1,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_prompt_reference,
-)
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_prompt_reference,
+)
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

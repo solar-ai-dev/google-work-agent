@@ -27,12 +27,6 @@ from google_work_agent.application.orchestration.profile_fused import (
     ProfilePlanningProjectionV1,
     validate_profile_planning_projection_v1,
 )
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
@@ -45,6 +39,12 @@ from google_work_agent.application.orchestration.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,

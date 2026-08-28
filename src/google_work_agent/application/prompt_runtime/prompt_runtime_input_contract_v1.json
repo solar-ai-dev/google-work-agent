@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "forbidden_input_fields": [
+    "conversation_history",
+    "conversation_messages",
+    "previous_run",
+    "previous_run_artifacts",
+    "previous_request_intent",
+    "previous_tool_route",
+    "previous_retrieval_result",
+    "previous_work_analysis",
+    "previous_plan",
+    "previous_review",
+    "prior_checkpoint",
+    "checkpoint_blob",
+    "checkpoint_metadata",
+    "interrupt_id",
+    "resume_target",
+    "raw_resume_payload",
+    "raw_provider_payload",
+    "provider_response",
+    "provider_continuation",
+    "continuation_token",
+    "next_page_token",
+    "mcp_arguments",
+    "provider_arguments",
+    "gold",
+    "grader",
+    "grader_feedback",
+    "expected_route",
+    "expected_output",
+    "evaluation_item_id",
+    "evaluation_metadata",
+    "benchmark_score"
+  ],
+  "entries": [
+    {
+      "prompt_slot_id": "request_understanding.identify_goal",
+      "runtime_node_id": "request.identify_goal",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "selected_resource_refs"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "request_understanding.detect_ambiguity",
+      "runtime_node_id": "request.detect_ambiguity",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "goal_candidate"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "tool_routing.determine_io_resources",
+      "runtime_node_id": "route.determine_resources",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "eligible_route_capabilities"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "tool_routing.select_tool_if_needed",
+      "runtime_node_id": "route.select_tool",
+      "input_schema_version": 1,
+      "required_root_fields": ["route_candidate", "registered_candidates"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "retrieval.plan_query",
+      "runtime_node_id": "retrieval.plan_query",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "input_routes", "retrieval_budget"],
+      "optional_root_fields": ["current_round_no", "prior_query_attempt", "unresolved_sufficiency_issues", "read_result_summaries", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "retrieval.select_evidence",
+      "runtime_node_id": "retrieval.select_evidence",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "ranked_segments"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "retrieval.assess_sufficiency",
+      "runtime_node_id": "retrieval.assess_sufficiency",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "selected_evidence", "retrieval_budget"],
+      "optional_root_fields": ["availability_results", "retrieval_failures", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.extract_work_facts",
+      "runtime_node_id": "analysis.extract_facts",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "request_intent", "evidence"],
+      "optional_root_fields": ["availability_results", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.resolve_entity_relations",
+      "runtime_node_id": "analysis.resolve_entity_relations",
+      "input_schema_version": 1,
+      "required_root_fields": ["work_facts", "evidence"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.resolve_temporal_dependencies",
+      "runtime_node_id": "analysis.resolve_temporal_dependencies",
+      "input_schema_version": 1,
+      "required_root_fields": ["work_facts", "evidence"],
+      "optional_root_fields": ["availability_results", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.detect_duplicate_conflict_candidates",
+      "runtime_node_id": "analysis.detect_duplicate_conflict_candidates",
+      "input_schema_version": 1,
+      "required_root_fields": ["work_facts", "entity_relations", "evidence"],
+      "optional_root_fields": ["source_state", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.assess_information_gaps",
+      "runtime_node_id": "analysis.assess_information_gaps",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "work_facts", "evidence"],
+      "optional_root_fields": ["confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "work_analysis.assess_operational_risks",
+      "runtime_node_id": "analysis.assess_operational_risks",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "work_facts", "validated_relations", "evidence"],
+      "optional_root_fields": ["policy_summary", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "planning.outline_answer",
+      "runtime_node_id": "planning.outline_answer",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "request_intent", "evidence"],
+      "optional_root_fields": ["work_analysis", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "planning.compose_answer",
+      "runtime_node_id": "planning.compose_answer",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "request_intent", "answer_outline", "evidence"],
+      "optional_root_fields": ["work_analysis", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "planning.draft_action_objective_per_output_route",
+      "runtime_node_id": "planning.draft_action_objective_per_output_route",
+      "input_schema_version": 1,
+      "required_root_fields": ["user_request", "request_intent", "output_route", "evidence"],
+      "optional_root_fields": ["work_analysis", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "planning.compose_arguments_per_output_route",
+      "runtime_node_id": "planning.compose_arguments_per_output_route",
+      "input_schema_version": 1,
+      "required_root_fields": ["output_route", "action_objective", "tool_schema"],
+      "optional_root_fields": ["work_analysis", "evidence", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "review.inspect_goal_and_evidence",
+      "runtime_node_id": "review.inspect_goal_and_evidence",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "planning_result", "evidence"],
+      "optional_root_fields": ["work_analysis", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "review.inspect_action_scope_and_route",
+      "runtime_node_id": "review.inspect_action_scope_route",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "tool_route_plan", "planning_result", "evidence"],
+      "optional_root_fields": ["work_analysis", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "review.inspect_constraints_and_policy_summary",
+      "runtime_node_id": "review.inspect_constraints_policy",
+      "input_schema_version": 1,
+      "required_root_fields": ["request_intent", "planning_result", "policy_summary"],
+      "optional_root_fields": ["work_analysis", "evidence", "confirmation_response"],
+      "output_schema_version": 1
+    },
+    {
+      "prompt_slot_id": "review.recheck_affected_dimensions",
+      "runtime_node_id": "review.recheck",
+      "input_schema_version": 1,
+      "required_root_fields": ["affected_dimensions", "request_intent", "planning_result"],
+      "optional_root_fields": ["affected_action_ids", "affected_route_ids", "tool_route_plan", "work_analysis", "evidence", "policy_summary", "confirmation_response"],
+      "output_schema_version": 1
+    }
+  ]
+}

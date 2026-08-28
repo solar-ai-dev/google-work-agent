@@ -18,7 +18,6 @@ from google_work_agent.application.orchestration.contracts import (
 from google_work_agent.application.orchestration.handoff_contracts import (
     ClarificationQuestionV1,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
     RequestUnderstandingValidationError,
@@ -27,6 +26,7 @@ from google_work_agent.application.orchestration.request_understanding import (
     resolve_confirmation_origin_target,
     validate_request_intent_v2,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,

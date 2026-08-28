@@ -12,12 +12,6 @@ from google_work_agent.application.orchestration.contracts import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
-from google_work_agent.application.orchestration.prompt_registry import (
-    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
-)
-from google_work_agent.application.orchestration.prompt_registry import (
-    load_prompt_reference as _load_registry_prompt_reference,
-)
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
     RetrievalQueryPlanV2,
@@ -28,6 +22,12 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
     RouteConstraintPolicy,
 )
 from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path as _registry_default_prompt_manifest_path,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    load_prompt_reference as _load_registry_prompt_reference,
+)
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

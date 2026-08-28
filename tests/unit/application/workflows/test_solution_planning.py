@@ -18,7 +18,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
@@ -34,6 +33,7 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_answer_draft_v1,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
+from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,
