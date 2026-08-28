@@ -6,7 +6,17 @@ from __future__ import annotations
 
 from json import loads as _loads
 
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommandV1,
+    ResolveRecoveryHandler,
+)
 from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -19,15 +29,10 @@ from tests.integration.persistence.test_write_actions import (
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
     GoogleWorkspaceGateway,
-    McpConnectorWriteAdapter,
     Path,
-    PublishPlanHandler,
     PublishWritePlanCommand,
-    RecoveryResolutionKind,
     RequestRunCancellationCommand,
     RequestRunCancellationService,
-    ResolveMismatchRecoveryCommand,
-    ResolveMismatchRecoveryService,
     ResultCode,
     RunCommand,
     RunStatusV1,
@@ -51,36 +56,57 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.resolve_recovery_adapter import (
+    RecoveryResolutionKind,
+    ResolveMismatchRecoveryCommand,
+    ResolveMismatchRecoveryService,
+)
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
 
 def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> None:
-    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
-        required = unit_of_work.runs.require_recovery(
-            "run-1",
+    clock = FakeClockPort(1_000)
+    required = RequireRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        RequireRecoveryCommand(
+            run_id="run-1",
             expected_version=0,
+            command_id="require-recovery-1",
+            request_hash="r1" * 32,
+            reason="CHECKPOINT_MISMATCH",
+            scope="RUN",
+            recovery_fingerprint="checkpoint-mismatch-1",
         )
-        resolved = unit_of_work.runs.resolve_recovery(
-            "run-1",
+    )
+    resolved = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        ResolveRecoveryCommandV1(
+            run_id="run-1",
             expected_version=1,
-            recovery_next_status=RunStatusV1.VERIFYING,
+            command_id="resolve-recovery-1",
+            request_hash="r2" * 32,
+            resolution=RecoveryResolution.RECHECK,
+            recheck_input_changed=True,
+            validated_resume_status=RunStatusV1.PLANNING,
         )
-        unit_of_work.commit()
+    )
 
     assert required.applied is True
-    assert required.current_status is RunStatusV1.RECOVERY_REQUIRED
+    assert required.current_status == RunStatusV1.RECOVERY_REQUIRED.value
     assert required.next_allowed_commands == (
-        RunCommand.REQUEST_CANCEL,
-        RunCommand.REQUIRE_REAUTH,
-        RunCommand.RESOLVE_RECOVERY,
+        RunCommand.REQUEST_CANCEL.value,
     )
     assert resolved.applied is True
-    assert resolved.current_status is RunStatusV1.VERIFYING
+    assert resolved.current_status == RunStatusV1.PLANNING.value
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute("SELECT status, version FROM runs WHERE id = 'run-1';").fetchone()
-        assert tuple(row) == ("VERIFYING", 2)
+        assert tuple(row) == ("PLANNING", 2)
     finally:
         connection.close()
 
@@ -295,11 +321,11 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
 
         assert action_row["status"] == "VERIFIED"
         assert action_row["version"] == 4
-        assert plan_row["status"] == "ACTIVE"
+        assert plan_row["status"] == "WAITING_APPROVAL"
         assert approval_row["status"] == "CONSUMED"
         assert approval_row["consumed_at_ms"] is not None
         assert attempt_row["status"] == "SUCCEEDED"
-        assert attempt_row["version"] == 1
+        assert attempt_row["version"] == 2
         assert attempt_row["result_resource_ref_id"] == (
             "resource-ref-run-1-google_workspace-task-task-created-1"
         )
@@ -1223,14 +1249,12 @@ def test_verify_write_action_get_runs_without_sqlite_write_transaction(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=McpConnectorWriteAdapter(
-            gateway=cast(
-                GoogleWorkspaceGateway,
-                _TransactionCheckingGateway(
-                    delegate=fixture_gateway,
-                    database_path=write_database,
-                ),
-            )
+        gateway=cast(
+            GoogleWorkspaceGateway,
+            _TransactionCheckingGateway(
+                delegate=fixture_gateway,
+                database_path=write_database,
+            ),
         ),
     )
 
@@ -1288,15 +1312,13 @@ def test_verify_write_action_rechecks_version_after_external_get(
     verify_service = VerifyWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=McpConnectorWriteAdapter(
-            gateway=cast(
-                GoogleWorkspaceGateway,
-                _TransactionCheckingGateway(
-                    delegate=fixture_gateway,
-                    database_path=write_database,
-                    after_get_sql=(
-                        "UPDATE actions SET version = version + 1 WHERE id = 'action-verify-race';"
-                    ),
+        gateway=cast(
+            GoogleWorkspaceGateway,
+            _TransactionCheckingGateway(
+                delegate=fixture_gateway,
+                database_path=write_database,
+                after_get_sql=(
+                    "UPDATE actions SET version = version + 1 WHERE id = 'action-verify-race';"
                 ),
             ),
         ),

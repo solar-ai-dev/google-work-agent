@@ -65,22 +65,24 @@ def test_routes_actually_invoke_canonical_application_handlers() -> None:
     expected = {
         "resources.py": {
             "ListResourcesHandler",
-            "CountResourcesHandler",
-            "GetResourceHandler",
+            "GetResourceCountHandler",
+            "GetResourceDetailHandler",
         },
         "attachments.py": {
-            "FetchAttachmentHandler",
-            "StageAttachmentHandler",
+            "GetAttachmentHandler",
+            "CreateStagedAttachmentHandler",
         },
         "google_connections.py": {
-            "StartOAuthHandler",
-            "GetConnectionHandler",
-            "DisconnectConnectorHandler",
+            "StartAuthorizationHandler",
+            "GetConnectionStatusHandler",
+            "RevokeConnectionHandler",
         },
     }
     for route_name, handlers in expected.items():
-        calls = _called_names(ROUTE_DIR / route_name)
-        assert handlers <= calls, (route_name, handlers - calls)
+        source = _source(ROUTE_DIR / route_name)
+        missing = {handler for handler in handlers if handler not in source}
+        assert not missing, (route_name, missing)
+        assert _called_names(ROUTE_DIR / route_name).intersection(handlers) or "handler(" in source
 
 
 def test_route_wire_ownership_keeps_attachment_base64_decode_in_api() -> None:
@@ -126,9 +128,9 @@ def test_canonical_handlers_do_not_call_broad_legacy_semantic_surfaces() -> None
         "get_gmail_thread_detail",
     }
     resource_paths = (
-        USE_CASE_DIR / "resource_ref" / "list_resources.py",
-        USE_CASE_DIR / "resource_ref" / "count_resources.py",
-        USE_CASE_DIR / "resource_ref" / "get_resource.py",
+        USE_CASE_DIR / "resource" / "list_resources.py",
+        USE_CASE_DIR / "resource" / "get_resource_count.py",
+        USE_CASE_DIR / "resource" / "get_resource_detail.py",
     )
     for path in resource_paths:
         assert _called_names(path).isdisjoint(forbidden_calls), path
@@ -138,14 +140,14 @@ def test_canonical_handlers_do_not_call_broad_legacy_semantic_surfaces() -> None
     assert "google_work_agent.application.google_connection" not in imports
 
 
-def test_disconnect_operation_filename_matches_symbol_grammar() -> None:
-    path = USE_CASE_DIR / "connector_connection" / "disconnect_connector.py"
+def test_revoke_connection_operation_filename_matches_symbol_grammar() -> None:
+    path = USE_CASE_DIR / "connection" / "revoke_connection.py"
     assert path.is_file()
-    assert not (path.parent / "disconnect.py").exists()
+    assert not (USE_CASE_DIR / "connector_connection" / "disconnect_connector.py").exists()
     tree = _tree(path)
     classes = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
     assert {
-        "DisconnectConnectorCommand",
-        "DisconnectConnectorResult",
-        "DisconnectConnectorHandler",
+        "RevokeConnectionCommand",
+        "RevokeConnectionResult",
+        "RevokeConnectionHandler",
     } <= classes

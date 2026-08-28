@@ -4,7 +4,6 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.get_conversation_history import (
     GetConversationHistoryHandler,
     GetConversationHistoryQuery,
@@ -25,14 +24,8 @@ def test_history_is_a_bounded_timeline_projection(tmp_path: Path) -> None:
             ('m-1', 'c-1', NULL, 'USER', 'one', 10),
             ('m-2', 'c-1', NULL, 'ASSISTANT', 'two', 20)"""
         )
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=object(),
-    )
     handler = GetConversationHistoryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        query_service=lambda: query_service,
     )
 
     result = handler(GetConversationHistoryQuery("c-1"))

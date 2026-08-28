@@ -4,6 +4,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+)
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import (
     AnswerOnlyResponse,
@@ -43,13 +47,22 @@ class CompleteAnswerOnlyRunHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         message_id_factory: Callable[[], str],
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._message_id_factory = message_id_factory
+        self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: CompleteAnswerOnlyRunCommand) -> AnswerOnlyResponse:
         """Complete the run or return the previously stored idempotent response."""
+        terminal_message = self._build_terminal_message(
+            BuildTerminalMessageQueryV1(
+                run_id=command.run_id,
+                result_kind="ANSWER",
+                content=command.assistant_message,
+            )
+        )
         with self._unit_of_work_factory() as unit_of_work:
             existing_receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing_receipt is not None:
@@ -123,7 +136,7 @@ class CompleteAnswerOnlyRunHandler:
                         conversation_id=command.conversation_id,
                         run_id=command.run_id,
                         role="ASSISTANT",
-                        content=command.assistant_message,
+                        content=terminal_message.content,
                         created_at_ms=now_ms,
                     )
                 )
@@ -227,6 +240,13 @@ class CompleteAnswerOnlyRunHandler:
             raise LookupError(f"run not found during receipt recovery: {command.run_id}")
 
         if run.status is RunStatusV1.COMPLETED:
+            expected_content = self._build_terminal_message(
+                BuildTerminalMessageQueryV1(
+                    run_id=command.run_id,
+                    result_kind="ANSWER",
+                    content=command.assistant_message,
+                )
+            ).content
             messages, _ = unit_of_work.messages.list_by_conversation_keyset(
                 conversation_id=command.conversation_id,
                 cursor=None,
@@ -238,7 +258,7 @@ class CompleteAnswerOnlyRunHandler:
                     for item in messages
                     if item.run_id == command.run_id
                     and item.role == "ASSISTANT"
-                    and item.content == command.assistant_message
+                    and item.content == expected_content
                 ),
                 None,
             )

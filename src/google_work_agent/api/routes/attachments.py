@@ -21,13 +21,13 @@ from google_work_agent.api.schemas.attachments.get_attachment import (
     AttachmentDescriptorResponse,
 )
 from google_work_agent.api.schemas.attachments.stage_attachment import StageAttachmentRequest
-from google_work_agent.application.use_cases.attachment.fetch_attachment import (
-    FetchAttachmentHandler,
-    FetchAttachmentQuery,
+from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
+    CreateStagedAttachmentCommand,
+    CreateStagedAttachmentHandler,
 )
-from google_work_agent.application.use_cases.attachment.stage_attachment import (
-    StageAttachmentCommand,
-    StageAttachmentHandler,
+from google_work_agent.application.use_cases.attachment.get_attachment import (
+    GetAttachmentHandler,
+    GetAttachmentQuery,
 )
 from google_work_agent.ports import EndpointPolicy
 from google_work_agent.ports.connectors.failure import (
@@ -60,8 +60,8 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
             request_id=request.state.request_id,
             request_version=x_api_contract_version,
         )
-        service = route_dependencies.get_gmail_attachment_service()
-        if service is None:
+        handler = route_dependencies.get_attachment_handler()
+        if not isinstance(handler, GetAttachmentHandler):
             raise ApiRequestError(
                 error_code="SERVICE_BUSY",
                 user_message="Attachment provider is not configured.",
@@ -70,17 +70,14 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
                 detail_code="ATTACHMENT_SERVICE_UNAVAILABLE",
             )
         try:
-            result = FetchAttachmentHandler(service)(
-                FetchAttachmentQuery(message_id=message_id, attachment_id=attachment_id)
-            )
+            result = handler(GetAttachmentQuery(message_id=message_id, attachment_id=attachment_id))
         except ConnectorOperationFailure as error:
             _raise_attachment_failure(error, request_id=request.state.request_id)
-        attachment = result.attachment
         return StreamingResponse(
-            iter([attachment.data]),
+            iter([result.data]),
             media_type="application/octet-stream",
             headers={
-                "Content-Length": str(attachment.size_bytes),
+                "Content-Length": str(result.size_bytes),
                 "Content-Disposition": "attachment",
                 "X-Content-Type-Options": "nosniff",
             },
@@ -101,8 +98,8 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
             request_id=request.state.request_id,
             request_version=x_api_contract_version,
         )
-        service = route_dependencies.stage_attachment_service()
-        if service is None:
+        handler = route_dependencies.create_staged_attachment_handler()
+        if not isinstance(handler, CreateStagedAttachmentHandler):
             raise ApiRequestError(
                 error_code="SERVICE_BUSY",
                 user_message="Attachment staging is not configured.",
@@ -121,16 +118,17 @@ def create_router(dependencies: AttachmentRouteDependencies | None = None) -> AP
                 detail_code="ATTACHMENT_ENCODING_INVALID",
             ) from error
         try:
-            result = StageAttachmentHandler(service)(
-                StageAttachmentCommand(
-                    data=data,
+            result = handler(
+                CreateStagedAttachmentCommand(
+                    command_id=request.state.request_id,
+                    file_bytes=data,
                     filename=body.filename,
                     mime_type=body.mime_type,
                 )
             )
         except ConnectorOperationFailure as error:
             _raise_attachment_failure(error, request_id=request.state.request_id)
-        descriptor = result.descriptor
+        descriptor = result.attachment
         return AttachmentDescriptorResponse(
             staged_attachment_id=descriptor.staged_attachment_id,
             filename=descriptor.filename,

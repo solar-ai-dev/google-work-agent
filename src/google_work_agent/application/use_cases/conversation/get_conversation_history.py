@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.get_conversation import (
     GetConversationResult,
 )
@@ -16,7 +15,8 @@ from google_work_agent.application.use_cases.message.list_conversation_messages 
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
-MAX_HISTORY_RUNS = 200
+DEFAULT_HISTORY_MESSAGE_LIMIT = 200
+DEFAULT_HISTORY_RUN_LIMIT = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,12 +45,16 @@ class GetConversationHistoryHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        query_service: Callable[[], QueryService],
+        history_message_limit: int = DEFAULT_HISTORY_MESSAGE_LIMIT,
+        history_run_limit: int = DEFAULT_HISTORY_RUN_LIMIT,
     ) -> None:
+        if history_message_limit < 1 or history_run_limit < 1:
+            raise ValueError("history limits must be positive")
         self._unit_of_work_factory = unit_of_work_factory
-        self._query_service = query_service
+        self._history_run_limit = history_run_limit
         self._list_messages = ListConversationMessagesHandler(
-            unit_of_work_factory=unit_of_work_factory
+            unit_of_work_factory=unit_of_work_factory,
+            page_size=history_message_limit,
         )
 
     def __call__(self, query: GetConversationHistoryQuery) -> GetConversationHistoryResult | None:
@@ -68,13 +72,25 @@ class GetConversationHistoryHandler:
         message_result = self._list_messages(
             ListConversationMessagesQuery(conversation_id=query.conversation_id)
         )
-        run_records = self._query_service().list_runs_for_conversation_bounded(
-            query.conversation_id, limit=MAX_HISTORY_RUNS
+        run_ids = tuple(
+            dict.fromkeys(item.run_id for item in message_result.items if item.run_id is not None)
+        )
+        with self._unit_of_work_factory() as unit_of_work:
+            run_records = tuple(
+                record
+                for run_id in run_ids
+                if (record := unit_of_work.runs.get(run_id)) is not None
+                and record.conversation_id == query.conversation_id
+            )
+        run_records = tuple(
+            sorted(run_records, key=lambda item: item.started_at_ms, reverse=True)[
+                : self._history_run_limit
+            ]
         )
         runs = tuple(
             ConversationHistoryRunItem(
-                run_id=record.run_id,
-                status=record.status,
+                run_id=record.id,
+                status=record.status.value,
                 started_at_ms=record.started_at_ms,
                 finished_at_ms=record.finished_at_ms,
             )
@@ -84,5 +100,5 @@ class GetConversationHistoryHandler:
             conversation=conversation,
             messages=message_result.items,
             runs=runs,
-            truncated=message_result.truncated,
+            truncated=(message_result.truncated or len(run_ids) > self._history_run_limit),
         )

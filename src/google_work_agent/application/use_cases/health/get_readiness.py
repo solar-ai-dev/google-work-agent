@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from google_work_agent.application.readiness import compose_readiness
 from google_work_agent.ports import ReadinessCheckResult, ReadinessState
@@ -43,14 +44,37 @@ class GetReadinessHandler:
         checks = list(report.checks)
         verifier = self._launcher_probe_verifier
         if verifier is None:
-            checks.append(ReadinessCheckResult(name="launcher_probe", state=ReadinessState.NOT_READY, detail="launcher probe verifier missing"))
+            checks.append(
+                ReadinessCheckResult(
+                    name="launcher_probe",
+                    state=ReadinessState.NOT_READY,
+                    detail="launcher probe verifier missing",
+                )
+            )
         else:
             probe = verifier.verify(service_instance_id=query.service_instance_id)
-            checks.append(ReadinessCheckResult(name="launcher_probe", state=ReadinessState.READY if probe.allowed else ReadinessState.NOT_READY, detail=None if probe.allowed else probe.detail or "launcher probe denied"))
+            checks.append(
+                ReadinessCheckResult(
+                    name="launcher_probe",
+                    state=(
+                        ReadinessState.READY
+                        if probe.allowed
+                        else ReadinessState.NOT_READY
+                    ),
+                    detail=(
+                        None
+                        if probe.allowed
+                        else probe.detail or "launcher probe denied"
+                    ),
+                )
+            )
         if self._frontend_readiness_check is not None:
             checks.append(self._frontend_readiness_check())
         if self._safe_mode_readiness_check is not None:
             checks.append(self._safe_mode_readiness_check())
         for factory in self._additional_readiness_checks:
             checks.append(factory())
-        return GetReadinessResult(state=compose_readiness(tuple(checks)).state, checks=tuple(checks))
+        return GetReadinessResult(
+            state=compose_readiness(tuple(checks)).state,
+            checks=tuple(checks),
+        )

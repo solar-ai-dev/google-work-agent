@@ -15,6 +15,10 @@ from uvicorn import Config, Server
 
 from google_work_agent.adapters.system.filesystem_attachment_staging import ATTACHMENT_STAGING_DIR_ENV
 from google_work_agent.api.app import create_app
+from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
+    CreateStagedAttachmentCommand,
+    CreateStagedAttachmentHandler,
+)
 from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
 
 
@@ -26,21 +30,19 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     )
     container = replace(container, client_address_resolver=lambda _request: "127.0.0.1")
 
-    assert container.get_gmail_attachment_service is not None
-    assert container.stage_attachment_service is not None
-    descriptor = container.stage_attachment_service(
-        data=b"attachment-content",
-        filename="report.txt",
-        mime_type="text/plain",
-    )
+    assert container.get_attachment_handler is not None
+    assert isinstance(container.create_staged_attachment_handler, CreateStagedAttachmentHandler)
+    descriptor = container.create_staged_attachment_handler(
+        CreateStagedAttachmentCommand(
+            command_id="stage-attachment-test",
+            file_bytes=b"attachment-content",
+            filename="report.txt",
+            mime_type="text/plain",
+        )
+    ).attachment
     staging_dir = runtime_root / "attachments" / "staging"
     assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
-    # connector.transport is now DispatchContractMCPClientPort wrapping
-    # ManifestEnforcedMCPClientPort wrapping the actual
-    # DeliveryAwareStdioMCPClientAdapter that owns _config (Task 7's MCP
-    # manifest/schema/dispatch contract guards -- see
-    # adapters/connectors/google_workspace.py:_guarded_transport_factory).
-    base_transport = container.readiness_aggregator.transport._delegate._delegate  # noqa: SLF001
+    base_transport = container.readiness_aggregator.transport.client
     assert base_transport._config.extra_environment == {  # noqa: SLF001
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
     }
@@ -56,7 +58,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
         assert container.runtime_status_provider.get_summary().mcp == "READY"
 
     assert isinstance(container.readiness_aggregator, DevelopmentReadinessAggregator)
-    assert container.readiness_aggregator.transport.runtime_metadata().process_status == "STOPPED"
+    assert base_transport.runtime_metadata().process_status == "STOPPED"
     assert container.readiness_aggregator.evaluate().state.value == "NOT_READY"
 
 
@@ -67,6 +69,7 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
         runtime_root=tmp_path / "runtime",
         bootstrap_secret="test-bootstrap",
     )
+    base_transport = container.readiness_aggregator.transport.client
     server = Server(Config(create_app(container), host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -82,7 +85,7 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
 
     assert not thread.is_alive()
     assert isinstance(container.readiness_aggregator, DevelopmentReadinessAggregator)
-    assert container.readiness_aggregator.transport.runtime_metadata().process_status == "STOPPED"
+    assert base_transport.runtime_metadata().process_status == "STOPPED"
 
 
 def _allocate_loopback_port() -> int:

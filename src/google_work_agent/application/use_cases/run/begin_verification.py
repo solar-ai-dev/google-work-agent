@@ -1,9 +1,10 @@
 """Canonical persisted BeginVerification application boundary."""
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
@@ -34,10 +35,15 @@ class BeginVerificationResult:
 
 class BeginVerificationHandler:
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        resume_target_registry: ResumeTargetIssuer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: BeginVerificationCommand) -> BeginVerificationResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -103,6 +109,30 @@ class BeginVerificationHandler:
                         {"status": next_status.value, "version": run.version + 1},
                     ):
                         raise RuntimeError("validated BeginVerification CAS failed")
+                    binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+                    checkpoint = (
+                        None
+                        if binding is None
+                        else unit_of_work.checkpoints.load_same_run_checkpoint(
+                            run.id, binding.langgraph_thread_id
+                        )
+                    )
+                    if binding is None or checkpoint is None:
+                        raise RuntimeError(
+                            "BeginVerification requires a current workflow checkpoint"
+                        )
+                    verification_target = self._resume_target_registry.issue_main_stage(
+                        binding.graph_profile,
+                        "VERIFICATION",
+                        binding.graph_version,
+                    )
+                    unit_of_work.checkpoints.store_same_run_checkpoint(
+                        replace(
+                            checkpoint,
+                            registered_resume_target=verification_target,
+                            created_at_ms=now_ms,
+                        )
+                    )
                     unit_of_work.audits.append(
                         AuditEvent(
                             account_id=None,

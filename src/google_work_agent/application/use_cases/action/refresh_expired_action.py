@@ -5,6 +5,10 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 
 from google_work_agent.application.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.application.write_persistence import require_plan_review
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.refresh_expired_action import (
@@ -16,6 +20,11 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,14 +46,27 @@ class RefreshExpiredActionResult:
     action_status: str
     action_version: int
     conflict_detail: str | None = None
+    handoff_id: str | None = None
 
 
 class RefreshExpiredActionHandler:
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        id_factory: Callable[[], str] | None = None,
+        resume_target_registry: ResumeTargetIssuer | None = None,
+        schedule_run_execution: Callable[
+            [ScheduleRunExecutionCommand], RunExecutionAcceptedV1
+        ]
+        | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._id_factory = id_factory
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
 
     def __call__(self, command: RefreshExpiredActionCommand) -> RefreshExpiredActionResult:
         if not all(
@@ -55,6 +77,7 @@ class RefreshExpiredActionHandler:
             )
         ):
             raise ValueError("RefreshExpiredAction requires freshly recomputed snapshots")
+        handoff_id: str | None = None
         with self._unit_of_work_factory() as unit_of_work:
             now_ms = self._now_ms()
             receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -151,6 +174,9 @@ class RefreshExpiredActionHandler:
                             created_at_ms=now_ms,
                         )
                     )
+                    handoff_id = self._stage_review_handoff(
+                        unit_of_work, plan.run_id, command.command_id
+                    )
                 result = RefreshExpiredActionResult(
                     decision.applied,
                     decision.result_code.value,
@@ -158,6 +184,7 @@ class RefreshExpiredActionHandler:
                     decision.current_status.value,
                     decision.current_version,
                     decision.conflict_detail,
+                    handoff_id,
                 )
             unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
@@ -168,7 +195,49 @@ class RefreshExpiredActionHandler:
                 completed_at_ms=now_ms,
             )
             unit_of_work.commit()
-            return result
+        if handoff_id is not None and self._schedule_run_execution is not None:
+            self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
+        return result
+
+    def _stage_review_handoff(
+        self, unit_of_work: UnitOfWork, run_id: str, trigger_command_id: str
+    ) -> str | None:
+        if self._id_factory is None or self._resume_target_registry is None:
+            return None
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            raise RuntimeError("expired Action refresh requires a workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None:
+            raise RuntimeError("expired Action refresh requires a workflow checkpoint")
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile, "REVIEW_ENTRY", binding.graph_version
+        )
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=self._id_factory(),
+                trigger_command_id=trigger_command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        return handoff.handoff_id
 
 
 def _require_action(unit_of_work: UnitOfWork, action_id: str):

@@ -4,11 +4,11 @@ from json import dumps
 from types import SimpleNamespace
 
 import pytest
-
-from google_work_agent.application.use_cases.recovery.recover_update import (
+from tests.support.legacy_write.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
 )
+
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode

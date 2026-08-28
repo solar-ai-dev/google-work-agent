@@ -64,7 +64,12 @@ from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
+from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
 from google_work_agent.application.execution_phase import WriteExecutionPhaseCoordinator
+from google_work_agent.application.use_cases.approval.expire_approval import ExpireApprovalHandler
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionHandler,
+)
 from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
@@ -142,7 +147,9 @@ from google_work_agent.application.orchestration.supervisor import (
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
-from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
+)
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.read_contracts import (
     ClaimReadActionCommand,
@@ -176,6 +183,33 @@ from google_work_agent.application.use_cases.action.fail_read_action import Fail
 from google_work_agent.application.use_cases.action.finalize_read_action import (
     FinalizeReadActionHandler,
 )
+from google_work_agent.application.use_cases.claim.build_claim_context import (
+    BuildClaimContextHandler,
+)
+from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionHandler
+from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
+    AbortClaimedExecutionCommandV1,
+    AbortClaimedExecutionHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
+    BeginExecutionAttemptHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
+    ClassifyDispatchResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.mark_failed import MarkFailedHandler
+from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
+    MarkUnknownResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.store_success import (
+    StoreSuccessHandler,
+)
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
@@ -183,6 +217,15 @@ from google_work_agent.application.use_cases.plan.publish_read_only_plan import 
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
     RecordReviewResultHandler,
+)
+from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
+    LookupUnknownResultHandler,
+)
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
@@ -193,6 +236,7 @@ from google_work_agent.application.use_cases.run.begin_retrieval import (
     BeginRetrievalHandler,
 )
 from google_work_agent.application.use_cases.run.begin_verification import (
+    BeginVerificationCommand,
     BeginVerificationHandler,
 )
 from google_work_agent.application.use_cases.run.block_run import (
@@ -215,12 +259,12 @@ from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
 )
-from google_work_agent.application.write_actions import (
-    ClaimWriteActionService,
-    ExecuteWriteActionService,
+from google_work_agent.application.use_cases.verification.store_verification import (
+    StoreVerificationHandler,
 )
-from google_work_agent.application.write_claim import AttachmentDescriptorVerifier
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
+from google_work_agent.application.use_cases.verification.verify_effect import (
+    VerifyEffectHandler,
+)
 from google_work_agent.application.write_plan import (
     SaveWritePlanService,
 )
@@ -231,23 +275,9 @@ from google_work_agent.application.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_recovery import (
-    MarkWriteActionUnknownResultService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-)
-from google_work_agent.application.write_recovery_contracts import (
-    MarkWriteActionUnknownResultCommand,
-)
-from google_work_agent.application.write_result_persistence import (
-    MarkWriteActionFailedService,
-    StoreWriteActionSuccessService,
-)
-from google_work_agent.application.write_verification import VerifyWriteActionService
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
@@ -304,12 +334,14 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         unit_of_work_factory: Callable[[], UnitOfWork],
         llm_runtime: Any,
         connector_reader: ConnectorReadProjection,
-        connector_execution: WriteResultMaterializer,
+        connector_execution: ConnectorWriteProjection,
         tool_catalog: SignedToolRegistry,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         signing_secret: str,
         service_instance_id: str,
+        claim_context_signer: Callable[[dict[str, object]], str] | None = None,
+        mcp_process_instance_id: Callable[[], str] | None = None,
         checkpoint_port: SqliteCheckpointAdapter | None = None,
         checkpoint_database_path: Path | None = None,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
@@ -318,14 +350,14 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
-        attachment_verifier: AttachmentDescriptorVerifier | None = None,
+        attachment_verifier: Any | None = None,
         resume_target_registry: ResumeTargetRegistry | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._llm_runtime = llm_runtime
         self._now_ms = now_ms
         self._id_factory = id_factory
-        self._signing_secret = signing_secret
+        del signing_secret
         self._service_instance_id = service_instance_id
         if (checkpoint_port is None) == (checkpoint_database_path is None):
             raise ValueError("provide exactly one canonical checkpoint adapter or database path")
@@ -519,70 +551,81 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._claim_write = ClaimWriteActionService(
+        self._claim_execution = ClaimExecutionHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            signing_secret=signing_secret,
-            service_instance_id=service_instance_id,
-            attachment_verifier=attachment_verifier,
         )
+        self._build_claim_context = BuildClaimContextHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            id_factory=id_factory,
+            sign_claim_context=claim_context_signer or (lambda _payload: "test-signature"),
+        )
+        self._begin_execution_attempt = BeginExecutionAttemptHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._abort_claimed_execution = AbortClaimedExecutionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._classify_dispatch_result = ClassifyDispatchResultHandler()
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             gateway=connector_reader,
             now_ms=now_ms,
             work_hours_provider=self._work_hours_provider,
         )
-        self._execute_write = ExecuteWriteActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            gateway=connector_execution,
-            now_ms=now_ms,
-            signing_secret=signing_secret,
-            service_instance_id=service_instance_id,
-        )
-        self._store_write_success = StoreWriteActionSuccessService(
+        self._store_write_success = StoreSuccessHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._mark_write_failed = MarkWriteActionFailedService(
+        self._mark_write_failed = MarkFailedHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._mark_write_unknown = MarkWriteActionUnknownResultService(
+        self._mark_write_unknown = MarkUnknownResultHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            resume_target_registry=self._resume_target_registry,
+        )
+        self._verify_effect = VerifyEffectHandler(
+            connector_read=connector_reader.connector_reader,
+            tool_registry=tool_catalog,
+        )
+        self._store_verification = StoreVerificationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._verify_write = VerifyWriteActionService(
+        self._require_recovery = RequireRecoveryHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=connector_execution,
+        )
+        self._resolve_recovery = ResolveRecoveryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            next_id=id_factory,
         )
         self._require_write_reauth = RequireReauthHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
         )
-        self._recover_unknown_create = RecoverUnknownCreateActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            gateway=connector_execution,
+        self._lookup_unknown_result = LookupUnknownResultHandler(
+            connector_read=connector_reader.connector_reader,
+            tool_registry=tool_catalog,
         )
-        self._recover_unknown_send = RecoverUnknownSendActionService(
+        self._recover_existing_result = RecoverExistingResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=connector_execution,
         )
-        self._recover_unknown_delete = RecoverUnknownDeleteActionService(
+        self._resolve_as_failed = ResolveAsFailedHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            gateway=connector_execution,
-        )
-        self._recover_unknown_update = RecoverUnknownUpdateActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            gateway=connector_execution,
         )
         self._begin_write_verification = BeginVerificationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
+            resume_target_registry=self._resume_target_registry,
         )
         self._write_execution_phase = WriteExecutionPhaseCoordinator(
             unit_of_work_factory=unit_of_work_factory,
@@ -590,18 +633,37 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             request_hash=self._request_hash,
             should_stop_for_cancel=self._should_stop_for_cancel,
             preflight_write=self._preflight_write,
-            claim_write=self._claim_write,
-            execute_write=self._execute_write,
+            expire_approval=ExpireApprovalHandler(
+                unit_of_work_factory=unit_of_work_factory,
+                now_ms=now_ms,
+            ),
+            refresh_expired_action=RefreshExpiredActionHandler(
+                unit_of_work_factory=unit_of_work_factory,
+                now_ms=now_ms,
+                id_factory=id_factory,
+                resume_target_registry=self._resume_target_registry,
+                schedule_run_execution=None,
+            ),
+            claim_execution=self._claim_execution,
+            build_claim_context=self._build_claim_context,
+            begin_execution_attempt=self._begin_execution_attempt,
+            abort_claimed_execution=self._abort_claimed_execution,
+            connector_execution=connector_execution,
+            classify_dispatch_result=self._classify_dispatch_result,
             store_write_success=self._store_write_success,
             begin_verification=self._begin_write_verification,
-            verify_write=self._verify_write,
+            verify_effect=self._verify_effect,
+            store_verification=self._store_verification,
+            require_recovery=self._require_recovery,
+            resolve_recovery=self._resolve_recovery,
             mark_write_failed=self._mark_write_failed,
             mark_write_unknown=self._mark_write_unknown,
+            service_instance_id=service_instance_id,
+            mcp_process_instance_id=mcp_process_instance_id or (lambda: "test-mcp-process"),
             require_write_reauth=self._require_write_reauth,
-            recover_unknown_create=self._recover_unknown_create,
-            recover_unknown_send=self._recover_unknown_send,
-            recover_unknown_delete=self._recover_unknown_delete,
-            recover_unknown_update=self._recover_unknown_update,
+            lookup_unknown_result=self._lookup_unknown_result,
+            recover_existing_result=self._recover_existing_result,
+            resolve_as_failed=self._resolve_as_failed,
         )
         self._write_execution_node = WriteExecutionNode(
             id_factory=id_factory,
@@ -620,7 +682,19 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             complete_write_run_if_verified=self._complete_write_run_if_verified,
             plans_for_run=self._plans_for_run,
             list_actions=self._list_actions,
-            begin_verification=self._begin_write_verification,
+            begin_verification=lambda run_id: (
+                None
+                if self._current_run_status(run_id) == RunStatusV1.VERIFYING.value
+                else self._begin_write_verification(
+                    BeginVerificationCommand(
+                        command_id=self._id_factory(),
+                        request_hash=calculate_canonical_json_hash(
+                            {"kind": "begin_verification_recovery", "run_id": run_id}
+                        ),
+                        run_id=run_id,
+                    )
+                )
+            ),
             latest_attempt_id=self._latest_attempt_id,
         )
         entry_subgraphs = build_pre_analysis_subgraphs(
@@ -1557,7 +1631,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 metadata_json=dumps(payload, sort_keys=True),
                 captured_at_ms=self._now_ms(),
             )
-            persisted = upsert_registered_resource_ref(unit_of_work, resource_ref)
+            persisted = persist_registered_resource_ref(unit_of_work, resource_ref)
             unit_of_work.commit()
             return persisted.id
 
@@ -1820,28 +1894,33 @@ class WorkflowRuntimeCore(WorkflowRuntime):
 
     def _latest_attempt(self, action_id: str) -> ExecutionAttemptRecord:
         with self._unit_of_work_factory() as unit_of_work:
-            approvals = active_approval_tuple(unit_of_work.approvals, action_id)
+            approvals = unit_of_work.approval_history.list_for_action(action_id)
             attempts = [
                 attempt
                 for approval in approvals
                 for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             ]
             if not attempts:
+                attempts = [
+                    attempt
+                    for candidate in unit_of_work.execution_attempts.list_reconciliation_candidates(
+                        256
+                    )
+                    if candidate.action_id == action_id
+                    and (
+                        attempt := unit_of_work.execution_attempts.get(
+                            candidate.execution_attempt_id
+                        )
+                    )
+                    is not None
+                ]
+            if not attempts:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
             return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms))
 
     def _mark_stalled_claims_as_unknown(self, run_id: str) -> bool:
-        # Startup/resume reconciliation for a crash between Claim-commit and
-        # either successful dispatch or MarkWriteActionUnknownResult ever
-        # running: the Action is left at EXECUTING with no terminal
-        # ExecutionAttempt. Whether the Provider actually received the
-        # dispatch is unknowable, so this is conservatively treated as
-        # ambiguous delivery (never assumed NOT_SENT) via the same
-        # MarkWriteActionUnknownResult command a live timeout/connection-
-        # closed error already uses -- it never re-claims or re-dispatches,
-        # only marks the existing Attempt/Action UNKNOWN_RESULT so the
-        # normal Recovery path (fingerprint search / GET-based, no blind
-        # resend) takes over.
+        # A CLAIMED attempt has not crossed BeginExecutionAttempt, so provider
+        # dispatch is proven to be zero and the durable claim can be aborted.
         marked_any = False
         for plan in self._plans_for_run(run_id):
             for action in self._list_actions(plan.id):
@@ -1850,21 +1929,28 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 attempt = self._latest_attempt(action.id)
                 if attempt.status != ExecutionAttemptStatusV1.CLAIMED.value:
                     continue
-                response = self._mark_write_unknown(
-                    MarkWriteActionUnknownResultCommand(
+                error_detail = (
+                    "process restarted before BeginExecutionAttempt committed"
+                )
+                response = self._abort_claimed_execution(
+                    AbortClaimedExecutionCommandV1(
                         command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "restart_stalled_claim", "action_id": action.id}
+                        request_hash=calculate_canonical_json_hash(
+                            {
+                                "action_id": action.id,
+                                "attempt_id": attempt.id,
+                                "expected_action_version": action.version,
+                                "expected_attempt_version": attempt.version,
+                                "error_code": "PROCESS_RESTART_BEFORE_BEGIN",
+                                "error_detail": error_detail,
+                            }
                         ),
                         action_id=action.id,
                         attempt_id=attempt.id,
                         expected_action_version=action.version,
                         expected_attempt_version=attempt.version,
-                        error_code="RESTART_DELIVERY_AMBIGUOUS",
-                        error_detail=(
-                            "process restarted with this action's write claimed but "
-                            "no terminal execution result recorded"
-                        ),
+                        error_code="PROCESS_RESTART_BEFORE_BEGIN",
+                        error_detail=error_detail,
                     )
                 )
                 marked_any = marked_any or response.applied
@@ -1926,7 +2012,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
             for action in unit_of_work.actions.list_for_plan(latest_plan.id):
                 if action.status != ActionStatusV1.UNKNOWN_RESULT.value:
                     continue
-                approvals = active_approval_tuple(unit_of_work.approvals, action.id)
+                approvals = unit_of_work.approval_history.list_for_action(action.id)
                 for approval in sorted(approvals, key=lambda item: item.approval_no, reverse=True):
                     attempts = active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
                     if not attempts:

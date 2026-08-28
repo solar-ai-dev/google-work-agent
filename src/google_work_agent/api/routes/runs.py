@@ -13,6 +13,10 @@ from google_work_agent.api.dependencies.runs import RunRouteDependency
 from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.errors.result_code_http_mapping import http_status_for_result_code
+from google_work_agent.api.schemas.runs.adjust_context import (
+    AdjustContextRequestV1,
+    AdjustContextResponseV1,
+)
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2, RunCommandResponse
 from google_work_agent.api.schemas.runs.confirm_run import (
     ConfirmationResponseV1,
@@ -25,8 +29,11 @@ from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.api.security.sessions import calculate_session_digest
+from google_work_agent.application.use_cases.recovery.project_recovery_options import (
+    ProjectRecoveryOptionsHandler,
+)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommand,
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
@@ -35,6 +42,10 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandleQuery,
     SelectionHandleValidationError,
+)
+from google_work_agent.application.use_cases.run.adjust_context import (
+    AdjustContextCommandV1,
+    AdjustContextHandler,
 )
 from google_work_agent.application.use_cases.run.confirm_run import (
     ConfirmRunCommand,
@@ -48,6 +59,15 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
 )
+from google_work_agent.application.use_cases.run.project_context_preview import (
+    ProjectContextPreviewHandler,
+)
+from google_work_agent.application.use_cases.run.project_error_actions import (
+    ProjectErrorActionsHandler,
+)
+from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
+    ProjectExternalLlmTransferScopeHandler,
+)
 from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
@@ -58,9 +78,10 @@ from google_work_agent.application.use_cases.run.resume_after_reauth import (
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationHandler,
 )
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
+from google_work_agent.application.use_cases.run.resume_run import ResumeRunCommand
+from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
+    ResumeSafeCheckpointCommand,
+    ResumeSafeCheckpointHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -173,6 +194,38 @@ def get_run_snapshot(
     )
     snapshot = GetRunSnapshotHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        project_context_preview=(
+            dependencies.project_context_preview_handler
+            if isinstance(
+                dependencies.project_context_preview_handler,
+                ProjectContextPreviewHandler,
+            )
+            else None
+        ),
+        project_recovery_options=(
+            dependencies.project_recovery_options_handler
+            if isinstance(
+                dependencies.project_recovery_options_handler,
+                ProjectRecoveryOptionsHandler,
+            )
+            else None
+        ),
+        project_error_actions=(
+            dependencies.project_error_actions_handler
+            if isinstance(
+                dependencies.project_error_actions_handler,
+                ProjectErrorActionsHandler,
+            )
+            else None
+        ),
+        project_external_llm_transfer_scope=(
+            dependencies.project_external_llm_transfer_scope_handler
+            if isinstance(
+                dependencies.project_external_llm_transfer_scope_handler,
+                ProjectExternalLlmTransferScopeHandler,
+            )
+            else None
+        ),
     )(GetRunSnapshotQuery(run_id=run_id))
     if snapshot is None:
         raise ApiRequestError(
@@ -182,7 +235,11 @@ def get_run_snapshot(
             request_id=request.state.request_id,
         )
     projection = asdict(snapshot)
-    pending = dependencies.resolve_pending_confirmation(run_id)
+    pending = (
+        dependencies.resolve_pending_confirmation(run_id)
+        if snapshot.status == "WAITING_CONFIRMATION"
+        else None
+    )
     if pending is not None:
         options = pending.get("options")
         projection["pending_interrupt"] = PendingInterruptResponseV1(
@@ -197,6 +254,45 @@ def get_run_snapshot(
     return RunSnapshotResponse(
         snapshot=projection, api_contract_version=dependencies.api_contract_version
     )
+
+
+@router.post(
+    "/runs/{run_id}/context-adjustments",
+    response_model=AdjustContextResponseV1,
+)
+def adjust_context(
+    run_id: str,
+    request: Request,
+    payload: AdjustContextRequestV1,
+    response: Response,
+    dependencies: RunRouteDependency,
+) -> AdjustContextResponseV1:
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_runtime_operation(request, operation="RUN_COMMANDS")
+    handler = dependencies.adjust_context_handler
+    if not isinstance(handler, AdjustContextHandler):
+        raise ApiRequestError(
+            error_code="SERVICE_BUSY",
+            user_message="Context adjustment is not configured.",
+            status_code=503,
+            request_id=request.state.request_id,
+            detail_code="CONTEXT_ADJUSTMENT_UNAVAILABLE",
+        )
+    result = handler(
+        AdjustContextCommandV1(
+            schema_version=payload.schema_version,
+            command_id=payload.command_id,
+            run_id=run_id,
+            plan_id=payload.plan_id,
+            expected_run_version=payload.expected_run_version,
+            expected_retrieval_revision=payload.expected_retrieval_revision,
+            adjustment_kind=payload.adjustment_kind,
+            evidence_ids=payload.evidence_ids,
+            retrieval_query=payload.retrieval_query,
+        )
+    )
+    response.status_code = http_status_for_result_code(result.result_code)
+    return AdjustContextResponseV1(**asdict(result))
 
 
 @router.get("/runs/{run_id}/context", response_model=RunContextResponse)
@@ -280,10 +376,57 @@ def resume_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler_type = (
-        ResumeAfterReauthHandler if payload.resume_kind == "REAUTH_COMPLETED" else ResumeRunHandler
-    )
-    handler = handler_type(
+    if payload.resume_kind == "SAFE_CHECKPOINT_RESUME":
+        safe = ResumeSafeCheckpointHandler(
+            unit_of_work_factory=dependencies.unit_of_work_factory,
+            resume_target_registry=dependencies.resume_target_registry,
+            schedule_run_execution=dependencies.schedule_run_execution,
+            id_factory=dependencies.id_generator.new_uuid,
+        )(
+            ResumeSafeCheckpointCommand(
+                command_id=payload.command_id,
+                run_id=run_id,
+                expected_run_version=payload.expected_version,
+            )
+        )
+        response.status_code = http_status_for_result_code(safe.result_code)
+        return RunCommandResponse(
+            applied=safe.applied,
+            result_code=safe.result_code,
+            run_id=safe.run_id,
+            run_status=safe.run_status,
+            run_version=safe.run_version,
+            should_enqueue=safe.handoff_id is not None,
+            conflict_detail=safe.conflict_detail,
+        )
+    if payload.resume_kind == "RECOVERY_RECHECK":
+        recovery = ResolveRecoveryHandler(
+            unit_of_work_factory=dependencies.unit_of_work_factory,
+            now_ms=dependencies.clock.now_ms,
+        )(
+            ResolveRecoveryCommandV1(
+                run_id=run_id,
+                expected_version=payload.expected_version,
+                command_id=payload.command_id,
+                request_hash=calculate_server_request_hash(
+                    operation="ResumeRunRequestV2",
+                    payload={"run_id": run_id, **payload.model_dump()},
+                ),
+                resolution=RecoveryResolution.RECHECK,
+                recheck_input_changed=True,
+            )
+        )
+        response.status_code = http_status_for_result_code(recovery.result_code)
+        return RunCommandResponse(
+            applied=recovery.applied,
+            result_code=recovery.result_code,
+            run_id=run_id,
+            run_status=recovery.current_status,
+            run_version=recovery.current_version,
+            should_enqueue=False,
+            conflict_detail=recovery.conflict_detail,
+        )
+    handler = ResumeAfterReauthHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         resolve_resume_authority=dependencies.resolve_resume_authority,
@@ -376,7 +519,7 @@ def resolve_recovery(
         next_id=dependencies.id_generator.new_uuid,
     )
     result = handler(
-        ResolveRecoveryCommand(
+        ResolveRecoveryCommandV1(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ResolveRecoveryRequestV1",

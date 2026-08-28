@@ -88,7 +88,9 @@ def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
     results: list[Any] = []
     errors: list[BaseException] = []
 
-    def materialize(admission: WorkflowExecutionAdmissionV1):
+    def materialize(
+        admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
+    ):
         with checkpoint.execution_scope(
             admission,
             applied_handoff_id=admission.handoff_id,
@@ -146,7 +148,7 @@ def resume_confirmation_with_handoff(
     if authority is None:
         raise AssertionError("test runtime has no pending confirmation")
     with factory() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
+        run = unit_of_work.runs.get("run-1")
         assert run is not None
         expected_version = run.version
 
@@ -197,8 +199,8 @@ def resume_confirmation_with_handoff(
 
     executor = _executor(
         runtime,
-        materialize=lambda _admission: (_ for _ in ()).throw(
-            AssertionError("RESUME must not materialize a START checkpoint")
+        materialize=lambda admission, handoff: _materialize_resume_control(
+            runtime, admission, handoff
         ),
         invoke=invoke,
     )
@@ -241,6 +243,15 @@ def resume_confirmation_with_handoff(
         return result, runtime_results[0] if runtime_results else None
     finally:
         executor.close()
+
+
+def _materialize_resume_control(runtime: Any, admission: Any, handoff: Any) -> Any:
+    del handoff
+    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    binding = admission.effective_binding
+    latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
+    assert latest is not None
+    return latest
 
 
 def _executor(runtime: Any, *, materialize: Any, invoke: Any) -> BackgroundRunExecutorAdapter:

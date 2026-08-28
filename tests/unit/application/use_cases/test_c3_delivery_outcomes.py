@@ -3,11 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
-from google_work_agent.application.use_cases.execution_attempt.execute_claimed_action import (
+from tests.support.legacy_write.execute_claimed_action import (
     ExecuteClaimedActionCommand,
     ExecuteClaimedActionHandler,
 )
+
 from google_work_agent.application.use_cases.execution_attempt.mark_failed import (
     MarkFailedCommand,
     MarkFailedHandler,
@@ -52,6 +52,7 @@ def test_unknown_result_rejects_definitive_not_sent() -> None:
     handler = MarkUnknownResultHandler(
         unit_of_work_factory=_unexpected_uow,  # type: ignore[arg-type]
         now_ms=lambda: 1,
+        resume_target_registry=SimpleNamespace(),  # type: ignore[arg-type]
     )
     with pytest.raises(ValueError, match="possibly dispatched"):
         handler(

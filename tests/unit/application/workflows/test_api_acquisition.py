@@ -8,9 +8,6 @@ from typing import TypedDict, cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
-    McpConnectorReadAdapter,
-)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     RetrievalBudget,
@@ -21,6 +18,9 @@ from google_work_agent.application.orchestration.api_acquisition import (
 )
 from google_work_agent.application.orchestration.connector_read_models import (
     PlannedConnectorRead,
+)
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
@@ -39,6 +39,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     Weekday,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.ports import (
     ActualRuntime,
     FreeBusyCalendar,
@@ -58,6 +59,11 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.connector.connector_read_port import (
+    ConnectorReadResultV1,
+    JsonValue,
+)
+from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
 from google_work_agent.ports.observability_events import ObservabilityContext
 
 PROMPT_REF = PromptReference(
@@ -77,7 +83,7 @@ DEFAULT_TEST_RETRIEVAL_BUDGET = RetrievalBudget()
 
 
 def test_connector_reader_rejects_read_outside_frozen_tool_ids() -> None:
-    reader = McpConnectorReadAdapter(gateway=RecordingGoogleGateway())
+    reader = _connector_reader(RecordingGoogleGateway())
     request = PlannedConnectorRead(
         plan=_plan("TASKS", {}),
         selected_resources=(),
@@ -384,6 +390,146 @@ class RecordingGoogleGateway:
         error = self.faults.pop(operation, None)
         if error is not None:
             raise error
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingConnectorReadPort:
+    gateway: RecordingGoogleGateway
+
+    def execute_read(
+        self,
+        binding: ValidatedConnectorToolBindingV1,
+        tool_arguments: dict[str, JsonValue],
+    ) -> ConnectorReadResultV1:
+        arguments = cast(dict[str, object], tool_arguments)
+        tool_id = binding.tool_id
+        if tool_id == "gmail_search_threads":
+            value = self.gateway.search_gmail_threads(
+                query=str(arguments["query"]),
+                page_token=cast(str | None, arguments.get("page_token")),
+                page_size=int(cast(int, arguments["page_size"])),
+            )
+            output = _page_output(value)
+        elif tool_id == "gmail_get_thread":
+            output = _item_output(
+                self.gateway.get_gmail_thread(thread_id=str(arguments["thread_id"]))
+            )
+        elif tool_id == "gmail_get_message":
+            output = _item_output(
+                self.gateway.get_gmail_message(message_id=str(arguments["message_id"]))
+            )
+        elif tool_id == "gmail_get_draft":
+            output = _item_output(
+                self.gateway.get_gmail_draft(draft_id=str(arguments["draft_id"]))
+            )
+        elif tool_id == "tasks_list_tasklists":
+            value = self.gateway.list_task_lists(
+                page_token=cast(str | None, arguments.get("page_token")),
+                page_size=int(cast(int, arguments["page_size"])),
+            )
+            output = _page_output(value)
+        elif tool_id == "tasks_list_tasks":
+            value = self.gateway.list_tasks(
+                task_list_id=str(arguments["task_list_id"]),
+                page_token=cast(str | None, arguments.get("page_token")),
+                page_size=int(cast(int, arguments["page_size"])),
+            )
+            output = _page_output(value)
+        elif tool_id == "tasks_get_task":
+            output = _item_output(
+                self.gateway.get_task(
+                    task_list_id=str(arguments["task_list_id"]),
+                    task_id=str(arguments["task_id"]),
+                )
+            )
+        elif tool_id == "calendar_list_calendars":
+            value = self.gateway.list_calendars(
+                page_token=cast(str | None, arguments.get("page_token")),
+                page_size=int(cast(int, arguments["page_size"])),
+            )
+            output = _page_output(value)
+        elif tool_id == "calendar_list_events":
+            value = self.gateway.list_calendar_events(
+                calendar_id=str(arguments["calendar_id"]),
+                page_token=cast(str | None, arguments.get("page_token")),
+                page_size=int(cast(int, arguments["page_size"])),
+                time_min=cast(str | None, arguments.get("time_min")),
+                time_max=cast(str | None, arguments.get("time_max")),
+                single_events=bool(arguments.get("single_events", False)),
+                order_by=cast(str | None, arguments.get("order_by")),
+            )
+            output = _page_output(value)
+        elif tool_id == "calendar_query_freebusy":
+            calendars = self.gateway.query_freebusy(
+                calendar_ids=tuple(cast(list[str], arguments["calendar_ids"])),
+                time_range=TimeRange(
+                    start=str(arguments["time_min"]), end=str(arguments["time_max"])
+                ),
+            )
+            output = {
+                "calendars": [
+                    {
+                        "calendar_id": item.calendar_id,
+                        "intervals": [
+                            {
+                                "start": interval.start,
+                                "end": interval.end,
+                                "transparency": interval.transparency,
+                            }
+                            for interval in item.intervals
+                        ],
+                    }
+                    for item in calendars
+                ]
+            }
+        elif tool_id == "calendar_get_event":
+            output = _item_output(
+                self.gateway.get_calendar_event(
+                    calendar_id=str(arguments["calendar_id"]),
+                    event_id=str(arguments["event_id"]),
+                )
+            )
+        else:
+            raise AssertionError(f"unexpected read tool: {tool_id}")
+        return ConnectorReadResultV1(
+            schema_version=1,
+            tool_id=tool_id,
+            request_id="test-request",
+            output=cast(dict[str, JsonValue], output),
+            next_page_token=cast(str | None, output.get("next_page_token")),
+            total_count=None,
+        )
+
+
+def _item_output(snapshot: ResourceSnapshot) -> dict[str, object]:
+    return {"item": _snapshot_output(snapshot)}
+
+
+def _page_output(page: ResourcePage) -> dict[str, object]:
+    return {
+        "items": [_snapshot_output(item) for item in page.items],
+        "next_page_token": page.next_page_token,
+    }
+
+
+def _snapshot_output(snapshot: ResourceSnapshot) -> dict[str, object]:
+    return {
+        "fixture_snapshot_id": snapshot.fixture_snapshot_id,
+        "resource_type": snapshot.resource_type.value,
+        "resource_id": snapshot.resource_id,
+        "parent_id": snapshot.parent_id,
+        "related_resource_ids": list(snapshot.related_resource_ids),
+        "version": snapshot.version,
+        "recovery_fingerprint": snapshot.recovery_fingerprint,
+        "payload": snapshot.payload,
+    }
+
+
+def _connector_reader(gateway: RecordingGoogleGateway) -> ConnectorReadProjection:
+    return ConnectorReadProjection(
+        connector_reader=RecordingConnectorReadPort(gateway),
+        tool_registry=load_signed_tool_registry(),
+    )
 
 
 def test_gmail_single_source_plan_and_acquisition_complete() -> None:
@@ -1664,7 +1810,7 @@ def _agent(
 ) -> ApiDiscoveryAcquisitionAgent:
     return ApiDiscoveryAcquisitionAgent(
         llm_runtime=runtime,
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=_connector_reader(gateway),
         prompt_ref=PROMPT_REF,
         retrieval_budget=retrieval_budget,
         now_ms=(lambda: now_ms) if now_ms is not None else None,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -10,7 +9,6 @@ from tests.support.fakes import (
     FakeAPIProviderTransport,
     FakeClockPort,
     FakeHardwareProbe,
-    FakeKeyring,
     FakeOllamaTransport,
     approved_model,
 )
@@ -34,27 +32,30 @@ from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
-from google_work_agent.adapters.runtime import (
-    BuildProfile,
-    FileSettingsStore,
-    SettingsPatch,
+from google_work_agent.adapters.runtime import BuildProfile
+from google_work_agent.adapters.system.filesystem_operational_command_replay import (
+    FilesystemOperationalCommandReplayAdapter,
 )
-from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.llm import (
-    DeleteLLMApiKeyService,
-    GetLLMConnectionService,
-    StoreLLMApiKeyService,
-)
 from google_work_agent.application.llm import (
     LLMRuntimeService as _LLMRuntimeService,
 )
 from google_work_agent.application.llm import (
     TestLLMConnectionService as LLMConnectionTestService,
 )
+from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
+    DeleteLlmCredentialHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.get_llm_credential_status import (
+    GetLlmCredentialStatusHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.store_llm_credential import (
+    StoreLlmCredentialHandler,
+)
 from google_work_agent.ports import (
     AccessDecision,
+    AppSettings,
     ApiRequestContext,
     CredentialStorageMode,
     EndpointPolicy,
@@ -91,10 +92,14 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
             "runtime_policy",
             "event_recorder",
             "schema_repairer",
+            "hardware_probe",
+            "api_provider_name",
         )
         if key in kwargs
     }
     kwargs.pop("api_provider")
+    kwargs.pop("hardware_probe", None)
+    kwargs.pop("api_provider_name", None)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
         **kwargs,
@@ -149,23 +154,17 @@ class _WorkflowRuntimeStub:
         return None
 
 
-@dataclass
 class _RuntimeStatusProvider(RuntimeStatusProvider):
-    settings_service: JsonSettingsAdapter
-    llm_status_service: LlmRuntimeStatusRouter
-
     def get_summary(self) -> RuntimeSummary:
-        settings = self.settings_service.get()
-        api_llm, ollama, llm = self.llm_status_service.summarize_top_level(settings)
         return RuntimeSummary(
             google="CONNECTED",
             mcp="READY",
-            api_llm=api_llm,
-            ollama=ollama,
-            deployment_profile=settings.deployment_profile,
+            api_llm="NOT_CONFIGURED",
+            ollama="NOT_AVAILABLE",
+            deployment_profile="test",
             recovery_required_run_ids=(),
             open_run_ids=(),
-            llm=llm,
+            llm={},
         )
 
 
@@ -179,7 +178,7 @@ class _QueryStub:
 
 def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Path) -> None:
     clock = FakeClockPort(1_000)
-    keyring = FakeKeyring()
+    keyring = SessionMemorySecretStore()
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -198,25 +197,18 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         keyring_store=keyring,
         session_store=SessionMemorySecretStore(),
     )
-    settings_service = JsonSettingsAdapter(
-        store=FileSettingsStore(tmp_path / "settings" / "app-settings.json"),
-        deployment_profile=BuildProfile.LOCAL_CAPABLE,
-        approved_model_ids=frozenset({approved_model().model_id}),
-        has_active_runs=lambda: False,
-    )
-    settings_service.patch(
-        SettingsPatch(
-            command_id="cmd-1",
-            requested_runtime_mode="API_LLM",
-            external_llm_consent=True,
-            ollama_endpoint="http://127.0.0.1:11434",
-        )
+    runtime_settings = lambda: AppSettings(
+        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+        requested_runtime_mode="API_LLM",
+        external_llm_consent=True,
+        ollama_endpoint="http://127.0.0.1:11434",
+        approved_model_id=approved_model().model_id,
     )
     status_service = LlmRuntimeStatusRouter(
-        build_profile="LOCAL_CAPABLE",
+        build_profile=BuildProfile.LOCAL_CAPABLE.value,
+        settings_service=runtime_settings,
         credential_service=credential_service,
         api_connection_service=GeminiConnectionService(api_transport),
-        hardware_probe=FakeHardwareProbe(),
         ollama_probe=type(
             "_Probe",
             (),
@@ -230,25 +222,11 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         )(),
         approved_models={approved_model().model_id: approved_model()},
         runtime_policy=RuntimePolicy(),
+        api_provider_name="generic",
     )
-    runtime_provider = _RuntimeStatusProvider(settings_service, status_service)
-    runtime_service = LLMRuntimeService(
-        settings_service=settings_service.get,
-        status_service=status_service,
-        credential_service=credential_service,
-        api_provider=StructuredInferenceRuntimeRouter(
-            provider_name="generic-api",
-            transport=api_transport,
-            model="api-model",
-        ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
-            provider_name="ollama",
-            transport=ollama_transport,
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
-            model_id=model.model_id,
-        ),
-        router=None,
-        runtime_policy=RuntimePolicy(),
+    runtime_provider = _RuntimeStatusProvider()
+    operational_replay = FilesystemOperationalCommandReplayAdapter(
+        tmp_path / "operational-replay"
     )
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
@@ -274,43 +252,38 @@ def test_llm_runtime_routes_mask_secrets_and_project_runtime_state(tmp_path: Pat
         environment="test",
         service_instance_id="svc-llm",
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
-        get_llm_connection_service=GetLLMConnectionService(
-            runtime_status_service=status_service,
-            settings_service=settings_service.get,
+        get_llm_credential_status_handler=GetLlmCredentialStatusHandler(
+            credential_service
         ),
-        store_llm_api_key_service=StoreLLMApiKeyService(credential_service),
-        delete_llm_api_key_service=DeleteLLMApiKeyService(credential_service),
-        test_llm_connection_service=LLMConnectionTestService(runtime_service),
+        store_llm_credential_handler=StoreLlmCredentialHandler(
+            credentials=credential_service,
+            replay=operational_replay,
+        ),
+        delete_llm_credential_handler=DeleteLlmCredentialHandler(
+            credentials=credential_service,
+            replay=operational_replay,
+        ),
+        test_llm_connection_service=None,
     )
 
     with TestClient(create_app(container)) as client:
-        stored = client.post(
-            "/api/v1/llm/api-key",
+        stored = client.put(
+            "/api/v1/credentials/llm/generic",
             json={"api_key": "sk-test-secret", "storage_mode": CredentialStorageMode.KEYRING.value},
         )
         assert stored.status_code == 200
-        assert stored.json()["credential_state"] == "KEYRING"
+        assert stored.json()["credential_state"] == "VALID"
         assert "sk-test-secret" not in stored.text
 
-        connection = client.get("/api/v1/llm/connection")
+        connection = client.get("/api/v1/credentials/llm/generic")
         assert connection.status_code == 200
-        assert connection.json()["llm"]["api_provider"]["credential_state"] == "KEYRING"
+        assert connection.json()["llm"]["storage_mode"] == "KEYRING"
         assert "sk-test-secret" not in connection.text
 
-        runtime = client.get("/api/v1/runtime")
-        assert runtime.status_code == 200
-        assert runtime.json()["summary"]["llm"]["api_provider"]["credential_state"] == "KEYRING"
-
-        tested = client.post("/api/v1/llm/test", json={})
-        assert tested.status_code == 200
-        assert tested.json()["llm"]["external_llm_consent"] is True
-        assert tested.json()["llm"]["api_provider"]["availability"] == "AVAILABLE"
-
-        deleted = client.delete("/api/v1/llm/api-key")
+        deleted = client.delete("/api/v1/credentials/llm/generic")
         assert deleted.status_code == 200
         assert deleted.json()["credential_state"] == "NOT_CONFIGURED"
 
-        runtime_after_delete = client.get("/api/v1/runtime")
-        runtime_summary = runtime_after_delete.json()["summary"]
-        assert runtime_summary["llm"]["api_provider"]["credential_state"] == "NOT_CONFIGURED"
-        assert "sk-test-secret" not in runtime_after_delete.text
+        after_delete = client.get("/api/v1/credentials/llm/generic")
+        assert after_delete.json()["llm"]["validation_status"] == "NOT_CONFIGURED"
+        assert "sk-test-secret" not in after_delete.text

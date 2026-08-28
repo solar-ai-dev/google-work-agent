@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import Request
 
@@ -26,12 +26,6 @@ from google_work_agent.ports import (
     UUIDPort,
     WorkflowRuntime,
 )
-
-if TYPE_CHECKING:
-    from google_work_agent.application.attachments import (
-        GetGmailAttachmentService,
-        StageAttachmentService,
-    )
 
 API_CONTRACT_VERSION = "1"
 
@@ -76,28 +70,40 @@ class ApiContainer:
     resume_target_registry: Any | None = None
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
-    start_google_oauth_service: Any | None = None
-    get_google_connection_service: Any | None = None
-    disconnect_google_service: Any | None = None
+    start_authorization_handler: Any | None = None
+    get_connection_status_handler: Any | None = None
+    revoke_connection_handler: Any | None = None
     resource_query_service: Any | None = None
+    list_task_lists_handler: Any | None = None
+    list_calendars_handler: Any | None = None
+    get_task_resource_detail_handler: Any | None = None
+    get_calendar_resource_detail_handler: Any | None = None
     frontend_site: Any | None = None
     additional_readiness_checks: tuple[Callable[[], Any], ...] = ()
     safe_mode_controller: Any | None = None
+    get_runtime_status_handler: Any | None = None
+    update_runtime_mode_handler: Any | None = None
     core_initialization_in_progress: bool = False
-    get_settings_service: Any | None = None
-    patch_settings_service: Any | None = None
-    list_backups_service: Any | None = None
-    create_backup_service: Any | None = None
-    create_restore_plan_service: Any | None = None
-    request_shutdown_service: Any | None = None
-    get_llm_connection_service: Any | None = None
-    store_llm_api_key_service: Any | None = None
-    delete_llm_api_key_service: Any | None = None
+    get_settings_handler: Any | None = None
+    update_settings_handler: Any | None = None
+    list_backups_handler: Any | None = None
+    create_backup_handler: Any | None = None
+    restore_backup_handler: Any | None = None
+    create_diagnostic_bundle_handler: Any | None = None
+    request_shutdown_handler: Any | None = None
+    get_llm_credential_status_handler: Any | None = None
+    store_llm_credential_handler: Any | None = None
+    delete_llm_credential_handler: Any | None = None
     test_llm_connection_service: Any | None = None
-    get_gmail_attachment_service: GetGmailAttachmentService | None = None
-    stage_attachment_service: StageAttachmentService | None = None
+    get_attachment_handler: Any | None = None
+    create_staged_attachment_handler: Any | None = None
     list_conversations_handler: Any | None = None
     get_conversation_history_handler: Any | None = None
+    project_context_preview_handler: Any | None = None
+    adjust_context_handler: Any | None = None
+    project_recovery_options_handler: Any | None = None
+    project_error_actions_handler: Any | None = None
+    project_external_llm_transfer_scope_handler: Any | None = None
     issue_selection_handle: IssueSelectionHandle | None = None
     resolve_selection_handle: ResolveSelectionHandle | None = None
     resource_connector_id: str = "google_workspace"

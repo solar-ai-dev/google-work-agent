@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommand,
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
@@ -813,7 +813,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
-        ResolveRecoveryCommand(
+        ResolveRecoveryCommandV1(
             run_id="run-1",
             expected_version=_run_version(write_database),
             command_id="recheck-cancel-recovery",

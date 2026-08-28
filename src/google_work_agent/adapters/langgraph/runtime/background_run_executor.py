@@ -74,6 +74,11 @@ class BackgroundRunExecutorAdapter:
     def begin_shutdown(self) -> None:
         self._stop.set()
 
+    def is_run_active(self, run_id: str) -> bool:
+        """Return the process-local admission fence used by live redrive."""
+        with self._lock:
+            return run_id in self._active_run_admissions
+
     def await_drained(self, deadline_ms: int) -> bool:
         deadline = time.monotonic() + max(0, deadline_ms) / 1000
         while time.monotonic() <= deadline:
@@ -180,7 +185,10 @@ class BackgroundRunExecutorAdapter:
             latest is None
             or latest.checkpoint_id != binding.checkpoint_id
             or latest.checkpoint_generation != binding.checkpoint_generation
-            or latest.registered_resume_target != binding.resume_target
+            or (
+                admission.submission_kind == "CONSUMED_CONTINUATION_RECOVERY"
+                and latest.registered_resume_target != binding.resume_target
+            )
         ):
             raise ValueError("persisted RESUME admission does not match latest checkpoint")
         if latest is None:

@@ -27,7 +27,7 @@ from google_work_agent.application.write_action_mutation_contracts import (
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
 )

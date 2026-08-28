@@ -15,8 +15,8 @@ from google_work_agent.application.use_cases.plan.publish_plan import PublishPla
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution import ExecuteWriteActionService
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
+from tests.support.legacy_write.write_execution import ExecuteWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
@@ -30,7 +30,7 @@ from google_work_agent.application.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.write_result_persistence import (
+from tests.support.legacy_write.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType

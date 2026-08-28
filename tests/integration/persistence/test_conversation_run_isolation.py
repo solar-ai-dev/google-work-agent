@@ -16,7 +16,7 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.queries import QueryService
+from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,

@@ -11,11 +11,11 @@ from tests.integration.langgraph.test_runtime import (
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
-    McpConnectorWriteAdapter,
     LangGraphWorkflowRuntime,
     ProductFixtureSnapshotLoader,
     _clear_intent,
     _llm_result,
+    _make_runtime_with_llm,
     _runtime_active_manifest_path,
     _seed_runtime_database,
     _start_request,
@@ -243,20 +243,13 @@ def test_ret_int_01_initial_search_reaches_evidence_and_retrieval_result(tmp_pat
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(
-            _seed_runtime_database(tmp_path, status="ANALYZING")
-        ),
+    runtime = _make_runtime_with_llm(
+        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="ret-int-01").next_id,
-        signing_secret="test",
-        service_instance_id="test",
         checkpoint_database_path=tmp_path / "checkpoints.db",
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        id_prefix="ret-int-01",
     )
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
@@ -279,20 +272,13 @@ def test_ret_int_02_changed_search_reaches_second_round_evidence(tmp_path: Any) 
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(
-            _seed_runtime_database(tmp_path, status="ANALYZING")
-        ),
+    runtime = _make_runtime_with_llm(
+        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="ret-int-02").next_id,
-        signing_secret="test",
-        service_instance_id="test",
         checkpoint_database_path=tmp_path / "checkpoints.db",
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        id_prefix="ret-int-02",
     )
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
@@ -316,20 +302,13 @@ def test_ret_int_03_next_page_reaches_second_page_evidence(tmp_path: Any) -> Non
     gateway = _PagingGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(
-            _seed_runtime_database(tmp_path, status="ANALYZING")
-        ),
+    runtime = _make_runtime_with_llm(
+        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="ret-int-03").next_id,
-        signing_secret="test",
-        service_instance_id="test",
         checkpoint_database_path=tmp_path / "checkpoints.db",
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        id_prefix="ret-int-03",
     )
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001
@@ -364,20 +343,13 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(
-            _seed_runtime_database(tmp_path, status="ANALYZING")
-        ),
+    runtime = _make_runtime_with_llm(
+        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="ret-required").next_id,
-        signing_secret="test",
-        service_instance_id="test",
         checkpoint_database_path=tmp_path / "checkpoints.db",
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        id_prefix="ret-required",
     )
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001

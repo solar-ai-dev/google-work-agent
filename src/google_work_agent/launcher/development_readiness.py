@@ -130,9 +130,16 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         )
 
     def _mcp_check(self) -> ReadinessCheckResult:
-        metadata = cast(
-            Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
-        ).runtime_metadata()
+        try:
+            metadata = cast(
+                Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
+            ).runtime_metadata()
+        except LookupError:
+            return ReadinessCheckResult(
+                name="mcp_handshake",
+                state=ReadinessState.NOT_READY,
+                detail="MCP_RUNTIME_UNAVAILABLE",
+            )
         if metadata.process_status != "READY" or metadata.process_instance_id is None:
             return ReadinessCheckResult(
                 name="mcp_handshake",
@@ -142,9 +149,16 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         return ReadinessCheckResult(name="mcp_handshake", state=ReadinessState.READY)
 
     def _tool_schema_check(self) -> ReadinessCheckResult:
-        metadata = cast(
-            Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
-        ).runtime_metadata()
+        try:
+            metadata = cast(
+                Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID)
+            ).runtime_metadata()
+        except LookupError:
+            return ReadinessCheckResult(
+                name="tool_schema",
+                state=ReadinessState.NOT_READY,
+                detail="TOOL_SCHEMA_UNAVAILABLE",
+            )
         if metadata.protocol_version == MCP_MANIFEST_VERSION and metadata.available_tool_count > 0:
             return ReadinessCheckResult(name="tool_schema", state=ReadinessState.READY)
         return ReadinessCheckResult(

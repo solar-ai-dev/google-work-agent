@@ -15,7 +15,6 @@ from tests.integration.langgraph.test_runtime import (
     FakeGoogleGateway,
     GoogleGatewayFault,
     GoogleGatewayFaultKind,
-    McpConnectorWriteAdapter,
     GraphProfile,
     InactivePromptArtifactError,
     LangGraphWorkflowRuntime,
@@ -27,6 +26,7 @@ from tests.integration.langgraph.test_runtime import (
     _answer_output,
     _clear_intent,
     _make_runtime,
+    _make_runtime_with_llm,
     _plan,
     _planning_mode_runtime,
     _QueuedLLMRuntime,
@@ -302,20 +302,13 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(
-            _seed_runtime_database(tmp_path, status="ANALYZING")
-        ),
+    runtime = _make_runtime_with_llm(
+        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm_runtime,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="edge").next_id,
-        signing_secret="edge-secret",
-        service_instance_id="edge-service",
         checkpoint_database_path=tmp_path / "checkpoints-chain-b.db",
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        id_prefix="edge",
     )
 
     try:

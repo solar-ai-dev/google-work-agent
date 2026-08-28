@@ -71,7 +71,6 @@ _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES = frozenset(
     {
         ActionStatusV1.EXECUTING.value,
         ActionStatusV1.UNKNOWN_RESULT.value,
-        ActionStatusV1.EXECUTED.value,
     }
 )
 

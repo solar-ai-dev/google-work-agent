@@ -2,14 +2,24 @@
 
 from json import loads
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
+from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
@@ -18,7 +28,7 @@ from google_work_agent.application.use_cases.plan.publish_plan import PublishPla
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
 )
@@ -31,6 +41,12 @@ from google_work_agent.application.write_plan_contracts import (
 )
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    AgentNodeResumeTargetV2,
+    WorkflowExecutionAdmissionV1,
+    WorkflowExecutionBindingV1,
+)
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
@@ -41,8 +57,12 @@ from tests.integration.persistence.test_write_action_dependency_persistence impo
     _evidence,
     _task_draft,
 )
-from tests.support.fakes import FakeClockPort
+from tests.support.fakes import DeterministicUUID, FakeClockPort
 from tests.support.legacy_write_approval import ApproveWriteActionService
+
+
+class _CheckpointState(TypedDict):
+    value: int
 
 
 @pytest.fixture()
@@ -77,9 +97,77 @@ def modify_database(tmp_path: Path) -> Path:
 
 
 def _service(database_path: Path, clock: FakeClockPort) -> RejectActionHandler:
+    checkpoint = SqliteCheckpointAdapter(database_path, now_ms=clock.now_ms)
+    if checkpoint.load_workflow_binding("run-1") is None:
+        checkpoint.create_workflow_binding(
+            WorkflowBindingV1(
+                1,
+                "workflow-1",
+                "run-1",
+                "thread-1",
+                "SIX_ROLE_BASELINE",
+                RESUME_CONTRACT_VERSION,
+                "AUTO",
+                clock.now_ms(),
+            )
+        )
+        checkpoint.flush()
+    if checkpoint.load_same_run_checkpoint("run-1", "thread-1") is None:
+        admission = WorkflowExecutionAdmissionV1(
+            1,
+            "initial-admission",
+            "initial-handoff",
+            1,
+            "NORMAL_HANDOFF",
+            WorkflowExecutionBindingV1(
+                1,
+                "START",
+                "run-1",
+                "thread-1",
+                "SIX_ROLE_BASELINE",
+                RESUME_CONTRACT_VERSION,
+                "AUTO",
+                None,
+                0,
+                None,
+            ),
+            0,
+        )
+        target = AgentNodeResumeTargetV2(
+            "AGENT_NODE",
+            "REQUEST_UNDERSTANDING",
+            "SIX_REQUEST_UNDERSTANDING",
+            "request.identify_goal",
+            "SIX_ROLE_BASELINE",
+            RESUME_CONTRACT_VERSION,
+        )
+        graph_builder = StateGraph(_CheckpointState)
+        graph_builder.add_node("owner", lambda state: state)
+        graph_builder.add_edge(START, "owner")
+        graph_builder.add_edge("owner", END)
+        graph = graph_builder.compile(checkpointer=checkpoint)
+        with checkpoint.execution_scope(
+            admission,
+            applied_handoff_id="initial-handoff",
+            owner_scope="REQUEST_UNDERSTANDING",
+            resume_target=target,
+        ):
+            graph.invoke(
+                {"value": 0},
+                config={"configurable": {"thread_id": "thread-1"}},
+                interrupt_before=["owner"],
+            )
+    checkpoint.flush()
+    checkpoint.close()
     return RejectActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
+        id_generator=DeterministicUUID(prefix="reject-handoff"),
+        resume_target_registry=ResumeTargetRegistry(
+            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+            graph_version=RESUME_CONTRACT_VERSION,
+        ),
+        schedule_run_execution=lambda command: None,
     )
 
 
@@ -104,7 +192,7 @@ def _approve(database_path: Path, clock: FakeClockPort, action_id: str) -> None:
 
 
 @pytest.mark.parametrize("starting_status", ["PROPOSED", "MODIFIED", "APPROVED"])
-def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
+def test_reject_allowed_statuses_record_audit_without_completing_parent_run(
     modify_database: Path, starting_status: str
 ) -> None:
     clock = FakeClockPort(initial_ms=1_000)
@@ -146,8 +234,8 @@ def test_reject_allowed_statuses_record_audit_and_finalize_terminal_plan(
         )
         audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
     assert action is not None and action.status == "REJECTED"
-    assert plan is not None and plan.status.value == "COMPLETED"
-    assert run is not None and run.status.value == "COMPLETED"
+    assert plan is not None and plan.status.value == "WAITING_APPROVAL"
+    assert run is not None and run.status.value == "WAITING_APPROVAL"
     assert attempts == ()
     if approvals:
         assert approvals[-1].status is ApprovalStatusV1.REVOKED

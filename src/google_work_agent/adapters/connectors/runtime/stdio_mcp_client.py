@@ -668,6 +668,9 @@ class StdioMCPClientAdapter:
 class _BoundStdioRuntime:
     client: StdioMCPClientAdapter
 
+    def runtime_metadata(self) -> MCPRuntimeMetadata:
+        return self.client.runtime_metadata()
+
     def list_tools(self) -> list[MCPToolDescriptorV1]:
         return self.client._list_tools()
 

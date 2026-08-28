@@ -18,33 +18,31 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.adapters.persistence.sqlite.query_service import (
+    QueryService as PersistenceQueryService,
+)
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
     BeginExecutionAttemptCommand,
     BeginExecutionAttemptHandler,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.run.finalize_cancel import FinalizeCancelHandler
-from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
-from google_work_agent.application.write_actions import (
-    DeliveryCertainty,
-    classify_write_delivery,
-    is_reauth_required_error,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
+    GetRunSnapshotQuery,
 )
+from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_cancellation import RequestRunCancellationService
 from google_work_agent.application.write_cancellation_contracts import (
     FinalizeRunCancellationCommand,
     RequestRunCancellationCommand,
 )
-from google_work_agent.application.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution import ExecuteWriteActionService
 from google_work_agent.application.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
@@ -62,14 +60,6 @@ from google_work_agent.application.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_recovery import (
-    MarkWriteActionUnknownResultService,
-    PrepareWriteRetryService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-)
 from google_work_agent.application.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
     PrepareWriteRetryCommand,
@@ -79,10 +69,24 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownUpdateActionCommand,
     RequireWriteReauthCommand,
 )
-from google_work_agent.application.write_result_persistence import (
-    StoreWriteActionSuccessService,
+from tests.support.legacy_write.write_actions import (
+    DeliveryCertainty,
+    classify_write_delivery,
+    is_reauth_required_error,
 )
-from google_work_agent.application.write_verification import VerifyWriteActionService
+from tests.support.legacy_write.write_cancellation import RequestRunCancellationService
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
+from tests.support.legacy_write.write_execution import ExecuteWriteActionService
+from tests.support.legacy_write.write_recovery import (
+    MarkWriteActionUnknownResultService,
+    PrepareWriteRetryService,
+    RecoverUnknownCreateActionService,
+    RecoverUnknownDeleteActionService,
+    RecoverUnknownSendActionService,
+    RecoverUnknownUpdateActionService,
+)
+
+
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import EvidenceOriginType
@@ -104,7 +108,34 @@ from tests.support.fakes import (
     GoogleGatewayFaultKind,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write.write_result_persistence import (
+    StoreWriteActionSuccessService,
+)
+from tests.support.legacy_write.write_verification import VerifyWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
+
+
+class QueryService:
+    """Test-only bridge while integration assertions migrate to exact handlers."""
+
+    def __init__(
+        self, *, database_path: Path, connection_factory: object, **kwargs: object
+    ) -> None:
+        self._database_path = database_path
+        self._adapter = PersistenceQueryService(
+            database_path=database_path,
+            connection_factory=connection_factory,  # type: ignore[arg-type]
+            runtime_status_provider=kwargs.get("runtime_status_provider"),  # type: ignore[arg-type]
+        )
+
+    def get_run_snapshot(self, run_id: str):  # type: ignore[no-untyped-def]
+        return GetRunSnapshotHandler(
+            unit_of_work_factory=sqlite_unit_of_work_factory(self._database_path)
+        )(GetRunSnapshotQuery(run_id))
+
+    def has_cancel_intent(self, run_id: str) -> bool:
+        return self._adapter.has_cancel_intent(run_id)
+
 
 # Test-only compatibility type used by legacy integration fixtures. Production
 # callers are intentionally cut over to the canonical Connector Ports.
@@ -190,6 +221,33 @@ class _TransactionCheckingGateway:
     def get_calendar_event(self, *, calendar_id: str, event_id: str) -> ResourceSnapshot:
         _assert_can_open_sqlite_write_transaction(self._database_path)
         return self._delegate.get_calendar_event(calendar_id=calendar_id, event_id=event_id)
+
+    def fetch_verification_snapshot(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        fallback_resource_id: str | None,
+    ) -> ResourceSnapshot:
+        if tool_name.startswith("tasks_"):
+            return self.get_task(
+                task_list_id=str(arguments["task_list_id"]),
+                task_id=str(fallback_resource_id or arguments["task_id"]),
+            )
+        if tool_name in {"gmail_create_draft", "gmail_update_draft"}:
+            return self.get_gmail_draft(
+                draft_id=str(fallback_resource_id or arguments["draft_id"])
+            )
+        if tool_name == "gmail_send":
+            return self.get_gmail_message(
+                message_id=str(fallback_resource_id or arguments["message_id"])
+            )
+        if tool_name.startswith("calendar_"):
+            return self.get_calendar_event(
+                calendar_id=str(arguments["calendar_id"]),
+                event_id=str(fallback_resource_id or arguments["event_id"]),
+            )
+        raise ValueError(f"unsupported verification tool: {tool_name}")
 
 
 def _assert_can_open_sqlite_write_transaction(database_path: Path) -> None:
@@ -799,7 +857,12 @@ def test_attachment_descriptor_is_reverified_before_write_claim(
     staging = FilesystemAttachmentStagingAdapter(
         staging_dir=tmp_path / "staging", now_ms=clock.now_ms
     )
-    descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
+    descriptor = staging.stage(
+        "test:attachment-claim",
+        b"report",
+        "report.txt",
+        "text/plain",
+    )
     _prepare_effect_write_plan(
         write_database=write_database,
         clock=clock,
@@ -850,7 +913,12 @@ def test_attachment_claim_fails_closed_without_staging_verifier(
     staging = FilesystemAttachmentStagingAdapter(
         staging_dir=tmp_path / "staging", now_ms=clock.now_ms
     )
-    descriptor = staging.stage(data=b"report", filename="report.txt", mime_type="text/plain")
+    descriptor = staging.stage(
+        "test:attachment-no-verifier",
+        b"report",
+        "report.txt",
+        "text/plain",
+    )
     _prepare_effect_write_plan(
         write_database=write_database,
         clock=clock,
@@ -1028,6 +1096,8 @@ def _begin_claimed_action(
         claimed.claim_token or "",
         signing_secret="phase-e-secret",
     )
+    payload["execution_attempt_id"] = payload["attempt_id"]
+    payload["approval_arguments_hash"] = payload["arguments_hash"]
     BeginExecutionAttemptHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,

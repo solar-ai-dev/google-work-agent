@@ -629,7 +629,10 @@ def validate_tool_route_plan_v2(
             if not isinstance(tool_id, str):
                 raise ToolRouteValidationError("allowed_read_tool_ids must contain strings")
             entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
-            if entry.effect_type is not EffectType.READ or entry.resource_type != resource_type:
+            if (
+                entry.effect_type is not EffectType.READ
+                or entry.resource_type.upper() != resource_type
+            ):
                 raise ToolRouteValidationError("input route tool binding is invalid")
             if entry.registry_version != registry_version:
                 raise ToolRouteValidationError("input route registry version is stale")
@@ -664,7 +667,10 @@ def validate_tool_route_plan_v2(
             if effect is EffectType.READ:
                 raise ToolRouteValidationError("output route effect must be a write effect")
             entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
-            if entry.effect_type is not effect or entry.resource_type != resource_type:
+            if (
+                entry.effect_type is not effect
+                or entry.resource_type.upper() != resource_type
+            ):
                 raise ToolRouteValidationError("output route tool binding is invalid")
             if entry.registry_version != registry_version:
                 raise ToolRouteValidationError("output route registry version is stale")
@@ -763,6 +769,7 @@ def coarse_resource_category(resource_type: str) -> str:
     3-value enum every PHASE 7.5 Prompt schema uses for resource_type.
     """
 
+    resource_type = normalize_resource_type(resource_type)
     if resource_type.startswith("GMAIL"):
         return "EMAIL"
     if resource_type in {"TASK", "TASK_LIST"}:

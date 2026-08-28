@@ -1,41 +1,38 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
+from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
 from google_work_agent.application.execution_phase import (
     UnknownRecoveryPhaseRequest,
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
 )
-from google_work_agent.application.write_actions import (
-    ClaimWriteActionService,
-    ExecutedWriteActionResult,
-    ExecuteWriteActionService,
-    MarkWriteActionFailedService,
-    MarkWriteActionUnknownResultService,
-    PreflightWriteActionService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-    RequireReauthHandler,
-    StoreWriteActionSuccessService,
-    VerifyWriteActionService,
+from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
+from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionResult
+from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
+    ClassifyDispatchResultHandler,
+)
+from google_work_agent.application.use_cases.verification.verify_effect import (
+    VerificationResultV1,
+)
+from google_work_agent.application.write_dispatch_models import PreparedWriteDispatch
+from google_work_agent.application.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
-    UnitOfWork,
 )
+from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 
 
 class _RecordedCall:
@@ -61,15 +58,129 @@ class _RecordedCall:
         return self._result
 
 
+class _Repository:
+    def __init__(self, values: dict[str, object]) -> None:
+        self._values = values
+
+    def get(self, identity: str) -> object | None:
+        return self._values.get(identity)
+
+
+class _UnitOfWork:
+    def __init__(self) -> None:
+        action = SimpleNamespace(
+            id="action-1",
+            plan_id="plan-1",
+            status=ActionStatusV1.EXECUTING.value,
+            version=2,
+            tool_name="tasks_create_task",
+            arguments_json='{"task_list_id":"list-1","title":"Task"}',
+            arguments_hash="arguments-hash",
+            expected_json='{"title":"Task"}',
+            effect_type="CREATE",
+            target_resource_ref_id=None,
+        )
+        approval = SimpleNamespace(
+            id="approval-1",
+            action_id="action-1",
+            recovery_fingerprint="recovery-fingerprint",
+        )
+        attempt = SimpleNamespace(
+            id="attempt-1",
+            approval_id="approval-1",
+            result_resource_ref_id=None,
+        )
+        self.actions = _Repository({"action-1": action})
+        self.approval_history = _Repository({"approval-1": approval})
+        self.execution_attempts = _Repository({"attempt-1": attempt})
+        self.resource_refs = _Repository({})
+
+    def __enter__(self) -> _UnitOfWork:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+class _ConnectorExecution:
+    def __init__(
+        self,
+        *,
+        calls: list[str],
+        snapshot: ResourceSnapshot,
+        execute_error: GoogleWorkspaceGatewayError | None,
+    ) -> None:
+        self._calls = calls
+        self._snapshot = snapshot
+        self._execute_error = execute_error
+
+    def prepare_write(self, **kwargs: object) -> PreparedWriteDispatch:
+        self._calls.append("prepare")
+        return PreparedWriteDispatch(
+            tool_name=str(kwargs["tool_name"]),
+            arguments=cast(dict[str, object], kwargs["arguments"]),
+        )
+
+    def dispatch_write(self, _dispatch: object) -> ConnectorWriteResultV1:
+        self._calls.append("dispatch")
+        if self._execute_error is None:
+            return ConnectorWriteResultV1(1, True, None, "provider-1", {}, None)
+        error = self._execute_error
+        error_code = (
+            "AUTH_REQUIRED"
+            if error.code is GoogleWorkspaceErrorCode.AUTH_EXPIRED
+            else error.code.value
+        )
+        return ConnectorWriteResultV1(
+            1,
+            False,
+            error.delivery_certainty.value,
+            error.mcp_request_id,
+            None,
+            error_code,
+        )
+
+    def materialize_success(
+        self, _dispatch: object, _result: ConnectorWriteResultV1
+    ) -> ResourceSnapshot:
+        self._calls.append("materialize")
+        return self._snapshot
+
+    def materialize_recovery_candidate(self, **_kwargs: object) -> ResourceSnapshot:
+        self._calls.append("materialize_recovery")
+        return self._snapshot
+
+
+class _Classify:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+        self._handler = ClassifyDispatchResultHandler()
+
+    def __call__(self, query: object) -> object:
+        self._calls.append("classify")
+        return self._handler(cast(Any, query))
+
+
 def test_successful_write_phase_preserves_call_trajectory() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(calls=calls)
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+    result = _coordinator(calls=calls).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.VERIFIED
     assert result.action_status == ActionStatusV1.VERIFIED.value
-    assert calls == ["preflight", "claim", "execute", "store", "begin_verification", "verify"]
+    assert calls == [
+        "preflight",
+        "claim",
+        "prepare",
+        "build_claim_context",
+        "begin",
+        "dispatch",
+        "classify",
+        "materialize",
+        "store",
+        "begin_verification",
+        "verify_effect",
+        "store_verification",
+    ]
 
 
 def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
@@ -80,123 +191,84 @@ def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
         "parent_id": "list-1",
         "version": "4",
     }
-    claim = _RecordedCall(
-        name="claim",
-        calls=calls,
-        result=_response(
-            status=ActionStatusV1.EXECUTING.value,
-            version=2,
-            attempt_id="attempt-1",
-            claim_token="claim-token",
-        ),
-    )
-    coordinator = _coordinator(
+    claim_call = _RecordedCall(name="claim", calls=calls, result=_claim_result())
+
+    result = _coordinator(
         calls=calls,
         preflight_result=source_snapshot,
-        claim_call=claim,
-    )
-
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        claim_call=claim_call,
+    ).execute(_request())
 
     assert result.disposition is WriteExecutionDisposition.VERIFIED
-    assert claim.invocations[0][0][0].source_snapshot == source_snapshot
+    assert claim_call.invocations[0][0][0].source_snapshot == source_snapshot
 
 
 def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        execute_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.TIMEOUT,
-            message="response uncertain",
-            delivered=True,
-            mutated=False,
-        ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        execute_error=_gateway_error(GoogleWorkspaceErrorCode.TIMEOUT, delivered=True),
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.UNKNOWN_RESULT
     assert result.action_status == ActionStatusV1.UNKNOWN_RESULT.value
-    assert calls == ["preflight", "claim", "execute", "mark_unknown"]
+    assert calls[-1] == "mark_unknown"
+    assert calls.count("dispatch") == 1
+    assert "store" not in calls
 
 
 def test_not_sent_failure_does_not_begin_verification() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        execute_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.TIMEOUT,
-            message="write was not sent",
-            delivered=False,
-            mutated=False,
-        ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        execute_error=_gateway_error(GoogleWorkspaceErrorCode.TIMEOUT, delivered=False),
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.FAILED
     assert result.action_status == ActionStatusV1.FAILED.value
-    assert calls == ["preflight", "claim", "execute", "mark_failed"]
+    assert calls[-1] == "mark_failed"
+    assert "begin_verification" not in calls
 
 
 def test_auth_failure_not_sent_marks_failed_before_reauth() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        execute_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            message="auth failed before provider dispatch",
-            delivered=False,
-            mutated=False,
-        ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        execute_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=False),
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED
     assert result.action_status == ActionStatusV1.FAILED.value
-    assert calls == ["preflight", "claim", "execute", "mark_failed", "require_reauth"]
-    assert calls.count("execute") == 1
+    assert calls[-2:] == ["mark_failed", "require_reauth"]
+    assert calls.count("dispatch") == 1
 
 
 def test_auth_failure_ambiguous_marks_unknown_before_reauth_and_never_resends() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        execute_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            message="provider may have received write",
-            delivered=True,
-            mutated=False,
-        ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        execute_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=True),
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED
     assert result.action_status == ActionStatusV1.UNKNOWN_RESULT.value
-    assert calls == ["preflight", "claim", "execute", "mark_unknown", "require_reauth"]
-    assert calls.count("execute") == 1
+    assert calls[-2:] == ["mark_unknown", "require_reauth"]
+    assert calls.count("dispatch") == 1
 
 
 def test_claim_applied_false_reconciles_without_provider_write() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
-        calls=calls,
-        claim_response=_response(
-            status=ActionStatusV1.APPROVED.value,
-            version=1,
-            attempt_id=None,
-            applied=False,
-            result_code=ResultCode.STATE_CONFLICT.value,
-        ),
+    claim = _claim_result(
+        applied=False,
+        status=ActionStatusV1.APPROVED,
+        version=1,
+        attempt_id=None,
+        approval_id=None,
+        result_code=ResultCode.STATE_CONFLICT,
     )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+
+    result = _coordinator(calls=calls, claim_response=claim).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.DOMAIN_RECONCILE
     assert result.current_status == ActionStatusV1.APPROVED.value
     assert calls == ["preflight", "claim"]
@@ -204,101 +276,75 @@ def test_claim_applied_false_reconciles_without_provider_write() -> None:
 
 def test_store_success_applied_false_reconciles_before_verification() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        store_response=_response(
-            status=ActionStatusV1.EXECUTING.value,
-            version=2,
-            attempt_id="attempt-1",
+        store_response=_action_response(
+            ActionStatusV1.EXECUTING.value,
+            2,
             applied=False,
             result_code=ResultCode.VERSION_CONFLICT.value,
         ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.DOMAIN_RECONCILE
-    assert calls == ["preflight", "claim", "execute", "store"]
+    assert calls[-1] == "store"
+    assert "begin_verification" not in calls
 
 
 def test_begin_verification_applied_false_reconciles_before_verification_read() -> None:
     calls: list[str] = []
-    begin_result = CommandResult(
+    begin = SimpleNamespace(
         applied=False,
         result_code=ResultCode.STATE_CONFLICT,
         current_status=RunStatusV1.REAUTH_REQUIRED,
         current_version=7,
         next_allowed_commands=(),
-        conflict_detail="run moved",
     )
-    coordinator = _coordinator(calls=calls, begin_verification_result=begin_result)
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+
+    result = _coordinator(calls=calls, begin_verification_result=begin).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.DOMAIN_RECONCILE
     assert result.current_status == RunStatusV1.REAUTH_REQUIRED.value
-    assert calls == ["preflight", "claim", "execute", "store", "begin_verification"]
+    assert calls[-1] == "begin_verification"
+    assert "verify_effect" not in calls
 
 
 def test_verification_credential_loss_routes_to_reauth_without_marking_write_failed() -> None:
     calls: list[str] = []
-    coordinator = _coordinator(
+    result = _coordinator(
         calls=calls,
-        verify_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            message="credential expired during verification",
-            delivered=True,
-            mutated=False,
-        ),
-    )
-    result = coordinator.execute(
-        WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-    )
+        verify_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=True),
+    ).execute(_request())
+
     assert result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED
-    assert calls == [
-        "preflight",
-        "claim",
-        "execute",
-        "store",
-        "begin_verification",
-        "verify",
-        "require_reauth",
-    ]
+    assert calls[-2:] == ["verify_effect", "require_reauth"]
+    assert "mark_failed" not in calls
 
 
 def test_verification_non_reauth_gateway_error_still_propagates() -> None:
     calls: list[str] = []
     coordinator = _coordinator(
         calls=calls,
-        verify_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.UPSTREAM_5XX,
-            message="verification GET failed",
-            delivered=True,
-            mutated=False,
-        ),
+        verify_error=_gateway_error(GoogleWorkspaceErrorCode.UPSTREAM_5XX, delivered=True),
     )
+
     try:
-        coordinator.execute(
-            WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
-        )
+        coordinator.execute(_request())
         raised = False
     except GoogleWorkspaceGatewayError:
         raised = True
+
     assert raised is True
-    assert calls == ["preflight", "claim", "execute", "store", "begin_verification", "verify"]
+    assert calls[-1] == "verify_effect"
 
 
 def test_recover_unknown_credential_loss_routes_to_reauth_without_replaying_write() -> None:
     calls: list[str] = []
     coordinator = _coordinator(
         calls=calls,
-        recover_unknown_create_error=GoogleWorkspaceGatewayError(
-            code=GoogleWorkspaceErrorCode.AUTH_EXPIRED,
-            message="credential expired during recovery search",
-            delivered=True,
-            mutated=False,
-        ),
+        lookup_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=True),
     )
+
     result = coordinator.recover_unknown(
         UnknownRecoveryPhaseRequest(
             run_id="run-1",
@@ -309,51 +355,47 @@ def test_recover_unknown_credential_loss_routes_to_reauth_without_replaying_writ
             attempt_version=0,
         )
     )
+
     assert result.applied is False
     assert result.safe_error_code == "AUTH_EXPIRED"
     assert result.action_status == ActionStatusV1.UNKNOWN_RESULT.value
     assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
-    assert calls == ["recover_unknown_create", "require_reauth"]
-    assert "execute" not in calls
+    assert calls == ["lookup_unknown", "require_reauth"]
+    assert "dispatch" not in calls
 
 
 def _coordinator(
     *,
     calls: list[str],
-    execute_error: Exception | None = None,
+    execute_error: GoogleWorkspaceGatewayError | None = None,
     verify_error: Exception | None = None,
-    recover_unknown_create_error: Exception | None = None,
-    claim_response: WriteActionResponse | None = None,
+    lookup_error: Exception | None = None,
+    claim_response: ClaimExecutionResult | None = None,
     store_response: WriteActionResponse | None = None,
     begin_verification_result: object | None = None,
     preflight_result: object | None = None,
     claim_call: _RecordedCall | None = None,
 ) -> WriteExecutionPhaseCoordinator:
-    claim = claim_response or _response(
-        status=ActionStatusV1.EXECUTING.value,
-        version=2,
-        attempt_id="attempt-1",
-        claim_token="claim-token",
+    snapshot = ResourceSnapshot(
+        fixture_snapshot_id="snapshot-1",
+        resource_type=ResourceType.TASK,
+        resource_id="task-1",
+        parent_id="list-1",
+        related_resource_ids=("list-1",),
+        version="1",
+        recovery_fingerprint=None,
+        payload={"title": "Task"},
     )
-    stored = store_response or _response(
-        status=ActionStatusV1.EXECUTED.value,
-        version=3,
-        attempt_id="attempt-1",
-    )
-    verified = _response(
-        status=ActionStatusV1.VERIFIED.value,
-        version=4,
-        attempt_id="attempt-1",
-    )
-    unknown = _response(
-        status=ActionStatusV1.UNKNOWN_RESULT.value,
-        version=3,
-        attempt_id="attempt-1",
-    )
-    failed = _response(
-        status=ActionStatusV1.FAILED.value,
-        version=3,
-        attempt_id="attempt-1",
+    stored = store_response or _action_response(ActionStatusV1.EXECUTED.value, 3)
+    verified = SimpleNamespace(
+        applied=True,
+        result_code=ResultCode.TRANSITION_APPLIED.value,
+        action_id="action-1",
+        action_status=ActionStatusV1.VERIFIED.value,
+        action_version=4,
+        verification_id="verification-1",
+        requires_recovery=False,
+        conflict_detail=None,
     )
     reauth = WriteRunResponse(
         applied=True,
@@ -365,87 +407,153 @@ def _coordinator(
         plan_status="ACTIVE",
         result_kind="REAUTH_REQUIRED",
     )
-    snapshot = ResourceSnapshot(
-        fixture_snapshot_id="snapshot-1",
-        resource_type=ResourceType.TASK,
-        resource_id="task-1",
-        parent_id="list-1",
-        related_resource_ids=("list-1",),
-        version="1",
-        recovery_fingerprint=None,
-        payload={"title": "Task"},
-    )
-    unused = _RecordedCall(name="unexpected", calls=calls)
+    uow = _UnitOfWork()
     return WriteExecutionPhaseCoordinator(
-        unit_of_work_factory=cast(Callable[[], UnitOfWork], _unexpected_uow),
+        unit_of_work_factory=cast(Any, lambda: uow),
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,
         preflight_write=cast(
-            PreflightWriteActionService,
-            _RecordedCall(name="preflight", calls=calls, result=preflight_result),
+            Any, _RecordedCall(name="preflight", calls=calls, result=preflight_result)
         ),
-        claim_write=cast(
-            ClaimWriteActionService,
-            claim_call or _RecordedCall(name="claim", calls=calls, result=claim),
-        ),
-        execute_write=cast(
-            ExecuteWriteActionService,
-            _RecordedCall(
-                name="execute",
-                calls=calls,
-                result=ExecutedWriteActionResult(snapshot=snapshot, response_metadata_json="{}"),
-                error=execute_error,
+        expire_approval=None,
+        refresh_expired_action=None,
+        claim_execution=cast(
+            Any,
+            claim_call
+            or _RecordedCall(
+                name="claim", calls=calls, result=claim_response or _claim_result()
             ),
         ),
+        build_claim_context=cast(
+            Any,
+            _RecordedCall(
+                name="build_claim_context", calls=calls, result=_claim_context()
+            ),
+        ),
+        begin_execution_attempt=cast(
+            Any,
+            _RecordedCall(
+                name="begin",
+                calls=calls,
+                result=SimpleNamespace(attempt=SimpleNamespace(version=1)),
+            ),
+        ),
+        abort_claimed_execution=cast(Any, _RecordedCall(name="abort", calls=calls)),
+        connector_execution=cast(
+            ConnectorWriteProjection,
+            _ConnectorExecution(calls=calls, snapshot=snapshot, execute_error=execute_error),
+        ),
+        classify_dispatch_result=cast(Any, _Classify(calls)),
         store_write_success=cast(
-            StoreWriteActionSuccessService,
-            _RecordedCall(name="store", calls=calls, result=stored),
+            Any, _RecordedCall(name="store", calls=calls, result=stored)
         ),
         begin_verification=cast(
-            Callable[[str], object],
+            Any,
             _RecordedCall(
-                name="begin_verification",
-                calls=calls,
-                result=begin_verification_result,
+                name="begin_verification", calls=calls, result=begin_verification_result
             ),
         ),
-        verify_write=cast(
-            VerifyWriteActionService,
-            _RecordedCall(name="verify", calls=calls, result=verified, error=verify_error),
+        verify_effect=cast(
+            Any,
+            _RecordedCall(
+                name="verify_effect",
+                calls=calls,
+                result=VerificationResultV1(
+                    "VERIFIED", "GET_COMPARE", {"title": "Task"}, {"title": "Task"}, [], []
+                ),
+                error=verify_error,
+            ),
         ),
+        store_verification=cast(
+            Any,
+            _RecordedCall(name="store_verification", calls=calls, result=verified),
+        ),
+        require_recovery=cast(
+            Any, _RecordedCall(name="require_recovery", calls=calls)
+        ),
+        resolve_recovery=cast(Any, _RecordedCall(name="resolve_recovery", calls=calls)),
         mark_write_failed=cast(
-            MarkWriteActionFailedService,
-            _RecordedCall(name="mark_failed", calls=calls, result=failed),
+            Any,
+            _RecordedCall(
+                name="mark_failed",
+                calls=calls,
+                result=_action_response(ActionStatusV1.FAILED.value, 3),
+            ),
         ),
         mark_write_unknown=cast(
-            MarkWriteActionUnknownResultService,
-            _RecordedCall(name="mark_unknown", calls=calls, result=unknown),
-        ),
-        require_write_reauth=cast(
-            RequireReauthHandler,
-            _RecordedCall(name="require_reauth", calls=calls, result=reauth),
-        ),
-        recover_unknown_create=cast(
-            RecoverUnknownCreateActionService,
+            Any,
             _RecordedCall(
-                name="recover_unknown_create", calls=calls, error=recover_unknown_create_error
-            )
-            if recover_unknown_create_error is not None
-            else unused,
+                name="mark_unknown",
+                calls=calls,
+                result=_action_response(ActionStatusV1.UNKNOWN_RESULT.value, 3),
+            ),
         ),
-        recover_unknown_send=cast(RecoverUnknownSendActionService, unused),
-        recover_unknown_delete=cast(RecoverUnknownDeleteActionService, unused),
-        recover_unknown_update=cast(RecoverUnknownUpdateActionService, unused),
+        service_instance_id="service-1",
+        mcp_process_instance_id=lambda: "mcp-1",
+        require_write_reauth=cast(
+            Any, _RecordedCall(name="require_reauth", calls=calls, result=reauth)
+        ),
+        lookup_unknown_result=cast(
+            Any,
+            _RecordedCall(name="lookup_unknown", calls=calls, error=lookup_error),
+        ),
+        recover_existing_result=cast(
+            Any, _RecordedCall(name="recover_existing", calls=calls)
+        ),
+        resolve_as_failed=cast(
+            Any, _RecordedCall(name="resolve_as_failed", calls=calls)
+        ),
     )
 
 
-def _response(
+def _request() -> WriteExecutionPhaseRequest:
+    return WriteExecutionPhaseRequest(run_id="run-1", action_id="action-1", action_version=1)
+
+
+def _claim_result(
     *,
+    applied: bool = True,
+    status: ActionStatusV1 = ActionStatusV1.EXECUTING,
+    version: int = 2,
+    attempt_id: str | None = "attempt-1",
+    approval_id: str | None = "approval-1",
+    result_code: ResultCode = ResultCode.TRANSITION_APPLIED,
+) -> ClaimExecutionResult:
+    return ClaimExecutionResult(
+        applied=applied,
+        result_code=result_code,
+        action_id="action-1",
+        current_status=status,
+        current_version=version,
+        next_allowed_commands=(),
+        approval_id=approval_id,
+        attempt_id=attempt_id,
+    )
+
+
+def _claim_context() -> ClaimContextV2:
+    return ClaimContextV2(
+        claim_version=2,
+        service_instance_id="service-1",
+        mcp_process_instance_id="mcp-1",
+        action_id="action-1",
+        approval_id="approval-1",
+        execution_attempt_id="attempt-1",
+        tool_name="tasks_create_task",
+        approval_arguments_hash="arguments-hash",
+        execution_arguments_hash="execution-hash",
+        issued_at_ms=1,
+        expires_at_ms=2,
+        nonce="nonce-1",
+        signature="signature-1",
+    )
+
+
+def _action_response(
     status: str,
     version: int,
-    attempt_id: str | None,
-    claim_token: str | None = None,
+    *,
     applied: bool = True,
     result_code: str = ResultCode.TRANSITION_APPLIED.value,
 ) -> WriteActionResponse:
@@ -456,10 +564,16 @@ def _response(
         action_status=status,
         action_version=version,
         next_allowed_commands=(),
-        attempt_id=attempt_id,
-        claim_token=claim_token,
+        attempt_id="attempt-1",
     )
 
 
-def _unexpected_uow() -> UnitOfWork:
-    raise AssertionError("unit of work was not expected")
+def _gateway_error(
+    code: GoogleWorkspaceErrorCode, *, delivered: bool
+) -> GoogleWorkspaceGatewayError:
+    return GoogleWorkspaceGatewayError(
+        code=code,
+        message="connector failed",
+        delivered=delivered,
+        mutated=False,
+    )

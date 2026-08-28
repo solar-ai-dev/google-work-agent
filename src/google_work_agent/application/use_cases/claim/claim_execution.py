@@ -33,10 +33,6 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
     load_signed_tool_registry,
 )
 from google_work_agent.application.write_action_arguments import dict_argument
-from google_work_agent.application.write_execution_integrity import (
-    CLAIM_TOKEN_VERSION,
-    issue_claim_token,
-)
 from google_work_agent.application.write_persistence import (
     emit_command_rejected_hash_mismatch,
     require_action,
@@ -65,10 +61,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports import (
     UnitOfWork,
 )
-from google_work_agent.ports.connector.claim_context_contract import (
-    CLAIM_CONTEXT_DEFAULT_TTL_MS,
-    validate_claim_ttl_ms,
-)
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
@@ -83,7 +75,6 @@ class ClaimExecutionCommand:
     expected_version: int
     source_snapshot: dict[str, object]
     attempt_id: str
-    nonce: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +89,6 @@ class ClaimExecutionResult:
     next_allowed_commands: tuple[ClaimCommand, ...]
     approval_id: str | None = None
     attempt_id: str | None = None
-    claim_token: str | None = None
     conflict_detail: str | None = None
 
 
@@ -114,15 +104,9 @@ class ClaimExecutionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        signing_secret: str,
-        service_instance_id: str,
-        claim_ttl_ms: int = CLAIM_CONTEXT_DEFAULT_TTL_MS,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._signing_secret = signing_secret
-        self._service_instance_id = service_instance_id
-        self._claim_ttl_ms = validate_claim_ttl_ms(claim_ttl_ms)
         self._registry = load_signed_tool_registry()
 
     def __call__(self, command: ClaimExecutionCommand) -> ClaimExecutionResult:
@@ -218,6 +202,7 @@ class ClaimExecutionHandler:
                     version=action.version,
                     now_ms=now_ms,
                     detail=str(error),
+                    approval_id=approval.id,
                 )
 
             preview = transition_claim_execution(
@@ -286,22 +271,6 @@ class ClaimExecutionHandler:
             )
             unit_of_work.execution_attempts.insert_claimed(attempt)
 
-            claim_token = issue_claim_token(
-                {
-                    "version": CLAIM_TOKEN_VERSION,
-                    "action_id": action.id,
-                    "approval_id": approval.id,
-                    "attempt_id": attempt.id,
-                    "tool_name": action.tool_name,
-                    "arguments_hash": action.arguments_hash,
-                    "service_instance_id": self._service_instance_id,
-                    "nonce": command.nonce,
-                    "issued_at_ms": now_ms,
-                    "expires_at_ms": now_ms + self._claim_ttl_ms,
-                },
-                signing_secret=self._signing_secret,
-            )
-
             unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,
@@ -344,7 +313,6 @@ class ClaimExecutionHandler:
                 next_allowed_commands=persisted.next_allowed_commands,
                 approval_id=approval.id,
                 attempt_id=attempt.id,
-                claim_token=claim_token,
             )
             self._finish_receipt(
                 unit_of_work=unit_of_work,
@@ -433,6 +401,7 @@ class ClaimExecutionHandler:
         version: int,
         now_ms: int,
         detail: str,
+        approval_id: str | None = None,
     ) -> ClaimExecutionResult:
         result = ClaimExecutionResult(
             applied=False,
@@ -441,6 +410,7 @@ class ClaimExecutionHandler:
             current_status=status,
             current_version=version,
             next_allowed_commands=(),
+            approval_id=approval_id,
             conflict_detail=detail,
         )
         self._finish_receipt(
@@ -505,7 +475,6 @@ class ClaimExecutionHandler:
             ),
             approval_id=cast(str | None, payload.get("approval_id")),
             attempt_id=cast(str | None, payload.get("attempt_id")),
-            claim_token=cast(str | None, payload.get("claim_token")),
             conflict_detail=cast(str | None, payload.get("conflict_detail")),
         )
 

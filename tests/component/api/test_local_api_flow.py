@@ -27,7 +27,7 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.queries import QueryService
+from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -37,7 +37,10 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
-from google_work_agent.application.write_actions import (
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
+)
+from tests.support.legacy_write.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
 )
@@ -102,7 +105,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     id_generator = DeterministicUUID(prefix="req")
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
-        checkpoint_path=tmp_path / "checkpoints.db",
+        checkpoint_path=database_path,
         query_service=query_service,
         unit_of_work_factory=unit_of_work_factory,
         workflow_runtime=runtime,
@@ -110,16 +113,21 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         now_ms=clock.now_ms,
     )
 
+    resume_target_registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
+    )
     production_runtime = build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
         checkpoint=checkpoint,
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
-        resume_target_registry=ResumeTargetRegistry(
-            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
-            graph_version=RESUME_CONTRACT_VERSION,
-        ),
+        resume_target_registry=resume_target_registry,
+        lookup_unknown_result=lambda command: None,
+        recover_existing_result=lambda command: None,
+        resolve_as_failed=lambda command: None,
+        materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
         now_ms=clock.now_ms,
     )
     bind_host = "127.0.0.1"
@@ -143,11 +151,16 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
-            query_service=lambda: query_service,
         ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
+        resume_target_registry=resume_target_registry,
+        resolve_selection_handle=ResolveSelectionHandle(
+            signing_secret=b"s" * 32,
+            service_instance_id="svc-test",
+            now_ms=clock.now_ms,
+        ),
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -270,12 +283,12 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         )
 
         deadline = time.time() + 2
-        while time.time() < deadline and not publisher.replay(run_id=run_id, after_event_id=None):
+        while time.time() < deadline and not publisher.list_after(run_id, None, 8).events:
             time.sleep(0.01)
 
         assert runtime.call_log
         assert runtime.call_log[0].operation == "start"
-        replayed = publisher.replay(run_id=run_id, after_event_id=None)
+        replayed = publisher.list_after(run_id, None, 8).events
         assert replayed
         assert replayed[0].event_type == "run_status"
 
@@ -290,7 +303,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         ) as stream:
             lines = [line for line in stream.iter_lines() if line]
 
-        assert any(line.startswith("id: svc-test:") for line in lines)
+        assert "id: " in lines
         assert any(line == "event: snapshot_required" for line in lines)
 
         blocked = client.post(

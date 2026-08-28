@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
-MAX_HISTORY_MESSAGES = 200
+DEFAULT_HISTORY_MESSAGE_LIMIT = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,15 +31,23 @@ class ListConversationMessagesResult:
 
 
 class ListConversationMessagesHandler:
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        page_size: int = DEFAULT_HISTORY_MESSAGE_LIMIT,
+    ) -> None:
+        if page_size < 1:
+            raise ValueError("history message limit must be positive")
         self._unit_of_work_factory = unit_of_work_factory
+        self._page_size = page_size
 
     def __call__(self, query: ListConversationMessagesQuery) -> ListConversationMessagesResult:
         with self._unit_of_work_factory() as unit_of_work:
             records, next_cursor = unit_of_work.messages.list_by_conversation_keyset(
                 conversation_id=query.conversation_id,
                 cursor=None,
-                page_size=MAX_HISTORY_MESSAGES,
+                page_size=self._page_size,
             )
         return ListConversationMessagesResult(
             items=tuple(

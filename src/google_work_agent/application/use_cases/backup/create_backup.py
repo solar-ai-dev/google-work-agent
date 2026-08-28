@@ -3,33 +3,52 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Callable
+from typing import Any, cast
+
+from google_work_agent.application.use_cases.operational_replay import execute_operational_command
+from google_work_agent.ports.system.backup_port import BackupMetadataV1, BackupPort
+from google_work_agent.ports.system.operational_command_replay_port import (
+    OperationalCommandReplayPort,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class CreateBackupCommand:
-    """Explicit backup creation command."""
+    command_id: str
 
 
 @dataclass(frozen=True, slots=True)
 class CreateBackupResult:
-    backup: dict[str, object]
+    backup: BackupMetadataV1
+    operation_ref: str
+    replayed: bool
 
 
 class CreateBackupHandler:
-    def __init__(self, *, service_factory: Callable[[], Any | None]) -> None:
-        self._service_factory = service_factory
+    def __init__(self, *, backups: BackupPort, replay: OperationalCommandReplayPort) -> None:
+        self._backups = backups
+        self._replay = replay
 
-    def handle(self, command: CreateBackupCommand) -> CreateBackupResult:
-        del command
-        service = self._service_factory()
-        if service is None:
-            raise RuntimeError("BACKUP_UNAVAILABLE")
-        result = service()
-        return CreateBackupResult(
-            backup={
-                **asdict(result.backup),
-                "database_path": str(result.database_path),
-                "manifest_path": str(result.manifest_path),
-            }
+    def __call__(self, command: CreateBackupCommand) -> CreateBackupResult:
+        def execute(ref: str) -> tuple[str, dict[str, object]]:
+            value = self._backups.create_backup(ref)
+            return value.backup_ref, asdict(value)
+
+        outcome = execute_operational_command(
+            replay_port=self._replay,
+            command_id=command.command_id,
+            operation_kind="CREATE_BACKUP",
+            request_payload={},
+            reconcile=self._backups.reconcile_backup,
+            execute=execute,
         )
+        return CreateBackupResult(
+            backup=BackupMetadataV1(**cast(Any, outcome.bounded_result)),
+            operation_ref=outcome.operation_ref,
+            replayed=outcome.replayed,
+        )
+
+    handle = __call__
+
+
+__all__ = ["CreateBackupCommand", "CreateBackupHandler", "CreateBackupResult"]

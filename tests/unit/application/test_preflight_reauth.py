@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -8,21 +8,7 @@ from google_work_agent.application.execution_phase import (
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
 )
-from google_work_agent.application.write_actions import (
-    ClaimWriteActionService,
-    ExecuteWriteActionService,
-    MarkWriteActionFailedService,
-    MarkWriteActionUnknownResultService,
-    PreflightWriteActionService,
-    RecoverUnknownCreateActionService,
-    RecoverUnknownDeleteActionService,
-    RecoverUnknownSendActionService,
-    RecoverUnknownUpdateActionService,
-    RequireReauthHandler,
-    StoreWriteActionSuccessService,
-    VerifyWriteActionService,
-    WriteRunResponse,
-)
+from google_work_agent.application.write_execution_contracts import WriteRunResponse
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
@@ -101,19 +87,29 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,
-        preflight_write=cast(PreflightWriteActionService, preflight),
-        claim_write=cast(ClaimWriteActionService, claim),
-        execute_write=cast(ExecuteWriteActionService, unused),
-        store_write_success=cast(StoreWriteActionSuccessService, unused),
-        begin_verification=lambda _run_id: None,
-        verify_write=cast(VerifyWriteActionService, unused),
-        mark_write_failed=cast(MarkWriteActionFailedService, unused),
-        mark_write_unknown=cast(MarkWriteActionUnknownResultService, unused),
-        require_write_reauth=cast(RequireReauthHandler, reauth),
-        recover_unknown_create=cast(RecoverUnknownCreateActionService, unused),
-        recover_unknown_send=cast(RecoverUnknownSendActionService, unused),
-        recover_unknown_delete=cast(RecoverUnknownDeleteActionService, unused),
-        recover_unknown_update=cast(RecoverUnknownUpdateActionService, unused),
+        preflight_write=cast(Any, preflight),
+        expire_approval=None,
+        refresh_expired_action=None,
+        claim_execution=cast(Any, claim),
+        build_claim_context=cast(Any, unused),
+        begin_execution_attempt=cast(Any, unused),
+        abort_claimed_execution=cast(Any, unused),
+        connector_execution=cast(Any, unused),
+        classify_dispatch_result=cast(Any, unused),
+        store_write_success=cast(Any, unused),
+        begin_verification=cast(Any, unused),
+        verify_effect=cast(Any, unused),
+        store_verification=cast(Any, unused),
+        require_recovery=cast(Any, unused),
+        resolve_recovery=cast(Any, unused),
+        mark_write_failed=cast(Any, unused),
+        mark_write_unknown=cast(Any, unused),
+        service_instance_id="service-1",
+        mcp_process_instance_id=lambda: "mcp-1",
+        require_write_reauth=cast(Any, reauth),
+        lookup_unknown_result=cast(Any, unused),
+        recover_existing_result=cast(Any, unused),
+        resolve_as_failed=cast(Any, unused),
     )
 
     result = coordinator.execute(

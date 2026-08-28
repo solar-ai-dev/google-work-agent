@@ -9,13 +9,12 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.queries import QueryService
 
 
 @dataclass(frozen=True, slots=True)
 class IdentityRouteDependencies:
     api_contract_version: str
-    query_service: Callable[[], QueryService]
+    query_service: Callable[[], object]
 
 
 def get_identity_route_dependencies(request: Request) -> IdentityRouteDependencies:

@@ -9,7 +9,6 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -26,7 +25,7 @@ from google_work_agent.ports import UnitOfWork
 class ConversationRouteDependencies:
     api_contract_version: str
     unit_of_work_factory: Callable[[], UnitOfWork]
-    query_service: Callable[[], QueryService]
+    query_service: Callable[[], object]
     create_conversation_handler: CreateConversationHandler
     list_conversations_handler: ListConversationsHandler
     get_conversation_history_handler: GetConversationHistoryHandler

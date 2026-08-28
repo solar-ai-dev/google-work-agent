@@ -8,7 +8,6 @@ from tests.integration.langgraph.test_runtime import (
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
-    McpConnectorWriteAdapter,
     GraphProfile,
     LangGraphWorkflowRuntime,
     Path,
@@ -21,6 +20,7 @@ from tests.integration.langgraph.test_runtime import (
     _context_result,
     _evidence_drafts_seg_2,
     _make_runtime,
+    _make_runtime_with_llm,
     _plan,
     _profile_reason_plan_output,
     _profile_request_source_output,
@@ -249,16 +249,10 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     llm_runtime = _QueuedLLMRuntime([[_plan("TASKS", {"task_list_id": "task-list-default"})]])
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="runtime").next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=tmp_path / "checkpoints-acquisition-subgraph.db",
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,

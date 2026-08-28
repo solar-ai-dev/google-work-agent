@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from json import loads
-from typing import Protocol
+from typing import Literal, Protocol, cast
 
 from google_work_agent.application.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -54,6 +54,10 @@ from google_work_agent.application.write_persistence import (
     require_plan as _require_plan,
 )
 from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.action.evaluate_action_policy import (
+    EvaluateActionPolicyHandler,
+    EvaluateActionPolicyQueryV1,
+)
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
 from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
@@ -121,6 +125,7 @@ class PreflightWriteActionService:
         self._gateway = gateway
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         self._registry = load_signed_tool_registry()
+        self._evaluate_action_policy = EvaluateActionPolicyHandler()
         self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
         self._calendar_conflicts = CalendarConflictValidator(
             gateway=gateway,
@@ -155,6 +160,22 @@ class PreflightWriteActionService:
                 if action.target_resource_ref_id is None
                 else unit_of_work.resource_refs.get(action.target_resource_ref_id)
             )
+
+        policy = self._evaluate_action_policy(
+            EvaluateActionPolicyQueryV1(
+                effect=cast(
+                    Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
+                    action.effect_type,
+                ),
+                required_scopes_granted=True,
+                target_is_user_selected=(
+                    action.effect_type not in {EffectType.UPDATE.value, EffectType.DELETE.value}
+                    or target_ref is not None
+                ),
+            )
+        )
+        if policy.disposition == "BLOCK":
+            raise PolicyViolationError(",".join(policy.reason_codes))
 
         if action.tool_name == "gmail_update_draft":
             draft_id = _required_argument_string(arguments, "draft_id")

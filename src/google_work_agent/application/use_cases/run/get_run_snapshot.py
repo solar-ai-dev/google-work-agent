@@ -5,6 +5,25 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.recovery.project_recovery_options import (
+    ProjectRecoveryOptionsHandler,
+    ProjectRecoveryOptionsQueryV1,
+    ProjectRecoveryOptionsResultV1,
+)
+from google_work_agent.application.use_cases.run.project_context_preview import (
+    ProjectContextPreviewHandler,
+    ProjectContextPreviewQueryV1,
+    ProjectContextPreviewResultV1,
+)
+from google_work_agent.application.use_cases.run.project_error_actions import (
+    ProjectErrorActionsHandler,
+    ProjectErrorActionsQueryV1,
+)
+from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+    ProjectExternalLlmTransferScopeHandler,
+    ProjectExternalLlmTransferScopeQueryV1,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
     ActionCommand,
@@ -58,11 +77,28 @@ class GetRunSnapshotResult:
     result_kind: str | None
     next_allowed_commands: tuple[str, ...]
     snapshot_version: int
+    context_preview: ProjectContextPreviewResultV1 | None = None
+    recovery_options: ProjectRecoveryOptionsResultV1 | None = None
+    error_actions: tuple[str, ...] = ()
+    external_llm_transfer_scope: ExternalLlmTransferScopeV1 | None = None
 
 
 class GetRunSnapshotHandler:
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        project_context_preview: ProjectContextPreviewHandler | None = None,
+        project_recovery_options: ProjectRecoveryOptionsHandler | None = None,
+        project_error_actions: ProjectErrorActionsHandler | None = None,
+        project_external_llm_transfer_scope: ProjectExternalLlmTransferScopeHandler
+        | None = None,
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._project_context_preview = project_context_preview
+        self._project_recovery_options = project_recovery_options
+        self._project_error_actions = project_error_actions
+        self._project_external_llm_transfer_scope = project_external_llm_transfer_scope
 
     def __call__(self, query: GetRunSnapshotQuery) -> GetRunSnapshotResult | None:
         with self._unit_of_work_factory() as unit_of_work:
@@ -118,6 +154,28 @@ class GetRunSnapshotHandler:
                 "summary_text": plan.summary_text,
                 "created_at_ms": plan.created_at_ms,
             }
+        context_preview = self._optional_context_preview(run.id)
+        recovery_options = self._optional_recovery_options(run.id, run_status)
+        error_actions = (
+            ()
+            if self._project_error_actions is None
+            else self._project_error_actions(
+                ProjectErrorActionsQueryV1(
+                    run_status=run_status.value,
+                    recovery_allowed_resolutions=()
+                    if recovery_options is None
+                    else recovery_options.allowed_resolution_kinds,
+                    reauth_required=run_status is RunStatusV1.REAUTH_REQUIRED,
+                )
+            ).action_ids
+        )
+        external_scope = (
+            None
+            if self._project_external_llm_transfer_scope is None
+            else self._project_external_llm_transfer_scope(
+                ProjectExternalLlmTransferScopeQueryV1(1, run.id)
+            )
+        )
         return GetRunSnapshotResult(
             run_id=run.id,
             conversation_id=run.conversation_id,
@@ -151,7 +209,32 @@ class GetRunSnapshotHandler:
                 item.value for item in next_allowed_run_commands(run_status)
             ),
             snapshot_version=1,
+            context_preview=context_preview,
+            recovery_options=recovery_options,
+            error_actions=error_actions,
+            external_llm_transfer_scope=external_scope,
         )
+
+    def _optional_context_preview(self, run_id: str) -> ProjectContextPreviewResultV1 | None:
+        if self._project_context_preview is None:
+            return None
+        try:
+            return self._project_context_preview(ProjectContextPreviewQueryV1(run_id))
+        except LookupError:
+            return None
+
+    def _optional_recovery_options(
+        self, run_id: str, run_status: RunStatusV1
+    ) -> ProjectRecoveryOptionsResultV1 | None:
+        if (
+            self._project_recovery_options is None
+            or run_status is not RunStatusV1.RECOVERY_REQUIRED
+        ):
+            return None
+        try:
+            return self._project_recovery_options(ProjectRecoveryOptionsQueryV1(run_id))
+        except LookupError:
+            return None
 
 
 def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionSnapshotResult:

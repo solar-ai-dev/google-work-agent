@@ -52,20 +52,33 @@ from google_work_agent.application.use_cases.execution_attempt.mark_unknown_resu
 from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
     ReconcileInflightExecutionsHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedHandler,
+)
+from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
+    LookupUnknownResultHandler,
+)
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.run.reconcile_retrieval_cache_restart import (
+    ReconcileRetrievalCacheRestartHandler,
 )
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
     RedriveWorkflowHandoffsCommand,
     RedriveWorkflowHandoffsHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import (
-    ResumeTargetValidator,
+    ResumeTargetIssuer,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.ports import ResourceSnapshot
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
@@ -150,7 +163,11 @@ def build_production_runtime(
         [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], GraphCheckpointEnvelopeV1
     ],
     invoke_semantic_owner: Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
-    resume_target_registry: ResumeTargetValidator,
+    resume_target_registry: ResumeTargetIssuer,
+    lookup_unknown_result: LookupUnknownResultHandler,
+    recover_existing_result: RecoverExistingResultHandler,
+    resolve_as_failed: ResolveAsFailedHandler,
+    materialize_recovery_snapshot: Callable[[str, dict[str, object], str], ResourceSnapshot],
     now_ms: Callable[[], int],
     reconciliation_interval_seconds: float = 1.0,
     reconciliation_batch_limit: int = 32,
@@ -182,13 +199,27 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
     )
+    retrieval_cache = InMemoryRunRetrievalCache()
+    reconcile_retrieval_cache_restart = ReconcileRetrievalCacheRestartHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        checkpoint=checkpoint,
+        retrieval_cache=retrieval_cache,
+        resume_target_registry=resume_target_registry,
+        schedule_run_execution=schedule,
+        id_factory=id_factory,
+    )
     reconcile_inflight = ReconcileInflightExecutionsHandler(
         unit_of_work_factory=unit_of_work_factory,
         mark_unknown_result=MarkUnknownResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
+            resume_target_registry=resume_target_registry,
         ),
         require_recovery=require_recovery,
+        lookup_unknown_result=lookup_unknown_result,
+        recover_existing_result=recover_existing_result,
+        resolve_as_failed=resolve_as_failed,
+        materialize_recovery_snapshot=materialize_recovery_snapshot,
         resume_target_registry=resume_target_registry,
         id_generator=_CallableUuidPort(id_factory),
     )
@@ -196,6 +227,8 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         schedule_run_execution=schedule,
         require_recovery=require_recovery,
+        reconcile_retrieval_cache_restart=reconcile_retrieval_cache_restart,
+        is_run_execution_active=workflow_execution.is_run_active,
     )
     loop = WorkflowHandoffReconciliationLoop(
         redrive=redrive,
@@ -241,7 +274,7 @@ def drain_workflow_handoffs_to_quiescence(
         raise ValueError("batch_limit must be positive")
     for pass_index in range(1, max_passes + 1):
         result = redrive(RedriveWorkflowHandoffsCommand(limit=batch_limit))
-        if not result.has_more or result.progressed_count == 0:
+        if not result.has_more:
             return pass_index
     raise RuntimeError(
         f"workflow handoff startup drain did not reach quiescence within {max_passes} passes"

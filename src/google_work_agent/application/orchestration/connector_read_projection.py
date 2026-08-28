@@ -9,10 +9,12 @@ from google_work_agent.application.orchestration.connector_read_models import (
     NormalizedConnectorRead,
     PlannedConnectorRead,
 )
+from google_work_agent.application.orchestration.temporal_query import resolve_temporal_query
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.ports import (
     FreeBusyCalendar,
     FreeBusyInterval,
+    GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
@@ -176,67 +178,227 @@ class ConnectorReadProjection:
 
     def read(self, request: PlannedConnectorRead) -> NormalizedConnectorRead:
         plan = request.plan
-        if request.prefer_selected_resources and request.selected_resources:
-            snapshots = tuple(self._selected_snapshot(item) for item in request.selected_resources)
-            return NormalizedConnectorRead(snapshots=snapshots)
+        if request.prefer_selected_resources:
+            selected = self._selected_snapshots(request)
+            if selected:
+                return NormalizedConnectorRead(snapshots=tuple(selected))
         if plan["source"] == "GMAIL":
+            self._require_allowed(request, "gmail_search_threads")
             page = self.search_gmail_threads(
                 query=_query(plan["constraints"]),
                 page_token=request.page_token,
                 page_size=plan["page_size"],
             )
-            details = tuple(
-                self.get_gmail_thread(thread_id=item.resource_id)
-                for item in page.items[: plan["detail_limit"]]
-            )
-            return NormalizedConnectorRead(details, next_page_token=page.next_page_token)
+            request.remaining_budget["pages"] -= 1
+            candidates = list(page.items[: plan["max_candidates"]])
+            request.remaining_budget["candidates"] -= len(candidates)
+            details: list[ResourceSnapshot] = []
+            for item in candidates[: plan["detail_limit"]]:
+                if request.remaining_budget["details"] <= 0:
+                    break
+                self._require_allowed(request, "gmail_get_thread")
+                thread = self.get_gmail_thread(thread_id=item.resource_id)
+                request.remaining_budget["details"] -= 1
+                details.append(thread)
+                details.extend(self._gmail_thread_messages(request, thread))
+            return NormalizedConnectorRead(tuple(details), next_page_token=page.next_page_token)
         if plan["source"] == "TASKS":
             task_list_id = _constraint(plan["constraints"], "task_list_id")
             if task_list_id is None:
+                self._require_allowed(request, "tasks_list_tasklists")
                 lists = self.list_task_lists(page_token=None, page_size=1)
+                request.remaining_budget["pages"] -= 1
                 if not lists.items:
                     return NormalizedConnectorRead(())
                 task_list_id = lists.items[0].resource_id
+            self._require_allowed(request, "tasks_list_tasks")
             page = self.list_tasks(
                 task_list_id=task_list_id,
                 page_token=request.page_token,
                 page_size=plan["page_size"],
             )
+            request.remaining_budget["pages"] -= 1
+            candidates = list(page.items[: plan["max_candidates"]])
+            request.remaining_budget["candidates"] -= len(candidates)
+            details: list[ResourceSnapshot] = []
+            for item in candidates[: plan["detail_limit"]]:
+                self._require_allowed(request, "tasks_get_task")
+                details.append(
+                    self.get_task(task_list_id=task_list_id, task_id=item.resource_id)
+                )
+            request.remaining_budget["details"] -= len(details)
             return NormalizedConnectorRead(
-                page.items[: plan["max_candidates"]],
+                tuple(details),
                 next_page_token=page.next_page_token,
             )
-        calendar_id = _constraint(plan["constraints"], "calendar_id") or "primary"
+        calendar_id = _constraint(plan["constraints"], "calendar_id")
+        if calendar_id is None:
+            self._require_allowed(request, "calendar_list_calendars")
+            calendars = self.list_calendars(page_token=None, page_size=1)
+            request.remaining_budget["pages"] -= 1
+            if not calendars.items:
+                return NormalizedConnectorRead(())
+            calendar_id = calendars.items[0].resource_id
+        self._require_allowed(request, "calendar_list_events")
         page = self.list_calendar_events(
             calendar_id=calendar_id,
             page_token=request.page_token,
             page_size=plan["page_size"],
-            time_min=_constraint(plan["constraints"], "time_min"),
-            time_max=_constraint(plan["constraints"], "time_max"),
-            single_events=True,
-            order_by="startTime",
         )
+        request.remaining_budget["pages"] -= 1
+        candidates = list(page.items[: plan["max_candidates"]])
+        request.remaining_budget["candidates"] -= len(candidates)
+        details: list[ResourceSnapshot] = []
+        for item in candidates[: plan["detail_limit"]]:
+            self._require_allowed(request, "calendar_get_event")
+            details.append(
+                self.get_calendar_event(calendar_id=calendar_id, event_id=item.resource_id)
+            )
+        request.remaining_budget["details"] -= len(details)
+        freebusy, error_code = self._calendar_freebusy(request, calendar_id)
+        if freebusy is not None:
+            details.append(freebusy)
         return NormalizedConnectorRead(
-            page.items[: plan["max_candidates"]],
+            tuple(details),
+            error_code=error_code,
             next_page_token=page.next_page_token,
         )
 
-    def _selected_snapshot(self, resource) -> ResourceSnapshot:
-        if resource.source == "GMAIL" and resource.resource_type == "THREAD":
-            return self.get_gmail_thread(thread_id=resource.resource_id)
-        if resource.source == "GMAIL" and resource.resource_type == "MESSAGE":
-            return self.get_gmail_message(message_id=resource.resource_id)
-        if resource.source == "TASKS" and resource.parent_resource_id is not None:
-            return self.get_task(
-                task_list_id=resource.parent_resource_id,
-                task_id=resource.resource_id,
+    def _selected_snapshots(self, request: PlannedConnectorRead) -> list[ResourceSnapshot]:
+        selected: list[ResourceSnapshot] = []
+        for resource in request.selected_resources:
+            if resource.source != request.plan["source"]:
+                continue
+            if resource.source == "GMAIL" and resource.resource_type == "THREAD":
+                self._require_allowed(request, "gmail_get_thread")
+                thread = self.get_gmail_thread(thread_id=resource.resource_id)
+                request.remaining_budget["details"] = max(
+                    0, request.remaining_budget["details"] - 1
+                )
+                selected.append(thread)
+                selected.extend(self._gmail_thread_messages(request, thread))
+            elif resource.source == "GMAIL" and resource.resource_type == "MESSAGE":
+                self._require_allowed(request, "gmail_get_message")
+                selected.append(self.get_gmail_message(message_id=resource.resource_id))
+            elif resource.source == "TASKS" and resource.parent_resource_id is not None:
+                self._require_allowed(request, "tasks_get_task")
+                selected.append(
+                    self.get_task(
+                        task_list_id=resource.parent_resource_id,
+                        task_id=resource.resource_id,
+                    )
+                )
+            elif resource.source == "CALENDAR" and resource.parent_resource_id is not None:
+                self._require_allowed(request, "calendar_get_event")
+                selected.append(
+                    self.get_calendar_event(
+                        calendar_id=resource.parent_resource_id,
+                        event_id=resource.resource_id,
+                    )
+                )
+            else:
+                raise ValueError("selected resource cannot be materialized by its frozen route")
+        return selected
+
+    def _gmail_thread_messages(
+        self, request: PlannedConnectorRead, thread: ResourceSnapshot
+    ) -> list[ResourceSnapshot]:
+        message_ids = thread.payload.get("message_ids")
+        if not isinstance(message_ids, list):
+            return []
+        messages: list[ResourceSnapshot] = []
+        for raw_message_id in message_ids:
+            if request.remaining_budget["details"] <= 0:
+                break
+            try:
+                self._require_allowed(request, "gmail_get_message")
+                message = self.get_gmail_message(message_id=str(raw_message_id))
+            except GoogleWorkspaceGatewayError:
+                continue
+            request.remaining_budget["details"] -= 1
+            messages.append(message)
+        return messages
+
+    def _calendar_freebusy(
+        self, request: PlannedConnectorRead, calendar_id: str
+    ) -> tuple[ResourceSnapshot | None, str | None]:
+        if request.plan["calendar_read_mode"] != "EVENTS_AND_FREEBUSY":
+            return None, None
+        if request.remaining_budget["details"] <= 0:
+            return None, None
+        temporal_query = request.plan["temporal_query"]
+        if temporal_query is None:
+            return None, "INVALID_TEMPORAL_QUERY"
+        time_range = resolve_temporal_query(
+            temporal_query=temporal_query,
+            now_ms=request.now_ms,
+            timezone=request.timezone,
+        )
+        if time_range is None:
+            return None, "INVALID_TEMPORAL_QUERY"
+        try:
+            self._require_allowed(request, "calendar_query_freebusy")
+            calendars = self.query_freebusy(
+                calendar_ids=(calendar_id,), time_range=time_range
             )
-        if resource.source == "CALENDAR" and resource.parent_resource_id is not None:
-            return self.get_calendar_event(
-                calendar_id=resource.parent_resource_id,
-                event_id=resource.resource_id,
+        except GoogleWorkspaceGatewayError:
+            return None, None
+        request.remaining_budget["details"] -= 1
+        return _freebusy_snapshot(calendar_id, time_range, calendars), None
+
+    @staticmethod
+    def _require_allowed(request: PlannedConnectorRead, *tool_ids: str) -> None:
+        if request.allowed_read_tool_ids is None:
+            return
+        denied = sorted(set(tool_ids) - request.allowed_read_tool_ids)
+        if denied:
+            raise PermissionError(
+                f"Connector READ outside frozen input route: {', '.join(denied)}"
             )
-        raise ValueError("selected resource cannot be materialized by its frozen route")
+
+
+def _freebusy_snapshot(
+    calendar_id: str,
+    time_range: TimeRange,
+    calendars: tuple[FreeBusyCalendar, ...],
+) -> ResourceSnapshot:
+    intervals = [
+        {
+            "calendar_id": calendar.calendar_id,
+            "start": interval.start,
+            "end": interval.end,
+            "transparency": interval.transparency,
+        }
+        for calendar in calendars
+        for interval in calendar.intervals
+    ]
+    summary = (
+        f"{calendar_id} has no busy intervals between {time_range.start} and {time_range.end}."
+        if not intervals
+        else (
+            f"{calendar_id} busy intervals between {time_range.start} and {time_range.end}: "
+            + "; ".join(
+                f"{item['start']}~{item['end']} ({item['transparency']})"
+                for item in intervals
+            )
+        )
+    )
+    return ResourceSnapshot(
+        fixture_snapshot_id="",
+        resource_type=ResourceType.CALENDAR_FREEBUSY,
+        resource_id=f"freebusy-{calendar_id}-{time_range.start}-{time_range.end}",
+        parent_id=calendar_id,
+        related_resource_ids=(calendar_id,),
+        version="",
+        recovery_fingerprint=None,
+        payload={
+            "summary": summary,
+            "calendar_id": calendar_id,
+            "time_min": time_range.start,
+            "time_max": time_range.end,
+            "busy_intervals": intervals,
+        },
+    )
 
 
 def _snapshot(item: dict[str, object]) -> ResourceSnapshot:

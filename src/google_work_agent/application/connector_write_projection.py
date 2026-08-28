@@ -8,7 +8,7 @@ from google_work_agent.application.orchestration.connector_read_projection impor
     ConnectorReadProjection,
 )
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
-    DispatchConnectorWriteCommand,
+    DispatchConnectorWriteCommandV1,
     DispatchConnectorWriteHandler,
 )
 from google_work_agent.application.write_dispatch_models import (
@@ -24,6 +24,7 @@ from google_work_agent.ports import (
     ResourceType,
 )
 from google_work_agent.ports.connector.connector_read_port import JsonValue
+from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 
 
 class ConnectorWriteProjection(WriteResultMaterializer):
@@ -62,9 +63,22 @@ class ConnectorWriteProjection(WriteResultMaterializer):
         )
 
     def execute_write(self, request: AuthorizedWriteDispatch) -> ResourceSnapshot:
+        result = self.dispatch_write(request)
+        if not result.success:
+            certainty = DeliveryCertainty(result.delivery_certainty or "MAY_HAVE_BEEN_SENT")
+            raise GoogleWorkspaceGatewayError(
+                code=_error_code(result.error_code),
+                message=result.error_code or "CONNECTOR_WRITE_FAILED",
+                delivered=certainty is not DeliveryCertainty.NOT_SENT,
+                mutated=certainty is DeliveryCertainty.SENT_RESPONSE_LOST,
+                mcp_request_id=result.provider_request_id,
+            )
+        return self.materialize_success(request, result)
+
+    def dispatch_write(self, request: AuthorizedWriteDispatch) -> ConnectorWriteResultV1:
         claim = _claim_context(request)
         result = self._dispatch_connector_write(
-            DispatchConnectorWriteCommand(
+            DispatchConnectorWriteCommandV1(
                 schema_version=1,
                 connector_id=self._connector_id,
                 tool_id=request.prepared.tool_name,
@@ -75,19 +89,36 @@ class ConnectorWriteProjection(WriteResultMaterializer):
             )
         ).connector_result
         self._last_request_id = result.provider_request_id
+        return result
+
+    def materialize_success(
+        self,
+        request: AuthorizedWriteDispatch,
+        result: ConnectorWriteResultV1,
+    ) -> ResourceSnapshot:
         if not result.success:
-            certainty = DeliveryCertainty(result.delivery_certainty or "MAY_HAVE_BEEN_SENT")
-            raise GoogleWorkspaceGatewayError(
-                code=_error_code(result.error_code),
-                message=result.error_code or "CONNECTOR_WRITE_FAILED",
-                delivered=certainty is not DeliveryCertainty.NOT_SENT,
-                mutated=certainty is DeliveryCertainty.SENT_RESPONSE_LOST,
-                mcp_request_id=result.provider_request_id,
-            )
-        return self._materialize_success(
-            tool_name=request.prepared.tool_name,
-            arguments=request.prepared.arguments,
-            metadata=result.response_metadata or {},
+            raise ValueError("only a successful dispatch can be materialized")
+        metadata = result.response_metadata or {}
+        resource_id = _resource_id(request.prepared.arguments, metadata)
+        payload = request.prepared.arguments.get("payload")
+        return ResourceSnapshot(
+            fixture_snapshot_id=str(metadata.get("fixture_snapshot_id") or resource_id),
+            resource_type=ResourceType(
+                str(metadata.get("resource_type") or _resource_type(request.prepared.tool_name))
+            ),
+            resource_id=resource_id,
+            parent_id=cast(
+                str | None,
+                metadata.get("parent_id") or _parent_id(request.prepared.arguments),
+            ),
+            related_resource_ids=(),
+            version=str(metadata.get("version") or "provider-write-result"),
+            recovery_fingerprint=cast(
+                str | None,
+                metadata.get("recovery_fingerprint")
+                or request.prepared.arguments.get("recovery_fingerprint"),
+            ),
+            payload=dict(payload) if isinstance(payload, dict) else {},
         )
 
     def fetch_verification_snapshot(
@@ -115,8 +146,22 @@ class ConnectorWriteProjection(WriteResultMaterializer):
                 page_token=None,
                 page_size=50,
             )
-            return page.items
+            return cast(tuple[ResourceSnapshot, ...], page.items)
         return ()
+
+    def materialize_recovery_candidate(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        resource_id: str,
+    ) -> ResourceSnapshot:
+        """Read an already-existing result; this path never dispatches a Write."""
+        return self._materialize_success(
+            tool_name=tool_name,
+            arguments=arguments,
+            metadata={"resource_id": resource_id},
+        )
 
     def _materialize_success(
         self,
@@ -155,20 +200,7 @@ class ConnectorWriteProjection(WriteResultMaterializer):
 
 
 def _claim_context(request: AuthorizedWriteDispatch) -> dict[str, object]:
-    payload = request.claim_payload
-    return {
-        "claim_version": 2,
-        "action_id": str(payload["action_id"]),
-        "approval_id": str(payload["approval_id"]),
-        "execution_attempt_id": str(payload["attempt_id"]),
-        "tool_name": request.prepared.tool_name,
-        "approval_arguments_hash": request.approval_arguments_hash,
-        "execution_arguments_hash": request.execution_arguments_hash,
-        "service_instance_id": str(payload["service_instance_id"]),
-        "issued_at_ms": int(str(payload["issued_at_ms"])),
-        "expires_at_ms": int(str(payload["expires_at_ms"])),
-        "nonce": str(payload["nonce"]),
-    }
+    return dict(request.claim_payload)
 
 
 def _final_arguments(
@@ -237,6 +269,14 @@ def _resource_type(tool_name: str) -> str:
     if tool_name.startswith("calendar_"):
         return "calendar_event"
     return "gmail_message"
+
+
+def _parent_id(arguments: dict[str, object]) -> str | None:
+    for key in ("task_list_id", "calendar_id"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _error_code(value: str | None) -> GoogleWorkspaceErrorCode:

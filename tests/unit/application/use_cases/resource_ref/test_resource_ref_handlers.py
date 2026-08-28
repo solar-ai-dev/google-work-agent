@@ -3,23 +3,29 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 
-from google_work_agent.application.resource_continuation import (
-    LocalResourceContinuationStore,
-    OpaqueResourceQueryService,
+from google_work_agent.application.use_cases.resource.connector_resource_access import (
+    ConnectorResourceAccess,
 )
-from google_work_agent.application.resource_queries import ResourceQueryService
-from google_work_agent.application.use_cases.resource_ref.count_resources import (
-    CountResourcesHandler,
-    CountResourcesQuery,
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler as CountResourcesHandler,
 )
-from google_work_agent.application.use_cases.resource_ref.get_resource import (
-    GetResourceHandler,
-    GetResourceQuery,
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountQuery as CountResourcesQuery,
 )
-from google_work_agent.application.use_cases.resource_ref.list_resources import (
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler as GetResourceHandler,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailQuery as GetResourceQuery,
+)
+from google_work_agent.application.use_cases.resource.list_resources import (
     GMAIL_PRIMARY_QUERY,
     ListResourcesHandler,
     ListResourcesQuery,
+)
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    LocalResourceContinuationStore,
+    OpaqueConnectorResourceAccess,
 )
 from google_work_agent.ports import (
     GmailThreadDetail,
@@ -493,8 +499,8 @@ def _token_factory(values: Iterator[str]) -> Callable[[], str]:
 
 def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> None:
     gateway = _PagingGateway()
-    raw = ResourceQueryService(gateway=gateway)
-    opaque = OpaqueResourceQueryService(
+    raw = ConnectorResourceAccess(gateway=gateway)
+    opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(
             token_factory=_token_factory(iter(("local-next",)))
@@ -520,11 +526,11 @@ def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> No
 
 def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_handle() -> None:
     gateway = _PagingTasksGateway()
-    raw = ResourceQueryService(
+    raw = ConnectorResourceAccess(
         gateway=gateway,
         default_tasklist_id_provider=lambda: "task-list-1",
     )
-    opaque = OpaqueResourceQueryService(
+    opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(
             token_factory=lambda: (_ for _ in ()).throw(
@@ -553,11 +559,11 @@ def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_ha
 
 def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
     gateway = _PagingTasksGateway()
-    raw = ResourceQueryService(
+    raw = ConnectorResourceAccess(
         gateway=gateway,
         default_tasklist_id_provider=lambda: "task-list-1",
     )
-    opaque = OpaqueResourceQueryService(
+    opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(
             token_factory=_token_factory(iter(("local-task-next",)))
@@ -592,8 +598,8 @@ def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
 
 def test_canonical_count_handler_never_allocates_api_continuation_handles() -> None:
     gateway = _PagingGateway()
-    raw = ResourceQueryService(gateway=gateway)
-    opaque = OpaqueResourceQueryService(
+    raw = ConnectorResourceAccess(gateway=gateway)
+    opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(
             token_factory=lambda: (_ for _ in ()).throw(

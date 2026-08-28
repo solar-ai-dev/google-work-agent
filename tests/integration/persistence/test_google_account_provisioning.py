@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.application.queries import QueryService
+from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
 
 
 def _fresh_query_service(tmp_path: Path) -> tuple[QueryService, Path]:

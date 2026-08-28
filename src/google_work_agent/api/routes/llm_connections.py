@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Header, Request
 
 from google_work_agent.api.dependencies.access_control import enforce_access
@@ -20,21 +22,21 @@ from google_work_agent.api.schemas.llm_connections.store_llm_api_key import (
 from google_work_agent.api.schemas.llm_connections.test_llm_connection import (
     TestLLMConnectionResponse,
 )
-from google_work_agent.application.use_cases.llm.delete_llm_api_key import (
-    DeleteLLMApiKeyCommand,
-    DeleteLLMApiKeyHandler,
-)
-from google_work_agent.application.use_cases.llm.get_llm_connection import (
-    GetLLMConnectionHandler,
-    GetLLMConnectionQuery,
-)
-from google_work_agent.application.use_cases.llm.store_llm_api_key import (
-    StoreLLMApiKeyCommand,
-    StoreLLMApiKeyHandler,
-)
 from google_work_agent.application.use_cases.llm.test_llm_connection import (
     TestLLMConnectionCommand,
     TestLLMConnectionHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
+    DeleteLlmCredentialCommand,
+    DeleteLlmCredentialHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.get_llm_credential_status import (
+    GetLlmCredentialStatusHandler,
+    GetLlmCredentialStatusQuery,
+)
+from google_work_agent.application.use_cases.llm_credential.store_llm_credential import (
+    StoreLlmCredentialCommand,
+    StoreLlmCredentialHandler,
 )
 from google_work_agent.ports import EndpointPolicy
 
@@ -51,26 +53,29 @@ def _contract(request: Request, dependencies: LLMRouteDependency, version: str |
     enforce_runtime_operation(request, operation="SETTINGS")
 
 
-@router.get("/llm/connection", response_model=LLMConnectionResponse)
+@router.get("/credentials/llm/{provider}", response_model=LLMConnectionResponse)
 def get_llm_connection(
+    provider: str,
     request: Request,
     dependencies: LLMRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> LLMConnectionResponse:
     _contract(request, dependencies, x_api_contract_version)
     try:
-        result = GetLLMConnectionHandler(
-            service_factory=dependencies.get_llm_connection_service
-        ).handle(GetLLMConnectionQuery())
+        handler = dependencies.get_llm_credential_status_handler()
+        if not isinstance(handler, GetLlmCredentialStatusHandler):
+            raise RuntimeError("LLM_CREDENTIAL_STATUS_UNAVAILABLE")
+        status = handler(GetLlmCredentialStatusQuery(provider=provider))
     except RuntimeError as error:
         raise _service_unavailable(request, str(error)) from error
     return LLMConnectionResponse(
-        llm=result.llm, api_contract_version=dependencies.api_contract_version
+        llm=asdict(status), api_contract_version=dependencies.api_contract_version
     )
 
 
-@router.post("/llm/api-key", response_model=StoreLLMApiKeyResponse)
+@router.put("/credentials/llm/{provider}", response_model=StoreLLMApiKeyResponse)
 def store_llm_api_key(
+    provider: str,
     payload: StoreLLMApiKeyRequest,
     request: Request,
     dependencies: LLMRouteDependency,
@@ -78,9 +83,17 @@ def store_llm_api_key(
 ) -> StoreLLMApiKeyResponse:
     _contract(request, dependencies, x_api_contract_version)
     try:
-        result = StoreLLMApiKeyHandler(
-            service_factory=dependencies.store_llm_api_key_service
-        ).handle(StoreLLMApiKeyCommand(api_key=payload.api_key, storage_mode=payload.storage_mode))
+        handler = dependencies.store_llm_credential_handler()
+        if not isinstance(handler, StoreLlmCredentialHandler):
+            raise RuntimeError("LLM_CREDENTIAL_STORE_UNAVAILABLE")
+        result = handler(
+            StoreLlmCredentialCommand(
+                command_id=request.state.request_id,
+                provider=provider,
+                secret=payload.api_key.encode("utf-8"),
+                storage_mode=payload.storage_mode,
+            )
+        )
     except RuntimeError as error:
         raise _service_unavailable(request, str(error)) from error
     except ValueError as error:
@@ -92,26 +105,33 @@ def store_llm_api_key(
             detail_code="LLM_CREDENTIAL_INVALID",
         ) from error
     return StoreLLMApiKeyResponse(
-        credential_state=result.credential_state,
+        credential_state=result.status.validation_status,
         api_contract_version=dependencies.api_contract_version,
     )
 
 
-@router.delete("/llm/api-key", response_model=DeleteLLMApiKeyResponse)
+@router.delete("/credentials/llm/{provider}", response_model=DeleteLLMApiKeyResponse)
 def delete_llm_api_key(
+    provider: str,
     request: Request,
     dependencies: LLMRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
 ) -> DeleteLLMApiKeyResponse:
     _contract(request, dependencies, x_api_contract_version)
     try:
-        result = DeleteLLMApiKeyHandler(
-            service_factory=dependencies.delete_llm_api_key_service
-        ).handle(DeleteLLMApiKeyCommand())
+        handler = dependencies.delete_llm_credential_handler()
+        if not isinstance(handler, DeleteLlmCredentialHandler):
+            raise RuntimeError("LLM_CREDENTIAL_DELETE_UNAVAILABLE")
+        result = handler(
+            DeleteLlmCredentialCommand(
+                command_id=request.state.request_id,
+                provider=provider,
+            )
+        )
     except RuntimeError as error:
         raise _service_unavailable(request, str(error)) from error
     return DeleteLLMApiKeyResponse(
-        credential_state=result.credential_state,
+        credential_state=result.status.validation_status,
         api_contract_version=dependencies.api_contract_version,
     )
 

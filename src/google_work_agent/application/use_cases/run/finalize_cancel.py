@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps
-from types import SimpleNamespace
 
 from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.persistence_cas import update_plan_record
@@ -12,7 +11,6 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
 )
-from google_work_agent.application.write_cancellation import _apply_run_transition
 from google_work_agent.application.write_cancellation_contracts import (
     FinalizeRunCancellationCommand,
 )
@@ -136,9 +134,7 @@ class FinalizeCancelHandler:
                 )
                 unknown_attempt = next(
                     attempt
-                    for approval in unit_of_work.approval_history.list_for_action(
-                        unknown_action.id
-                    )
+                    for approval in unit_of_work.approval_history.list_for_action(unknown_action.id)
                     for attempt in active_attempt_tuple(
                         unit_of_work.execution_attempts, approval.id
                     )
@@ -230,35 +226,34 @@ class FinalizeCancelHandler:
                         )
                         is None
                     ):
-                        raise RuntimeError(
-                            f"validated Plan cancellation CAS failed: {plan.id}"
-                        )
+                        raise RuntimeError(f"validated Plan cancellation CAS failed: {plan.id}")
                     plan = max(
                         current_plan_tuple(unit_of_work.plans, run.id),
                         key=lambda item: (item.revision_no, item.created_at_ms),
                     )
-                final_result = _apply_run_transition(
-                    unit_of_work,
-                    SimpleNamespace(
-                        id=run.id, status=run.status, version=finalize_expected_version
-                    ),
+                next_status = _finalize_transition(
+                    unit_of_work=unit_of_work,
+                    run_id=run.id,
+                    plan=plan,
+                    actions=actions,
+                )(run.status)
+                if not unit_of_work.runs.update_if_version_and_status(
+                    run.id,
                     finalize_expected_version,
-                    _finalize_transition(
-                        unit_of_work=unit_of_work,
-                        run_id=run.id,
-                        plan=plan,
-                        actions=actions,
-                    ),
-                    finished_at_ms=now_ms,
-                )
-                if not final_result.applied:
-                    raise RuntimeError("validated cancellation finalization was not applied")
+                    frozenset({run.status}),
+                    {
+                        "status": next_status.value,
+                        "version": finalize_expected_version + 1,
+                        "finished_at_ms": now_ms,
+                    },
+                ):
+                    raise RuntimeError("validated cancellation finalization CAS failed")
                 response = WriteRunResponse(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED.value,
                     run_id=run.id,
-                    run_status=final_result.current_status.value,
-                    run_version=final_result.current_version,
+                    run_status=next_status.value,
+                    run_version=finalize_expected_version + 1,
                     plan_id=None if plan is None else plan.id,
                     plan_status=None if plan is None else PlanStatusV1.CANCELLED.value,
                     result_kind=(

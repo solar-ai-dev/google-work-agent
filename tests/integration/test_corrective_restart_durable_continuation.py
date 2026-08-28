@@ -89,7 +89,7 @@ class _RestartRuntimeHarness(_CorrectivePersistenceHarness):
         run_id: str,
     ) -> WorkflowInvocationResult:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            run = unit_of_work.runs.get(run_id)
         assert run is not None
         return WorkflowInvocationResult(
             run_id=run_id,
@@ -227,6 +227,6 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
     assert len(final["new_actions"]) == 2
     assert len(final["new_evidence_ids"]) == 2
     assert final["trace_counts"] == {
-        "WRITE_PLAN_PUBLISHED": 1,
+        "PLAN_PUBLISHED": 1,
         "WRITE_PLAN_SAVED": 1,
     }

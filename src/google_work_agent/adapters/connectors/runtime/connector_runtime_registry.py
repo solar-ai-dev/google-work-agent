@@ -8,12 +8,15 @@ from typing import Protocol
 from google_work_agent.ports.connector.mcp_client_port import (
     JsonValue,
     MCPRestartResultV1,
+    MCPRuntimeMetadata,
     MCPToolCallResultV1,
     MCPToolDescriptorV1,
 )
 
 
 class ConnectorRuntimeHandle(Protocol):
+    def runtime_metadata(self) -> MCPRuntimeMetadata: ...
+
     def list_tools(self) -> list[MCPToolDescriptorV1]: ...
 
     def call_tool(

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
 from google_work_agent.application.persistence_cas import update_action_record
 from google_work_agent.application.read_contracts import (
     CompleteReadActionCommand,
@@ -19,6 +18,9 @@ from google_work_agent.application.read_persistence import (
     handle_existing_complete_receipt,
     require_action,
     require_plan,
+)
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
 )
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.complete_read_action import (
@@ -101,7 +103,7 @@ class CompleteReadActionHandler:
             if not action.connector_id:
                 raise ValueError("persisted READ action connector_id is required")
             for resource_ref in command.resource_refs:
-                upsert_registered_resource_ref(
+                persist_registered_resource_ref(
                     unit_of_work,
                     ResourceRefRecord(
                         id=resource_ref.id,

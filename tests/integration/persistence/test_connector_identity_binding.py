@@ -7,8 +7,8 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.persistence_admissibility import (
-    upsert_registered_resource_ref,
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
 )
 from google_work_agent.application.read_contracts import (
     CompletedResourceRef,
@@ -214,6 +214,6 @@ def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path
     )
     with (
         SqliteUnitOfWork(database_path) as unit_of_work,
-        pytest.raises(LookupError, match="connector tool registry not registered"),
+        pytest.raises(LookupError, match="connector not registered"),
     ):
-        upsert_registered_resource_ref(unit_of_work, resource_ref)
+        persist_registered_resource_ref(unit_of_work, resource_ref)

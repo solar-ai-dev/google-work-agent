@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+
+from google_work_agent.ports.system.backup_port import BackupMetadataV1, BackupPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,17 +13,22 @@ class ListBackupsQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class ListBackupsResult:
-    items: tuple[object, ...]
+class BackupListResponseV1:
+    schema_version: int
+    backups: tuple[BackupMetadataV1, ...]
 
 
 class ListBackupsHandler:
-    def __init__(self, *, service_factory: Callable[[], Any | None]) -> None:
-        self._service_factory = service_factory
+    def __init__(self, backups: BackupPort) -> None:
+        self._backups = backups
 
-    def handle(self, query: ListBackupsQuery) -> ListBackupsResult:
+    def __call__(self, query: ListBackupsQuery) -> BackupListResponseV1:
         del query
-        service = self._service_factory()
-        if service is None:
-            raise RuntimeError("BACKUP_UNAVAILABLE")
-        return ListBackupsResult(items=tuple(service()))
+        return BackupListResponseV1(1, tuple(self._backups.list_backups()))
+
+    handle = __call__
+
+
+ListBackupsResult = BackupListResponseV1
+
+__all__ = ["BackupListResponseV1", "ListBackupsHandler", "ListBackupsQuery", "ListBackupsResult"]

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.fakes import FakeAPIProviderTransport, FakeHardwareProbe, FakeKeyring
+from tests.support.fakes import FakeAPIProviderTransport
 from tests.support.prompt_manifests import (
     write_manifest_with_overrides,
     write_runtime_active_manifest,
@@ -57,7 +57,6 @@ from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.ports import (
-    CredentialStorageMode,
     LLMErrorCode,
     LLMInvocationError,
     ProviderResponsePayload,
@@ -65,6 +64,7 @@ from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 # Duplicated (rather than imported) from test_work_analysis.py: that module
 # has no __init__.py sibling package marker, so a relative/package import
@@ -81,6 +81,8 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
             "settings_service",
             "status_service",
             "credential_service",
+            "hardware_probe",
+            "api_provider_name",
             "api_provider",
             "ollama_provider_factory",
             "runtime_policy",
@@ -90,6 +92,8 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
         if key in kwargs
     }
     kwargs.pop("api_provider")
+    kwargs.pop("hardware_probe")
+    kwargs.pop("api_provider_name")
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
         **kwargs,
@@ -257,10 +261,12 @@ def _real_llm_runtime(
     credential_service = LlmCredentialRouter(
         provider_name="generic",
         environment="DEVELOPMENT",
-        keyring_store=FakeKeyring(),
+        keyring_store=None,
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store(api_key="key-1", mode=CredentialStorageMode.KEYRING)
+    credential_service.store_credential(
+        "generic", b"key-1", "SESSION_ONLY", "test:credential"
+    )
     settings = AppSettings(
         deployment_profile="API_ONLY",
         requested_runtime_mode="API_LLM",
@@ -270,9 +276,9 @@ def _real_llm_runtime(
 
     status_service = LlmRuntimeStatusRouter(
         build_profile="API_ONLY",
+        settings_service=lambda: settings,
         credential_service=credential_service,
         api_connection_service=GeminiConnectionService(api_transport),
-        hardware_probe=FakeHardwareProbe(),
         ollama_probe=type(
             "_Probe",
             (),
@@ -280,11 +286,22 @@ def _real_llm_runtime(
         )(),
         approved_models={approved_model().model_id: approved_model()},
         runtime_policy=RuntimePolicy(),
+        api_provider_name="generic",
     )
     return LLMRuntimeService(
         settings_service=lambda: settings,
         status_service=status_service,
         credential_service=credential_service,
+        hardware_probe=type(
+            "_HardwareProbe",
+            (),
+            {
+                "probe": lambda self: HardwareProfileV1(
+                    1, 8, 16 * 1024**3, False, None, None, False, None, False
+                )
+            },
+        )(),
+        api_provider_name="generic",
         api_provider=StructuredInferenceRuntimeRouter(
             provider_name="generic-api",
             transport=api_transport,

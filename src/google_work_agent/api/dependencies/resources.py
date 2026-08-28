@@ -9,7 +9,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.resource_queries import ResourceQueryService
+from google_work_agent.application.use_cases.resource.connector_resource_access import (
+    ConnectorResourceAccess,
+)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
 )
@@ -21,12 +23,16 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 @dataclass(frozen=True, slots=True)
 class ResourceRouteDependencies:
     api_contract_version: str
-    resource_query_service: Callable[[], ResourceQueryService | None]
+    resource_query_service: Callable[[], ConnectorResourceAccess | None]
     issue_selection_handle: IssueSelectionHandle
     resolve_selection_handle: ResolveSelectionHandle
     service_instance_id: str
     resource_connector_id: str
     current_account_id: Callable[[], str | None]
+    list_task_lists_handler: object | None
+    list_calendars_handler: object | None
+    get_task_resource_detail_handler: object | None
+    get_calendar_resource_detail_handler: object | None
 
 
 def get_resource_route_dependencies(request: Request) -> ResourceRouteDependencies:
@@ -43,6 +49,10 @@ def get_resource_route_dependencies(request: Request) -> ResourceRouteDependenci
         service_instance_id=container.service_instance_id,
         resource_connector_id=container.resource_connector_id,
         current_account_id=lambda: _current_account_id(container.query_service),
+        list_task_lists_handler=container.list_task_lists_handler,
+        list_calendars_handler=container.list_calendars_handler,
+        get_task_resource_detail_handler=container.get_task_resource_detail_handler,
+        get_calendar_resource_detail_handler=container.get_calendar_resource_detail_handler,
     )
 
 

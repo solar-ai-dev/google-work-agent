@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import inspect
 
-from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
-    ResolveMismatchRecoveryHandler,
-)
-
 import google_work_agent.adapters.langgraph.corrective_plan_persistence as corrective_persistence
 import google_work_agent.adapters.langgraph.main.plan_persistence as plan_persistence
-import google_work_agent.application.run_terminal as run_terminal
 from google_work_agent.adapters.langgraph.main.state import ParentGraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
@@ -18,26 +13,27 @@ from google_work_agent.adapters.langgraph.main.workflow import (
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SqlitePlanRepository,
 )
+from google_work_agent.application.use_cases.recovery.resolve_recovery import ResolveRecoveryHandler
+from google_work_agent.application.use_cases.run.block_run import BlockRunHandler
 
 
 def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:
-    transition_source = inspect.getsource(run_terminal._apply_run_transition)
-    cleanup_source = inspect.getsource(run_terminal._cleanup_plans_for_block)
+    transition_source = inspect.getsource(BlockRunHandler.__call__)
+    cleanup_source = inspect.getsource(BlockRunHandler._settle_children)
 
-    assert "_cleanup_plans_for_block" in transition_source
+    assert "_settle_children" in transition_source
     assert "unit_of_work.commit()" not in cleanup_source
-    revoke_at = cleanup_source.index("revoke_active_by_action")
-    terminal_at = cleanup_source.index("mark_dependency_blocked")
-    cancel_at = cleanup_source.index("plans.cancel")
+    revoke_at = cleanup_source.index("revoke_active_approvals")
+    terminal_at = cleanup_source.index("update_action_record")
+    cancel_at = cleanup_source.index("update_plan_record")
     assert revoke_at < terminal_at < cancel_at
 
 
-def test_corrective_recovery_api_enqueues_only_registered_internal_resume_kind() -> None:
-    source = inspect.getsource(ResolveMismatchRecoveryHandler.__call__)
+def test_corrective_recovery_reserves_durable_plan_without_runtime_payload_authority() -> None:
+    source = inspect.getsource(ResolveRecoveryHandler._apply_resolution_effects)
 
-    assert 'result.result_kind == "CORRECTIVE_PLAN_REQUIRED"' in source
-    assert 'resume_kind="RECOVERY_CORRECTIVE_PLAN"' in source
-    assert 'resume_payload={"plan_id": result.plan_id}' in source
+    assert '"CORRECTIVE_PLAN_REQUIRED"' in source
+    assert "unit_of_work.plans.insert_revision(corrective)" in source
     assert "resume_target" not in source
 
 

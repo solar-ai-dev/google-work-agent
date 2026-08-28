@@ -11,7 +11,6 @@ from tests.integration.langgraph.test_runtime import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
     Callable,
-    ClaimWriteActionCommand,
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
@@ -19,11 +18,9 @@ from tests.integration.langgraph.test_runtime import (
     GoogleGatewayFaultKind,
     GraphProfile,
     LangGraphWorkflowRuntime,
-    McpConnectorWriteAdapter,
     Path,
     ProductFixtureSnapshotLoader,
     RequestIntentV2,
-    StoreWriteActionSuccessCommand,
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
@@ -41,6 +38,7 @@ from tests.integration.langgraph.test_runtime import (
     _gmail_analysis_output,
     _gmail_selection_output,
     _make_runtime,
+    _make_runtime_with_llm,
     _QueuedLLMRuntime,
     _review_output,
     _runtime_active_manifest_path,
@@ -51,20 +49,33 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _start_write_request,
     _sufficiency_output,
-    _tool_catalog,
     _write_plan_output,
     connect_sqlite,
     pytest,
     sqlite_unit_of_work_factory,
 )
 from tests.support.canonical_workflow_runtime import (
+    _executor,
     resume_confirmation_with_handoff,
     start_with_admission,
 )
 
+from google_work_agent.adapters.langgraph.checkpoint_control import (
+    LangGraphCheckpointControlAdapter,
+)
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthHandler,
+)
+from google_work_agent.application.use_cases.claim.claim_execution import (
+    ClaimExecutionCommand,
+)
 from google_work_agent.application.use_cases.run.resume_run import (
     ResumeRunCommand,
     ResumeRunHandler,
+)
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+    ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
 
@@ -187,20 +198,14 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         ]
     )
     resumed_gateway = FakeGoogleGateway(snapshot)
-    resumed_runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    resumed_runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=resumed_llm_runtime,
         gateway=resumed_gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=resumed_gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="runtime").next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
-        default_tasklist_id_provider=lambda: "task-list-default",
+        default_tasklist_id="task-list-default",
     )
 
     # G3 Final Closure budget accounting (docs/06 SS11, docs/15 SS8.2) is
@@ -307,51 +312,112 @@ def _resume_through_application(
             command_id=command_id,
         )
     with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        run = unit_of_work.runs.get_by_id("run-1")
+        run = unit_of_work.runs.get("run-1")
         assert run is not None
         expected_run_version = run.version
     runtime_results: list[object] = []
+    checkpoint = runtime._checkpoint_port  # noqa: SLF001
 
-    def enqueue_resume(**queued: object) -> None:
-        runtime_results.append(
-            runtime.resume(
-                WorkflowResumeRequest(
-                    run_id=str(queued["run_id"]),
+    def invoke(admission: object, handoff: object) -> None:
+        binding = admission.effective_binding  # type: ignore[attr-defined]
+        latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
+        assert latest is not None
+        with checkpoint.execution_scope(
+            admission,
+            applied_handoff_id=handoff.handoff_id,  # type: ignore[attr-defined]
+            owner_scope=latest.owner_scope,
+            resume_target=binding.resume_target,
+        ):
+            invocation_payload = dict(resume_payload)
+            if resume_kind == "REAUTH_COMPLETED":
+                authority = runtime.resolve_resume_authority(
+                    run_id="run-1",
                     workflow_key="thread-1",
-                    resume_kind=str(queued["resume_kind"]),
-                    resume_payload=dict(queued["resume_payload"]),  # type: ignore[arg-type]
-                    correlation=WorkflowCorrelationContext(
-                        request_id=str(queued["request_id"]),
-                        command_id=str(queued["command_id"]),
-                        api_contract_version="1",
-                    ),
+                    resume_kind=resume_kind,
+                )
+                assert authority is not None
+                invocation_payload["continuation_target"] = authority["continuation_target"]
+            runtime_results.append(
+                runtime.resume(
+                    WorkflowResumeRequest(
+                        run_id="run-1",
+                        workflow_key="thread-1",
+                        resume_kind=resume_kind,
+                        resume_payload=invocation_payload,
+                        correlation=WorkflowCorrelationContext(
+                            request_id=f"request-{command_id}",
+                            command_id=command_id,
+                            api_contract_version="1",
+                        ),
+                    )
                 )
             )
-        )
 
-    handler = ResumeRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        now_ms=FakeClockPort(2000).now_ms,
-        enqueue_resume=enqueue_resume,
-        resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
-            run_id=str(kwargs["run_id"]),
-            workflow_key="thread-1",
-            resume_kind=str(kwargs["resume_kind"]),
+    executor = _executor(
+        runtime,
+        materialize=lambda admission, _handoff: _materialize_resume_target(
+            runtime, admission
         ),
+        invoke=invoke,
     )
-    application_result = handler(
-        ResumeRunCommand(
-            command_id=command_id,
-            request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
-            run_id="run-1",
-            expected_run_version=expected_run_version,
-            resume_kind=resume_kind,
-            api_contract_version="1",
-        ),
-        request_id=f"request-{command_id}",
-        resume_payload=resume_payload,
+    try:
+        schedule = ScheduleRunExecutionHandler(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            workflow_execution=executor,
+            id_factory=lambda: f"admission-{command_id}",
+        )
+        handler_type = (
+            ResumeAfterReauthHandler if resume_kind == "REAUTH_COMPLETED" else ResumeRunHandler
+        )
+        handler = handler_type(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            now_ms=FakeClockPort(2000).now_ms,
+            resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
+                run_id=str(kwargs["run_id"]),
+                workflow_key="thread-1",
+                resume_kind=str(kwargs["resume_kind"]),
+            ),
+            id_generator=DeterministicUUID(prefix=f"handoff-{command_id}"),
+            resume_target_registry=runtime._resume_target_registry,  # noqa: SLF001
+            schedule_run_execution=schedule,
+        )
+        application_result = handler(
+            ResumeRunCommand(
+                command_id=command_id,
+                request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
+                run_id="run-1",
+                expected_run_version=expected_run_version,
+                resume_kind=resume_kind,
+                api_contract_version="1",
+            ),
+            request_id=f"request-{command_id}",
+            resume_payload=resume_payload,
+        )
+        assert executor.await_drained(10_000)
+        return application_result, runtime_results[0] if runtime_results else None
+    finally:
+        executor.close()
+
+
+def _materialize_resume_target(runtime: LangGraphWorkflowRuntime, admission: object) -> object:
+    binding = admission.effective_binding  # type: ignore[attr-defined]
+    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
+    assert latest is not None
+    target = binding.resume_target
+    assert target is not None and target.kind == "MAIN_CONTROL"
+    LangGraphCheckpointControlAdapter(
+        checkpoint_port=checkpoint,
+        native_saver=checkpoint,
+    ).materialize_resume_target(
+        latest,
+        goto_node=runtime.control_resume_node(target.stage_id),
     )
-    return application_result, runtime_results[0] if runtime_results else None
+    materialized = checkpoint.load_same_run_checkpoint(
+        binding.run_id, binding.langgraph_thread_id
+    )
+    assert materialized is not None
+    return materialized
 
 
 def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_same_nested_checkpoint(
@@ -393,20 +459,15 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     # subgraph -- proving the self-loop (not a shared-path fallback) fired.
     round2_llm_runtime = _QueuedLLMRuntime([_ambiguous_intent()])
     round2_gateway = FakeGoogleGateway(snapshot)
-    round2_runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    round2_runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=round2_llm_runtime,
         gateway=round2_gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=round2_gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="round2").next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
-        default_tasklist_id_provider=lambda: "task-list-default",
+        default_tasklist_id="task-list-default",
+        id_prefix="round2",
     )
     application_result, second = _resume_through_application(
         runtime=round2_runtime,
@@ -462,20 +523,15 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         ]
     )
     round3_gateway = FakeGoogleGateway(snapshot)
-    round3_runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    round3_runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=round3_llm_runtime,
         gateway=round3_gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=round3_gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="round3").next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
-        default_tasklist_id_provider=lambda: "task-list-default",
+        default_tasklist_id="task-list-default",
+        id_prefix="round3",
     )
     # G3 budget accounting is cumulative across all 3 resumes on this one
     # Run (RunBudgetV1 is Domain-persisted, not per-invocation): classify +
@@ -540,11 +596,11 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-write.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
 
-    started = runtime.start(_start_write_request())
+    started = start_with_admission(runtime, database_path, _start_write_request())
 
     assert started.outcome is WorkflowOutcome.ACCEPTED
     action_id = _sole_persisted_action_id(database_path)
@@ -641,10 +697,10 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
 
 def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_write(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
-    checkpoint_path = tmp_path / "checkpoints-executed-restart.db"
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     runtime = _make_runtime(
@@ -658,10 +714,13 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
-    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    assert (
+        start_with_admission(runtime, database_path, _start_write_request()).outcome
+        is WorkflowOutcome.ACCEPTED
+    )
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -681,34 +740,28 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
     )
     assert approved.applied is True
 
-    runtime._preflight_write(action_id=action_id)  # noqa: SLF001
-    claim = runtime._claim_write(  # noqa: SLF001
-        ClaimWriteActionCommand(
-            command_id="claim-before-restart",
-            request_hash="1" * 64,
-            action_id=action_id,
-            expected_version=approved.action_version,
-            source_snapshot={},
-            attempt_id="attempt-before-restart",
-            nonce="nonce-before-restart",
+    def crash_before_verification(_query: object) -> object:
+        raise RuntimeError("simulated process crash after StoreSuccess commit")
+
+    monkeypatch.setattr(
+        runtime._write_execution_phase,  # noqa: SLF001
+        "_verify_effect",
+        crash_before_verification,
+    )
+    with pytest.raises(RuntimeError, match="simulated process crash"):
+        runtime.resume(
+            WorkflowResumeRequest(
+                run_id="run-1",
+                workflow_key="thread-1",
+                resume_kind="APPROVAL",
+                resume_payload={"approved": True},
+                correlation=WorkflowCorrelationContext(
+                    request_id="approval-before-restart",
+                    command_id="approval-before-restart",
+                    api_contract_version="1",
+                ),
+            )
         )
-    )
-    assert claim.claim_token is not None
-    executed = runtime._execute_write(  # noqa: SLF001
-        action_id=action_id,
-        claim_token=claim.claim_token,
-    )
-    runtime._store_write_success(  # noqa: SLF001
-        StoreWriteActionSuccessCommand(
-            command_id="store-before-restart",
-            request_hash="2" * 64,
-            action_id=action_id,
-            attempt_id="attempt-before-restart",
-            expected_action_version=claim.action_version,
-            expected_attempt_version=0,
-            snapshot=executed.snapshot,
-        )
-    )
     assert gateway.count_calls("create_task") == 1
     connection = connect_sqlite(database_path)
     try:
@@ -720,7 +773,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             """,
             (action_id,),
         ).fetchone()
-        assert tuple(interrupted_state) == ("WAITING_APPROVAL", "EXECUTED")
+        assert tuple(interrupted_state) == ("VERIFYING", "EXECUTED")
     finally:
         connection.close()
     runtime.close()
@@ -729,15 +782,15 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
     recovered = restarted.recover_open_run(
         WorkflowRecoveryRequest(
             run_id="run-1",
             workflow_key="thread-1",
-            domain_status="WAITING_APPROVAL",
-            domain_version=2,
+            domain_status="VERIFYING",
+            domain_version=3,
             correlation=WorkflowCorrelationContext(
                 request_id="startup-recovery",
                 command_id=None,
@@ -785,10 +838,13 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
-    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    assert (
+        start_with_admission(runtime, database_path, _start_write_request()).outcome
+        is WorkflowOutcome.ACCEPTED
+    )
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -858,15 +914,6 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
         command_id="reauth-resume-command",
     )
     assert application_result.applied is True  # type: ignore[attr-defined]
-    assert resumed is None
-    recovery_result, resumed = _resume_through_application(
-        runtime=runtime,
-        database_path=database_path,
-        resume_payload={},
-        resume_kind="RECOVERY_RECHECK",
-        command_id="verification-recovery-recheck-command",
-    )
-    assert recovery_result.applied is True  # type: ignore[attr-defined]
     assert resumed is not None
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
@@ -910,10 +957,13 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
-    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    assert (
+        start_with_admission(runtime, database_path, _start_write_request()).outcome
+        is WorkflowOutcome.ACCEPTED
+    )
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -936,8 +986,8 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
     # A. The write itself actually reaches the provider (the fake gateway
     # records the created task before raising) but the client-side response
     # is lost, so the Action lands on UNKNOWN_RESULT and the Run moves to
-    # RECOVERY_REQUIRED. The same resume call auto-continues into recovery,
-    # where the recovery search itself now hits AUTH_EXPIRED.
+    # RECOVERY_REQUIRED. The graph enters lookup-only recovery and pauses for
+    # reauthentication when that read hits AUTH_EXPIRED.
     gateway.queue_fault(
         operation="create_task",
         fault=GoogleGatewayFault(kind=GoogleGatewayFaultKind.HTTP_500),
@@ -981,7 +1031,8 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
     finally:
         connection.close()
 
-    # B. Reauth completes; resume re-enters recover_unknown via the same
+    # B. Reauth completes; startup/open-run recovery re-enters recover_unknown
+    # via the same
     # domain-facts continuation the crash-restart path uses (the still
     # unresolved UNKNOWN_RESULT action, not Run status, drives re-entry).
     # The fault queue is one-shot, so the retried search now succeeds,
@@ -996,15 +1047,19 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
     )
     assert application_result.applied is True  # type: ignore[attr-defined]
     assert resumed is None
-    recovery_result, resumed = _resume_through_application(
-        runtime=runtime,
-        database_path=database_path,
-        resume_payload={},
-        resume_kind="RECOVERY_RECHECK",
-        command_id="unknown-recovery-recheck-command",
+    resumed = runtime.recover_open_run(
+        WorkflowRecoveryRequest(
+            run_id="run-1",
+            workflow_key="thread-1",
+            domain_status="RECOVERY_REQUIRED",
+            domain_version=4,
+            correlation=WorkflowCorrelationContext(
+                request_id="unknown-recovery-recheck",
+                command_id=None,
+                api_contract_version="1",
+            ),
+        )
     )
-    assert recovery_result.applied is True  # type: ignore[attr-defined]
-    assert resumed is not None
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
     # C. The write was never replayed -- exactly one create_task call total,
@@ -1053,7 +1108,10 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
         checkpoint_database_path=checkpoint_path,
         prompt_manifest_path=manifest_path,
     )
-    assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
+    assert (
+        start_with_admission(runtime, database_path, _start_write_request()).outcome
+        is WorkflowOutcome.ACCEPTED
+    )
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
@@ -1074,22 +1132,21 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
     assert approved.applied is True
 
     # Claim commits (Action -> EXECUTING, Attempt -> CLAIMED), then the
-    # process is simulated to crash before ExecuteWriteActionService (or
-    # any terminal execution result) ever runs -- dispatch's delivery is
-    # genuinely unknown, not "not sent".
+    # process is simulated to crash before BeginExecutionAttempt. The durable
+    # fact therefore proves provider dispatch was zero.
     runtime._preflight_write(action_id=action_id)  # noqa: SLF001
-    claim = runtime._claim_write(  # noqa: SLF001
-        ClaimWriteActionCommand(
+    claim = runtime._claim_execution(  # noqa: SLF001
+        ClaimExecutionCommand(
             command_id="claim-before-stall",
             request_hash="1" * 64,
             action_id=action_id,
             expected_version=approved.action_version,
             source_snapshot={},
             attempt_id="attempt-before-stall",
-            nonce="nonce-before-stall",
         )
     )
-    assert claim.claim_token is not None
+    assert claim.applied is True
+    assert claim.attempt_id == "attempt-before-stall"
     assert gateway.count_calls("create_task") == 0
 
     connection = connect_sqlite(database_path)
@@ -1129,9 +1186,9 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
         )
     )
 
-    # The run is no longer silently stalled: it reached a real, actionable
-    # Recovery outcome, and the write was never blindly retried/replayed.
-    assert recovered.outcome is WorkflowOutcome.RECOVERY_REQUIRED
+    # The run is no longer silently stalled: the pre-Begin claim is settled
+    # as definitively not dispatched, without inventing UNKNOWN_RESULT.
+    assert recovered.outcome is WorkflowOutcome.ACCEPTED
     assert gateway.count_calls("create_task") == 0
     connection = connect_sqlite(database_path)
     try:
@@ -1145,7 +1202,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             """,
             (action_id,),
         ).fetchone()
-        assert tuple(row) == ("RECOVERY_REQUIRED", "UNKNOWN_RESULT", "UNKNOWN_RESULT", 1)
+        assert tuple(row) == ("WAITING_APPROVAL", "FAILED", "FAILED", 1)
     finally:
         connection.close()
         restarted.close()
@@ -1223,11 +1280,11 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         database_path=database_path,
         llm_payloads=llm_payloads,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / f"checkpoints-{expected_operation}.db",
+        checkpoint_database_path=database_path,
         prompt_manifest_path=manifest_path,
     )
 
-    started = runtime.start(_start_write_request())
+    started = start_with_admission(runtime, database_path, _start_write_request())
     assert started.outcome is WorkflowOutcome.ACCEPTED
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(
@@ -1277,7 +1334,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         assert any(call.operation == expected_operation for call in gateway.call_log)
         if recovery_fault is not None:
             assert gateway.count_calls("send_gmail") == 1
-            assert gateway.count_calls("search_by_recovery_fingerprint") == 1
+            assert gateway.count_calls("search_by_recovery_fingerprint") == 2
     finally:
         connection.close()
         runtime.close()

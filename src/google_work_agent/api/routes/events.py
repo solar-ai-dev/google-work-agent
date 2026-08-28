@@ -14,9 +14,9 @@ from google_work_agent.api.dependencies.contract_version import (
 )
 from google_work_agent.api.dependencies.events import EventRouteDependency
 from google_work_agent.api.errors.api_request_error import ApiRequestError
-from google_work_agent.application.use_cases.run.get_event_replay import (
-    GetEventReplayHandler,
-    GetEventReplayQuery,
+from google_work_agent.application.use_cases.sse_event.list_run_events import (
+    ListRunEventsHandler,
+    ListRunEventsQuery,
 )
 from google_work_agent.ports import EndpointPolicy
 
@@ -37,11 +37,10 @@ def stream_events(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    replay = GetEventReplayHandler(
+    replay = ListRunEventsHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
-        event_publisher=dependencies.event_publisher(),
-        now_ms=dependencies.clock.now_ms,
-    )(GetEventReplayQuery(run_id=run_id, after_event_id=last_event_id))
+        event_buffer=dependencies.event_publisher(),
+    )(ListRunEventsQuery(run_id=run_id, last_event_id=last_event_id))
     if not replay.run_exists:
         raise ApiRequestError(
             error_code="NOT_FOUND",
@@ -54,7 +53,8 @@ def stream_events(
     def _stream() -> Iterator[str]:
         for event in replay.events:
             yield _format_sse(event.event_id, event.event_type, event.payload)
-        if replay.terminate_stream:
+        if replay.cursor_status == "CURSOR_EXPIRED":
+            yield _format_sse("", "snapshot_required", {"run_id": run_id})
             return
         subscription = publisher.subscribe(run_id)
         try:

@@ -30,18 +30,33 @@ from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
+from google_work_agent.adapters.system.filesystem_operational_command_replay import (
+    FilesystemOperationalCommandReplayAdapter,
+)
+from google_work_agent.adapters.system.process_component_circuit_state import (
+    ProcessComponentCircuitStateAdapter,
+)
+from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.google_connection import (
-    DisconnectGoogleService,
-    GetGoogleConnectionService,
-    StartGoogleOAuthService,
+from google_work_agent.application.use_cases.connection.get_connection_status import (
+    GetConnectionStatusHandler,
+)
+from google_work_agent.application.use_cases.connection.revoke_connection import (
+    RevokeConnectionHandler,
+)
+from google_work_agent.application.use_cases.connection.start_authorization import (
+    StartAuthorizationHandler,
+)
+from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
+    GetRuntimeStatusHandler,
 )
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.ports import LauncherProbeDecision, ReadinessReport, ReadinessState
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 
 class _CoordinatorStub:
@@ -58,6 +73,11 @@ class _QueryStub:
 
     def get_runtime_summary(self):  # type: ignore[no-untyped-def]
         return self._runtime_provider.get_summary()
+
+
+class _LlmStatusStub:
+    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
+        return LlmRuntimeStatusV1(1, provider, False, "DISABLED", None, None)
 
 
 def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> None:
@@ -102,6 +122,9 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
     provider = McpOAuthCredentialAdapter(
         runtime_registry=runtime_registry,
         mcp_client=transport,
+    )
+    operational_replay = FilesystemOperationalCommandReplayAdapter(
+        tmp_path / "operational-replay"
     )
     runtime_provider = MCPRuntimeStatusProvider(
         google_provider=provider,
@@ -169,15 +192,20 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         local_session_manager=session_manager,
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
         client_address_resolver=lambda _request: "127.0.0.1",
-        start_google_oauth_service=StartGoogleOAuthService(
-            provider=provider,
-            operation_ref_factory=lambda: "oauth-start-operation",
-            now_ms=clock.now_ms,
+        start_authorization_handler=StartAuthorizationHandler(
+            credentials=provider,
+            replay=operational_replay,
         ),
-        get_google_connection_service=GetGoogleConnectionService(provider=provider),
-        disconnect_google_service=DisconnectGoogleService(
-            provider=provider,
-            operation_ref_factory=lambda: "oauth-disconnect-operation",
+        get_connection_status_handler=GetConnectionStatusHandler(provider),
+        revoke_connection_handler=RevokeConnectionHandler(
+            credentials=provider,
+            replay=operational_replay,
+        ),
+        get_runtime_status_handler=GetRuntimeStatusHandler(
+            runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
+            oauth=provider,
+            llm_status=_LlmStatusStub(),
+            circuits=ProcessComponentCircuitStateAdapter(),
         ),
     )
     headers = {
@@ -199,11 +227,11 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             )
             assert bootstrap.status_code == 200
 
-            before = client.get("/api/v1/google/connection", headers=headers)
+            before = client.get("/api/v1/connections/google/status", headers=headers)
             assert before.status_code == 200
             assert before.json()["connected"] is False
 
-            started = client.post("/api/v1/google/oauth/start", headers=headers, json={})
+            started = client.post("/api/v1/connections/google/start", headers=headers, json={})
             assert started.status_code == 200
             payload = started.json()
             assert "test-desktop-client-id" not in started.text
@@ -215,17 +243,19 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             assert response.code == 302
             assert urlparse(response.headers["Location"]).netloc == "accounts.google.com"
 
-            connected = client.get("/api/v1/google/connection", headers=headers)
+            connected = client.get("/api/v1/connections/google/status", headers=headers)
             assert connected.status_code == 200
             assert connected.json()["connected"] is False
 
             runtime = client.get("/api/v1/runtime", headers=headers)
             assert runtime.status_code == 200
             summary = runtime.json()["summary"]
-            assert summary["google_connection"]["connection_status"] == "DISCONNECTED"
-            assert summary["mcp_runtime"]["process_status"] == "READY"
+            assert summary["connector"]["connection_status"] == "DISCONNECTED"
+            assert summary["requested_mode"] == "AUTO"
 
-            disconnected = client.post("/api/v1/google/disconnect", headers=headers, json={})
+            disconnected = client.post(
+                "/api/v1/connections/google/disconnect", headers=headers, json={}
+            )
             assert disconnected.status_code == 200
             assert disconnected.json()["disconnected"] is True
     finally:

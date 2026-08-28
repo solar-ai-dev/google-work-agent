@@ -121,14 +121,13 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
         )
         delivery_uncertain = any(
             ActionStatusV1(action.status)
-            in {ActionStatusV1.EXECUTED, ActionStatusV1.UNKNOWN_RESULT}
+            in {ActionStatusV1.EXECUTING, ActionStatusV1.UNKNOWN_RESULT}
             for action in actions
         ) or any(
             attempt.status
             in {
                 ExecutionAttemptStatusV1.EXECUTING,
                 ExecutionAttemptStatusV1.UNKNOWN_RESULT,
-                ExecutionAttemptStatusV1.SUCCEEDED,
             }
             for attempt in attempts
         )

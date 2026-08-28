@@ -14,9 +14,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_read import (
-    McpConnectorReadAdapter,
-)
 from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
 from google_work_agent.application.orchestration.api_acquisition import (
@@ -26,7 +23,13 @@ from google_work_agent.application.orchestration.api_acquisition import (
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextRetrievalAgent,
 )
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.ports import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -39,6 +42,7 @@ from google_work_agent.ports import (
 )
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.google_gateway_connector_ports import GoogleGatewayConnectorReadPort
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 
@@ -198,7 +202,9 @@ def test_gmail_thread_search_to_detail_to_body_to_segment_chain() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=ConnectorReadProjection(
+            GoogleGatewayConnectorReadPort(gateway), load_signed_tool_registry()
+        ),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -243,7 +249,9 @@ def test_gmail_thread_with_no_messages_completes_without_message_fetch() -> None
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=ConnectorReadProjection(
+            GoogleGatewayConnectorReadPort(gateway), load_signed_tool_registry()
+        ),
         prompt_ref=PLAN_PROMPT_REF,
     )
 
@@ -262,7 +270,9 @@ def test_resource_selected_gmail_thread_reaches_body_and_segments() -> None:
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=ConnectorReadProjection(
+            GoogleGatewayConnectorReadPort(gateway), load_signed_tool_registry()
+        ),
         prompt_ref=PLAN_PROMPT_REF,
     )
     request = _resource_selected_request(thread_id="thread-project")
@@ -291,7 +301,9 @@ def test_gmail_detail_limit_bounds_how_many_threads_get_message_expansion() -> N
     gateway = _gateway()
     agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=ConnectorReadProjection(
+            GoogleGatewayConnectorReadPort(gateway), load_signed_tool_registry()
+        ),
         prompt_ref=PLAN_PROMPT_REF,
         retrieval_budget=RetrievalBudget(),
     )
@@ -312,7 +324,9 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     gateway = _gateway()
     acquisition_agent = ApiDiscoveryAcquisitionAgent(
         llm_runtime=_FakeLLMRuntime(),
-        connector_reader=McpConnectorReadAdapter(gateway=gateway),
+        connector_reader=ConnectorReadProjection(
+            GoogleGatewayConnectorReadPort(gateway), load_signed_tool_registry()
+        ),
         prompt_ref=PLAN_PROMPT_REF,
     )
     acquisition = acquisition_agent.acquire(plans=[_plan()], request=_request())

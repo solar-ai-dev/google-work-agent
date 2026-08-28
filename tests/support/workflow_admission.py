@@ -5,12 +5,23 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from google_work_agent.adapters.langgraph.checkpoint_control import (
+    LangGraphCheckpointControlAdapter,
+)
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
-from google_work_agent.ports import WorkflowCorrelationContext, WorkflowStartRequest
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventHandler,
+)
+from google_work_agent.ports import (
+    WorkflowCorrelationContext,
+    WorkflowResumeRequest,
+    WorkflowStartRequest,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     WorkflowExecutionAdmissionV1,
+    WorkflowHandoffV1,
 )
 
 
@@ -29,6 +40,10 @@ def build_test_admission_callbacks(
     checkpoint: SqliteCheckpointAdapter | None = None,
 ):
     checkpoint = checkpoint or SqliteCheckpointAdapter(checkpoint_path, now_ms=now_ms)
+    checkpoint_control = LangGraphCheckpointControlAdapter(
+        checkpoint_port=checkpoint,
+        native_saver=checkpoint,
+    )
     graph_builder = StateGraph(_State)
     graph_builder.add_node("owner", lambda state: {"value": state["value"] + 1})
     graph_builder.add_edge(START, "owner")
@@ -36,7 +51,7 @@ def build_test_admission_callbacks(
     graph = graph_builder.compile(checkpointer=checkpoint)
     outcome_handler = RunOutcomeHandler(
         unit_of_work_factory=unit_of_work_factory,
-        event_publisher=event_publisher,
+        project_run_event=ProjectRunEventHandler(event_publisher),
         now_ms=now_ms,
     )
 
@@ -55,24 +70,48 @@ def build_test_admission_callbacks(
             admission.effective_binding.graph_version,
         )
 
-    def materialize(admission: WorkflowExecutionAdmissionV1):
-        with checkpoint.execution_scope(
-            admission,
-            applied_handoff_id=admission.handoff_id,
-            owner_scope="REQUEST_UNDERSTANDING",
-            resume_target=target(admission),
-        ):
-            if hasattr(workflow_runtime, "prepare_start"):
-                workflow_runtime.prepare_start(request(admission))
+    def materialize(
+        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
+    ):
+        binding = admission.effective_binding
+        if binding.execution_kind == "START":
+            with checkpoint.execution_scope(
+                admission,
+                applied_handoff_id=admission.handoff_id,
+                owner_scope="REQUEST_UNDERSTANDING",
+                resume_target=target(admission),
+            ):
+                if hasattr(workflow_runtime, "prepare_start"):
+                    workflow_runtime.prepare_start(request(admission))
+                else:
+                    graph.invoke(
+                        {"value": 0},
+                        config={"configurable": {"thread_id": binding.langgraph_thread_id}},
+                        interrupt_before=["owner"],
+                    )
+        elif admission.submission_kind == "NORMAL_HANDOFF":
+            latest = checkpoint.load_same_run_checkpoint(
+                binding.run_id, binding.langgraph_thread_id
+            )
+            assert latest is not None
+            resume_target = binding.resume_target
+            assert resume_target is not None
+            goto_node = (
+                workflow_runtime.control_resume_node(resume_target.stage_id)
+                if resume_target.kind == "MAIN_CONTROL"
+                else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id)
+            )
+            if handoff.control is None:
+                checkpoint_control.materialize_resume_target(latest, goto_node=goto_node)
             else:
-                graph.invoke(
-                    {"value": 0},
-                    config={
-                        "configurable": {
-                            "thread_id": admission.effective_binding.langgraph_thread_id
-                        }
-                    },
-                    interrupt_before=["owner"],
+                checkpoint_control.materialize_control(
+                    latest,
+                    handoff.control,
+                    goto_node=(
+                        None
+                        if handoff.control.kind == "CONFIRMATION_RESPONSE"
+                        else goto_node
+                    ),
                 )
         result = checkpoint.load_same_run_checkpoint(
             admission.effective_binding.run_id,
@@ -105,7 +144,37 @@ def build_test_admission_callbacks(
         binding = admission.effective_binding
         context = query_service.get_run_execution_context(binding.run_id)
         assert context is not None
-        result = workflow_runtime.start(request(admission))
+        latest = checkpoint.load_same_run_checkpoint(
+            binding.run_id, binding.langgraph_thread_id
+        )
+        assert latest is not None
+        active_target = (
+            target(admission) if binding.execution_kind == "START" else binding.resume_target
+        )
+        assert active_target is not None
+        with checkpoint.execution_scope(
+            admission,
+            applied_handoff_id=admission.handoff_id,
+            owner_scope=latest.owner_scope,
+            resume_target=active_target,
+        ):
+            result = (
+                workflow_runtime.start(request(admission))
+                if binding.execution_kind == "START"
+                else workflow_runtime.resume(
+                    WorkflowResumeRequest(
+                        run_id=context.run_id,
+                        workflow_key=context.workflow_key,
+                        resume_kind="CONSUMED_CONTINUATION_RECOVERY",
+                        resume_payload={},
+                        correlation=WorkflowCorrelationContext(
+                            request_id=admission.admission_id,
+                            command_id=admission.handoff_id,
+                            api_contract_version="1",
+                        ),
+                    )
+                )
+            )
         current = query_service.get_run_execution_context(binding.run_id)
         outcome_handler.handle_result(
             binding.run_id,

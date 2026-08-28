@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommand,
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
@@ -71,8 +71,8 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     result = handler(RedriveWorkflowHandoffsCommand(limit=10))
 
     assert result.inspected == 1
-    assert result.actionable_count == 2
-    assert result.has_more
+    assert result.actionable_count == 1
+    assert not result.has_more
     assert result.accepted == 1
     assert execution.submitted == ["h-1"]
 
@@ -238,7 +238,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
         run = unit_of_work.runs.get("r-1")
     assert run is not None
     resolved = resolve_recovery(
-        ResolveRecoveryCommand(
+        ResolveRecoveryCommandV1(
             run_id="r-1",
             expected_version=run.version,
             command_id="cmd-resolve-1",

@@ -23,19 +23,19 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
-from google_work_agent.application.write_actions import (
-    PublishPlanHandler,
-    RecoveryResolutionKind,
-    ResolveMismatchRecoveryCommand,
-    ResolveMismatchRecoveryService,
-    SaveWritePlanService,
-)
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from tests.support.legacy_write.write_actions import SaveWritePlanService
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from tests.support.resolve_recovery_adapter import (
+    RecoveryResolutionKind,
+    ResolveMismatchRecoveryCommand,
+    ResolveMismatchRecoveryService,
+)
 
 
 def _seed_recovery_aggregate(database_path: Path) -> None:
@@ -138,14 +138,15 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
     with SqliteUnitOfWork(database_path) as unit_of_work:
         for evidence in old_evidence:
             unit_of_work.evidence.insert_bounded(evidence)
-        for action in old_actions:
-            unit_of_work.actions.insert_for_plan(action)
-        unit_of_work.actions.add(
-            action_id="old-action-2",
-            depends_on_action_id="old-action-1",
+        unit_of_work.actions.insert_for_plan(
+            old_actions[0],
+            evidence_ids=("old-evidence-1",),
         )
-        unit_of_work.evidence.link_to_action(action_id="old-action-1", evidence_id="old-evidence-1")
-        unit_of_work.evidence.link_to_action(action_id="old-action-2", evidence_id="old-evidence-2")
+        unit_of_work.actions.insert_for_plan(
+            old_actions[1],
+            dependency_ids=("old-action-1",),
+            evidence_ids=("old-evidence-2",),
+        )
         unit_of_work.commit()
 
 
@@ -183,7 +184,7 @@ class _CorrectivePersistenceHarness:
 
     def _current_run_version(self, run_id: str) -> int:
         with self._unit_of_work_factory() as unit_of_work:
-            run = unit_of_work.runs.get_by_id(run_id)
+            run = unit_of_work.runs.get(run_id)
             assert run is not None
             return run.version
 
@@ -432,7 +433,7 @@ def _aggregate_snapshot(database_path: Path) -> dict[str, Any]:
                 SELECT event_type, COUNT(*)
                 FROM trace_events
                 WHERE run_id = 'run-1'
-                  AND event_type IN ('WRITE_PLAN_SAVED', 'WRITE_PLAN_PUBLISHED')
+                  AND event_type IN ('WRITE_PLAN_SAVED', 'PLAN_PUBLISHED')
                 GROUP BY event_type;
                 """
             ).fetchall()
@@ -479,7 +480,7 @@ def _assert_published_snapshot(snapshot: dict[str, Any]) -> None:
     assert parent in action_ids
     assert child != parent
     assert snapshot["trace_counts"] == {
-        "WRITE_PLAN_PUBLISHED": 1,
+        "PLAN_PUBLISHED": 1,
         "WRITE_PLAN_SAVED": 1,
     }
     assert snapshot["foreign_key_violations"] == []

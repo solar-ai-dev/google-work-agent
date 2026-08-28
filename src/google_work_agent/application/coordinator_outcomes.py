@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.application.projections import build_projection_event
-from google_work_agent.application.write_actions import WriteRunResponse
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventCommand,
+    ProjectRunEventHandler,
+)
+from google_work_agent.application.write_execution_contracts import WriteRunResponse
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports import (
-    RunSseEventV1,
-    SseEventBufferPort,
     UnitOfWork,
     WorkflowOutcome,
 )
@@ -25,11 +26,11 @@ class RunOutcomeHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        event_publisher: SseEventBufferPort,
+        project_run_event: ProjectRunEventHandler,
         now_ms: Callable[[], int],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
-        self._event_publisher = event_publisher
+        self._project_run_event = project_run_event
         self._now_ms = now_ms
 
     def publish_cancel_response(self, response: WriteRunResponse) -> None:
@@ -41,7 +42,7 @@ class RunOutcomeHandler:
             else "run_status"
         )
         self.publish(
-            build_projection_event(
+            ProjectRunEventCommand(
                 run_id=response.run_id,
                 occurred_at_ms=self._now_ms(),
                 event_type=event_type,
@@ -79,7 +80,7 @@ class RunOutcomeHandler:
                     raise RuntimeError("validated RequireRecovery CAS failed")
                 unit_of_work.commit()
             self.publish(
-                build_projection_event(
+                ProjectRunEventCommand(
                     run_id=run_id,
                     occurred_at_ms=self._now_ms(),
                     event_type="recovery_required",
@@ -111,7 +112,7 @@ class RunOutcomeHandler:
             WorkflowOutcome.FAILED: "error",
         }[outcome]
         self.publish(
-            build_projection_event(
+            ProjectRunEventCommand(
                 run_id=run_id,
                 occurred_at_ms=self._now_ms(),
                 event_type=event_type,
@@ -119,9 +120,9 @@ class RunOutcomeHandler:
             )
         )
 
-    def publish(self, event: RunSseEventV1) -> None:
+    def publish(self, event: ProjectRunEventCommand) -> None:
         try:
-            self._event_publisher.append(event)
+            self._project_run_event(event)
         except Exception:
             return
 

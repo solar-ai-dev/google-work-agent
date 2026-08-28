@@ -182,7 +182,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "get_run_snapshot": "GetRunSnapshotHandler",
             "get_run_context": "GetExecutionContextHandler",
             "cancel_run": "RequestCancelHandler",
-            "resume_run": "ResumeRunHandler",
+            "resume_run": "ResumeSafeCheckpointHandler",
             "confirm_run": "ConfirmRunHandler",
             "resolve_recovery": "ResolveRecoveryHandler",
         },
@@ -194,7 +194,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "get_latest_conversation_run": "GetLatestRunHandler",
         },
         ROOT / "src/google_work_agent/api/routes/events.py": {
-            "stream_events": "GetEventReplayHandler"
+            "stream_events": "ListRunEventsHandler"
         },
     }
     for path, endpoints in cases.items():
@@ -253,7 +253,7 @@ def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None
     handlers = (
         ROOT / "src/google_work_agent/application/use_cases/run/get_run_snapshot.py",
         ROOT / "src/google_work_agent/application/use_cases/run/get_execution_context.py",
-        ROOT / "src/google_work_agent/application/use_cases/run/get_event_replay.py",
+        ROOT / "src/google_work_agent/application/use_cases/sse_event/list_run_events.py",
         ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation.py",
         ROOT / "src/google_work_agent/application/use_cases/conversation/get_latest_run.py",
         ROOT
@@ -336,8 +336,6 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     calls = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
     assert not any(name.endswith("runs.resume_confirmation") for name in calls)
-    assert any(name.endswith("transition_resume_after_reauth") for name in calls)
-    assert any(name.endswith("RequireRecoveryHandler.apply_in_unit_of_work") for name in calls)
     assert not any(name.endswith("runs.require_recovery") for name in calls)
     assert any(name.endswith("ResolveRecoveryHandler.recheck_in_unit_of_work") for name in calls)
     assert not any(name.endswith("runs.resolve_recovery") for name in calls)
@@ -345,6 +343,16 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     assert not any("workflow_runtime.resume" in name for name in calls)
     assert not any(
         name.startswith("google_work_agent.adapters.langgraph") for name in _imports(path)
+    )
+
+    reauth_path = USE_CASE_ROOT / "run/resume_after_reauth.py"
+    reauth_tree = ast.parse(reauth_path.read_text(encoding="utf-8"))
+    reauth_calls = {
+        ast.unparse(node.func) for node in ast.walk(reauth_tree) if isinstance(node, ast.Call)
+    }
+    assert any(name.endswith("transition_resume_after_reauth") for name in reauth_calls)
+    assert any(
+        name.endswith("RequireRecoveryHandler.apply_in_unit_of_work") for name in reauth_calls
     )
 
     confirmation_path = USE_CASE_ROOT / "run/resume_confirmation.py"
@@ -443,4 +451,11 @@ def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None
     assert "SnapshotRequiredReplayError" not in source
     assert "InvalidReplayCursorError" not in source
     assert "build_snapshot_required_event" not in source
-    assert "GetEventReplayHandler" in source
+    assert "ListRunEventsHandler" in source
+
+
+def test_reject_action_does_not_own_parent_run_completion() -> None:
+    source = (USE_CASE_ROOT / "action/reject_action.py").read_text(encoding="utf-8")
+    assert "transition_complete_write_run" not in source
+    assert "CompleteWriteRunHandler" not in source
+    assert "unit_of_work.runs.update_if_version_and_status" not in source

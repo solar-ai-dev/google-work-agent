@@ -32,7 +32,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
-from google_work_agent.application.write_actions import WriteActionResponse
+from tests.support.legacy_write.write_actions import WriteActionResponse
 
 
 def test_request_complete_routes_to_tool_route() -> None:

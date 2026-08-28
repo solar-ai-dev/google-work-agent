@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.application.queries import QueryService
+from google_work_agent.adapters.persistence import (
+    apply_migrations,
+    connect_sqlite,
+    sqlite_unit_of_work_factory,
+)
 from google_work_agent.application.use_cases.conversation.get_latest_run import (
     GetLatestRunHandler,
     GetLatestRunQuery,
@@ -33,12 +36,7 @@ def test_latest_run_association_is_conversation_local(tmp_path: Path) -> None:
             VALUES ('r-2', 'c-1', 'AGENT_SEARCH', 'ANALYZING', 'thread-2', 'AUTO',
                     NULL, '{}', 2, 20, NULL)"""
         )
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=object(),
-    )
-    handler = GetLatestRunHandler(query_service=lambda: query_service)
+    handler = GetLatestRunHandler(unit_of_work_factory=sqlite_unit_of_work_factory(database_path))
 
     result = handler(GetLatestRunQuery("c-1"))
 

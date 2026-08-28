@@ -5,7 +5,7 @@ from pathlib import Path
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommand,
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
@@ -71,8 +71,8 @@ def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_gu
     assert _count(database_path, "command_receipts") == 1
 
 
-def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommand:
-    return ResolveRecoveryCommand(
+def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommandV1:
+    return ResolveRecoveryCommandV1(
         run_id="r-1",
         expected_version=0,
         command_id=command_id,

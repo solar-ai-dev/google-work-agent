@@ -12,29 +12,114 @@ SRC = ROOT / "src" / "google_work_agent"
 FINAL = os.getenv("GWA_ARCHITECTURE_FINAL_CUTOVER") == "1"
 
 ROLES = {
-    "request_understanding": {"identify_goal", "detect_ambiguity", "finalize_intent", "validate_intent"},
-    "tool_routing": {"determine_io_resources", "bind_registry_candidates", "select_tool_if_needed", "finalize_route", "validate_route"},
-    "retrieval": {"plan_query", "build_query", "execute_read", "normalize_segments", "rag_retrieve_rerank", "select_evidence", "assess_sufficiency", "finalize_retrieval"},
-    "work_analysis": {"extract_work_facts", "resolve_entity_relations", "resolve_temporal_dependencies", "detect_duplicate_conflict_candidates", "validate_relations", "assess_information_gaps", "assess_operational_risks", "assemble_work_analysis", "validate_work_analysis"},
-    "planning": {"choose_answer_or_action_from_route", "outline_answer", "compose_answer", "draft_action_objective_per_output_route", "compose_arguments_per_output_route", "build_dependencies", "assemble_plan", "validate_plan"},
-    "review": {"inspect_goal_and_evidence", "inspect_action_scope_and_route", "inspect_constraints_and_policy_summary", "aggregate_review_findings", "validate_review", "recheck_affected_dimensions"},
+    "request_understanding": {
+        "identify_goal",
+        "detect_ambiguity",
+        "finalize_intent",
+        "validate_intent",
+    },
+    "tool_routing": {
+        "determine_io_resources",
+        "bind_registry_candidates",
+        "select_tool_if_needed",
+        "finalize_route",
+        "validate_route",
+    },
+    "retrieval": {
+        "plan_query",
+        "build_query",
+        "execute_read",
+        "normalize_segments",
+        "rag_retrieve_rerank",
+        "select_evidence",
+        "assess_sufficiency",
+        "finalize_retrieval",
+    },
+    "work_analysis": {
+        "extract_work_facts",
+        "resolve_entity_relations",
+        "resolve_temporal_dependencies",
+        "detect_duplicate_conflict_candidates",
+        "validate_relations",
+        "assess_information_gaps",
+        "assess_operational_risks",
+        "assemble_work_analysis",
+        "validate_work_analysis",
+    },
+    "planning": {
+        "choose_answer_or_action_from_route",
+        "outline_answer",
+        "compose_answer",
+        "draft_action_objective_per_output_route",
+        "compose_arguments_per_output_route",
+        "build_dependencies",
+        "assemble_plan",
+        "validate_plan",
+    },
+    "review": {
+        "inspect_goal_and_evidence",
+        "inspect_action_scope_and_route",
+        "inspect_constraints_and_policy_summary",
+        "aggregate_review_findings",
+        "validate_review",
+        "recheck_affected_dimensions",
+    },
 }
 DOMAIN_OWNERS = {
-    "conversation", "message", "run", "plan", "action", "approval", "claim",
-    "execution_attempt", "verification", "recovery", "resource_ref", "evidence",
-    "command_receipt", "policy_confirmation_receipt",
+    "conversation",
+    "message",
+    "run",
+    "plan",
+    "action",
+    "approval",
+    "claim",
+    "execution_attempt",
+    "verification",
+    "recovery",
+    "resource_ref",
+    "evidence",
+    "command_receipt",
+    "policy_confirmation_receipt",
 }
 ROLE_FILES = {"state.py", "graph.py", "model.py", "composition.py"}
 BAD_NAMES = {
-    "runtime.py", "service.py", "manager.py", "processor.py", "engine.py", "handler.py",
-    "helpers.py", "helper.py", "utils.py", "util.py", "common.py", "shared.py", "misc.py",
-    "config.py", "errors.py", "routing.py",
+    "runtime.py",
+    "service.py",
+    "manager.py",
+    "processor.py",
+    "engine.py",
+    "handler.py",
+    "helpers.py",
+    "helper.py",
+    "utils.py",
+    "util.py",
+    "common.py",
+    "shared.py",
+    "misc.py",
+    "config.py",
+    "errors.py",
+    "routing.py",
 }
-BAD_GENERATIONS = tuple(re.compile(p) for p in (
-    r"canonical_.*\.py", r"production_.*\.py", r"legacy_.*\.py", r"new_.*\.py",
-    r"old_.*\.py", r"final_.*\.py", r".*_v\d+\.py", r".*_r\d+\.py",
-))
-PROVIDER_PREFIXES = ("googleapiclient", "google_auth_oauthlib", "google.auth", "google.oauth2", "google.cloud")
+BAD_GENERATIONS = tuple(
+    re.compile(p)
+    for p in (
+        r"canonical_.*\.py",
+        r"production_.*\.py",
+        r"legacy_.*\.py",
+        r"new_.*\.py",
+        r"old_.*\.py",
+        r"final_.*\.py",
+        r".*_v\d+\.py",
+        r".*_r\d+\.py",
+    )
+)
+PROVIDER_PREFIXES = (
+    "googleapiclient",
+    "google_auth_oauthlib",
+    "google.auth",
+    "google.oauth2",
+    "google.cloud",
+)
 
 
 def rel(path: Path) -> str:
@@ -69,9 +154,7 @@ def canonical(path: Path) -> bool:
         return True
     if p[:2] == ("api", "schemas") and len(p) >= 4:
         return True
-    if p[:2] in {("api", "routes"), ("api", "dependencies")} and len(p) == 3:
-        return True
-    return False
+    return p[:2] in {("api", "routes"), ("api", "dependencies")} and len(p) == 3
 
 
 def bad_name(path: Path) -> bool:
@@ -85,7 +168,9 @@ def tree(path: Path) -> ast.Module:
 
 
 def functions(path: Path) -> set[str]:
-    return {n.name for n in tree(path).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return {
+        n.name for n in tree(path).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
 
 
 def classes(path: Path) -> set[str]:
@@ -104,7 +189,7 @@ def imports(path: Path) -> set[str]:
 
 def internal(module: str) -> tuple[str, ...]:
     prefix = "google_work_agent."
-    return tuple(module[len(prefix):].split(".")) if module.startswith(prefix) else ()
+    return tuple(module[len(prefix) :].split(".")) if module.startswith(prefix) else ()
 
 
 def pascal(stem: str) -> str:
@@ -125,12 +210,47 @@ def owned_symbols(path: Path) -> set[str]:
     return result
 
 
+def exported_symbols(path: Path) -> set[str]:
+    result = owned_symbols(path)
+    for node in tree(path).body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            result.update(alias.asname or alias.name.rsplit(".", 1)[-1] for alias in node.names)
+    return result
+
+
+def application_ledger_contracts() -> dict[str, set[str]]:
+    contracts: dict[str, set[str]] = {}
+    ledger = ROOT / "implementation-inventory" / "ledger.md"
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("| CAP-APP-"):
+            continue
+        escaped = line.replace(r"\|", "<PIPE>")
+        fields = [field.strip().replace("<PIPE>", "|") for field in escaped.split("|")[1:-1]]
+        directory, filename, symbol_field = fields[8:11]
+        # Semicolon-delimited input/output descriptions name transport contracts,
+        # not symbols owned by this Application module.
+        owned_field = symbol_field.split(";", 1)[0]
+        symbols = {
+            symbol.strip()
+            for symbol in owned_field.split("/")
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", symbol.strip())
+        }
+        contracts[f"{directory}{filename}"] = symbols
+    return contracts
+
+
 def clean(errors: list[str]) -> None:
     assert not errors, "\n" + "\n".join(f"- {e}" for e in errors)
 
 
 def test_immediate_canonical_filename_grammar() -> None:
-    clean([f"forbidden canonical filename: {rel(p)}" for p in pyfiles() if canonical(p) and bad_name(p)])
+    clean(
+        [
+            f"forbidden canonical filename: {rel(p)}"
+            for p in pyfiles()
+            if canonical(p) and bad_name(p)
+        ]
+    )
 
 
 def test_immediate_module_package_authority_is_unique() -> None:
@@ -152,7 +272,11 @@ def test_immediate_domain_operation_per_file() -> None:
         for child in base.iterdir():
             if child.is_dir() and child.name not in {"transitions", "guards", "__pycache__"}:
                 errors.append(f"unexpected domain directory: {rel(child)}")
-            elif child.is_file() and child.suffix == ".py" and child.name not in {"__init__.py", "model.py"}:
+            elif (
+                child.is_file()
+                and child.suffix == ".py"
+                and child.name not in {"__init__.py", "model.py"}
+            ):
                 errors.append(f"unexpected domain module: {rel(child)}")
         for folder, prefix in (("transitions", "transition_"), ("guards", "guard_")):
             opdir = base / folder
@@ -164,45 +288,16 @@ def test_immediate_domain_operation_per_file() -> None:
     clean(errors)
 
 
-EXACT_SYMBOL_PER_SPEC_MAPPING = {
-    # docs/canonical/16-repository-architecture/01-spec-to-code-deterministic-mapping.md:508
-    # mandates these exact symbols (no Handler/Result suffix) for the
-    # "Deterministic Application operation" ledger rows CAP-APP-095/096.
-    "resource/issue_selection_handle.py",
-    "resource/resolve_selection_handle.py",
-}
-
-
 def test_immediate_application_use_case_grammar() -> None:
     errors: list[str] = []
-    base = SRC / "application" / "use_cases"
-    if not base.exists():
-        return
-    for owner in (p for p in base.iterdir() if p.is_dir()):
-        for path in owner.glob("*.py"):
-            if path.name == "__init__.py":
-                continue
-            if f"{owner.name}/{path.name}" in EXACT_SYMBOL_PER_SPEC_MAPPING:
-                continue
-            name = pascal(path.stem)
-            versioned_contract = f"{owner.name}/{path.name}" == "plan/record_review_result.py"
-            found_classes = classes(path)
-            found_symbols = owned_symbols(path)
-            if (
-                f"{name}Handler" not in found_classes
-                or (
-                    f"{name}ResultV1" if versioned_contract else f"{name}Result"
-                )
-                not in found_symbols
-            ):
-                errors.append(f"{rel(path)} missing {name}Handler/{name}Result")
-            command_or_query = (
-                {f"{name}CommandV1", f"{name}QueryV1"}
-                if versioned_contract
-                else {f"{name}Command", f"{name}Query"}
-            ) & found_classes
-            if len(command_or_query) != 1:
-                errors.append(f"{rel(path)} must own exactly one Command or Query")
+    for relative_path, expected_symbols in application_ledger_contracts().items():
+        path = SRC / relative_path
+        if not path.is_file():
+            errors.append(f"missing Application capability module: {rel(path)}")
+            continue
+        missing = expected_symbols - exported_symbols(path)
+        if missing:
+            errors.append(f"{rel(path)} missing exact symbols: {sorted(missing)}")
     clean(errors)
 
 
@@ -235,7 +330,12 @@ def test_immediate_persistence_port_sqlite_mirror() -> None:
     sqlite = SRC / "adapters" / "persistence" / "sqlite" / "repositories"
     left = {p.name for p in ports.glob("*_repository.py")} if ports.exists() else set()
     right = {p.name for p in sqlite.glob("*_repository.py")} if sqlite.exists() else set()
-    clean([*(f"missing SQLite mirror: {n}" for n in sorted(left - right)), *(f"missing persistence Port: {n}" for n in sorted(right - left))])
+    clean(
+        [
+            *(f"missing SQLite mirror: {n}" for n in sorted(left - right)),
+            *(f"missing persistence Port: {n}" for n in sorted(right - left)),
+        ]
+    )
 
 
 def test_immediate_api_and_langgraph_target_grammar() -> None:
@@ -251,7 +351,11 @@ def test_immediate_api_and_langgraph_target_grammar() -> None:
     for base in targets:
         if not base.exists():
             continue
-        checks = (("routing", lambda n: n.startswith("route_after_")), ("nodes", lambda n: n.endswith("_node")), ("projections", lambda n: n.endswith("_projection")))
+        checks = (
+            ("routing", lambda n: n.startswith("route_after_")),
+            ("nodes", lambda n: n.endswith("_node")),
+            ("projections", lambda n: n.endswith("_projection")),
+        )
         for folder, valid in checks:
             opdir = base / folder
             if not opdir.exists():
@@ -276,7 +380,11 @@ def test_immediate_dependency_and_provider_boundary() -> None:
                 errors.append(f"Domain outward import: {rel(path)} -> {module}")
             if p[0] == "application" and m[0] == "adapters":
                 errors.append(f"Application concrete Adapter import: {rel(path)} -> {module}")
-            if p[:2] == ("adapters", "langgraph") and m[:3] == ("adapters", "persistence", "sqlite"):
+            if p[:2] == ("adapters", "langgraph") and m[:3] == (
+                "adapters",
+                "persistence",
+                "sqlite",
+            ):
                 errors.append(f"LangGraph concrete SQLite import: {rel(path)} -> {module}")
             if p[:2] == ("adapters", "langgraph") and m[:1] == ("domain",) and "transitions" in m:
                 errors.append(f"LangGraph Domain transition import: {rel(path)} -> {module}")
@@ -302,7 +410,13 @@ def test_immediate_concrete_barrel_authority() -> None:
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
 def test_final_top_level_ownership() -> None:
     allowed = {"domain", "application", "ports", "adapters", "api", "launcher", "__pycache__"}
-    clean([f"non-canonical top-level owner: {rel(p)}" for p in SRC.iterdir() if p.is_dir() and p.name not in allowed])
+    clean(
+        [
+            f"non-canonical top-level owner: {rel(p)}"
+            for p in SRC.iterdir()
+            if p.is_dir() and p.name not in allowed
+        ]
+    )
 
 
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
@@ -319,13 +433,19 @@ def test_final_forbidden_names_and_compat_zero() -> None:
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
 def test_final_legacy_authorities_retired() -> None:
     forbidden = [
-        SRC / "domain" / "commands.py", SRC / "domain" / "transitions.py", SRC / "domain" / "guards.py",
-        SRC / "application" / "ports", SRC / "application" / "workflows", SRC / "contracts",
+        SRC / "domain" / "commands.py",
+        SRC / "domain" / "transitions.py",
+        SRC / "domain" / "guards.py",
+        SRC / "application" / "ports",
+        SRC / "application" / "workflows",
+        SRC / "contracts",
     ]
     errors = [f"legacy authority remains: {rel(p)}" for p in forbidden if p.exists()]
     for path in SRC.rglob("contracts"):
         p = path.relative_to(SRC).parts
-        if path.is_dir() and not (len(p) == 4 and p[:2] == ("application", "agents") and p[2] in ROLES):
+        if path.is_dir() and not (
+            len(p) == 4 and p[:2] == ("application", "agents") and p[2] in ROLES
+        ):
             errors.append(f"non-owner contract package: {rel(path)}")
     clean(errors)
 
@@ -339,7 +459,10 @@ def test_final_agent_one_capability_one_authority() -> None:
             expected = base / role / f"{capability}.py"
             found = sorted(base.rglob(f"{capability}.py")) if base.exists() else []
             if found != [expected]:
-                errors.append(f"{role}.{capability}: expected only {rel(expected)}; found {', '.join(map(rel, found)) or 'NONE'}")
+                found_text = ", ".join(map(rel, found)) or "NONE"
+                errors.append(
+                    f"{role}.{capability}: expected only {rel(expected)}; found {found_text}"
+                )
     clean(errors)
 
 

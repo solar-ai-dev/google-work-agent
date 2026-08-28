@@ -14,14 +14,7 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.application.use_cases.recovery.resolve_mismatch_recovery import (
-    ResolveMismatchRecoveryHandler,
-)
-from google_work_agent.application.write_actions import (
-    RecoveryResolutionKind,
-    ResolveMismatchRecoveryCommand,
-    ResolveMismatchRecoveryService,
-)
+from google_work_agent.application.use_cases.recovery.resolve_recovery import ResolveRecoveryHandler
 from google_work_agent.ports import (
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
@@ -33,6 +26,11 @@ from tests.integration.persistence.test_corrective_plan_persistence import (
     _aggregate_snapshot,
     _persist,
     _prepare,
+)
+from tests.support.resolve_recovery_adapter import (
+    RecoveryResolutionKind,
+    ResolveMismatchRecoveryCommand,
+    ResolveMismatchRecoveryService,
 )
 
 
@@ -215,13 +213,13 @@ def test_resolve_recovery_command_replay_returns_original_reserved_plan(
 
 
 def test_production_recovery_exposes_real_retry_triggers() -> None:
-    recovery_handler_source = inspect.getsource(ResolveMismatchRecoveryHandler.__call__)
+    recovery_handler_source = inspect.getsource(ResolveRecoveryHandler._apply_resolution_effects)
     recovery_source = inspect.getsource(LangGraphWorkflowRuntime.recover_open_run)
 
-    # Same-process command replay has a concrete producer for the same
-    # registered corrective continuation.
-    assert 'resume_kind="RECOVERY_CORRECTIVE_PLAN"' in recovery_handler_source
-    assert 'resume_payload={"plan_id": result.plan_id}' in recovery_handler_source
+    # The exact Application owner durably reserves the corrective Plan; runtime
+    # continuation consumes that durable marker instead of transient payload.
+    assert '"CORRECTIVE_PLAN_REQUIRED"' in recovery_handler_source
+    assert "unit_of_work.plans.insert_revision(corrective)" in recovery_handler_source
 
     # Restart recovery consumes the durable checkpoint marker instead of
     # falling through to generic open-run recovery.

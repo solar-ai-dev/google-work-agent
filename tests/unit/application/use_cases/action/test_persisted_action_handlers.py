@@ -54,7 +54,7 @@ def _handoff_dependencies(unit_of_work: MagicMock):
         handoff_id=stage.handoff_id
     )
     return {
-        "id_generator": SimpleNamespace(next_id=lambda: "handoff-1"),
+        "id_generator": SimpleNamespace(next_id=lambda: "handoff-1", new_uuid=lambda: "handoff-1"),
         "resume_target_registry": SimpleNamespace(
             issue_main_stage=lambda profile, stage, version: MainControlResumeTargetV2(
                 "MAIN_CONTROL", stage, profile, version
@@ -69,7 +69,8 @@ def _action(*, status: ActionStatusV1, version: int = 1) -> SimpleNamespace:
     return SimpleNamespace(
         id="action-1",
         plan_id="plan-1",
-        tool_name="test_write_tool",
+        connector_id="google_workspace",
+        tool_name="gmail_create_draft",
         effect_type=EffectType.CREATE.value,
         status=status.value,
         version=version,
@@ -97,9 +98,7 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
         review_status=PlanReviewStatus.REQUIRED,
         review_version=6,
     )
-    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
-        review_version=7
-    )
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(review_version=7)
     unit_of_work.actions.list_dependents.return_value = ()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
@@ -108,7 +107,9 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
         **_handoff_dependencies(unit_of_work),
     )
     handler._registry = SimpleNamespace(
-        require=lambda _tool_name: SimpleNamespace(modify_patchable_fields={"subject"})
+        get_required=lambda _connector_id, _tool_name: SimpleNamespace(
+            modify_patchable_fields={"subject"}
+        )
     )
 
     result = handler(
@@ -156,9 +157,7 @@ def _assert_terminal_modify_regression(
         review_status=PlanReviewStatus.REQUIRED,
         review_version=11,
     )
-    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
-        review_version=12
-    )
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(review_version=12)
     unit_of_work.actions.list_dependents.return_value = ()
     handler = ModifyActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
@@ -167,7 +166,9 @@ def _assert_terminal_modify_regression(
         **_handoff_dependencies(unit_of_work),
     )
     handler._registry = SimpleNamespace(
-        require=lambda _tool_name: SimpleNamespace(modify_patchable_fields={"subject"})
+        get_required=lambda _connector_id, _tool_name: SimpleNamespace(
+            modify_patchable_fields={"subject"}
+        )
     )
 
     result = handler(
@@ -194,9 +195,7 @@ def _assert_terminal_modify_regression(
             "status": ActionStatusV1.MODIFIED,
             "updated_at_ms": 1500,
             "version": initial_version + 1,
-            "arguments_json": dumps(
-                expected_arguments, sort_keys=True, separators=(",", ":")
-            ),
+            "arguments_json": dumps(expected_arguments, sort_keys=True, separators=(",", ":")),
             "arguments_hash": calculate_canonical_json_hash(expected_arguments),
             "risk_json": "{}",
         },
@@ -294,6 +293,7 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
     result = RejectActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 2000,
+        **_handoff_dependencies(unit_of_work),
     )(
         RejectActionCommand(
             command_id="cmd-reject",
@@ -325,9 +325,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
         review_version=10,
     )
     unit_of_work.actions.update_if_version_and_status.return_value = True
-    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(
-        review_version=11
-    )
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(review_version=11)
 
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),

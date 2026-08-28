@@ -1,0 +1,67 @@
+from datetime import UTC, datetime
+
+import pytest
+
+from google_work_agent.application.use_cases.resource.list_resources import (
+    GMAIL_PRIMARY_QUERY,
+    ListResourcesHandler,
+    ListResourcesQuery,
+)
+from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
+from google_work_agent.ports.connectors.failure import ConnectorOperationFailure
+
+
+class _Access:
+    def __init__(self) -> None:
+        self.gmail_query: str | None = None
+
+    def list_gmail_page(self, **kwargs: object) -> ResourcePage:
+        self.gmail_query = str(kwargs["query"])
+        return ResourcePage(
+            items=(
+                ResourceSnapshot(
+                    fixture_snapshot_id="thread-1",
+                    resource_type=ResourceType.GMAIL_THREAD,
+                    resource_id="thread-1",
+                    parent_id=None,
+                    related_resource_ids=("message-1",),
+                    version="7",
+                    recovery_fingerprint=None,
+                    payload={"subject": "Status", "snippet": "Ready"},
+                ),
+            ),
+            next_page_token="next-1",
+        )
+
+    def default_task_list_id(self) -> str | None:
+        return None
+
+    def default_calendar_id(self) -> str | None:
+        return None
+
+    def timezone_name(self) -> str:
+        return "UTC"
+
+    def current_time(self) -> datetime:
+        return datetime(2026, 8, 28, tzinfo=UTC)
+
+
+def test_list_resources_projects_bounded_gmail_page_with_default_query() -> None:
+    access = _Access()
+    result = ListResourcesHandler(access)(ListResourcesQuery(source="gmail", page_size=20))
+
+    assert access.gmail_query == GMAIL_PRIMARY_QUERY
+    assert result.page.source == "gmail"
+    assert result.page.next_page_token == "next-1"
+    assert result.page.items[0].resource_id == "thread-1"
+    assert result.page.items[0].subject == "Status"
+
+
+def test_list_resources_rejects_unknown_source_without_provider_call() -> None:
+    access = _Access()
+
+    with pytest.raises(ConnectorOperationFailure) as error:
+        ListResourcesHandler(access)(ListResourcesQuery(source="drive"))
+
+    assert error.value.detail_code == "RESOURCE_SOURCE_NOT_FOUND"
+    assert access.gmail_query is None

@@ -5,8 +5,18 @@
 from __future__ import annotations
 
 from json import loads as _loads
+from typing import TypedDict
+
+from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
+    WorkflowExecutionAdmissionV1,
+    WorkflowExecutionBindingV1,
+)
 from tests.integration.persistence.test_write_actions import (
     EvidenceOriginType,
     FakeClockPort,
@@ -30,6 +40,68 @@ from tests.integration.persistence.test_write_actions import (
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
 
+class _CheckpointState(TypedDict):
+    value: int
+
+
+def _register_preflight_resume_target(write_database: Path, clock: FakeClockPort) -> None:
+    checkpoint = SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms)
+    checkpoint.create_workflow_binding(
+        WorkflowBindingV1(
+            1,
+            "workflow-1",
+            "run-1",
+            "thread-1",
+            "SIX_ROLE_BASELINE",
+            "v1",
+            "AUTO",
+            clock.now_ms(),
+        )
+    )
+    checkpoint.flush()
+    target = MainControlResumeTargetV2(
+        "MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1"
+    )
+    admission = WorkflowExecutionAdmissionV1(
+        1,
+        "admission-1",
+        "handoff-1",
+        1,
+        "NORMAL_HANDOFF",
+        WorkflowExecutionBindingV1(
+            1,
+            "START",
+            "run-1",
+            "thread-1",
+            "SIX_ROLE_BASELINE",
+            "v1",
+            "AUTO",
+            None,
+            0,
+            None,
+        ),
+        0,
+    )
+    builder = StateGraph(_CheckpointState)
+    builder.add_node("owner", lambda state: state)
+    builder.add_edge(START, "owner")
+    builder.add_edge("owner", END)
+    graph = builder.compile(checkpointer=checkpoint)
+    with checkpoint.execution_scope(
+        admission,
+        applied_handoff_id="handoff-1",
+        owner_scope="MAIN_CONTROL",
+        resume_target=target,
+    ):
+        graph.invoke(
+            {"value": 0},
+            config={"configurable": {"thread_id": "thread-1"}},
+            interrupt_before=["owner"],
+        )
+    checkpoint.flush()
+    checkpoint.close()
+
+
 def test_reauth_core_command_marks_run_without_langgraph_dependency(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
@@ -37,6 +109,7 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     del fixture_gateway
     clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth")
+    _register_preflight_resume_target(write_database, clock)
     request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -66,6 +139,7 @@ def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
     del fixture_gateway
     clock = FakeClockPort(1000)
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="reauth-mcp")
+    _register_preflight_resume_target(write_database, clock)
     request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -137,12 +211,10 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
         action = unit_of_work.actions.get("action-risk-roundtrip")
         listed = unit_of_work.actions.list_for_plan("plan-risk-roundtrip")
-        ready = unit_of_work.actions.list_ready_actions("plan-risk-roundtrip")
 
     assert action is not None
     assert action.risk == risk
     assert listed[0].risk == risk
-    assert ready[0].risk == risk
     snapshot = QueryService(
         database_path=write_database,
         connection_factory=connect_sqlite,

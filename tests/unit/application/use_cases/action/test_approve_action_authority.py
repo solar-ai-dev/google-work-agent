@@ -52,6 +52,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     action = SimpleNamespace(
         id="action-1",
         plan_id="plan-1",
+        connector_id="google_workspace",
         tool_name="gmail_create_draft",
         effect_type=EffectType.CREATE.value,
         status=ActionStatusV1.PROPOSED.value,
@@ -81,7 +82,7 @@ def test_approve_owns_persisted_source_snapshot_and_approval_construction(monkey
     unit_of_work.actions.update_if_version_and_status.return_value = True
     unit_of_work.approvals.get_active_for_action.return_value = None
     id_generator = MagicMock()
-    id_generator.next_id.side_effect = ["approval-1", "handoff-1"]
+    id_generator.new_uuid.side_effect = ["approval-1", "handoff-1"]
     snapshot = {"source_kind": "RESOURCE_REF", "resource_ref_id": "resource-ref-1"}
     build_snapshot = MagicMock(return_value=snapshot)
     monkeypatch.setattr(approve_action, "build_approval_source_snapshot", build_snapshot)
@@ -139,6 +140,7 @@ def test_approve_superseded_plan_child_has_zero_effect() -> None:
     action = SimpleNamespace(
         id="action-1",
         plan_id="plan-1",
+        connector_id="google_workspace",
         tool_name="gmail_create_draft",
         effect_type=EffectType.CREATE.value,
         status=ActionStatusV1.PROPOSED.value,

@@ -207,7 +207,7 @@ class ContextRetrieverSubgraph:
         # below), but nothing ever populated validated_container_refs for the
         # planner call, so a TASK-resource plan_query could never validate.
         # Reuses the existing per-account Settings default_tasklist_id
-        # concept (already the authoritative source resource_queries.py's
+        # concept (already the authoritative resource handler access layer's
         # own _resolve_task_list_id falls back to) rather than adding a new
         # discovery Port/authority. When unset, TASK routes keep today's
         # existing (pre-existing, unrelated to this change) behavior.
@@ -526,7 +526,7 @@ class ContextRetrieverSubgraph:
         """TASK routes' only supported semantic constraint kind, resolved.
 
         Reuses the account's already-configured ``default_tasklist_id``
-        Setting (the same authoritative source ``resource_queries.py``'s
+        Setting (the same authoritative resource access layer's
         own ``_resolve_task_list_id`` falls back to) instead of adding a new
         discovery capability to the Retrieval read boundary. Empty when the
         provider is unset or returns ``None`` -- a TASK route then simply

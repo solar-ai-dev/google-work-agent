@@ -892,52 +892,6 @@ class RejectWriteActionService:
                         created_at_ms=now_ms,
                     )
                 )
-                current_actions = unit_of_work.actions.list_for_plan(plan.id)
-                terminal_statuses = {
-                    ActionStatusV1.REJECTED.value,
-                    ActionStatusV1.VERIFIED.value,
-                    ActionStatusV1.FAILED.value,
-                    ActionStatusV1.BLOCKED.value,
-                    ActionStatusV1.DEPENDENCY_BLOCKED.value,
-                    ActionStatusV1.MISMATCH.value,
-                    ActionStatusV1.CANCELLED.value,
-                }
-                if current_actions and all(
-                    item.status in terminal_statuses for item in current_actions
-                ):
-                    verifying_status = transition_begin_verification(run.status)
-                    if not unit_of_work.runs.update_if_version_and_status(
-                        run.id,
-                        run.version,
-                        frozenset({run.status}),
-                        {"status": verifying_status.value, "version": run.version + 1},
-                    ):
-                        raise RuntimeError("validated BeginVerification CAS failed")
-                    completed_status = transition_complete_write_run(verifying_status)
-                    if not unit_of_work.runs.update_if_version_and_status(
-                        run.id,
-                        run.version + 1,
-                        frozenset({verifying_status}),
-                        {
-                            "status": completed_status.value,
-                            "version": run.version + 2,
-                            "finished_at_ms": now_ms,
-                        },
-                    ):
-                        raise RuntimeError("validated CompleteWriteRun CAS failed")
-                    if plan.status in {
-                        PlanStatusV1.WAITING_APPROVAL,
-                        PlanStatusV1.ACTIVE,
-                    } and (
-                        update_plan_record(
-                            unit_of_work,
-                            plan.id,
-                            expected_status=plan.status,
-                            next_status=PlanStatusV1.COMPLETED,
-                        )
-                        is None
-                    ):
-                        raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
             _finish_json_receipt(
                 unit_of_work,
                 command.command_id,

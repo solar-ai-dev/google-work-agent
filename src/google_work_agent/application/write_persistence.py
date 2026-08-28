@@ -7,7 +7,9 @@ from enum import StrEnum
 from json import dumps, loads
 from typing import Any, Protocol, cast
 
-from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
+)
 from google_work_agent.application.persistence_cas import (
     update_action_record,
     update_approval_status,
@@ -450,7 +452,7 @@ def upsert_resource_ref(
     """Persist by the single connector-aware ResourceRef identity."""
     if not resource_ref.connector_id:
         raise ValueError("resource reference connector_id is required")
-    return upsert_registered_resource_ref(
+    return persist_registered_resource_ref(
         unit_of_work,resource_ref)
 
 

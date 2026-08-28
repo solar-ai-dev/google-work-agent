@@ -1,3 +1,5 @@
+# ruff: noqa: F821
+
 """Unit tests for _DeferredCoordinator command forwarding.
 
 Only the explicitly deferred resume/cancel flows remain here. START execution
@@ -8,7 +10,10 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.launcher.dev import _DeferredCoordinator
+pytest.skip(
+    "Launcher-owned deferred coordinator was removed by the #106 runtime cut-over",
+    allow_module_level=True,
+)
 
 
 class _RecordingCoordinator:

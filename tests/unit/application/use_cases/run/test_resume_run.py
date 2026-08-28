@@ -187,9 +187,7 @@ class _Uow:
         self.recovery_contexts = _RecoveryContexts()
         self.commits = 0
         plan = SimpleNamespace(id="plan-1", run_id="run-1", revision_no=1, created_at_ms=1)
-        self.plans = SimpleNamespace(
-            get_current=lambda run_id: plan if action_statuses else None
-        )
+        self.plans = SimpleNamespace(get_current=lambda run_id: plan if action_statuses else None)
         self.actions = SimpleNamespace(
             list_for_plan=lambda plan_id: [SimpleNamespace(status=item) for item in action_statuses]
         )
@@ -243,7 +241,7 @@ class _Harness:
             unit_of_work_factory=lambda: self.uow,
             now_ms=lambda: 100,
             resolve_resume_authority=lambda **kwargs: self.authority,
-            id_generator=SimpleNamespace(next_id=lambda: "handoff-1"),
+            id_generator=SimpleNamespace(next_id=lambda: "handoff-1", new_uuid=lambda: "handoff-1"),
             resume_target_registry=SimpleNamespace(validate=lambda target: None),
             schedule_run_execution=lambda command: (
                 self.enqueues.append({"handoff_id": command.handoff_id})
@@ -256,7 +254,7 @@ class _Harness:
             unit_of_work_factory=lambda: self.uow,
             now_ms=lambda: 100,
             resolve_resume_authority=lambda **kwargs: self.authority,
-            id_generator=SimpleNamespace(next_id=lambda: "handoff-1"),
+            id_generator=SimpleNamespace(next_id=lambda: "handoff-1", new_uuid=lambda: "handoff-1"),
             resume_target_registry=SimpleNamespace(validate=lambda target: None),
             schedule_run_execution=lambda command: (
                 self.enqueues.append({"handoff_id": command.handoff_id})

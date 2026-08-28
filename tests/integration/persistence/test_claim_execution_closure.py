@@ -17,6 +17,10 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
     SqliteExecutionAttemptRepository,
 )
+from google_work_agent.application.use_cases.claim.build_claim_context import (
+    BuildClaimContextHandler,
+    BuildClaimContextQueryV1,
+)
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
     ClaimExecutionHandler,
@@ -24,7 +28,6 @@ from google_work_agent.application.use_cases.claim.claim_execution import (
 from google_work_agent.application.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_write_actions import (
@@ -36,7 +39,6 @@ from tests.support.legacy_write_approval import ApproveWriteActionService
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
-SIGNING_SECRET = "c2-claim-secret"
 SERVICE_INSTANCE_ID = "c2-write-svc-1"
 
 
@@ -66,8 +68,6 @@ def _handler(write_database: Path, clock: FakeClockPort) -> ClaimExecutionHandle
     return ClaimExecutionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        signing_secret=SIGNING_SECRET,
-        service_instance_id=SERVICE_INSTANCE_ID,
     )
 
 
@@ -84,7 +84,6 @@ def _command(
         expected_version=expected_version,
         source_snapshot={},
         attempt_id=f"attempt-{suffix}",
-        nonce=f"nonce-{suffix}",
     )
 
 
@@ -145,18 +144,38 @@ def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
     assert first.current_version == 2
     assert first.approval_id == f"approval-{suffix}"
     assert first.attempt_id == f"attempt-{suffix}"
-    assert first.claim_token is not None
     assert second == first
     assert fixture_gateway.call_log == []
-
-    payload = read_claim_token(first.claim_token, signing_secret=SIGNING_SECRET)
-    assert payload["action_id"] == f"action-{suffix}"
-    assert payload["approval_id"] == f"approval-{suffix}"
-    assert payload["attempt_id"] == f"attempt-{suffix}"
-    assert payload["tool_name"] == "tasks_create_task"
-    assert payload["service_instance_id"] == SERVICE_INSTANCE_ID
-    assert payload["nonce"] == f"nonce-{suffix}"
-    assert payload["expires_at_ms"] > payload["issued_at_ms"]
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        claimed_action = unit_of_work.actions.get(f"action-{suffix}")
+    assert claimed_action is not None
+    signed_payloads: list[dict[str, object]] = []
+    context = BuildClaimContextHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        id_factory=lambda: f"nonce-{suffix}",
+        sign_claim_context=lambda payload: signed_payloads.append(payload) or "signature",
+    )(
+        BuildClaimContextQueryV1(
+            schema_version=1,
+            action_id=f"action-{suffix}",
+            approval_id=f"approval-{suffix}",
+            execution_attempt_id=f"attempt-{suffix}",
+            tool_name="tasks_create_task",
+            approval_arguments_hash=claimed_action.arguments_hash,
+            final_tool_arguments={"payload": {"title": "Task"}},
+            service_instance_id=SERVICE_INSTANCE_ID,
+            mcp_process_instance_id="mcp-process-1",
+        )
+    )
+    assert context.action_id == f"action-{suffix}"
+    assert context.approval_id == f"approval-{suffix}"
+    assert context.execution_attempt_id == f"attempt-{suffix}"
+    assert context.tool_name == "tasks_create_task"
+    assert context.service_instance_id == SERVICE_INSTANCE_ID
+    assert context.nonce == f"nonce-{suffix}"
+    assert context.expires_at_ms > context.issued_at_ms
+    assert signed_payloads[0]["execution_attempt_id"] == f"attempt-{suffix}"
 
     assert _claim_snapshot(write_database, suffix) == (
         "EXECUTING",

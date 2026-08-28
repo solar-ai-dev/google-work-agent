@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.legacy_write.write_actions import WriteRunResponse
 
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
@@ -16,7 +17,6 @@ from google_work_agent.adapters.readiness.composite import (
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.queries import ActionSnapshot, RunSnapshot
 from google_work_agent.application.start_run import ResumeRunResponse
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryResult,
@@ -28,8 +28,13 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
 )
 from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    ActionSnapshotResult as ActionSnapshot,
+)
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotResult as RunSnapshot,
+)
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
-from google_work_agent.application.write_actions import WriteRunResponse
 from google_work_agent.ports import (
     AccessDecision,
     ApiRequestContext,

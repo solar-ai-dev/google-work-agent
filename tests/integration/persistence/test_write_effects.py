@@ -359,7 +359,7 @@ def test_task_delete_preflight_rejects_ambiguous_target_without_persisted_refere
         write_database=write_database, clock=clock, suffix="task-delete-ambiguous"
     )
 
-    with pytest.raises(PolicyViolationError, match="persisted target reference"):
+    with pytest.raises(PolicyViolationError, match="TARGET_NOT_USER_SELECTED"):
         PreflightWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=fixture_gateway,

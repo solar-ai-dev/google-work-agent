@@ -120,6 +120,16 @@ class FaultInjectingSQLiteConnection:
             self._raise_after(SQLiteFaultStage.ON_COMMIT)
         return cursor
 
+    def executemany(self, sql: str, parameters: Any) -> sqlite3.Cursor:
+        values = tuple(parameters)
+        if not values:
+            return self._connection.executemany(sql, values)
+        cursor: sqlite3.Cursor | None = None
+        for item in values:
+            cursor = self.execute(sql, item)
+        assert cursor is not None
+        return cursor
+
     def close(self) -> None:
         self._connection.close()
 

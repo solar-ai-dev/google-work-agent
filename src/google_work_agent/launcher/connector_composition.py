@@ -58,7 +58,6 @@ def build_connectors(
     if (
         installed_connector.provider_namespace != "google"
         or installed_connector.connector_package != "workspace"
-        or installed_connector.mcp_schema_version != MCP_MANIFEST_VERSION
         or not installed_connector.tool_projection_path.endswith(
             "/google_workspace/tool-descriptor-projection-v1.json"
         )

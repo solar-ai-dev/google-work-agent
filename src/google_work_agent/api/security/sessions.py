@@ -28,6 +28,9 @@ class LocalSessionManager:
     def validate(self, *, token: str | None, service_instance_id: str) -> bool:
         raise NotImplementedError
 
+    def invalidate_all(self) -> None:
+        raise NotImplementedError
+
 
 class InMemoryLocalSessionManager(LocalSessionManager):
     def __init__(self) -> None:
@@ -51,3 +54,6 @@ class InMemoryLocalSessionManager(LocalSessionManager):
             if hmac.compare_digest(stored_digest, digest):
                 return record.service_instance_id == service_instance_id
         return False
+
+    def invalidate_all(self) -> None:
+        self._records.clear()

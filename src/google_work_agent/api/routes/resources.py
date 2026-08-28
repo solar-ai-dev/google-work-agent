@@ -1,6 +1,7 @@
 """Resource projection routes over canonical Application use cases."""
 
 from dataclasses import asdict
+from typing import cast
 
 from fastapi import APIRouter, Header, Path, Query, Request
 
@@ -15,22 +16,40 @@ from google_work_agent.api.schemas.resources.get_gmail_resource import GmailReso
 from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
 from google_work_agent.api.security.sessions import calculate_session_digest
-from google_work_agent.application.resource_continuation import ResourceQueryServiceLike
+from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
+    GetCalendarResourceDetailHandler,
+    GetCalendarResourceDetailQuery,
+)
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler,
+    GetResourceCountQuery,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler,
+    GetResourceDetailQuery,
+)
+from google_work_agent.application.use_cases.resource.get_task_resource_detail import (
+    GetTaskResourceDetailHandler,
+    GetTaskResourceDetailQuery,
+)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandleCommand,
 )
-from google_work_agent.application.use_cases.resource_ref.count_resources import (
-    CountResourcesHandler,
-    CountResourcesQuery,
+from google_work_agent.application.use_cases.resource.list_calendars import (
+    ListCalendarsHandler,
+    ListCalendarsQuery,
 )
-from google_work_agent.application.use_cases.resource_ref.get_resource import (
-    GetResourceHandler,
-    GetResourceQuery,
-)
-from google_work_agent.application.use_cases.resource_ref.list_resources import (
+from google_work_agent.application.use_cases.resource.list_resources import (
     ListResourcesHandler,
     ListResourcesQuery,
     ResourceListItem,
+)
+from google_work_agent.application.use_cases.resource.list_task_lists import (
+    ListTaskListsHandler,
+    ListTaskListsQuery,
+)
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    ResourceAccess,
 )
 from google_work_agent.ports import EndpointPolicy
 from google_work_agent.ports.connectors.failure import (
@@ -41,9 +60,41 @@ from google_work_agent.ports.connectors.failure import (
 router = APIRouter(prefix="/api/v1/resources")
 
 
+@router.get("/task-lists")
+def list_task_lists(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    page_token: str | None = Query(default=None),
+    page_size: int = Query(default=50, ge=1, le=100),
+    x_api_contract_version: str | None = Header(default=None),
+) -> dict[str, object]:
+    _enforce_resource_access(request, dependencies, x_api_contract_version)
+    handler = dependencies.list_task_lists_handler
+    if not isinstance(handler, ListTaskListsHandler):
+        _raise_resource_handler_unavailable(request)
+    result = cast(ListTaskListsHandler, handler)(ListTaskListsQuery(page_token, page_size))
+    return cast(dict[str, object], asdict(result))
+
+
+@router.get("/calendars")
+def list_calendars(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    page_token: str | None = Query(default=None),
+    page_size: int = Query(default=50, ge=1, le=100),
+    x_api_contract_version: str | None = Header(default=None),
+) -> dict[str, object]:
+    _enforce_resource_access(request, dependencies, x_api_contract_version)
+    handler = dependencies.list_calendars_handler
+    if not isinstance(handler, ListCalendarsHandler):
+        _raise_resource_handler_unavailable(request)
+    result = cast(ListCalendarsHandler, handler)(ListCalendarsQuery(page_token, page_size))
+    return cast(dict[str, object], asdict(result))
+
+
 def _resource_service(
     dependencies: ResourceRouteDependency, *, request_id: str
-) -> ResourceQueryServiceLike:
+) -> ResourceAccess:
     service = dependencies.resource_query_service()
     if service is None:
         raise ApiRequestError(
@@ -116,10 +167,10 @@ def get_resource_count(
         request_version=x_api_contract_version,
     )
     try:
-        result = CountResourcesHandler(
+        result = GetResourceCountHandler(
             _resource_service(dependencies, request_id=request.state.request_id)
         )(
-            CountResourcesQuery(
+            GetResourceCountQuery(
                 source=source,
                 query=query,
                 task_list_id=task_list_id,
@@ -152,15 +203,69 @@ def get_gmail_resource_detail(
         request_version=x_api_contract_version,
     )
     try:
-        result = GetResourceHandler(
+        result = GetResourceDetailHandler(
             _resource_service(dependencies, request_id=request.state.request_id)
-        )(GetResourceQuery(source="gmail", resource_id=resource_id))
+        )(GetResourceDetailQuery(source="gmail", resource_id=resource_id))
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
     return GmailResourceDetailResponse(
         **asdict(result.resource),
         api_contract_version=dependencies.api_contract_version,
     )
+
+
+@router.get("/tasks/{resource_id}")
+def get_task_resource_detail(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    resource_id: str = Path(min_length=1, max_length=2048),
+    selection_handle: str = Query(min_length=1, max_length=4096),
+    x_api_contract_version: str | None = Header(default=None),
+) -> dict[str, object]:
+    _enforce_resource_access(request, dependencies, x_api_contract_version)
+    session_digest, account_id = _selection_identity(request, dependencies)
+    handler = dependencies.get_task_resource_detail_handler
+    if not isinstance(handler, GetTaskResourceDetailHandler):
+        _raise_resource_handler_unavailable(request)
+    try:
+        result = cast(GetTaskResourceDetailHandler, handler)(
+            GetTaskResourceDetailQuery(
+                resource_id=resource_id,
+                selection_handle=selection_handle,
+                session_digest=session_digest,
+                account_id=account_id,
+            )
+        )
+    except ValueError as error:
+        _raise_invalid_selection(error, request_id=request.state.request_id)
+    return {"schema_version": 1, "detail": result.detail}
+
+
+@router.get("/calendar/{resource_id}")
+def get_calendar_resource_detail(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    resource_id: str = Path(min_length=1, max_length=2048),
+    selection_handle: str = Query(min_length=1, max_length=4096),
+    x_api_contract_version: str | None = Header(default=None),
+) -> dict[str, object]:
+    _enforce_resource_access(request, dependencies, x_api_contract_version)
+    session_digest, account_id = _selection_identity(request, dependencies)
+    handler = dependencies.get_calendar_resource_detail_handler
+    if not isinstance(handler, GetCalendarResourceDetailHandler):
+        _raise_resource_handler_unavailable(request)
+    try:
+        result = cast(GetCalendarResourceDetailHandler, handler)(
+            GetCalendarResourceDetailQuery(
+                resource_id=resource_id,
+                selection_handle=selection_handle,
+                session_digest=session_digest,
+                account_id=account_id,
+            )
+        )
+    except ValueError as error:
+        _raise_invalid_selection(error, request_id=request.state.request_id)
+    return {"schema_version": 1, "detail": result.detail}
 
 
 @router.get("/tasks", response_model=ResourceListResponse)
@@ -267,6 +372,55 @@ def _raise_connector_failure(error: ConnectorOperationFailure, *, request_id: st
         request_id=request_id,
         retryable=error.retryable,
         detail_code=error.detail_code,
+    ) from error
+
+
+def _enforce_resource_access(
+    request: Request,
+    dependencies: ResourceRouteDependency,
+    request_version: str | None,
+) -> None:
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
+        request_id=request.state.request_id,
+        request_version=request_version,
+    )
+
+
+def _raise_resource_handler_unavailable(request: Request) -> None:
+    raise ApiRequestError(
+        error_code="SERVICE_BUSY",
+        user_message="Resource provider is not configured.",
+        status_code=503,
+        request_id=request.state.request_id,
+        detail_code="RESOURCE_QUERY_UNAVAILABLE",
+    )
+
+
+def _selection_identity(
+    request: Request, dependencies: ResourceRouteDependency
+) -> tuple[str, str]:
+    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    account_id = dependencies.current_account_id()
+    if session_token is None or account_id is None:
+        raise ApiRequestError(
+            error_code="LOCAL_SESSION_INVALID",
+            user_message="Resource selection requires an active account and local session.",
+            status_code=401,
+            request_id=request.state.request_id,
+            detail_code="RESOURCE_SELECTION_BINDING_UNAVAILABLE",
+        )
+    return calculate_session_digest(session_token), account_id
+
+
+def _raise_invalid_selection(error: ValueError, *, request_id: str) -> None:
+    raise ApiRequestError(
+        error_code="INVALID_ARGUMENT",
+        user_message="Resource selection is invalid.",
+        status_code=422,
+        request_id=request_id,
+        detail_code="RESOURCE_SELECTION_INVALID",
     ) from error
 
 

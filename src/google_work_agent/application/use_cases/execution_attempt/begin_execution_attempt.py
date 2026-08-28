@@ -19,8 +19,10 @@ from google_work_agent.application.write_persistence import (
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.approval.model import Approval, ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt,
+    ExecutionAttemptStatusV1,
 )
 from google_work_agent.domain.execution_attempt.transitions.begin_execution_attempt import (
     transition_begin_execution_attempt,
@@ -72,7 +74,7 @@ class BeginExecutionAttemptHandler:
         plan = require_plan(unit_of_work, action.plan_id)
         run = require_run(unit_of_work, plan.run_id)
         approval = require_approval(unit_of_work, str(payload["approval_id"]))
-        attempt = require_attempt(unit_of_work, str(payload["attempt_id"]))
+        attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
         plans = current_plan_tuple(unit_of_work.plans, run.id)
         if not plans:
             raise PermissionError("claim owner Run has no published Plan")
@@ -88,10 +90,24 @@ class BeginExecutionAttemptHandler:
             raise PermissionError("claim parent authority is no longer current")
         if action.id != str(payload["action_id"]) or action.tool_name != str(payload["tool_name"]):
             raise PermissionError("claim token action/tool binding mismatch")
-        if action.arguments_hash != str(payload["arguments_hash"]):
+        if action.arguments_hash != str(payload["approval_arguments_hash"]):
             raise PermissionError("claim token arguments binding mismatch")
         if approval.action_id != action.id or attempt.approval_id != approval.id:
             raise PermissionError("claim token persistence binding mismatch")
+
+        if calculate_canonical_json_hash(payload) != command.request_hash:
+            raise PermissionError("BeginExecutionAttempt request_hash mismatch")
+        existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+        if existing is not None:
+            if existing.request_hash != command.request_hash:
+                raise PermissionError("BeginExecutionAttempt command_id hash conflict")
+            if (
+                existing.status is not CommandReceiptStatus.APPLIED
+                or existing.response_json is None
+                or attempt.status is not ExecutionAttemptStatusV1.EXECUTING
+            ):
+                raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
+            return BeginExecutionAttemptResult(action, approval, attempt)
 
         decision = transition_begin_execution_attempt(
             attempt.status,
@@ -106,10 +122,6 @@ class BeginExecutionAttemptHandler:
         if not decision.applied:
             raise PermissionError(decision.conflict_detail or "execution attempt is not claimable")
 
-        if calculate_canonical_json_hash(payload) != command.request_hash:
-            raise PermissionError("BeginExecutionAttempt request_hash mismatch")
-        if unit_of_work.command_receipts.get_by_command_id(command.command_id) is not None:
-            raise PermissionError("BeginExecutionAttempt was already recorded")
         unit_of_work.command_receipts.reserve_or_replay(
             command_id=command.command_id,
             command_type="BeginExecutionAttempt",

@@ -9,7 +9,6 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.queries import QueryService
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +21,8 @@ class SafeModeRouteState:
 @dataclass(frozen=True, slots=True)
 class RuntimeRouteDependencies:
     api_contract_version: str
-    query_service: Callable[[], QueryService]
+    get_runtime_status_handler: Callable[[], object | None]
+    update_runtime_mode_handler: Callable[[], object | None]
     safe_mode_state: Callable[[], SafeModeRouteState | None]
 
 
@@ -42,7 +42,8 @@ def get_runtime_route_dependencies(request: Request) -> RuntimeRouteDependencies
 
     return RuntimeRouteDependencies(
         api_contract_version=container.api_contract_version,
-        query_service=lambda: container.query_service,
+        get_runtime_status_handler=lambda: container.get_runtime_status_handler,
+        update_runtime_mode_handler=lambda: container.update_runtime_mode_handler,
         safe_mode_state=safe_mode_state,
     )
 

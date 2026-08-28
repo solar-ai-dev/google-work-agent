@@ -6,9 +6,11 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_admissibility import upsert_registered_resource_ref
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
+)
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
 )
 from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
@@ -352,7 +354,7 @@ class StartRunHandler:
             seen.add(key)
             source = _resource_source(identity.resource_type)
             resource_ref_id = self._id_factory()
-            persisted = upsert_registered_resource_ref(
+            persisted = persist_registered_resource_ref(
                 unit_of_work,
                 ResourceRefRecord(
                     id=resource_ref_id,

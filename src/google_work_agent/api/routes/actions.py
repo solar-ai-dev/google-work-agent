@@ -35,6 +35,9 @@ from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
 )
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventHandler,
+)
 from google_work_agent.ports import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/actions")
@@ -102,11 +105,8 @@ def approve(
     _prepare(request, payload=payload, dependencies=dependencies)
     request_payload = payload.model_dump()
     request_payload.pop("ttl_ms", None)
-    settings_service = dependencies.get_settings_service()
-    if settings_service is None:
-        raise RuntimeError("get_settings_service is not configured")
     handler = ApproveActionHandler(
-        get_approval_ttl_minutes=lambda: settings_service().approval_ttl_minutes,
+        get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         id_generator=dependencies.id_generator,
@@ -179,7 +179,10 @@ def reject(
     result = RejectActionHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
-        event_publisher=dependencies.event_publisher(),
+        id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
+        project_run_event=ProjectRunEventHandler(dependencies.event_publisher()),
     )(
         RejectActionCommand(
             command_id=payload.command_id,

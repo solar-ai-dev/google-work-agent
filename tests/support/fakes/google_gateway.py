@@ -203,13 +203,13 @@ class FakeGoogleGateway:
         arguments: dict[str, object],
         fallback_resource_id: str | None,
     ) -> ResourceSnapshot:
-        resource_id = next(
+        resource_id = fallback_resource_id or next(
             (
                 str(arguments[key])
                 for key in ("draft_id", "task_id", "event_id")
                 if arguments.get(key)
             ),
-            fallback_resource_id,
+            None,
         )
         if resource_id is None:
             raise LookupError("resource reference is required for verification")

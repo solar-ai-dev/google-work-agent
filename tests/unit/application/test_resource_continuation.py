@@ -4,11 +4,11 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-from google_work_agent.application.resource_continuation import (
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
     LocalResourceContinuationStore,
-    OpaqueResourceQueryService,
+    OpaqueConnectorResourceAccess,
 )
-from google_work_agent.application.resource_queries import (
+from google_work_agent.application.use_cases.resource.connector_resource_access import (
     GmailResourceDetail,
     ResourceCount,
     ResourceListPage,
@@ -100,7 +100,7 @@ def test_provider_page_token_is_replaced_by_server_local_handle() -> None:
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-gmail-1", "local-gmail-2")))
     )
-    service = OpaqueResourceQueryService(raw, continuation_store=store)
+    service = OpaqueConnectorResourceAccess(raw, continuation_store=store)
 
     first = service.list_gmail_threads(
         query="in:inbox",
@@ -124,7 +124,7 @@ def test_provider_page_token_is_replaced_by_server_local_handle() -> None:
 
 def test_provider_token_cannot_be_replayed_as_a_local_continuation() -> None:
     raw = _ResourceServiceStub()
-    service = OpaqueResourceQueryService(raw)
+    service = OpaqueConnectorResourceAccess(raw)
 
     with pytest.raises(GoogleWorkspaceGatewayError) as caught:
         service.list_gmail_threads(
@@ -142,7 +142,7 @@ def test_local_continuation_is_bound_to_its_exact_query_scope() -> None:
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-scope-1", "local-scope-2")))
     )
-    service = OpaqueResourceQueryService(raw, continuation_store=store)
+    service = OpaqueConnectorResourceAccess(raw, continuation_store=store)
 
     first = service.list_gmail_threads(query="alpha", page_token=None, page_size=20)
     assert first.next_page_token == "local-scope-1"
@@ -163,7 +163,7 @@ def test_local_continuation_cannot_cross_resource_sources() -> None:
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-source-1", "local-source-2")))
     )
-    service = OpaqueResourceQueryService(raw, continuation_store=store)
+    service = OpaqueConnectorResourceAccess(raw, continuation_store=store)
 
     gmail = service.list_gmail_threads(query="", page_token=None, page_size=20)
 
@@ -180,7 +180,7 @@ def test_local_continuation_cannot_cross_resource_sources() -> None:
 
 def test_count_paths_do_not_allocate_or_resolve_continuations() -> None:
     raw = _ResourceServiceStub()
-    service = OpaqueResourceQueryService(raw)
+    service = OpaqueConnectorResourceAccess(raw)
 
     assert service.count_gmail_threads(query="").total_count == 1
     assert service.count_tasks(task_list_id=None).total_count == 1

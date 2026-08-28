@@ -6,11 +6,18 @@ from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
     StaticRuntimeStatusProvider,
 )
+from google_work_agent.adapters.system.process_component_circuit_state import (
+    ProcessComponentCircuitStateAdapter,
+)
+from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
+    GetRuntimeStatusHandler,
+)
 from google_work_agent.ports import (
     LauncherProbeDecision,
     ReadinessCheckResult,
@@ -18,6 +25,8 @@ from google_work_agent.ports import (
     ReadinessState,
     RuntimeSummary,
 )
+from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 
 class _CoordinatorStub:
@@ -39,6 +48,16 @@ class _QueryStub:
             recovery_required_run_ids=(),
             open_run_ids=(),
         )
+
+
+class _OAuthStatusStub:
+    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+        return ConnectionMetadataV1(1, connector_id, None, None, "DISCONNECTED", (), ())
+
+
+class _LlmStatusStub:
+    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
+        return LlmRuntimeStatusV1(1, provider, False, "DISABLED", None, None)
 
 
 def _build_client(*, with_probe: bool = True) -> TestClient:
@@ -112,6 +131,12 @@ def _build_client(*, with_probe: bool = True) -> TestClient:
             StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)) if with_probe else None
         ),
         client_address_resolver=lambda _request: "127.0.0.1",
+        get_runtime_status_handler=GetRuntimeStatusHandler(
+            runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
+            oauth=_OAuthStatusStub(),
+            llm_status=_LlmStatusStub(),
+            circuits=ProcessComponentCircuitStateAdapter(),
+        ),
     )
     return TestClient(create_app(container), base_url=f"http://{bind_host}:{bind_port}")
 

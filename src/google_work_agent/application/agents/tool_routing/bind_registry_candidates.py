@@ -33,6 +33,7 @@ def normalize_resource_type(value: str) -> str:
 
 
 def coarse_resource_category(resource_type: str) -> str:
+    resource_type = normalize_resource_type(resource_type)
     if resource_type.startswith("GMAIL"):
         return "EMAIL"
     if resource_type in {"TASK", "TASK_LIST"}:

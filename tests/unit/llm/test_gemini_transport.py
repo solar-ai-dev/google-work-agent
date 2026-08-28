@@ -74,7 +74,7 @@ def test_invoke_structured_omits_temperature_when_sampling_is_unset(
         captured.append(request)
         return _HTTPResponse(_fake_response())
 
-    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
+    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.transport.urlopen", fake_urlopen)
 
     GeminiHTTPClient().invoke_structured(
         model_id="gemini-flash-latest",
@@ -100,7 +100,7 @@ def test_invoke_structured_sends_fixed_temperature_when_set(
         captured.append(request)
         return _HTTPResponse(_fake_response())
 
-    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
+    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.transport.urlopen", fake_urlopen)
 
     GeminiHTTPClient().invoke_structured(
         model_id="gemini-flash-latest",
@@ -142,7 +142,7 @@ def test_provider_forwards_temperature_but_never_seed_to_gemini_transport(
         captured.append(request)
         return _HTTPResponse(_fake_response())
 
-    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
+    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.transport.urlopen", fake_urlopen)
 
     provider = GeminiStructuredInferenceAdapter(
         provider_name="gemini",
@@ -176,7 +176,7 @@ def test_provider_omits_temperature_when_runtime_policy_leaves_sampling_unset(
         captured.append(request)
         return _HTTPResponse(_fake_response())
 
-    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.urlopen", fake_urlopen)
+    monkeypatch.setattr("google_work_agent.adapters.llm.gemini.transport.urlopen", fake_urlopen)
 
     provider = GeminiStructuredInferenceAdapter(
         provider_name="gemini",

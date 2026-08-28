@@ -35,7 +35,6 @@ from tests.integration.langgraph.test_runtime import (
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
-    McpConnectorWriteAdapter,
     GraphProfile,
     LangGraphWorkflowRuntime,
     Path,
@@ -47,6 +46,7 @@ from tests.integration.langgraph.test_runtime import (
     _clear_intent,
     _llm_result,
     _make_runtime,
+    _make_runtime_with_llm,
     _QueuedLLMRuntime,
     _review_output,
     _runtime_active_manifest_path,
@@ -82,20 +82,15 @@ def _build_runtime(
     manifest_path: Path,
     id_prefix: str,
 ) -> LangGraphWorkflowRuntime:
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix=id_prefix).next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=database_path,
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
-        default_tasklist_id_provider=lambda: "task-list-default",
+        default_tasklist_id="task-list-default",
+        id_prefix=id_prefix,
     )
     initial_state = runtime._invocation._initial_state  # noqa: SLF001
 

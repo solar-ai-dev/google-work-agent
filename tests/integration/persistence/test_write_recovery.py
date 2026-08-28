@@ -7,7 +7,7 @@ from __future__ import annotations
 from json import loads as _loads
 
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommand,
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
@@ -23,7 +23,6 @@ from tests.integration.persistence.test_write_actions import (
     GoogleWorkspaceGatewayError,
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
-    McpConnectorWriteAdapter,
     Path,
     PrepareWriteRetryCommand,
     PrepareWriteRetryService,
@@ -454,7 +453,7 @@ def test_unknown_result_create_recovery_and_retry_flow(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )(
-        ResolveRecoveryCommand(
+        ResolveRecoveryCommandV1(
             run_id="run-1",
             expected_version=2,
             command_id="recheck-recover-create",
@@ -643,14 +642,12 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
     recover_service = RecoverUnknownUpdateActionService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
-        gateway=McpConnectorWriteAdapter(
-            gateway=cast(
-                GoogleWorkspaceGateway,
-                _TransactionCheckingGateway(
-                    delegate=fixture_gateway,
-                    database_path=write_database,
-                ),
-            )
+        gateway=cast(
+            GoogleWorkspaceGateway,
+            _TransactionCheckingGateway(
+                delegate=fixture_gateway,
+                database_path=write_database,
+            ),
         ),
     )
 

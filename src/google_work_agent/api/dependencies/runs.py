@@ -9,7 +9,6 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
@@ -30,7 +29,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 @dataclass(frozen=True, slots=True)
 class RunRouteDependencies:
     api_contract_version: str
-    query_service: Callable[[], QueryService]
+    query_service: Callable[[], object]
     unit_of_work_factory: Callable[[], UnitOfWork]
     graph_profile: GraphProfileIdV1
     graph_version: str
@@ -44,6 +43,11 @@ class RunRouteDependencies:
     resolve_selection_handle: ResolveSelectionHandle
     resource_connector_id: str
     current_account_id: Callable[[], str | None]
+    project_context_preview_handler: object | None
+    adjust_context_handler: object | None
+    project_recovery_options_handler: object | None
+    project_error_actions_handler: object | None
+    project_external_llm_transfer_scope_handler: object | None
 
 
 def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
@@ -104,6 +108,17 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         resolve_selection_handle=resolve_selection_handle,
         resource_connector_id=container.resource_connector_id,
         current_account_id=lambda: _current_account_id(container.query_service),
+        project_context_preview_handler=getattr(
+            container, "project_context_preview_handler", None
+        ),
+        adjust_context_handler=getattr(container, "adjust_context_handler", None),
+        project_recovery_options_handler=getattr(
+            container, "project_recovery_options_handler", None
+        ),
+        project_error_actions_handler=getattr(container, "project_error_actions_handler", None),
+        project_external_llm_transfer_scope_handler=(
+            getattr(container, "project_external_llm_transfer_scope_handler", None)
+        ),
     )
 
 

@@ -7,30 +7,18 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.queries import QueryService
 from google_work_agent.application.use_cases.conversation.get_conversation_history import (
     GetConversationHistoryHandler,
     GetConversationHistoryQuery,
 )
 from google_work_agent.application.use_cases.message.list_conversation_messages import (
-    MAX_HISTORY_MESSAGES,
+    DEFAULT_HISTORY_MESSAGE_LIMIT,
 )
 
 
-class _UnusedRuntimeStatusProvider:
-    def get_summary(self) -> object:
-        raise NotImplementedError
-
-
 def _history_handler(database_path: Path) -> GetConversationHistoryHandler:
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=_UnusedRuntimeStatusProvider(),
-    )
     return GetConversationHistoryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-        query_service=lambda: query_service,
     )
 
 
@@ -258,7 +246,7 @@ def test_history_is_none_for_an_unknown_conversation(tmp_path: Path) -> None:
 
 def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
-    total = MAX_HISTORY_MESSAGES + 5
+    total = DEFAULT_HISTORY_MESSAGE_LIMIT + 5
     connection = connect_sqlite(database_path)
     try:
         for index in range(total):
@@ -281,6 +269,6 @@ def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path
 
     assert history is not None
     assert history.truncated is True
-    assert len(history.messages) == MAX_HISTORY_MESSAGES
-    assert history.messages[0].content == f"요청 {total - MAX_HISTORY_MESSAGES}"
+    assert len(history.messages) == DEFAULT_HISTORY_MESSAGE_LIMIT
+    assert history.messages[0].content == f"요청 {total - DEFAULT_HISTORY_MESSAGE_LIMIT}"
     assert history.messages[-1].content == f"요청 {total - 1}"

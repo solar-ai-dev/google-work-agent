@@ -3,9 +3,9 @@ from pathlib import Path
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.write_execution_contracts import StoreWriteActionSuccessCommand
-from google_work_agent.application.write_recovery import RecoverExistingWriteResultService
+from tests.support.legacy_write.write_recovery import RecoverExistingWriteResultService
 from google_work_agent.application.write_recovery_contracts import RecoverExistingWriteResultCommand
-from google_work_agent.application.write_result_persistence import StoreWriteActionSuccessService
+from tests.support.legacy_write.write_result_persistence import StoreWriteActionSuccessService
 from google_work_agent.ports import ResourceSnapshot, ResourceType
 
 CANARY = "RAW_PROVIDER_SECRET_CANARY"

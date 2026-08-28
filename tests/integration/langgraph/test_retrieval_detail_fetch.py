@@ -18,12 +18,12 @@ from tests.integration.langgraph.test_runtime import (
     DeterministicUUID,
     FakeClockPort,
     FakeGoogleGateway,
-    McpConnectorWriteAdapter,
     GraphProfile,
     LangGraphWorkflowRuntime,
     ProductFixtureSnapshotLoader,
     _clear_intent,
     _llm_result,
+    _make_runtime_with_llm,
     _QueuedLLMRuntime,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -60,20 +60,14 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     llm_runtime = _QueuedLLMRuntime([])
-    runtime = LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    runtime = _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
-        now_ms=FakeClockPort(1000).now_ms,
-        id_factory=DeterministicUUID(prefix="runtime").next_id,
-        signing_secret="stage17-secret",
-        service_instance_id="stage17-service",
         checkpoint_database_path=tmp_path / "checkpoints-detail-fetch.db",
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
-        default_tasklist_id_provider=lambda: "task-list-default",
+        default_tasklist_id="task-list-default",
     )
     try:
         state = runtime._initial_state(_start_request())  # noqa: SLF001

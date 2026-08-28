@@ -29,7 +29,7 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
-class ResolveRecoveryCommand:
+class ResolveRecoveryCommandV1:
     run_id: str
     expected_version: int
     command_id: str
@@ -68,7 +68,7 @@ class ResolveRecoveryHandler:
         self._now_ms = now_ms
         self._next_id = next_id
 
-    def __call__(self, command: ResolveRecoveryCommand) -> ResolveRecoveryResult:
+    def __call__(self, command: ResolveRecoveryCommandV1) -> ResolveRecoveryResult:
         with self._unit_of_work_factory() as unit_of_work:
             now_ms = self._now_ms()
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -237,7 +237,7 @@ class ResolveRecoveryHandler:
             recheck_input_changed=True,
             recovered_action_status=ResolveRecoveryHandler._recovered_action_status(
                 unit_of_work,
-                ResolveRecoveryCommand(
+                ResolveRecoveryCommandV1(
                     run_id=run_id,
                     expected_version=expected_version,
                     command_id="system:resume-recheck",
@@ -278,7 +278,7 @@ class ResolveRecoveryHandler:
     @staticmethod
     def _recovered_action_status(
         unit_of_work: UnitOfWork,
-        command: ResolveRecoveryCommand,
+        command: ResolveRecoveryCommandV1,
         context: dict[str, object],
     ) -> ActionStatusV1 | None:
         if command.recovered_action_status is not None:
@@ -293,7 +293,7 @@ class ResolveRecoveryHandler:
         self,
         unit_of_work: UnitOfWork,
         *,
-        command: ResolveRecoveryCommand,
+        command: ResolveRecoveryCommandV1,
         context: dict[str, object],
         now_ms: int,
     ) -> tuple[PlanRecord | None, str | None]:
@@ -327,7 +327,9 @@ class ResolveRecoveryHandler:
             if (
                 update_plan_record(
                     unit_of_work,
-                    plan.id, expected_status=plan.status, next_status=PlanStatusV1.COMPLETED
+                    plan.id,
+                    expected_status=plan.status,
+                    next_status=PlanStatusV1.COMPLETED,
                 )
                 is None
             ):
@@ -339,7 +341,9 @@ class ResolveRecoveryHandler:
         if (
             update_plan_record(
                 unit_of_work,
-                plan.id, expected_status=plan.status, next_status=PlanStatusV1.SUPERSEDED
+                plan.id,
+                expected_status=plan.status,
+                next_status=PlanStatusV1.SUPERSEDED,
             )
             is None
         ):
@@ -360,7 +364,7 @@ class ResolveRecoveryHandler:
     @staticmethod
     def _replay_or_reject_duplicate(
         unit_of_work: UnitOfWork,
-        command: ResolveRecoveryCommand,
+        command: ResolveRecoveryCommandV1,
         receipt: object,
     ) -> ResolveRecoveryResult:
         if receipt.request_hash != command.request_hash:
@@ -382,7 +386,7 @@ class ResolveRecoveryHandler:
     @staticmethod
     def _store_result(
         unit_of_work: UnitOfWork,
-        command: ResolveRecoveryCommand,
+        command: ResolveRecoveryCommandV1,
         result: ResolveRecoveryResult,
         now_ms: int,
     ) -> None:

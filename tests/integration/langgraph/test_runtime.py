@@ -17,6 +17,13 @@ from tests.support.fakes import (
     GoogleGatewayFaultKind,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.google_gateway_connector_ports import (
+    GoogleGatewayConnectorReadPort,
+    GoogleGatewayConnectorWritePort,
+)
+from tests.support.google_gateway_connector_ports import (
+    LegacyGatewayWriteProjection as McpConnectorWriteAdapter,
+)
 from tests.support.legacy_write_action_mutation import (
     ModifyWriteActionService,
     RejectWriteActionService,
@@ -32,9 +39,6 @@ from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
-    McpConnectorWriteAdapter,
-)
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import (
     GraphProfile,
@@ -44,6 +48,10 @@ from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
+)
+from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -69,6 +77,9 @@ from google_work_agent.application.orchestration.work_analysis import (
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteHandler,
 )
 from google_work_agent.application.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
@@ -132,6 +143,14 @@ _PROFILE_CANDIDATE_PROMPT_IDS = {
 
 def _tool_catalog() -> SignedToolRegistry:
     return load_signed_tool_registry()
+
+
+def _connector_reader(gateway: FakeGoogleGateway) -> ConnectorReadProjection:
+    """Build the exact read projection used by production runtime composition."""
+    return ConnectorReadProjection(
+        connector_reader=GoogleGatewayConnectorReadPort(gateway),
+        tool_registry=_tool_catalog(),
+    )
 
 
 class _PendingPlanActionsState:
@@ -976,14 +995,52 @@ def _make_runtime(
     default_calendar_id: str | None = "calendar-primary",
     id_prefix: str = "runtime",
 ) -> LangGraphWorkflowRuntime:
-    clock = FakeClockPort(1000)
-    ids = DeterministicUUID(prefix=id_prefix)
-    return LangGraphWorkflowRuntime(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+    return _make_runtime_with_llm(
+        database_path=database_path,
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
-        connector_execution=McpConnectorWriteAdapter(gateway=gateway),
-        tool_catalog=_tool_catalog(),
+        checkpoint_database_path=checkpoint_database_path,
+        checkpoint_port=checkpoint_port,
+        graph_profile=graph_profile,
+        prompt_manifest_path=prompt_manifest_path,
+        default_tasklist_id=default_tasklist_id,
+        default_calendar_id=default_calendar_id,
+        id_prefix=id_prefix,
+    )
+
+
+def _make_runtime_with_llm(
+    *,
+    database_path: Path,
+    llm_runtime: object,
+    gateway: FakeGoogleGateway,
+    checkpoint_database_path: Path | None = None,
+    checkpoint_port=None,
+    graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
+    prompt_manifest_path: Path | None = None,
+    default_tasklist_id: str | None = "task-list-default",
+    default_calendar_id: str | None = "calendar-primary",
+    id_prefix: str = "runtime",
+) -> LangGraphWorkflowRuntime:
+    clock = FakeClockPort(1000)
+    ids = DeterministicUUID(prefix=id_prefix)
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    tool_catalog = _tool_catalog()
+    connector_reader = _connector_reader(gateway)
+    connector_execution = ConnectorWriteProjection(
+        dispatch_connector_write=DispatchConnectorWriteHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            tool_registry=tool_catalog,
+            connector_write_port=GoogleGatewayConnectorWritePort(gateway),
+        ),
+        connector_reader=connector_reader,
+    )
+    return LangGraphWorkflowRuntime(
+        unit_of_work_factory=unit_of_work_factory,
+        llm_runtime=llm_runtime,
+        connector_reader=connector_reader,
+        connector_execution=connector_execution,
+        tool_catalog=tool_catalog,
         now_ms=clock.now_ms,
         id_factory=ids.next_id,
         signing_secret="stage17-secret",

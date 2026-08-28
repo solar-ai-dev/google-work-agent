@@ -7,8 +7,15 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from re import fullmatch
 
-from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
-from google_work_agent.application.projections import build_projection_event
+from google_work_agent.application.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventCommand,
+    ProjectRunEventHandler,
+)
 from google_work_agent.application.write_persistence import (
     append_approval_revoked_audits,
     emit_command_rejected_hash_mismatch,
@@ -24,19 +31,16 @@ from google_work_agent.domain.action.transitions.reject_action import transition
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.transitions.complete_write_run import (
-    transition_complete_write_run,
-)
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    SseEventBufferPort,
-)
-from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,18 +65,26 @@ class RejectActionResult:
 
 
 class RejectActionHandler:
-    """Persist rejection, revoke approval authority, block dependents, and terminalize parents."""
+    """Persist rejection, revoke approval authority, and block dependents."""
 
     def __init__(
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        event_publisher: SseEventBufferPort | None = None,
+        id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetIssuer,
+        schedule_run_execution: Callable[
+            [ScheduleRunExecutionCommand], RunExecutionAcceptedV1
+        ],
+        project_run_event: ProjectRunEventHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._event_publisher = event_publisher
+        self._id_generator = id_generator
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
+        self._project_run_event = project_run_event
 
     def __call__(self, command: RejectActionCommand) -> RejectActionResult:
         if (
@@ -198,75 +210,17 @@ class RejectActionHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                terminal = {
-                    ActionStatusV1.REJECTED.value,
-                    ActionStatusV1.VERIFIED.value,
-                    ActionStatusV1.FAILED.value,
-                    ActionStatusV1.BLOCKED.value,
-                    ActionStatusV1.DEPENDENCY_BLOCKED.value,
-                    ActionStatusV1.MISMATCH.value,
-                    ActionStatusV1.CANCELLED.value,
-                }
-                current_actions = unit_of_work.actions.list_for_plan(plan.id)
-                if current_actions and all(item.status in terminal for item in current_actions):
-                    approvals = tuple(
-                        approval
-                        for current_action in current_actions
-                        for approval in active_approval_tuple(
-                            unit_of_work.approvals, current_action.id
-                        )
-                    )
-                    attempts = tuple(
-                        attempt
-                        for approval in approvals
-                        for attempt in active_attempt_tuple(
-                            unit_of_work.execution_attempts, approval.id
-                        )
-                    )
-                    completed_status = transition_complete_write_run(
-                        run.status,
-                        plan_status=plan.status,
-                        plan_is_current=True,
-                        action_statuses=tuple(
-                            ActionStatusV1(item.status) for item in current_actions
-                        ),
-                        attempt_statuses=tuple(attempt.status for attempt in attempts),
-                        unresolved_required_fact_count=0,
-                        external_write_count=sum(
-                            attempt.status.value
-                            in {"EXECUTING", "UNKNOWN_RESULT", "SUCCEEDED", "FAILED"}
-                            for attempt in attempts
-                        ),
-                        cancel_intent_active=False,
-                    )
-                    if not unit_of_work.runs.update_if_version_and_status(
-                        run.id,
-                        run.version,
-                        frozenset({run.status}),
-                        {
-                            "status": completed_status.value,
-                            "version": run.version + 1,
-                            "finished_at_ms": now_ms,
-                        },
-                    ):
-                        raise RuntimeError("validated CompleteWriteRun CAS failed")
-                    if plan.status in {
-                        PlanStatusV1.WAITING_APPROVAL,
-                        PlanStatusV1.ACTIVE,
-                    } and (
-                        update_plan_record(
-                            unit_of_work,
-                            plan.id,
-                            expected_status=plan.status,
-                            next_status=PlanStatusV1.COMPLETED,
-                        )
-                        is None
-                    ):
-                        raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
+                handoff_id = self._stage_preflight_handoff(
+                    unit_of_work=unit_of_work,
+                    run_id=run.id,
+                    trigger_command_id=command.command_id,
+                )
+            else:
+                handoff_id = None
             response = self._finish(unit_of_work, command, response, now_ms)
-            if response.applied and self._event_publisher is not None:
-                self._event_publisher.append(
-                    build_projection_event(
+            if response.applied and self._project_run_event is not None:
+                self._project_run_event(
+                    ProjectRunEventCommand(
                         run_id=run.id,
                         occurred_at_ms=now_ms,
                         action_id=command.action_id,
@@ -274,7 +228,53 @@ class RejectActionHandler:
                         payload={"action_status": "REJECTED"},
                     )
                 )
+            if handoff_id is not None:
+                self._schedule_run_execution(
+                    ScheduleRunExecutionCommand(handoff_id=handoff_id)
+                )
             return response
+
+    def _stage_preflight_handoff(
+        self,
+        *,
+        unit_of_work: UnitOfWork,
+        run_id: str,
+        trigger_command_id: str,
+    ) -> str:
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            raise RuntimeError("action rejection requires a durable workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None:
+            raise RuntimeError("action rejection requires a durable workflow checkpoint")
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile, "PREFLIGHT", binding.graph_version
+        )
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=self._id_generator.new_uuid(),
+                trigger_command_id=trigger_command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        return handoff.handoff_id
 
     def _resolve_existing_receipt(
         self, unit_of_work: UnitOfWork, receipt: CommandReceiptRecord, command: RejectActionCommand

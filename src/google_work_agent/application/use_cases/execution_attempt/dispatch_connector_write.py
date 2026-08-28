@@ -28,7 +28,7 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
-class DispatchConnectorWriteCommand:
+class DispatchConnectorWriteCommandV1:
     schema_version: Literal[1]
     connector_id: str
     tool_id: str
@@ -39,7 +39,7 @@ class DispatchConnectorWriteCommand:
 
 
 @dataclass(frozen=True, slots=True)
-class DispatchConnectorWriteResult:
+class DispatchConnectorWriteResultV1:
     schema_version: Literal[1]
     connector_result: ConnectorWriteResultV1
 
@@ -58,7 +58,7 @@ class DispatchConnectorWriteHandler:
         self._tool_registry = tool_registry
         self._connector_write_port = connector_write_port
 
-    def __call__(self, command: DispatchConnectorWriteCommand) -> DispatchConnectorWriteResult:
+    def __call__(self, command: DispatchConnectorWriteCommandV1) -> DispatchConnectorWriteResultV1:
         if command.schema_version != 1:
             raise ValueError("unsupported dispatch command schema_version")
         expected_effect = self._verify_dispatch_eligibility(command)
@@ -72,11 +72,9 @@ class DispatchConnectorWriteHandler:
             command.tool_arguments,
             command.claim_token,
         )
-        return DispatchConnectorWriteResult(schema_version=1, connector_result=result)
+        return DispatchConnectorWriteResultV1(schema_version=1, connector_result=result)
 
-    def _verify_dispatch_eligibility(
-        self, command: DispatchConnectorWriteCommand
-    ) -> ToolEffect:
+    def _verify_dispatch_eligibility(self, command: DispatchConnectorWriteCommandV1) -> ToolEffect:
         claim = command.claim_token
         attempt_id = _required_claim_text(claim, "execution_attempt_id")
         action_id = _required_claim_text(claim, "action_id")
@@ -102,7 +100,7 @@ class DispatchConnectorWriteHandler:
         with self._unit_of_work_factory() as unit_of_work:
             attempt = unit_of_work.execution_attempts.get(attempt_id)
             action = unit_of_work.actions.get(action_id)
-            approval = unit_of_work.approvals.get_active_for_action(action_id)
+            approval = unit_of_work.approval_history.get(approval_id)
             if attempt is None or action is None or approval is None:
                 raise PermissionError("claim persistence binding is missing")
             plan = unit_of_work.plans.load_bundle(action.plan_id)
@@ -162,7 +160,7 @@ def _required_claim_text(claim: Mapping[str, JsonValue], key: str) -> str:
 
 
 __all__ = [
-    "DispatchConnectorWriteCommand",
+    "DispatchConnectorWriteCommandV1",
     "DispatchConnectorWriteHandler",
-    "DispatchConnectorWriteResult",
+    "DispatchConnectorWriteResultV1",
 ]

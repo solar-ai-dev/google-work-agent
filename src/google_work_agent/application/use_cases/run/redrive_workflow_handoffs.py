@@ -20,6 +20,10 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
 )
+from google_work_agent.application.use_cases.run.reconcile_retrieval_cache_restart import (
+    ReconcileRetrievalCacheRestartCommandV1,
+    ReconcileRetrievalCacheRestartHandler,
+)
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
@@ -61,10 +65,14 @@ class RedriveWorkflowHandoffsHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         schedule_run_execution: ScheduleRunExecutionHandler,
         require_recovery: RequireRecoveryHandler,
+        reconcile_retrieval_cache_restart: ReconcileRetrievalCacheRestartHandler | None = None,
+        is_run_execution_active: Callable[[str], bool] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._schedule_run_execution = schedule_run_execution
         self._require_recovery = require_recovery
+        self._reconcile_retrieval_cache_restart = reconcile_retrieval_cache_restart
+        self._is_run_execution_active = is_run_execution_active or (lambda _run_id: False)
 
     def __call__(
         self, command: RedriveWorkflowHandoffsCommand | None = None
@@ -81,6 +89,22 @@ class RedriveWorkflowHandoffsHandler:
         blocked_binding = 0
         progressed_count = 0
         for handoff in candidates:
+            run_id = handoff.execution.run_id
+            if self._is_run_execution_active(run_id):
+                continue
+            if (
+                handoff.execution.execution_kind == "RESUME"
+                and self._reconcile_retrieval_cache_restart is not None
+            ):
+                cache_result = self._reconcile_retrieval_cache_restart(
+                    ReconcileRetrievalCacheRestartCommandV1(1, run_id)
+                )
+                if (
+                    cache_result.outcome != "NO_RESTART_REQUIRED"
+                    and cache_result.handoff_id != handoff.handoff_id
+                ):
+                    progressed_count += int(cache_result.outcome == "RESTART_STAGED")
+                    continue
             if handoff.status == "CONSUMED" and handoff.applied_checkpoint_id is not None:
                 result = self._schedule_run_execution(
                     ScheduleRunExecutionCommand(

@@ -4,31 +4,31 @@ from json import dumps
 from types import SimpleNamespace
 
 import pytest
-
-from google_work_agent.application.use_cases.execution_attempt.execute_action import (
+from tests.support.legacy_write.execute_action import (
     ExecuteActionCommand,
     ExecuteActionHandler,
 )
-from google_work_agent.application.use_cases.recovery.recover_create import (
+from tests.support.legacy_write.recover_create import (
     RecoverCreateCommand,
     RecoverCreateHandler,
 )
-from google_work_agent.application.use_cases.recovery.recover_delete import (
+from tests.support.legacy_write.recover_delete import (
     RecoverDeleteCommand,
     RecoverDeleteHandler,
 )
-from google_work_agent.application.use_cases.recovery.recover_send import (
+from tests.support.legacy_write.recover_send import (
     RecoverSendCommand,
     RecoverSendHandler,
 )
-from google_work_agent.application.use_cases.recovery.recover_update import (
+from tests.support.legacy_write.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
 )
-from google_work_agent.application.use_cases.verification.verify_action import (
+from tests.support.legacy_write.verify_action import (
     VerifyActionCommand,
     VerifyActionHandler,
 )
+
 from google_work_agent.application.write_execution_contracts import WriteActionResponse
 from google_work_agent.application.write_execution_integrity import (
     CLAIM_TOKEN_VERSION,
@@ -325,8 +325,11 @@ def _execution_fixture(
             "action_id": "action-1",
             "approval_id": "approval-1",
             "attempt_id": "attempt-1",
+            "execution_attempt_id": "attempt-1",
             "tool_name": "tasks_create_task",
             "arguments_hash": arguments_hash,
+            "approval_arguments_hash": arguments_hash,
+            "execution_arguments_hash": arguments_hash,
             "service_instance_id": _SERVICE_INSTANCE_ID,
             "nonce": "nonce-1",
             "issued_at_ms": 1_000,
@@ -358,8 +361,11 @@ def test_execute_action_rejects_invalid_and_expired_tokens_before_connector() ->
             "action_id": "action-1",
             "approval_id": "approval-1",
             "attempt_id": "attempt-1",
+            "execution_attempt_id": "attempt-1",
             "tool_name": "tasks_create_task",
             "arguments_hash": "0" * 64,
+            "approval_arguments_hash": "0" * 64,
+            "execution_arguments_hash": "0" * 64,
             "service_instance_id": _SERVICE_INSTANCE_ID,
             "nonce": "bad",
             "issued_at_ms": 1_000,

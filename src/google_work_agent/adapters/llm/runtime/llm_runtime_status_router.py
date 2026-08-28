@@ -32,24 +32,27 @@ class LlmRuntimeStatusRouter:
 
     def get_status(self, provider: str) -> LlmRuntimeStatusV1:
         settings = self.settings_service()
-        if provider == "ollama":
-            return self._ollama_status(settings)
-        if provider != self.api_provider_name:
+        if provider in {"ollama", "LOCAL_GPU"}:
+            status = self._ollama_status(settings)
+            return _with_provider(status, provider)
+        actual_provider = self.api_provider_name if provider == "API_LLM" else provider
+        if actual_provider != self.api_provider_name:
             return _status(provider, False, "DISABLED", None, "PROVIDER_NOT_CONFIGURED")
-        credential = self.credential_service.get_credential_status(provider)
+        credential = self.credential_service.get_credential_status(actual_provider)
         if not credential.configured:
             availability: Literal["UNAVAILABLE", "DISABLED"] = (
                 "UNAVAILABLE" if credential.validation_status == "UNAVAILABLE" else "DISABLED"
             )
             return _status(provider, False, availability, None, credential.validation_status)
-        secret = self.credential_service.read_secret(provider)
-        return GeminiLlmRuntimeStatusAdapter(
-            provider=provider,
+        secret = self.credential_service.read_secret(actual_provider)
+        status = GeminiLlmRuntimeStatusAdapter(
+            provider=actual_provider,
             connection=self.api_connection_service,
         ).get_status(
             api_key=None if secret is None else secret.decode("utf-8"),
             timeout_seconds=self.runtime_policy.api_timeout_seconds,
         )
+        return _with_provider(status, provider)
 
     def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
         return self.approved_models.get(model_id)
@@ -86,6 +89,17 @@ def _status(
         availability=availability,
         model_id=model_id,
         error_code=error_code,
+    )
+
+
+def _with_provider(status: LlmRuntimeStatusV1, provider: str) -> LlmRuntimeStatusV1:
+    return LlmRuntimeStatusV1(
+        schema_version=1,
+        provider=provider,
+        configured=status.configured,
+        availability=status.availability,
+        model_id=status.model_id,
+        error_code=status.error_code,
     )
 
 
