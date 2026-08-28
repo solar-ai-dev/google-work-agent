@@ -13,7 +13,7 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     AmbiguityV1,
-    RequestIntentCandidateV1,
+    RequestGoalCandidateV1,
     RequestIntentV2,
 )
 from google_work_agent.application.orchestration.contracts import (
@@ -41,10 +41,10 @@ from google_work_agent.application.orchestration.tool_routing import (
 )
 
 
-class RequestUnderstandingState(RequestUnderstandingLocalState, total=False):
+class RequestUnderstandingStateV2(RequestUnderstandingLocalState, total=False):
     """Owner-local working fields for Request Understanding only."""
 
-    ru_candidate: NotRequired[RequestIntentCandidateV1]
+    ru_candidate: NotRequired[RequestGoalCandidateV1]
     ru_ambiguity: NotRequired[AmbiguityV1]
     ru_intent: NotRequired[RequestIntentV2]
     ru_confirmation_response: NotRequired[ConfirmationResponseProjectionV1 | None]

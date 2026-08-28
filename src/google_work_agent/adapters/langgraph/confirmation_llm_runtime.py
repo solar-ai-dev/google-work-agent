@@ -16,7 +16,12 @@ from typing import Any
 from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 
 _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
-    "request_understanding.classify": frozenset({"request_understanding.classify"}),
+    "request.detect_ambiguity": frozenset(
+        {
+            "request_understanding.identify_goal",
+            "request_understanding.detect_ambiguity",
+        }
+    ),
     "tool_route.finalize": frozenset({"tool_route.determine_io_resources"}),
     "acquisition.plan_sources": frozenset(
         {

@@ -267,9 +267,7 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
 
     try:
         result = start_with_admission(runtime, database_path, _start_request())
-        assert result.payload["user_interrupt"]["origin_target"] == (
-            "request_understanding.classify"
-        )
+        assert result.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1"),  # noqa: SLF001
             subgraphs=True,

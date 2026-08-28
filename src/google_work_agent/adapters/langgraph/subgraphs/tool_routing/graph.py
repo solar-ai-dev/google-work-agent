@@ -42,6 +42,9 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRoutingInputState,
     ToolRoutingState,
 )
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
@@ -50,9 +53,6 @@ from google_work_agent.application.orchestration.contracts import (
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ClarificationQuestionV1,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,

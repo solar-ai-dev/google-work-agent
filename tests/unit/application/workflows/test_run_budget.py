@@ -360,7 +360,7 @@ def test_semantic_same_failure_gate_denies_same_node_and_reason_set_only() -> No
 
 
 def test_budget_profile_constants_match_frozen_contract() -> None:
-    assert NORMAL_MAX_LLM_CALLS == 8
-    assert REVISION_HEAVY_MAX_LLM_CALLS == 12
-    assert RETRIEVAL_HEAVY_MAX_LLM_CALLS == 14
-    assert ABSOLUTE_MAX_LLM_CALLS == 16
+    assert NORMAL_MAX_LLM_CALLS == 14
+    assert REVISION_HEAVY_MAX_LLM_CALLS == 18
+    assert RETRIEVAL_HEAVY_MAX_LLM_CALLS == 20
+    assert ABSOLUTE_MAX_LLM_CALLS == 24

@@ -47,11 +47,15 @@ def _called_names(path: Path) -> set[str]:
     return names
 
 
-def test_request_understanding_has_four_operation_nodes() -> None:
-    for operation in RU_OPERATIONS:
+def test_request_understanding_has_three_runtime_nodes_for_four_operations() -> None:
+    for operation in ("identify_goal", "detect_ambiguity", "finalize_intent"):
         path = RU / "nodes" / f"{operation}_node.py"
         assert path.is_file()
         assert operation in _called_names(path)
+    assert "validate_intent" in _called_names(
+        SRC / "application/agents/request_understanding/finalize_intent.py"
+    )
+    assert not (RU / "nodes/validate_intent_node.py").exists()
 
 
 def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
@@ -190,9 +194,9 @@ def test_tool_routing_has_no_downstream_or_provider_execution_calls() -> None:
 
 def test_projection_allowlists_are_owner_local() -> None:
     assert {path.stem for path in (RU / "projections").glob("*_projection.py")} == {
-        "request_projection",
-        "candidate_projection",
-        "intent_projection",
+        "identify_goal_projection",
+        "detect_ambiguity_projection",
+        "finalize_intent_projection",
     }
     assert {path.stem for path in (TR / "projections").glob("*_projection.py")} == {
         "determine_io_resources_projection",

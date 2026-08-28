@@ -58,10 +58,10 @@ PLANNING_REVISION_PER_RUN = 2
 REVIEW_RECHECK_PER_PLANNING_REVISION = 1
 MAX_ADDITIONAL_ACQUISITIONS = 2
 
-NORMAL_MAX_LLM_CALLS = 8
-REVISION_HEAVY_MAX_LLM_CALLS = 12
-RETRIEVAL_HEAVY_MAX_LLM_CALLS = 14
-ABSOLUTE_MAX_LLM_CALLS = 16
+NORMAL_MAX_LLM_CALLS = 14
+REVISION_HEAVY_MAX_LLM_CALLS = 18
+RETRIEVAL_HEAVY_MAX_LLM_CALLS = 20
+ABSOLUTE_MAX_LLM_CALLS = 24
 
 
 class SemanticFailureSignatureV1(TypedDict):
@@ -475,7 +475,7 @@ ADDITIONAL_ACQUISITION_ALLOWED_RESULTS = frozenset(
 CONFIRMATION_RESPONSE_ALLOWED_KINDS = frozenset(item.value for item in ConfirmationResponseKind)
 CONFIRMATION_ORIGIN_TARGETS = frozenset(
     {
-        "request_understanding.classify",
+        "request.detect_ambiguity",
         "tool_route.finalize",
         "acquisition.plan_sources",
         "context.assess_sufficiency",

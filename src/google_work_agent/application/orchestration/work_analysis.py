@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.orchestration.confirmation import (
+    build_clarification_question_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -31,9 +34,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.planning_argument_writer import (
     _planning_evidence_projection,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_clarification_question_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,

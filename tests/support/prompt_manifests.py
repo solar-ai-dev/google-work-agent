@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path,
     discover_canonical_prompt_manifest_path,
 )
 
@@ -138,6 +139,28 @@ def write_manifest_with_legacy_profile_slots(
         if slot.get("slot_id") in active:
             slot["activation_status"] = "RUNTIME_ACTIVE"
             activated.add(str(slot["slot_id"]))
+    missing_active = active - activated
+    if missing_active:
+        current_manifest = json.loads(
+            default_prompt_manifest_path().read_text(encoding="utf-8")
+        )
+        current_slots = current_manifest.get("slots")
+        if not isinstance(current_slots, list):
+            raise ValueError("current prompt manifest must contain slots")
+        for current_slot in current_slots:
+            if not isinstance(current_slot, dict):
+                continue
+            prompt_id = current_slot.get("prompt_id")
+            if prompt_id not in missing_active:
+                continue
+            slots.append(
+                {
+                    **current_slot,
+                    "slot_id": prompt_id,
+                    "activation_status": "RUNTIME_ACTIVE",
+                }
+            )
+            activated.add(str(prompt_id))
     missing_active = sorted(active - activated)
     if missing_active:
         raise ValueError(f"prompt slots not found in canonical manifest: {missing_active}")
@@ -178,8 +201,50 @@ def write_draft_manifest(
     Forcing DRAFT here keeps the rejection behavior under test
     deterministic regardless of the canonical manifest's current state.
     """
-    manifest = json.loads(canonical_prompt_manifest_path().read_text(encoding="utf-8"))
     requested = set(prompt_ids)
+    current_manifest_path = default_prompt_manifest_path()
+    current_manifest = json.loads(current_manifest_path.read_text(encoding="utf-8"))
+    current_slots = current_manifest.get("slots")
+    if not isinstance(current_slots, list):
+        raise ValueError("current prompt manifest must contain slots")
+    current_ids = {
+        str(slot["prompt_id"])
+        for slot in current_slots
+        if isinstance(slot, dict) and isinstance(slot.get("prompt_id"), str)
+    }
+    if requested <= current_ids:
+        manifest = json.loads(canonical_prompt_manifest_path().read_text(encoding="utf-8"))
+        slots = manifest.get("slots")
+        if not isinstance(slots, list):
+            raise ValueError("canonical prompt manifest must contain slots")
+        drafted_current: set[str] = set()
+        for slot in slots:
+            if isinstance(slot, dict):
+                slot_id = slot.get("slot_id") or slot.get("prompt_id")
+                is_draft = slot_id in requested
+                slot["activation_status"] = "DRAFT" if is_draft else "RUNTIME_ACTIVE"
+                if is_draft:
+                    drafted_current.add(str(slot_id))
+        for current_slot in current_slots:
+            if not isinstance(current_slot, dict):
+                continue
+            prompt_id = current_slot.get("prompt_id")
+            if prompt_id in requested - drafted_current:
+                slots.append(
+                    {
+                        **current_slot,
+                        "slot_id": prompt_id,
+                        "activation_status": "DRAFT",
+                    }
+                )
+        path = tmp_path / "prompt-manifest-draft.json"
+        path.write_text(
+            json.dumps(manifest, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return path
+
+    manifest = json.loads(canonical_prompt_manifest_path().read_text(encoding="utf-8"))
     drafted: set[str] = set()
     slots = manifest.get("slots")
     if not isinstance(slots, list):

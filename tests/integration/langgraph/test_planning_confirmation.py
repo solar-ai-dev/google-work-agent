@@ -46,7 +46,6 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _sufficiency_output,
     connect_sqlite,
-    pytest,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -54,10 +53,6 @@ from tests.support.canonical_workflow_runtime import (
 )
 
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
-)
 
 
 def _answer_output(
@@ -487,7 +482,7 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
 
     try:
         # --- Round 2: still ambiguous -- must pause again, still inside the
-        # same nested subgraph. This is round 8/8 of NORMAL_MAX_LLM_CALLS. ---
+        # same nested subgraph. ---
         _queue_more(
             llm_runtime, [_answer_output("NEEDS_CONFIRMATION", confirmation=_confirmation())]
         )
@@ -509,35 +504,34 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
 
         round2_task = _nested_planning_task(runtime)
         assert round2_task.state.next == ("finalize",)
-        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 8
+        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 9
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
         assert second.payload["user_interrupt"]["origin_target"] == "planning.answer_only"
         assert round2_interrupt_id != round1_interrupt_id
 
-        # --- Round 3: budget is already exhausted (round 2 was call 8/8) --
-        # its own resolving call is itself the 9th and is correctly denied.
-        # Everything provable before that point (same nested checkpoint,
-        # zero upstream re-execution across rounds 2-3) is asserted here.
+        # --- Round 3: the resolving call and Review complete within the
+        # Canonical NORMAL budget. ---
         calls_before_round3 = len(llm_runtime.calls)
         _queue_more(llm_runtime, [_answer_output("ANSWER_ONLY")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=runtime,
-                database_path=database_path,
-                command_id="command-3",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round2_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option": None,
-                    "free_text": "round-2 answer, resolves it.",
-                },
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-        assert llm_runtime.calls[calls_before_round3:] == []
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-3",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option": None,
+                "free_text": "round-2 answer, resolves it.",
+            },
+        )
+        assert application_result.applied is True
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.COMPLETED
+        assert len(llm_runtime.calls[calls_before_round3:]) == 1
         # No upstream re-execution at any point across rounds 2-3.
         assert _upstream_calls(llm_runtime) == upstream_before
-        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 2
+        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 3
     finally:
         runtime.close()
 

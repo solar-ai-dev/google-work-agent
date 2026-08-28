@@ -110,7 +110,8 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 _SYNTHESIZE_RETRIEVAL_QUERY_PLAN = object()
 _RUNTIME_ACTIVE_PROMPT_IDS = {
-    "request_understanding.classify",
+    "request_understanding.identify_goal",
+    "request_understanding.detect_ambiguity",
     "tool_route.determine_io_resources",
     "tool_route.determine_io_resources.revise",
     "tool_route.select_tool_if_needed",
@@ -236,6 +237,7 @@ class _QueuedLLMRuntime:
         self.calls: list[dict[str, object]] = []
         self._before_invoke = before_invoke
         self._pending_plan_actions_state = _PendingPlanActionsState()
+        self._pending_request_intent: Mapping[str, object] | None = None
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
@@ -252,6 +254,34 @@ class _QueuedLLMRuntime:
         account_provider_dispatch()
         self.calls.append(dict(kwargs))
         prompt_ref = kwargs.get("prompt_ref")
+        if getattr(prompt_ref, "prompt_id", None) == "request_understanding.identify_goal":
+            if not self._queued:
+                raise RuntimeError("no queued request-understanding intent")
+            payload = self._queued.popleft().structured_output
+            if not isinstance(payload, Mapping) or not isinstance(
+                payload.get("ambiguity"), Mapping
+            ):
+                raise RuntimeError("identify_goal requires a queued RequestIntentV2 fixture")
+            self._pending_request_intent = payload
+            return _llm_result(
+                {
+                    key: payload[key]
+                    for key in (
+                        "goal",
+                        "completion_conditions",
+                        "constraints",
+                        "requested_effect_hints",
+                        "requested_resource_hints",
+                        "analysis_requirement",
+                    )
+                }
+            )
+        if getattr(prompt_ref, "prompt_id", None) == "request_understanding.detect_ambiguity":
+            if self._pending_request_intent is None:
+                raise RuntimeError("detect_ambiguity requires the same-invocation goal fixture")
+            ambiguity = self._pending_request_intent["ambiguity"]
+            self._pending_request_intent = None
+            return _llm_result(ambiguity)
         if getattr(prompt_ref, "prompt_id", None) == "tool_route.determine_io_resources":
             # Tool Route's semantic LLM call has no fixture-authored payload
             # in these tests -- it is synthesized here from the same
@@ -452,12 +482,8 @@ def _llm_result(payload: object) -> StructuredLLMResult:
 
 
 def _clear_intent() -> RequestIntentV2:
-    # No "meta": these fixtures double as raw request_understanding.classify
-    # LLM candidates (fed through validate_request_intent_v2, whose input
-    # schema forbids "meta" -- Application attaches it afterward) as well as
-    # stand-ins for an already-materialized state["request_intent"]. cast
-    # mirrors validate_request_intent_v2's own two-phase-construction
-    # return statement in request_understanding.py.
+    # No "meta": the queued value is split into the exact identify-goal and
+    # detect-ambiguity outputs; Application finalization attaches lineage.
     return cast(
         RequestIntentV2,
         {
@@ -1197,10 +1223,8 @@ def _start_write_request() -> WorkflowStartRequest:
 
 
 _SIX_ROLE_BASELINE_PROMPT_IDS = {
-    # request_understanding.clarify is intentionally absent: it is
-    # compatibility-only, never wired into the active SIX_ROLE_BASELINE
-    # subgraph node, and correctly has no slot in the canonical manifest.
-    "request_understanding.classify",
+    "request_understanding.identify_goal",
+    "request_understanding.detect_ambiguity",
     "tool_route.determine_io_resources",
     "tool_route.determine_io_resources.revise",
     "tool_route.select_tool_if_needed",

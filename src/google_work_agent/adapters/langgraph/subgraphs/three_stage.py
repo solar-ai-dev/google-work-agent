@@ -57,6 +57,7 @@ from google_work_agent.application.orchestration.api_acquisition import (
     build_source_planning_clarification_question,
     validate_acquisition_result_v1,
 )
+from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseProjectionV1,
@@ -72,10 +73,6 @@ from google_work_agent.application.orchestration.profile_fused import (
     validate_profile_reason_plan_output_v1,
     validate_profile_request_source_output_v1,
 )
-from google_work_agent.application.orchestration.request_understanding import (
-    RequestUnderstandingAgent,
-    build_user_interrupt_v1,
-)
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
@@ -87,6 +84,9 @@ from google_work_agent.application.orchestration.supervisor import (
     route_supervisor,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 from google_work_agent.ports.llm import PromptReference
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
@@ -103,7 +103,7 @@ class ThreeStageOneSubgraph:
     def __init__(
         self,
         *,
-        request_understanding_agent: RequestUnderstandingAgent,
+        llm_runtime: StructuredLLMRuntime,
         acquisition_agent: ApiDiscoveryAcquisitionAgent,
         tool_route_coordinator: ToolRouteCoordinator,
         prompt_ref: PromptReference,
@@ -113,7 +113,7 @@ class ThreeStageOneSubgraph:
         merge_decision: MergeDecision,
         confirm_inline: RequestSourceConfirmInline,
     ) -> None:
-        self._request_understanding_agent = request_understanding_agent
+        self._llm_runtime = llm_runtime
         self._acquisition_agent = acquisition_agent
         self._tool_route_coordinator = tool_route_coordinator
         self._prompt_ref = prompt_ref
@@ -193,7 +193,7 @@ class ThreeStageOneSubgraph:
     ) -> ProfileRequestSourceLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        llm_result = self._request_understanding_agent._llm_runtime.invoke_structured(
+        llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=profile_request_source_prompt_input(request),
             output_schema=PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
@@ -442,7 +442,7 @@ class ThreeStageTwoSubgraph:
     def __init__(
         self,
         *,
-        request_understanding_agent: RequestUnderstandingAgent,
+        llm_runtime: StructuredLLMRuntime,
         planning_agent: SolutionPlanningAgent,
         evidence_store: RunScopedEvidenceStore,
         prompt_ref: PromptReference,
@@ -451,7 +451,7 @@ class ThreeStageTwoSubgraph:
         transition_run: TransitionRun,
         merge_decision: MergeDecision,
     ) -> None:
-        self._request_understanding_agent = request_understanding_agent
+        self._llm_runtime = llm_runtime
         self._planning_agent = planning_agent
         self._evidence_store = evidence_store
         self._prompt_ref = prompt_ref
@@ -507,7 +507,7 @@ class ThreeStageTwoSubgraph:
     def _reason_plan_node(self, state: ProfileReasonPlanLocalState) -> ProfileReasonPlanLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[PROFILE_AGENT_LOCAL_KEY])
-        llm_result = self._request_understanding_agent._llm_runtime.invoke_structured(
+        llm_result = self._llm_runtime.invoke_structured(
             prompt_ref=self._prompt_ref,
             prompt_input=profile_post_read_prompt_input(state),
             output_schema=PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,

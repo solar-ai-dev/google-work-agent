@@ -51,7 +51,6 @@ from tests.integration.langgraph.test_runtime import (
     _selection_output,
     _start_request,
     connect_sqlite,
-    pytest,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -59,10 +58,6 @@ from tests.support.canonical_workflow_runtime import (
 )
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
-)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
@@ -552,28 +547,28 @@ def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_ne
         assert second.payload["user_interrupt"]["origin_target"] == "analysis.analyze"
         assert round2_interrupt_id != round1_interrupt_id
 
-        # --- Round 3: resolved -- Work Analysis completes, run proceeds
-        # downstream. 7 real calls already spent (classify + tool_route +
-        # plan_query + select_evidence + assess_sufficiency + round1
-        # analyze + round2 analyze) + round3 analyze = 8 =
-        # NORMAL_MAX_LLM_CALLS, so "answer_only" (the 9th) is correctly
-        # denied. ---
+        # --- Round 3: resolved -- Work Analysis and the downstream ANSWER
+        # path complete within the Canonical NORMAL budget. ---
         calls_before_round3 = len(llm_runtime.calls)
-        _queue_more(llm_runtime, [_analysis_output("COMPLETE")])
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=runtime,
-                database_path=database_path,
-                command_id="command-3",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round2_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option": None,
-                    "free_text": "round-2 answer, resolves it.",
-                },
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        _queue_more(
+            llm_runtime,
+            [_analysis_output("COMPLETE"), _answer_output(), _review_output("PASS")],
+        )
+        application_result, result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            command_id="command-3",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option": None,
+                "free_text": "round-2 answer, resolves it.",
+            },
+        )
+        assert application_result.applied is True
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.COMPLETED
         calls_during_round3 = llm_runtime.calls[calls_before_round3:]
         assert (
             len(

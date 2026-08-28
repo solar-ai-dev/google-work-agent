@@ -304,7 +304,7 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
     )
     assert {"OPTION", "FREE_TEXT", "DECLINE"} == CONFIRMATION_RESPONSE_ALLOWED_KINDS
     assert {
-        "request_understanding.classify",
+        "request.detect_ambiguity",
         "tool_route.finalize",
         "acquisition.plan_sources",
         "context.assess_sufficiency",

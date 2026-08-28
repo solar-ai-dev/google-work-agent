@@ -122,12 +122,12 @@ def test_budget_state_is_carried_entirely_by_the_caller_not_by_any_runtime_insta
     (a brand new Python object, no shared reference to the original state)
     reproduces the exact same decision -- there is no hidden counter
     anywhere else that could reset on process/runtime recreation."""
-    state = _state(llm_calls_used=7)
+    state = _state(llm_calls_used=13)
 
     ensure_llm_call_budget(state)
     account_provider_dispatch()
     consumed = consume_llm_call_budget(state, provider_calls_consumed=1)
-    assert consumed["llm_calls_used"] == 8
+    assert consumed["llm_calls_used"] == 14
 
     # Simulate "checkpoint restore into a freshly constructed runtime":
     # a wholly new dict built only from the plain (JSON-serializable) value.

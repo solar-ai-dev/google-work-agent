@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.orchestration.confirmation import (
+    build_clarification_question_v1,
+)
 from google_work_agent.application.orchestration.context_segmentation import (
     DEFAULT_CONTEXT_BUDGET,
     _SourceSegment,
@@ -55,9 +58,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceSelectionResultV2,
     RequestIntentV2,
     SufficiencyResultV2,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_clarification_question_v1,
 )
 from google_work_agent.application.orchestration.retrieval_ranking import (
     RagCandidateV1 as RagCandidateV1,

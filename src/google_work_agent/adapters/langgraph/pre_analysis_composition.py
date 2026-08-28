@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -26,9 +27,6 @@ from google_work_agent.application.orchestration.context_retrieval import (
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.application.orchestration.request_understanding import (
-    RequestUnderstandingAgent,
-)
 from google_work_agent.application.orchestration.retrieval_data_boundary import (
     CheckpointSafeAcquisitionFacade,
 )
@@ -49,6 +47,9 @@ from google_work_agent.application.orchestration.source_fetch_plan_builder impor
 )
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +65,8 @@ class PreAnalysisSubgraphs:
 
 def build_pre_analysis_subgraphs(
     *,
-    request_agent: RequestUnderstandingAgent,
+    llm_runtime: StructuredLLMRuntime,
+    prompt_manifest_path: Path | None,
     tool_route_agent: ToolRouteAgent,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
     retrieval_query_planner: RetrievalQueryPlannerAgent,
@@ -96,7 +98,8 @@ def build_pre_analysis_subgraphs(
     )
     return PreAnalysisSubgraphs(
         request_understanding=RequestUnderstandingSubgraph(
-            agent=request_agent,
+            llm_runtime=llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             graph_profile=graph_profile,
             transition_run=transition_run,

@@ -31,14 +31,17 @@ class AmbiguityV1(TypedDict):
     missing_fields: list[str]
 
 
-class RequestIntentCandidateV1(TypedDict):
-    schema_version: Required[Literal[2]]
+class RequestGoalCandidateV1(TypedDict):
     goal: str
     completion_conditions: list[str]
     constraints: list[ConstraintV1]
     requested_effect_hints: list[ActionEffectValue]
     requested_resource_hints: list[str]
     analysis_requirement: Literal["NONE", "REQUIRED"]
+
+
+class RequestIntentCandidateV1(RequestGoalCandidateV1):
+    schema_version: Required[Literal[2]]
     ambiguity: AmbiguityV1
 
 

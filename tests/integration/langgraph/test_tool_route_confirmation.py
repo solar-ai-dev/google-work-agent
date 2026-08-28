@@ -54,7 +54,6 @@ from tests.integration.langgraph.test_runtime import (
     _synthesize_retrieval_query_plan,
     _write_plan_output,
     connect_sqlite,
-    pytest,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -63,10 +62,6 @@ from tests.support.canonical_workflow_runtime import (
 
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
-)
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
@@ -104,14 +99,25 @@ class _ToolRouteQueuedLLMRuntime:
         account_provider_dispatch()
         self.calls.append(dict(kwargs))
         prompt_ref = kwargs.get("prompt_ref")
-        if getattr(prompt_ref, "prompt_id", None) == "request_understanding.classify":
+        prompt_id = getattr(prompt_ref, "prompt_id", None)
+        if prompt_id == "request_understanding.identify_goal":
             # Request Understanding must always classify cleanly in these
             # tests -- Tool Route, not Request Understanding, is what these
             # tests need to pause. Fixed (defaulting to _clear_intent()), not
             # drawn from the queue reserved for tool_route.determine_io_resources
             # + downstream steps. C2-B tests override it via classify_intent to
             # carry a SCOPE constraint.
-            return _llm_result(self._classify_intent or _clear_intent())
+            intent = self._classify_intent or _clear_intent()
+            return _llm_result(
+                {
+                    key: value
+                    for key, value in intent.items()
+                    if key not in {"schema_version", "ambiguity", "meta"}
+                }
+            )
+        if prompt_id == "request_understanding.detect_ambiguity":
+            intent = self._classify_intent or _clear_intent()
+            return _llm_result(intent["ambiguity"])
         if getattr(prompt_ref, "prompt_id", None) == "retrieval.plan_query":
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_schema = kwargs.get("output_schema")
@@ -453,8 +459,8 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
     assert round2_interrupt_id != round1_interrupt_id
     round2_runtime.close()
 
-    # --- Round 3: Tool Route resolves and downstream execution reaches the
-    # deterministic per-run LLM budget boundary. ---
+    # --- Round 3: Tool Route resolves and downstream execution completes
+    # within the Canonical NORMAL budget. ---
     round3_llm_runtime = _ToolRouteQueuedLLMRuntime(
         [
             _semantic_candidate("ROUTE_READY", input_resource_types=["TASK"]),
@@ -474,20 +480,21 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         manifest_path=manifest_path,
         id_prefix="round3",
     )
-    with pytest.raises(LLMInvocationError) as excinfo:
-        _resume_confirmation(
-            runtime=round3_runtime,
-            database_path=database_path,
-            command_id="command-3",
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round2_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option": None,
-                "free_text": "round-2 answer, resolves it.",
-            },
-        )
-    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+    application_result, result = _resume_confirmation(
+        runtime=round3_runtime,
+        database_path=database_path,
+        command_id="command-3",
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round2_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option": None,
+            "free_text": "round-2 answer, resolves it.",
+        },
+    )
+    assert application_result.applied is True
+    assert result is not None
+    assert result.outcome is WorkflowOutcome.COMPLETED
     round2_reclassify_calls = [
         call
         for call in round3_llm_runtime.calls
@@ -500,7 +507,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert run_row[0] == "PLANNING"
+        assert run_row[0] == "COMPLETED"
         assert run_row[1] == "thread-1"
     finally:
         connection.close()
@@ -792,8 +799,7 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
     runtime.close()
 
     # The approved scope-expansion continuation preserves the existing route
-    # candidate. Downstream execution then stops at the deterministic budget
-    # boundary before Review.
+    # candidate and completes within the Canonical NORMAL budget.
     resumed_llm_runtime = _ToolRouteQueuedLLMRuntime(
         [
             _out_of_scope_task_create_candidate(),
@@ -815,20 +821,22 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
         id_prefix="round2",
     )
     try:
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=resumed_runtime,
-                database_path=database_path,
-                command_id="command-2",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION",
-                    "selected_option": "APPROVED",
-                    "free_text": None,
-                },
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        application_result, result = _resume_confirmation(
+            runtime=resumed_runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION",
+                "selected_option": "APPROVED",
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is True
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.ACCEPTED
+        assert result.payload["run_status"] == "WAITING_APPROVAL"
 
         semantic_calls = [
             call
@@ -1040,6 +1048,7 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _write_plan_output(),
+            _review_output("PASS"),
         ],
         classify_intent=scoped_intent,
     )
@@ -1053,20 +1062,22 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
         id_prefix="round2",
     )
     try:
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=resumed_runtime,
-                database_path=database_path,
-                command_id="command-2",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "response_kind": "OPTION",
-                    "selected_option": "APPROVED",
-                    "free_text": None,
-                },
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        application_result, result = _resume_confirmation(
+            runtime=resumed_runtime,
+            database_path=database_path,
+            command_id="command-2",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": interrupt_id,
+                "response_kind": "OPTION",
+                "selected_option": "APPROVED",
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is True
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.ACCEPTED
+        assert result.payload["run_status"] == "WAITING_APPROVAL"
 
         state = resumed_runtime._graph.get_state(  # noqa: SLF001
             resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
@@ -1159,13 +1170,8 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
     assert round2_interrupt_id != round1_interrupt_id
     round2_runtime.close()
 
-    # --- Round 3: APPROVED -- resolves, same nested checkpoint throughout.
-    # 3 real calls already spent (classify + round1 + round2) + round3 +
-    # retrieval.plan_query + selection + sufficiency + analysis = 8 =
-    # NORMAL_MAX_LLM_CALLS, so write_plan (the 9th) is correctly denied --
-    # not queuing it and asserting budget-exhausted here (rather than
-    # COMPLETED) is the same established arithmetic as the APPROVED test
-    # above, just with one extra round of pre-pause cost. ---
+    # --- Round 3: APPROVED -- resolves and completes on the same nested
+    # checkpoint within the Canonical NORMAL budget. ---
     round3_llm_runtime = _ToolRouteQueuedLLMRuntime(
         [
             _out_of_scope_task_create_candidate(),
@@ -1173,6 +1179,7 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
             _write_plan_output(),
+            _review_output("PASS"),
         ],
         classify_intent=scoped_intent,
     )
@@ -1185,20 +1192,22 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
         id_prefix="round3",
     )
     try:
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=round3_runtime,
-                database_path=database_path,
-                command_id="command-3",
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round2_interrupt_id,
-                    "response_kind": "OPTION",
-                    "selected_option": "APPROVED",
-                    "free_text": None,
-                },
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        application_result, result = _resume_confirmation(
+            runtime=round3_runtime,
+            database_path=database_path,
+            command_id="command-3",
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "OPTION",
+                "selected_option": "APPROVED",
+                "free_text": None,
+            },
+        )
+        assert application_result.applied is True
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.ACCEPTED
+        assert result.payload["run_status"] == "WAITING_APPROVAL"
         state = round3_runtime._graph.get_state(  # noqa: SLF001
             round3_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values

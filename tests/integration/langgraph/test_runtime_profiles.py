@@ -198,13 +198,12 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
         assert result["__target__"] == "tool_route"
         trace_context = result["trace_context"]
         assert trace_context["agent_invocation_count"] == 1
-        assert trace_context["llm_call_count"] == 1
+        assert trace_context["llm_call_count"] == 2
         assert [item["node_name"] for item in trace_context["agent_node_log"]] == [
             "init",
             "identify_goal",
             "detect_ambiguity",
             "finalize_intent",
-            "validate_intent",
         ]
     finally:
         runtime.close()
@@ -335,7 +334,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
         assert result.outcome is WorkflowOutcome.ACCEPTED
         trace_context = values["trace_context"]
         assert trace_context["agent_invocation_count"] == 6
-        assert trace_context["llm_call_count"] == 7
+        assert trace_context["llm_call_count"] == 8
         init_log = [
             item["agent_subgraph_id"]
             for item in trace_context["agent_node_log"]

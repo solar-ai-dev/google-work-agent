@@ -29,6 +29,9 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     PlanningInputState,
     PlanningLocalState,
 )
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseProjectionV1,
@@ -39,9 +42,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     RequestIntentV2,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 from google_work_agent.ports.llm import StructuredLLMResult
 

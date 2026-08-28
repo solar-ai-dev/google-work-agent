@@ -48,6 +48,9 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
 )
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseProjectionV1,
@@ -58,9 +61,6 @@ from google_work_agent.application.orchestration.contracts import (
 from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,

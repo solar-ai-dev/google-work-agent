@@ -10,6 +10,10 @@ from typing import TypedDict, cast
 from google_work_agent.application.orchestration.api_acquisition import (
     build_source_planning_clarification_question,
 )
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+    validate_clarification_question_v1,
+)
 from google_work_agent.application.orchestration.context_retrieval import (
     build_context_clarification_question,
 )
@@ -58,10 +62,6 @@ from google_work_agent.application.orchestration.insufficient_data import (
 from google_work_agent.application.orchestration.plan_review import (
     build_plan_review_clarification_question,
     resolve_review_target,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
-    validate_clarification_question_v1,
 )
 from google_work_agent.application.orchestration.solution_planning import (
     build_solution_planning_clarification_question,

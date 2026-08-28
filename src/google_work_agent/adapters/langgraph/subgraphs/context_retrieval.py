@@ -38,6 +38,9 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
 from google_work_agent.application.orchestration.api_acquisition import retrieval_query_hash
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.application.orchestration.context_retrieval import (
     ContextRetrievalAgent,
     build_context_clarification_question,
@@ -57,9 +60,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalNeedV1,
     RetrievalRequiredV1,
     SufficiencyResultV2,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.retrieval_attempts import (
     QueryAttempt,

@@ -31,25 +31,16 @@ class FakeLLMRuntime:
         trace_context: ObservabilityContext,
         semantic_validate=None,
     ) -> StructuredLLMResult:
-        self.calls.append(
-            {
-                "prompt_ref": prompt_ref,
-                "prompt_input": dict(prompt_input),
-                "semantic_validate": semantic_validate,
-            }
-        )
-        payload = {
-            "schema_version": 2,
-            "goal": "goal",
-            "completion_conditions": ["done"],
-            "constraints": [],
-            "requested_effect_hints": ["READ"],
-            "requested_resource_hints": ["GMAIL_THREAD"],
-            "analysis_requirement": "REQUIRED",
-            "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []},
-        }
+        self.calls.append({"prompt_ref": prompt_ref, "prompt_input": dict(prompt_input)})
         return StructuredLLMResult(
-            structured_output=payload,
+            structured_output={
+                "goal": "업무 메일 찾기",
+                "completion_conditions": ["관련 메일을 찾는다"],
+                "constraints": [],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["GMAIL_THREAD"],
+                "analysis_requirement": "REQUIRED",
+            },
             provider="fake",
             model="fake",
             requested_mode=RequestedRuntimeMode.AUTO,
@@ -66,39 +57,48 @@ class FakeLLMRuntime:
         )
 
 
-def test_identify_goal__canonical_call__preserves_classify_prompt_contract() -> None:
+def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> None:
     runtime = FakeLLMRuntime()
-    request = WorkflowStartRequest(
+    request = _request("관련 메일을 찾아줘")
+    prompt_ref = _prompt_ref("request_understanding.identify_goal", "identify_goal")
+
+    candidate = identify_goal(llm_runtime=runtime, request=request, prompt_ref=prompt_ref)
+
+    assert candidate["goal"] == "업무 메일 찾기"
+    assert "ambiguity" not in candidate
+    assert runtime.calls[0]["prompt_input"] == {
+        "user_request": "관련 메일을 찾아줘",
+        "selected_resource_refs": [],
+    }
+    assert runtime.calls[0]["prompt_ref"].prompt_id == "request_understanding.identify_goal"
+
+
+def _request(text: str) -> WorkflowStartRequest:
+    return WorkflowStartRequest(
         run_id="run-1",
         conversation_id="conversation-1",
         workflow_key="thread-1",
         entry_mode="AGENT_SEARCH",
         requested_mode="AUTO",
-        request_text="메일 찾아줘",
+        request_text=text,
         selected_resource_ids=(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),
     )
-    prompt_ref = PromptReference(
+
+
+def _prompt_ref(prompt_id: str, node_name: str) -> PromptReference:
+    return PromptReference(
         prompt_bundle_version="test",
-        prompt_id="request_understanding.classify",
+        prompt_id=prompt_id,
         prompt_version="1",
         content_hash="hash",
         agent_role="request_understanding",
         subgraph_name="request_understanding",
-        node_name="classify",
+        node_name=node_name,
         node_state="INITIAL",
-        purpose="classify",
+        purpose=node_name,
         input_schema_version="v1",
-        output_schema_version="v2",
+        output_schema_version="v1",
     )
-    candidate = identify_goal(llm_runtime=runtime, request=request, prompt_ref=prompt_ref)
-    assert candidate["goal"] == "goal"
-    assert runtime.calls[0]["prompt_input"] == {
-        "user_request": "메일 찾아줘",
-        "entry_mode": "AGENT_SEARCH",
-        "language": None,
-        "selected_resources": [],
-    }
-    assert runtime.calls[0]["prompt_ref"].prompt_id == "request_understanding.classify"

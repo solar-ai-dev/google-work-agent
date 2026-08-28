@@ -38,7 +38,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 
 PROMPT_REF = PromptReference(
     prompt_bundle_version="test",
-    prompt_id="request_understanding.classify",
+    prompt_id="request_understanding.identify_goal",
     prompt_version="v1",
     content_hash="hash",
     agent_role="request_understanding",
@@ -54,13 +54,8 @@ PROMPT_REF = PromptReference(
 class _NeverCalledAgent:
     """Fails the test if the Provider boundary is ever reached."""
 
-    prompt_ref = PROMPT_REF
-    _llm_runtime = None
-
-    def invoke_classify_llm(self, *args: object, **kwargs: object) -> Any:
-        raise AssertionError(
-            "invoke_classify_llm must not be called once the Run LLM budget is exhausted"
-        )
+    def invoke_structured(self, *args: object, **kwargs: object) -> Any:
+        raise AssertionError("LLM runtime must not be called once the Run budget is exhausted")
 
 
 class _FakeLlmResult:
@@ -74,8 +69,6 @@ class _RepairingAgent:
     LLMRuntimeService already folds that into structured_output_attempts=2
     (see application/llm.py's provider_calls_consumed fix)."""
 
-    prompt_ref = PROMPT_REF
-
     def __init__(self, *, structured_output_attempts: int) -> None:
         self._structured_output_attempts = structured_output_attempts
         self._llm_runtime = self
@@ -87,18 +80,12 @@ class _RepairingAgent:
             account_provider_dispatch()
         result = _FakeLlmResult(structured_output_attempts=self._structured_output_attempts)
         result.structured_output = {
-            "schema_version": 2,
             "goal": "test goal",
             "completion_conditions": ["done"],
             "constraints": [],
             "requested_effect_hints": ["READ"],
             "requested_resource_hints": ["TASK"],
             "analysis_requirement": "REQUIRED",
-            "ambiguity": {
-                "requires_confirmation": False,
-                "reason_codes": [],
-                "missing_fields": [],
-            },
         }
         return result
 
@@ -111,7 +98,10 @@ def _isolate_provider_dispatch_budget() -> Iterator[None]:
 
 def _subgraph(agent: Any = None) -> RequestUnderstandingSubgraph:
     subgraph = object.__new__(RequestUnderstandingSubgraph)
-    subgraph._agent = agent if agent is not None else cast(Any, _NeverCalledAgent())  # noqa: SLF001
+    subgraph._llm_runtime = (  # noqa: SLF001
+        agent if agent is not None else cast(Any, _NeverCalledAgent())
+    )
+    subgraph._identify_goal_prompt_ref = PROMPT_REF  # noqa: SLF001
     subgraph._graph_profile = GraphProfile.SIX_ROLE_BASELINE  # noqa: SLF001
     return subgraph
 

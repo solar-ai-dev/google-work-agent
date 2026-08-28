@@ -106,9 +106,6 @@ from google_work_agent.application.orchestration.profile_fused import (
     load_profile_three_stage1_prompt_reference,
     load_profile_three_stage2_prompt_reference,
 )
-from google_work_agent.application.orchestration.request_understanding import (
-    RequestUnderstandingAgent,
-)
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
@@ -406,10 +403,6 @@ class WorkflowRuntimeCore:
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
         )
-        self._request_understanding = RequestUnderstandingAgent(
-            llm_runtime=llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
         self._tool_route_agent = ToolRouteAgent(
             llm_runtime=llm_runtime,
             tool_catalog=tool_catalog,
@@ -705,7 +698,8 @@ class WorkflowRuntimeCore:
             latest_attempt_id=self._latest_attempt_id,
         )
         entry_subgraphs = build_pre_analysis_subgraphs(
-            request_agent=self._request_understanding,
+            llm_runtime=self._llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             tool_route_agent=self._tool_route_agent,
             acquisition_agent=self._acquisition,
             retrieval_query_planner=self._retrieval_query_planner,
@@ -760,7 +754,7 @@ class WorkflowRuntimeCore:
             assert self._three_stage1_prompt_ref is not None
             assert self._three_stage2_prompt_ref is not None
             self._three_stage_one_subgraph = ThreeStageOneSubgraph(
-                request_understanding_agent=self._request_understanding,
+                llm_runtime=self._llm_runtime,
                 acquisition_agent=self._acquisition,
                 tool_route_coordinator=ToolRouteCoordinator(
                     tool_catalog=tool_catalog,
@@ -774,7 +768,7 @@ class WorkflowRuntimeCore:
                 confirm_inline=self._confirm_context_retrieval_inline,
             ).build()
             self._three_stage_two_subgraph = ThreeStageTwoSubgraph(
-                request_understanding_agent=self._request_understanding,
+                llm_runtime=self._llm_runtime,
                 planning_agent=self._planning,
                 evidence_store=self._evidence_store,
                 prompt_ref=self._three_stage2_prompt_ref,
@@ -795,7 +789,7 @@ class WorkflowRuntimeCore:
             assert self._single_reason_plan_prompt_ref is not None
             assert self._single_review is not None
             self._single_workflow_subgraph = SingleWorkflowSubgraph(
-                request_understanding_agent=self._request_understanding,
+                llm_runtime=self._llm_runtime,
                 acquisition_agent=self._acquisition,
                 planning_agent=self._planning,
                 review_agent=self._single_review,

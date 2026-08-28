@@ -39,18 +39,12 @@ from tests.integration.langgraph.test_runtime import (
     _selection_output,
     _start_request,
     connect_sqlite,
-    pytest,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
     start_with_admission,
 )
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
-
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
-)
 
 
 def _build_runtime(
@@ -480,36 +474,32 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
     assert second.payload["user_interrupt"]["origin_target"] == "context.assess_sufficiency"
     assert round2_interrupt_id != round1_interrupt_id
 
-    # --- Round 3: resolved -- Retrieval completes, run proceeds downstream.
-    # 6 real calls already spent (classify + tool_route + plan_query +
-    # select_evidence + round1 assess_sufficiency + round2 assess_sufficiency)
-    # + round3 assess_sufficiency + analysis = 8 = NORMAL_MAX_LLM_CALLS, so
-    # "answer_only" (the 9th) is correctly denied -- not queuing it and
-    # asserting budget-exhausted here (rather than COMPLETED) is the same
-    # established arithmetic as the earlier tests, just with one extra round
-    # of pre-pause cost. ---
+    # --- Round 3: resolved -- Retrieval and the downstream ANSWER path
+    # complete within the Canonical NORMAL budget. ---
     llm_runtime._queued.extend(  # noqa: SLF001
         _llm_result(payload)
         for payload in [
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),
+            _answer_output(),
+            _review_output("PASS"),
         ]
     )
     try:
-        with pytest.raises(LLMInvocationError) as excinfo:
-            _resume_confirmation(
-                runtime=runtime,
-                database_path=database_path,
-                resume_payload={
-                    "schema_version": 1,
-                    "interrupt_id": round2_interrupt_id,
-                    "response_kind": "FREE_TEXT",
-                    "selected_option": None,
-                    "free_text": "round-2 answer, resolves it.",
-                },
-                command_id="command-3",
-            )
-        assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
+        result = _resume_confirmation(
+            runtime=runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option": None,
+                "free_text": "round-2 answer, resolves it.",
+            },
+            command_id="command-3",
+        )
+        assert result is not None
+        assert result.outcome is WorkflowOutcome.COMPLETED
         assert len(_assess_sufficiency_calls(llm_runtime)) == 3
         # No provider read and no query planning at any point in rounds 2-3.
         assert len(_plan_query_calls(llm_runtime)) == 1

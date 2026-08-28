@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Final, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.orchestration.confirmation import (
+    build_clarification_question_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
@@ -26,9 +29,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     PlanDraftStatusValue,
     RequestIntentV2,
     WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_clarification_question_v1,
 )
 from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,

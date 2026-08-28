@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final, Literal, Required, TypedDict, cast
 
+from google_work_agent.application.agents.request_understanding.validate_intent import (
+    validate_intent,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     validate_source_fetch_plans_v1,
 )
@@ -22,9 +25,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.plan_review import (
     load_plan_review_inspect_prompt_reference,
     validate_plan_review_result_v1,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    validate_request_intent_v2,
 )
 from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
@@ -208,7 +208,7 @@ def validate_profile_request_source_output_v1(value: object) -> ProfileRequestSo
     root = _require_mapping(value, "$")
     _require_exact_keys(root, "$", {"schema_version", "request_intent", "source_plan"})
     _require_schema_version(root, "$", PROFILE_REQUEST_SOURCE_SCHEMA_VERSION)
-    request_intent = validate_request_intent_v2(root["request_intent"])
+    request_intent = validate_intent(root["request_intent"])
     source_plan = _validate_source_planning_output_v1(root["source_plan"])
     return {
         "schema_version": PROFILE_REQUEST_SOURCE_SCHEMA_VERSION,

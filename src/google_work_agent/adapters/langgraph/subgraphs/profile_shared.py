@@ -10,12 +10,17 @@ LangGraph module cleanup) with no behavior change.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
 
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _require_state_value,
     request_from_state,
+)
+from google_work_agent.application.agents.request_understanding.finalize_intent import (
+    finalize_intent,
+)
+from google_work_agent.application.agents.request_understanding.validate_intent import (
+    validate_intent,
 )
 from google_work_agent.application.orchestration.contracts import GraphStateUpdateV1
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -31,9 +36,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.profile_fused import (
     ProfilePlanningProjectionV1,
     ProfileReasonPlanOutputV1,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    materialize_request_intent_artifact,
 )
 from google_work_agent.application.orchestration.retrieval_finalize import (
     finalize_retrieval_result,
@@ -65,8 +67,18 @@ def build_profile_tool_route_plan(
 
     if not isinstance(request_intent, dict):
         raise ProfileToolRouteError("profile request intent must be an object")
-    materialized = materialize_request_intent_artifact(
-        cast(RequestIntentV2, request_intent),
+    candidate = validate_intent(request_intent)
+    goal_candidate = {
+        "goal": candidate["goal"],
+        "completion_conditions": candidate["completion_conditions"],
+        "constraints": candidate["constraints"],
+        "requested_effect_hints": candidate["requested_effect_hints"],
+        "requested_resource_hints": candidate["requested_resource_hints"],
+        "analysis_requirement": candidate["analysis_requirement"],
+    }
+    materialized = finalize_intent(
+        goal_candidate,
+        candidate["ambiguity"],
         artifact_id=id_factory(),
     )
     result = coordinator.route(request_intent=materialized)

@@ -26,6 +26,9 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     ReviewInputState,
     ReviewLocalState,
 )
+from google_work_agent.application.orchestration.confirmation import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseProjectionV1,
@@ -41,9 +44,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.plan_review import (
     PlanReviewAgent,
     build_plan_review_clarification_question,
-)
-from google_work_agent.application.orchestration.request_understanding import (
-    build_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,

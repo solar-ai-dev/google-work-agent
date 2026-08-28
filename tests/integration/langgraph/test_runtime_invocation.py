@@ -74,10 +74,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
-)
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -181,7 +177,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     # (the nested subgraph never returned to the parent before pausing).
     assert first.payload["user_interrupt"] is not None
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
-    assert first.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+    assert first.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
 
     runtime.close()
     # Reconnect with a fresh runtime instance sharing the same checkpoint DB
@@ -240,34 +236,35 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     assert resumed is not None
     result = cast(Any, resumed)
     assert result.outcome is WorkflowOutcome.COMPLETED
-    assert len(resumed_llm_runtime.calls) == 7
+    assert len(resumed_llm_runtime.calls) == 8
 
-    # Exactly one more real Provider call resolves the ambiguity -- not a
-    # second traversal of the "classify" *node* the way the pre-I1
-    # architecture's full-subgraph-restart resume required.
-    classify_calls = [
+    # The same-owner checkpoint reruns exactly the two independent Request
+    # Understanding responsibilities before continuing downstream.
+    request_calls = [
         call
         for call in resumed_llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "request_understanding.classify"
+        if getattr(call["prompt_ref"], "prompt_id", None)
+        in {
+            "request_understanding.identify_goal",
+            "request_understanding.detect_ambiguity",
+        }
     ]
-    assert len(classify_calls) == 1
-    classify_prompt_input = cast(dict[str, object], classify_calls[0]["prompt_input"])
+    assert len(request_calls) == 2
 
     # Prompt resume boundary (15 SS10-11): only the bounded
     # ConfirmationResponseV1 crosses into the Product Prompt input -- no raw
     # resume payload, interrupt_id, checkpoint metadata, or
-    # AgentNodeResumeTargetV2. classify's own input shape is exactly
-    # {user_request, entry_mode, language, selected_resources,
-    # confirmation_response} (_prompt_input_from_request) -- assert both the
-    # bounded value is present and every disallowed field is absent.
-    assert classify_prompt_input["confirmation_response"] == {
-        "schema_version": 1,
-        "response_kind": "FREE_TEXT",
-        "selected_option": None,
-        "free_text": "I mean Kim from project alpha.",
-    }
-    for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
-        assert forbidden_key not in classify_prompt_input
+    # AgentNodeResumeTargetV2.
+    for call in request_calls:
+        prompt_input = cast(dict[str, object], call["prompt_input"])
+        assert prompt_input["confirmation_response"] == {
+            "schema_version": 1,
+            "response_kind": "FREE_TEXT",
+            "selected_option": None,
+            "free_text": "I mean Kim from project alpha.",
+        }
+        for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
+            assert forbidden_key not in prompt_input
 
     connection = connect_sqlite(database_path)
     try:
@@ -444,7 +441,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     assert round1_task.state.next == ("confirm",)
     assert round1_task.state.values["ru_candidate"]["goal"]
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
-    assert first.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+    assert first.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
     runtime.close()
 
     # --- Round 2: resume round 1's answer, but the reclassify is ITSELF
@@ -481,7 +478,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     assert second.outcome is WorkflowOutcome.ACCEPTED
     # Exactly the one round-1 reclassify call happened in this instance --
     # no re-entry of "classify" as a node, no restart of tool_route etc.
-    assert len(round2_llm_runtime.calls) == 1
+    assert len(round2_llm_runtime.calls) == 2
     round1_reclassify_input = cast(dict[str, object], round2_llm_runtime.calls[0]["prompt_input"])
     round1_reclassify_response = cast(
         dict[str, object], round1_reclassify_input["confirmation_response"]
@@ -496,7 +493,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     assert round2_task.state.next == ("confirm",)
     assert round2_task.state.values["ru_candidate"]["goal"]
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
-    assert second.payload["user_interrupt"]["origin_target"] == "request_understanding.classify"
+    assert second.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
     # A genuinely new interrupt instance for round 2, not a stale replay of
     # round 1's.
     assert round2_interrupt_id != round1_interrupt_id
@@ -526,29 +523,24 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         default_tasklist_id="task-list-default",
         id_prefix="round3",
     )
-    # G3 budget accounting is cumulative across all 3 resumes on this one
-    # Run (RunBudgetV1 is Domain-persisted, not per-invocation): classify +
-    # round-1 reclassify + round-2 reclassify + tool_route + plan_query +
-    # select_evidence + assess_sufficiency + analyze = 8, exactly
-    # NORMAL_MAX_LLM_CALLS, so answer_only (the 9th) is correctly denied --
-    # two confirmation rounds cost real budget like any other real call,
-    # with no special exemption.
-    with pytest.raises(LLMInvocationError) as excinfo:
-        _resume_through_application(
-            runtime=round3_runtime,
-            database_path=database_path,
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round2_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option": None,
-                "free_text": "round-2 answer, resolves it.",
-            },
-            resume_kind="CONFIRMATION",
-            command_id="command-3",
-        )
-    assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
-    assert len(round3_llm_runtime.calls) == 6
+    # Canonical NORMAL=14 accounts for both independent responsibilities in
+    # every round without forcing them back into one broad prompt.
+    _, completed = _resume_through_application(
+        runtime=round3_runtime,
+        database_path=database_path,
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round2_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option": None,
+            "free_text": "round-2 answer, resolves it.",
+        },
+        resume_kind="CONFIRMATION",
+        command_id="command-3",
+    )
+    assert completed is not None
+    assert completed.outcome is WorkflowOutcome.COMPLETED
+    assert len(round3_llm_runtime.calls) == 8
 
     round2_reclassify_input = cast(dict[str, object], round3_llm_runtime.calls[0]["prompt_input"])
     round2_reclassify_response = cast(
@@ -561,9 +553,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        # Forward progress happened (past WAITING_CONFIRMATION) but the run
-        # never reached COMPLETED -- same run_id + same thread_id throughout.
-        assert run_row[0] not in {"COMPLETED", "WAITING_CONFIRMATION"}
+        assert run_row[0] == "COMPLETED"
         assert run_row[1] == "thread-1"
     finally:
         connection.close()
@@ -817,7 +807,6 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
-    checkpoint_path = tmp_path / "checkpoints-verify-reauth.db"
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     runtime = _make_runtime(
@@ -936,7 +925,6 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
-    checkpoint_path = tmp_path / "checkpoints-recovery-reauth.db"
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
     runtime = _make_runtime(

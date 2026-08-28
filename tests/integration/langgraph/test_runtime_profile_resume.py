@@ -495,10 +495,10 @@ def test_default_product_runtime_rejects_draft_prompt_bundle(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     manifest_path = write_draft_manifest(
         tmp_path,
-        prompt_ids={"request_understanding.classify"},
+        prompt_ids={"request_understanding.identify_goal"},
     )
 
-    with pytest.raises(InactivePromptArtifactError, match="request_understanding.classify"):
+    with pytest.raises(InactivePromptArtifactError, match="request_understanding.identify_goal"):
         _make_runtime(
             database_path=database_path,
             llm_payloads=[],
