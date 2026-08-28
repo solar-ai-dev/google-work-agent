@@ -101,7 +101,7 @@ class _Uow:
                 id="plan-1",
                 run_id="run-1",
                 revision_no=1,
-                status=PlanStatusV1.ACTIVE,
+                status=PlanStatusV1.WAITING_APPROVAL,
                 summary_text="write",
                 created_at_ms=1,
             )
@@ -154,6 +154,7 @@ def test_complete_write_run_mismatch_guard_has_zero_run_and_plan_completion_muta
     service = CompleteWriteRunHandler(
         unit_of_work_factory=lambda: cast(UnitOfWork, uow),
         now_ms=lambda: 100,
+        message_id_factory=lambda: "message-1",
     )
 
     response = service(

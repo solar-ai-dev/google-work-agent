@@ -4,7 +4,21 @@ from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.guards.complete_write_run import guard_complete_write_run
-from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.domain.run.model import (
+    RunStatusV1,
+    RunTransitionRejected,
+    TerminalResultKindV1,
+)
+
+_PARTIAL_ACTION_STATUSES = frozenset(
+    {
+        ActionStatusV1.REJECTED,
+        ActionStatusV1.CANCELLED,
+        ActionStatusV1.BLOCKED,
+        ActionStatusV1.DEPENDENCY_BLOCKED,
+    }
+)
+_COMPLETE_ACTION_STATUSES = _PARTIAL_ACTION_STATUSES | {ActionStatusV1.VERIFIED}
 
 
 def transition_complete_write_run(
@@ -30,3 +44,18 @@ def transition_complete_write_run(
         cancel_intent_active=cancel_intent_active,
     )
     return RunStatusV1.COMPLETED
+
+
+def classify_complete_write_run_result(
+    action_statuses: tuple[ActionStatusV1, ...],
+) -> TerminalResultKindV1:
+    """Classify only the closed Action facts admitted by CompleteWriteRun."""
+    if not action_statuses or any(
+        status not in _COMPLETE_ACTION_STATUSES for status in action_statuses
+    ):
+        raise RunTransitionRejected(
+            "CompleteWriteRun result classification requires only canonical closed Actions"
+        )
+    if all(status is ActionStatusV1.VERIFIED for status in action_statuses):
+        return TerminalResultKindV1.SUCCESS
+    return TerminalResultKindV1.PARTIAL

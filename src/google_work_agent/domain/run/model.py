@@ -24,6 +24,14 @@ class RunStatusV1(StrEnum):
     BLOCKED = "BLOCKED"
 
 
+class TerminalResultKindV1(StrEnum):
+    SUCCESS = "SUCCESS"
+    PARTIAL = "PARTIAL"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
 @dataclass(frozen=True, slots=True)
 class Run:
     id: str
@@ -36,6 +44,7 @@ class Run:
     langgraph_thread_id: str = ""
     requested_mode: str = ""
     actual_runtime: str | None = None
+    terminal_result_kind: TerminalResultKindV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +60,7 @@ class RunCreate:
     version: int
     started_at_ms: int
     finished_at_ms: int | None
+    terminal_result_kind: TerminalResultKindV1 | None = None
 
 
 class RunCommand(StrEnum):

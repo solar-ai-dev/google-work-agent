@@ -79,6 +79,26 @@ TRANSITION_AUTHORITIES = {
     "verification.store_verification",
 }
 
+GUARD_AUTHORITIES = {
+    "action.current_plan_authority",
+    "claim.claim_execution",
+    "recovery.require_recovery",
+    "recovery.resolve_recovery",
+    "run.begin_planning",
+    "run.begin_retrieval",
+    "run.block_run",
+    "run.complete_answer_only_run",
+    "run.complete_write_run",
+    "run.finalize_cancel",
+    "run.request_cancel",
+    "run.request_confirmation",
+    "run.require_reauth",
+    "run.resume_after_reauth",
+    "run.resume_confirmation",
+    "run.start_analysis",
+    "run.start_run",
+}
+
 APPLICATION_OWNER_AUTHORITIES = {
     "run.complete_answer_only_run": "CompleteAnswerOnlyRunHandler",
     "run.complete_read_only_run": "CompleteReadOnlyRunHandler",
@@ -207,6 +227,27 @@ def test_exact_transition_tree_has_thirty_nine_mirrored_operations() -> None:
         for path in sources
     }
     assert actual_authorities == TRANSITION_AUTHORITIES
+
+
+def test_required_guard_tree_has_seventeen_mirrored_behavioral_owners() -> None:
+    sources = sorted(
+        path
+        for path in DOMAIN.glob("*/guards/*.py")
+        if path.name != "__init__.py"
+    )
+    mirrors = sorted(
+        path for path in (ROOT / "tests" / "unit" / "domain").glob("*/guards/test_*.py")
+    )
+    assert len(sources) == 17
+    assert len(mirrors) == 17
+    expected_mirrors = {path.relative_to(DOMAIN).with_name(f"test_{path.name}") for path in sources}
+    actual_mirrors = {path.relative_to(ROOT / "tests" / "unit" / "domain") for path in mirrors}
+    assert actual_mirrors == expected_mirrors
+    actual_authorities = {
+        ".".join(path.relative_to(DOMAIN).with_suffix("").parts).replace(".guards.", ".")
+        for path in sources
+    }
+    assert actual_authorities == GUARD_AUTHORITIES
 
 
 def test_formal_domain_ledger_universe_is_exactly_sixty_one_rows() -> None:

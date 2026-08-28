@@ -22,7 +22,7 @@ def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
             """
             INSERT INTO runs VALUES (
                 'run-1', 'c-1', 'AGENT_SEARCH', 'CREATED', 't-1',
-                'AUTO', NULL, '{}', 0, 1, NULL
+                'AUTO', NULL, '{}', 0, 1, NULL, NULL
             );
             """
         )

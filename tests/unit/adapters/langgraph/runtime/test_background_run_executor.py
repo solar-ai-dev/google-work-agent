@@ -132,7 +132,7 @@ def _adapter(
             """
             INSERT INTO runs VALUES (
                 'r-1', 'c-1', 'AGENT_SEARCH', 'CREATED', 't-r-1',
-                'AUTO', NULL, '{}', 0, 1, NULL
+                'AUTO', NULL, '{}', 0, 1, NULL, NULL
             );
             """
         )

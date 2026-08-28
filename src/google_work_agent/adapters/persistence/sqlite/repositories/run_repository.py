@@ -2,7 +2,12 @@
 
 import sqlite3
 
-from google_work_agent.domain.run.model import Run, RunCreate, RunStatusV1
+from google_work_agent.domain.run.model import (
+    Run,
+    RunCreate,
+    RunStatusV1,
+    TerminalResultKindV1,
+)
 from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
@@ -13,7 +18,8 @@ class SqliteRunRepository:
     def get(self, run_id: str) -> Run | None:
         row = self._connection.execute(
             "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
-            "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms "
+            "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms, "
+            "terminal_result_kind "
             "FROM runs WHERE id=?;",
             (run_id,),
         ).fetchone()
@@ -30,6 +36,11 @@ class SqliteRunRepository:
             langgraph_thread_id=str(row["langgraph_thread_id"]),
             requested_mode=str(row["requested_mode"]),
             actual_runtime=(None if row["actual_runtime"] is None else str(row["actual_runtime"])),
+            terminal_result_kind=(
+                None
+                if row["terminal_result_kind"] is None
+                else TerminalResultKindV1(str(row["terminal_result_kind"]))
+            ),
         )
 
     def get_snapshot(self, run_id: str) -> Run | None:
@@ -48,7 +59,8 @@ class SqliteRunRepository:
             self._connection.execute(
                 "INSERT INTO runs (id, conversation_id, entry_mode, status, "
                 "langgraph_thread_id, requested_mode, actual_runtime, budget_json, "
-                "version, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                "version, started_at_ms, finished_at_ms, terminal_result_kind) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 (
                     run.id,
                     run.conversation_id,
@@ -61,6 +73,7 @@ class SqliteRunRepository:
                     run.version,
                     run.started_at_ms,
                     run.finished_at_ms,
+                    None if run.terminal_result_kind is None else run.terminal_result_kind.value,
                 ),
             )
         except sqlite3.IntegrityError as error:
@@ -77,7 +90,13 @@ class SqliteRunRepository:
     ) -> bool:
         if not values or not expected_statuses:
             raise ValueError("Run CAS requires values and expected statuses")
-        allowed_columns = {"status", "version", "finished_at_ms", "actual_runtime"}
+        allowed_columns = {
+            "status",
+            "version",
+            "finished_at_ms",
+            "actual_runtime",
+            "terminal_result_kind",
+        }
         if not set(values).issubset(allowed_columns):
             raise ValueError("Run CAS contains an unsupported column")
         set_clause = ", ".join(f"{column} = ?" for column in values)

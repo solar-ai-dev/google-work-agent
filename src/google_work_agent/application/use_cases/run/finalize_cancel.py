@@ -237,6 +237,19 @@ class FinalizeCancelHandler:
                     plan=plan,
                     actions=actions,
                 )(run.status)
+                terminal_result_kind = (
+                    "PARTIAL"
+                    if any(
+                        action.status
+                        in {
+                            ActionStatusV1.EXECUTED.value,
+                            ActionStatusV1.VERIFIED.value,
+                            ActionStatusV1.MISMATCH.value,
+                        }
+                        for action in actions
+                    )
+                    else "CANCELLED"
+                )
                 if not unit_of_work.runs.update_if_version_and_status(
                     run.id,
                     finalize_expected_version,
@@ -245,6 +258,7 @@ class FinalizeCancelHandler:
                         "status": next_status.value,
                         "version": finalize_expected_version + 1,
                         "finished_at_ms": now_ms,
+                        "terminal_result_kind": terminal_result_kind,
                     },
                 ):
                     raise RuntimeError("validated cancellation finalization CAS failed")
@@ -256,11 +270,7 @@ class FinalizeCancelHandler:
                     run_version=finalize_expected_version + 1,
                     plan_id=None if plan is None else plan.id,
                     plan_status=None if plan is None else PlanStatusV1.CANCELLED.value,
-                    result_kind=(
-                        "PARTIAL"
-                        if any(action.status == ActionStatusV1.VERIFIED.value for action in actions)
-                        else "CANCELLED"
-                    ),
+                    result_kind=terminal_result_kind,
                 )
             if response.applied and response.run_status == RunStatusV1.CANCELLED.value:
                 unit_of_work.traces.append(

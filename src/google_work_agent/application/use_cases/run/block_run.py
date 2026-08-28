@@ -100,6 +100,7 @@ class BlockRunHandler:
                         "status": result.current_status.value,
                         "version": result.current_version,
                         "finished_at_ms": completed_at_ms,
+                        "terminal_result_kind": "BLOCKED",
                     },
                 ):
                     result = CommandResult(

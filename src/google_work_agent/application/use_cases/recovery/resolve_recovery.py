@@ -140,6 +140,7 @@ class ResolveRecoveryHandler:
                 }
                 if target in {RunStatusV1.COMPLETED, RunStatusV1.CANCELLED, RunStatusV1.FAILED}:
                     values["finished_at_ms"] = now_ms
+                    values["terminal_result_kind"] = result_kind
                 applied = unit_of_work.runs.update_if_version_and_status(
                     run.id, run.version, frozenset({run.status}), values
                 )
@@ -300,6 +301,18 @@ class ResolveRecoveryHandler:
         """Preserve mismatch recovery effects at the canonical writer boundary."""
         plans = current_plan_tuple(unit_of_work.plans, command.run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
+        if command.resolution is RecoveryResolution.CANCEL:
+            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
+            external_mutation_observed = any(
+                action.status
+                in {
+                    ActionStatusV1.EXECUTED.value,
+                    ActionStatusV1.VERIFIED.value,
+                    ActionStatusV1.MISMATCH.value,
+                }
+                for action in actions
+            )
+            return plan, "PARTIAL" if external_mutation_observed else "CANCELLED"
         if command.resolution not in {
             RecoveryResolution.ACCEPT_PARTIAL,
             RecoveryResolution.CREATE_CORRECTIVE_PLAN,

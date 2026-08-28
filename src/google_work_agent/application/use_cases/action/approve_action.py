@@ -445,7 +445,7 @@ class ApproveActionHandler:
                     audit_event(
                         run_id=plan.run_id,
                         action_id=action.id,
-                        event_type="WRITE_APPROVED",
+                        event_type="ACTION_APPROVED",
                         outcome=ResultCode.TRANSITION_APPLIED.value,
                         metadata={"approval_id": approval.id, "command_id": command.command_id},
                         created_at_ms=now_ms,

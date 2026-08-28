@@ -120,6 +120,7 @@ class CompleteAnswerOnlyRunHandler:
                         "status": next_status.value,
                         "version": run.version + 1,
                         "finished_at_ms": now_ms,
+                        "terminal_result_kind": "SUCCESS",
                     },
                 )
                 if not applied:

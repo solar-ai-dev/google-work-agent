@@ -125,7 +125,7 @@ def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 13
+    assert len(migrations) == 14
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -153,6 +153,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[11].name == "recovery_context_currentness"
     assert migrations[12].version == 13
     assert migrations[12].name == "resource_ref_registry_type"
+    assert migrations[13].version == 14
+    assert migrations[13].name == "run_terminal_result_kind"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -165,7 +167,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 13
+        assert len(first_results) == 14
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -181,6 +183,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (11, "recovery_context"),
             (12, "recovery_context_currentness"),
             (13, "resource_ref_registry_type"),
+            (14, "run_terminal_result_kind"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -191,9 +194,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 13
+        assert len(second_results) == 14
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 13
+        assert len(rows) == 14
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -268,7 +271,7 @@ def test_populated_0011_upgrade_preserves_current_recovery_context(tmp_path: Pat
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 11 + [True, True]
+        assert [result.applied for result in results] == [False] * 11 + [True, True, True]
         row = connection.execute(
             "SELECT recovery_fingerprint, version FROM recovery_contexts WHERE run_id = 'r-1';"
         ).fetchone()
@@ -278,6 +281,80 @@ def test_populated_0011_upgrade_preserves_current_recovery_context(tmp_path: Pat
             "SELECT COUNT(*) FROM recovery_context_tombstones;"
         ).fetchone()[0]
         assert tombstone_count == 0
+    finally:
+        connection.close()
+
+
+def test_populated_0013_upgrade_backfills_terminal_result_kind(tmp_path: Path) -> None:
+    predecessor_dir = tmp_path / "through-0013"
+    predecessor_dir.mkdir()
+    for source in sorted(RUNTIME_MIGRATIONS_DIR.glob("*.sql")):
+        if source.name <= "0013_resource_ref_registry_type.sql":
+            shutil.copyfile(source, predecessor_dir / source.name)
+
+    connection = connect_sqlite(tmp_path / "terminal-result-upgrade.db")
+    try:
+        apply_migrations(connection, migrations_dir=predecessor_dir, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('a-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute("INSERT INTO conversations VALUES ('c-1', 'a-1', 'Test', 1, 1);")
+        for suffix in ("success", "partial"):
+            connection.execute(
+                """
+                INSERT INTO runs (
+                    id, conversation_id, entry_mode, status, langgraph_thread_id,
+                    requested_mode, budget_json, version, started_at_ms, finished_at_ms
+                ) VALUES (?, 'c-1', 'AGENT_SEARCH', 'WAITING_APPROVAL', ?,
+                          'AUTO', '{}', 0, 1, NULL);
+                """,
+                (f"run-{suffix}", f"thread-{suffix}"),
+            )
+            connection.execute(
+                """
+                INSERT INTO plans (id, run_id, revision_no, status, summary_text, created_at_ms)
+                VALUES (?, ?, 1, 'WAITING_APPROVAL', 'Plan', 1);
+                """,
+                (f"plan-{suffix}", f"run-{suffix}"),
+            )
+            if suffix == "partial":
+                connection.execute(
+                    """
+                    INSERT INTO actions (
+                        id, plan_id, connector_id, position, tool_name, effect_type,
+                        approval_requirement, verification_policy, recovery_policy, status,
+                        arguments_json, arguments_hash, expected_json, created_at_ms, updated_at_ms
+                    ) VALUES (?, ?, 'google_workspace', 1, 'tasks_create_task', 'CREATE',
+                              'REQUIRED', 'GET_COMPARE', 'RESOURCE_SEARCH', 'PROPOSED',
+                              '{}', ?, '{}', 1, 1);
+                    """,
+                    (f"action-{suffix}", f"plan-{suffix}", suffix[0] * 64),
+                )
+                connection.execute(
+                    "UPDATE actions SET status = 'REJECTED' WHERE id = ?;",
+                    (f"action-{suffix}",),
+                )
+            connection.execute(
+                "UPDATE plans SET status = 'COMPLETED' WHERE id = ?;",
+                (f"plan-{suffix}",),
+            )
+            connection.execute(
+                "UPDATE runs SET status = 'COMPLETED', finished_at_ms = 2 WHERE id = ?;",
+                (f"run-{suffix}",),
+            )
+        connection.commit()
+
+        results = apply_migrations(connection, now_ms=lambda: 2)
+
+        assert [result.applied for result in results] == [False] * 13 + [True]
+        rows = connection.execute(
+            "SELECT id, terminal_result_kind FROM runs ORDER BY id;"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("run-partial", "PARTIAL"),
+            ("run-success", "SUCCESS"),
+        ]
+        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
         connection.close()
 
@@ -345,6 +422,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,

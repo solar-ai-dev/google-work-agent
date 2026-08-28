@@ -67,7 +67,7 @@ class _GuardUow:
         self.verifications = _ListRepo(cast(tuple[object, ...], verifications))
 
 
-def _plan(status: PlanStatusV1 = PlanStatusV1.ACTIVE) -> PlanRecord:
+def _plan(status: PlanStatusV1 = PlanStatusV1.WAITING_APPROVAL) -> PlanRecord:
     return PlanRecord(
         id="plan-1",
         run_id="run-1",
@@ -193,6 +193,7 @@ def _conflict(
         (ActionStatusV1.UNKNOWN_RESULT, "UNKNOWN_RESULT"),
         (ActionStatusV1.EXECUTED, "verified"),
         (ActionStatusV1.MISMATCH, "MISMATCH"),
+        (ActionStatusV1.FAILED, "FAILED"),
         (ActionStatusV1.APPROVED, "not VERIFIED"),
     ],
 )
@@ -241,6 +242,12 @@ def test_complete_write_run_rejects_unverified_verification() -> None:
 
 def test_complete_write_run_accepts_only_fully_verified_resolved_aggregate() -> None:
     assert _conflict() is None
+
+
+def test_complete_write_run_rejects_legacy_read_active_plan() -> None:
+    assert "WAITING_APPROVAL" in cast(
+        str, _conflict(plan=_plan(PlanStatusV1.ACTIVE))
+    )
 
 
 def test_complete_write_run_rejects_multiple_non_superseded_plans() -> None:

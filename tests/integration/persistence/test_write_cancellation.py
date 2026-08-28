@@ -666,10 +666,14 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
         connection.close()
 
 
-@pytest.mark.parametrize("terminal_status", ("MISMATCH", "FAILED"))
-def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
+@pytest.mark.parametrize(
+    ("terminal_status", "expected_result_kind"),
+    (("MISMATCH", "PARTIAL"), ("FAILED", "CANCELLED")),
+)
+def test_cancel_result_reflects_durably_observed_external_mutation(
     write_database: Path,
     terminal_status: str,
+    expected_result_kind: str,
 ) -> None:
     clock = FakeClockPort(1000)
     suffix = f"cancel-{terminal_status.lower()}"
@@ -711,14 +715,14 @@ def test_non_success_terminal_action_with_cancelled_sibling_is_not_partial(
     )
 
     assert result.run_status == "CANCELLED"
-    assert result.result_kind == "CANCELLED"
+    assert result.result_kind == expected_result_kind
     snapshot = QueryService(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
-    assert snapshot.result_kind == "CANCELLED"
+    assert snapshot.result_kind == expected_result_kind
     assert {action.status for action in snapshot.actions} == {terminal_status, "CANCELLED"}
 
 

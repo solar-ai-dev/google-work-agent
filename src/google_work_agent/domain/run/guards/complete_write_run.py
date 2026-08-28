@@ -6,6 +6,15 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected, require_status
 
 _ALLOWED = frozenset({RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
+_PARTIAL_ACTION_STATUSES = frozenset(
+    {
+        ActionStatusV1.REJECTED,
+        ActionStatusV1.CANCELLED,
+        ActionStatusV1.BLOCKED,
+        ActionStatusV1.DEPENDENCY_BLOCKED,
+    }
+)
+_CLOSED_ACTION_STATUSES = _PARTIAL_ACTION_STATUSES | {ActionStatusV1.VERIFIED}
 
 
 def guard_complete_write_run(
@@ -23,19 +32,13 @@ def guard_complete_write_run(
     require_status(current_status, _ALLOWED, "complete_write_run")
     if not plan_is_current:
         raise RunTransitionRejected("CompleteWriteRun requires current Plan authority")
-    if plan_status not in {PlanStatusV1.WAITING_APPROVAL, PlanStatusV1.ACTIVE}:
-        raise RunTransitionRejected("CompleteWriteRun requires a published current Plan")
+    if plan_status is not PlanStatusV1.WAITING_APPROVAL:
+        raise RunTransitionRejected("CompleteWriteRun requires a WAITING_APPROVAL Write Plan")
     if cancel_intent_active:
         raise RunTransitionRejected("CompleteWriteRun is forbidden while cancel intent is active")
-    closed = {
-        ActionStatusV1.VERIFIED,
-        ActionStatusV1.FAILED,
-        ActionStatusV1.REJECTED,
-        ActionStatusV1.CANCELLED,
-        ActionStatusV1.BLOCKED,
-        ActionStatusV1.DEPENDENCY_BLOCKED,
-    }
-    if not action_statuses or any(status not in closed for status in action_statuses):
+    if not action_statuses or any(
+        status not in _CLOSED_ACTION_STATUSES for status in action_statuses
+    ):
         raise RunTransitionRejected("CompleteWriteRun requires every planned Action closed")
     unresolved_attempts = {
         ExecutionAttemptStatusV1.CLAIMED,

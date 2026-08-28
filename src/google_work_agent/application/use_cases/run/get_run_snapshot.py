@@ -204,7 +204,11 @@ class GetRunSnapshotHandler:
                     action.status == ActionStatusV1.UNKNOWN_RESULT.value for action in actions
                 )
             },
-            result_kind=_cancel_result_kind(run_status=run_status, actions=actions),
+            result_kind=(
+                None
+                if run.terminal_result_kind is None
+                else run.terminal_result_kind.value
+            ),
             next_allowed_commands=tuple(
                 item.value for item in next_allowed_run_commands(run_status)
             ),
@@ -255,13 +259,3 @@ def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionS
             if approval_allowed or item is not ActionCommand.APPROVE_ACTION
         ),
     )
-
-
-def _cancel_result_kind(
-    *, run_status: RunStatusV1, actions: tuple[ActionSnapshotResult, ...]
-) -> str | None:
-    if run_status is not RunStatusV1.CANCELLED:
-        return None
-    has_success = any(action.status == ActionStatusV1.VERIFIED.value for action in actions)
-    has_cancelled = any(action.status == ActionStatusV1.CANCELLED.value for action in actions)
-    return "PARTIAL" if has_success and has_cancelled else "CANCELLED"

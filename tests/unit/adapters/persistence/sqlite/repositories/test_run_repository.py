@@ -14,7 +14,7 @@ def test_run_repository_exact_query_create_and_cas_surface() -> None:
             id TEXT PRIMARY KEY, conversation_id TEXT, entry_mode TEXT, status TEXT,
             langgraph_thread_id TEXT, requested_mode TEXT, actual_runtime TEXT,
             budget_json TEXT, version INTEGER, started_at_ms INTEGER,
-            finished_at_ms INTEGER
+            finished_at_ms INTEGER, terminal_result_kind TEXT
         )"""
     )
     repository = SqliteRunRepository(connection)
@@ -48,3 +48,14 @@ def test_run_repository_exact_query_create_and_cas_surface() -> None:
         frozenset({RunStatusV1.CREATED}),
         {"version": 2},
     )
+    assert repository.update_if_version_and_status(
+        "run-1",
+        1,
+        frozenset({RunStatusV1.ANALYZING}),
+        {
+            "status": RunStatusV1.COMPLETED.value,
+            "version": 2,
+            "terminal_result_kind": "SUCCESS",
+        },
+    )
+    assert repository.get("run-1").terminal_result_kind.value == "SUCCESS"  # type: ignore[union-attr]

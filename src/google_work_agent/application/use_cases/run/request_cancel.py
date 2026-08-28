@@ -159,6 +159,7 @@ class RequestCancelHandler:
                         "status": final_status.value,
                         "version": run.version + 2,
                         "finished_at_ms": now_ms,
+                        "terminal_result_kind": "CANCELLED",
                     },
                 ):
                     raise RuntimeError("validated FinalizeCancel CAS failed")

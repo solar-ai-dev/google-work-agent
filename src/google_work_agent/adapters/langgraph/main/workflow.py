@@ -506,6 +506,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
         self._complete_write_run = CompleteWriteRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
+            message_id_factory=id_factory,
         )
         self._block_run = BlockRunHandler(
             unit_of_work_factory=unit_of_work_factory,

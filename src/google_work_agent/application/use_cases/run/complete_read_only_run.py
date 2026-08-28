@@ -148,6 +148,7 @@ class CompleteReadOnlyRunHandler:
                 is None
             ):
                 raise RuntimeError("validated CompleteReadOnlyRun Plan CAS failed")
+            result_kind = "PARTIAL" if ActionStatusV1.FAILED in statuses else "SUCCESS"
             if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
                 run.version,
@@ -156,10 +157,10 @@ class CompleteReadOnlyRunHandler:
                     "status": next_run.value,
                     "version": run.version + 1,
                     "finished_at_ms": now_ms,
+                    "terminal_result_kind": result_kind,
                 },
             ):
                 raise RuntimeError("validated CompleteReadOnlyRun Run CAS failed")
-            result_kind = "PARTIAL" if ActionStatusV1.FAILED in statuses else "SUCCESS"
             result = CompleteReadOnlyRunResult(
                 True,
                 ResultCode.TRANSITION_APPLIED.value,

@@ -37,7 +37,7 @@ def _database(tmp_path: Path):
         """
         INSERT INTO runs VALUES (
             'run-1', 'c-1', 'AGENT_SEARCH', 'CREATED', 't-1',
-            'AUTO', NULL, '{}', 0, 1, NULL
+            'AUTO', NULL, '{}', 0, 1, NULL, NULL
         );
         """
     )
