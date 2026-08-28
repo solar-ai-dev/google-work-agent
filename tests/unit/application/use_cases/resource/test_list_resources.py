@@ -7,8 +7,12 @@ from google_work_agent.application.use_cases.resource.list_resources import (
     ListResourcesHandler,
     ListResourcesQuery,
 )
-from google_work_agent.ports import ResourcePage, ResourceSnapshot, ResourceType
-from google_work_agent.ports.connectors.failure import ConnectorOperationFailure
+from google_work_agent.ports.connector.connector_failure import ConnectorOperationFailure
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 class _Access:

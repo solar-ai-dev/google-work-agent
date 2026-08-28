@@ -29,11 +29,11 @@ from google_work_agent.application.use_cases.attachment.get_attachment import (
     GetAttachmentHandler,
     GetAttachmentQuery,
 )
-from google_work_agent.ports import EndpointPolicy
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 _STAGING_ERROR_STATUS = {
     "ATTACHMENT_EMPTY": 422,

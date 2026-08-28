@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.ports import StructuredLLMResult
+from google_work_agent.ports.llm import StructuredLLMResult
 
 
 def require_mapping(value: object, path: str, *, error_cls: type[Exception]) -> dict[str, object]:

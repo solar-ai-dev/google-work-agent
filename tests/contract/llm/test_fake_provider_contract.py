@@ -3,7 +3,7 @@ from tests.support.fakes import FakeAPIProviderTransport
 from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiStructuredInferenceAdapter,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     ProviderResponsePayload,

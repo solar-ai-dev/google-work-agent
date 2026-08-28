@@ -5,13 +5,11 @@ from __future__ import annotations
 from typing import Literal, cast
 
 from google_work_agent.application.agents.retrieval.normalize_segments import (
-    ContextBudget,
     DEFAULT_CONTEXT_BUDGET,
+    ContextBudget,
     SourceSegment,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
@@ -24,8 +22,14 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceSelectionResultV2,
     RequestIntentV2,
 )
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference
-
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="evidence-selection-v2",

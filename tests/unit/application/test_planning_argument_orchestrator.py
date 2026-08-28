@@ -13,11 +13,13 @@ from google_work_agent.application.orchestration.planning_argument_writer import
     PlanningArgumentWriter,
 )
 from google_work_agent.application.orchestration.planning_arguments import DefaultContainerResolver
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
@@ -134,23 +136,27 @@ def _gmail_route():
 
 
 def _evidence():
-    return [{
-        "schema_version": 1,
-        "evidence_id": "ev-1",
-        "resource_handle": "resource-1",
-        "segment_id": "segment-1",
-        "kind": "excerpt",
-        "excerpt": "Source",
-        "locator": None,
-        "reason_codes": ["SUPPORTS"],
-    }]
+    return [
+        {
+            "schema_version": 1,
+            "evidence_id": "ev-1",
+            "resource_handle": "resource-1",
+            "segment_id": "segment-1",
+            "kind": "excerpt",
+            "excerpt": "Source",
+            "locator": None,
+            "reason_codes": ["SUPPORTS"],
+        }
+    ]
 
 
 def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
         writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
-        default_container_resolver=DefaultContainerResolver(default_tasklist_id_provider=lambda: "default-list"),
+        default_container_resolver=DefaultContainerResolver(
+            default_tasklist_id_provider=lambda: "default-list"
+        ),
     )
     routes = (_task_route(), _gmail_route())
     results = orchestrator.compose(
@@ -199,7 +205,9 @@ def test_only_ready_preparation_may_invoke_writer() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
         writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
-        default_container_resolver=DefaultContainerResolver(default_tasklist_id_provider=lambda: "default-list"),
+        default_container_resolver=DefaultContainerResolver(
+            default_tasklist_id_provider=lambda: "default-list"
+        ),
     )
     route = _task_route()
     preparations = orchestrator.prepare_actions(output_routes=(route,))  # type: ignore[arg-type]

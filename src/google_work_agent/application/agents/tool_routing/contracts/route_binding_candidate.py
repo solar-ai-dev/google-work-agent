@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import SemanticRouteCandidate
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import InputToolRouteV1, ToolRouteEffect
+from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
+    SemanticRouteCandidate,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+    ToolRouteEffect,
+)
 
 
 @dataclass(frozen=True, slots=True)

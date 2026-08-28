@@ -23,7 +23,6 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     persist_reachable_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     WorkflowPhase,
@@ -33,18 +32,19 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.application.run_terminal import RunTransitionResponse
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.run.complete_write_run import CompleteWriteRunCommand
+from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import (
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowInvocationResult,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 
 
 class ArtifactFreshnessMixin:

@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from google_work_agent.ports import ClockPort
+from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )

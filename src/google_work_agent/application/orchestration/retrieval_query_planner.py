@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     RunBudgetV1,
@@ -26,9 +24,18 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalV2ValidationError,
     validate_retrieval_query_plan_v2,
 )
-from google_work_agent.application.orchestration.source_fetch_plan_builder import RouteConstraintPolicy
+from google_work_agent.application.orchestration.source_fetch_plan_builder import (
+    RouteConstraintPolicy,
+)
 from google_work_agent.application.orchestration.tool_routing import InputToolRouteV1
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 
 
 def load_retrieval_plan_query_revision_prompt_reference(

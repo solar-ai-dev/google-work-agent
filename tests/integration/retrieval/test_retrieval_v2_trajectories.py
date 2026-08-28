@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, cast
 
-from google_work_agent.ports import ResourcePage, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourcePage,
+    ResourceType,
+)
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
-    DeterministicUUID,
-    FakeClockPort,
     FakeGoogleGateway,
-    LangGraphWorkflowRuntime,
     ProductFixtureSnapshotLoader,
     _clear_intent,
     _llm_result,
@@ -20,8 +20,6 @@ from tests.integration.langgraph.test_runtime import (
     _seed_runtime_database,
     _start_request,
     _synthesize_tool_route_candidate,
-    _tool_catalog,
-    sqlite_unit_of_work_factory,
 )
 from tests.support.fakes.google_gateway import GoogleGatewayCallRecord
 

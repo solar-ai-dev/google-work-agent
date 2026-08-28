@@ -23,9 +23,12 @@ def test_next_page_requires_matching_run_route_query_and_live_continuation() -> 
         ),
     )
 
-    assert cache.resolve_next_page(
-        run_id="run-1", handle="read-1", route_id="route-1", query_hash="query-1"
-    ) == "raw-token"
+    assert (
+        cache.resolve_next_page(
+            run_id="run-1", handle="read-1", route_id="route-1", query_hash="query-1"
+        )
+        == "raw-token"
+    )
     for run_id, route_id, query_hash in (
         ("other-run", "route-1", "query-1"),
         ("run-1", "other-route", "query-1"),
@@ -63,17 +66,18 @@ def test_detail_target_is_route_bound_and_only_completes_after_explicit_publicat
     )
     cache.register_detail_target(entry=target)
 
-    assert cache.resolve_detail_target(
-        run_id="run-1", route_id="route-1", resource_handle="gmail_thread:1"
-    ) == target
+    assert (
+        cache.resolve_detail_target(
+            run_id="run-1", route_id="route-1", resource_handle="gmail_thread:1"
+        )
+        == target
+    )
     with pytest.raises(ReadResultContinuationError):
         cache.resolve_detail_target(
             run_id="run-1", route_id="wrong-route", resource_handle="gmail_thread:1"
         )
 
-    cache.mark_detail_complete(
-        run_id="run-1", route_id="route-1", resource_handle="gmail_thread:1"
-    )
+    cache.mark_detail_complete(run_id="run-1", route_id="route-1", resource_handle="gmail_thread:1")
     with pytest.raises(ReadResultContinuationError, match="duplicate"):
         cache.resolve_detail_target(
             run_id="run-1", route_id="route-1", resource_handle="gmail_thread:1"

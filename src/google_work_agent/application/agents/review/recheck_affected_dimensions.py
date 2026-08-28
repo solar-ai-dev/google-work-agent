@@ -56,9 +56,8 @@ def recheck_affected_dimensions(
             continue
         action_id = finding.get("action_id")
         route_id = finding.get("route_id")
-        if (
-            (isinstance(action_id, str) and action_id in action_ids)
-            or (isinstance(route_id, str) and route_id in route_ids)
+        if (isinstance(action_id, str) and action_id in action_ids) or (
+            isinstance(route_id, str) and route_id in route_ids
         ):
             canonical_dimensions.add(dimension)  # type: ignore[arg-type]
 

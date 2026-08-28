@@ -24,7 +24,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.planning_arguments import ToolArgumentCandidateV1
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
 
@@ -305,9 +305,7 @@ def assemble_action_plan_draft_v1_compat(
         if isinstance(ref.get("resource_handle"), str)
     }
     plan_evidence_refs = _stable_unique(
-        evidence_ref
-        for action in canonical["actions"]
-        for evidence_ref in action["evidence_refs"]
+        evidence_ref for action in canonical["actions"] for evidence_ref in action["evidence_refs"]
     )
     plan_resource_handles = _stable_unique(
         evidence_by_id[evidence_ref]["resource_handle"]

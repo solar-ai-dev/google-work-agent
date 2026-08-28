@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from threading import Lock
 from typing import Literal, cast
 
-from google_work_agent.ports.observability_events import sanitize_event_attributes
+from google_work_agent.ports.events.observability_events import sanitize_event_attributes
 from google_work_agent.ports.system.sse_event_buffer_port import (
     RunSseEventV1,
     SseEventBufferPort,

@@ -12,7 +12,6 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.run_terminal import RunTransitionResponse
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
     CompleteWriteRunHandler,
@@ -21,6 +20,7 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
 )
+from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -96,9 +96,7 @@ def _seed(database_path: Path, *, action_status: str) -> None:
                           '{}', '{}', '{}', 4);
                 """
             )
-            connection.execute(
-                "UPDATE actions SET status = 'VERIFIED' WHERE id = 'action-1';"
-            )
+            connection.execute("UPDATE actions SET status = 'VERIFIED' WHERE id = 'action-1';")
         connection.commit()
     finally:
         connection.close()
@@ -149,13 +147,19 @@ def test_complete_write_run_message_and_result_survive_restart(
             "SELECT status, terminal_result_kind FROM runs WHERE id = 'run-1';"
         ).fetchone()
         assert tuple(row) == ("COMPLETED", expected_kind)
-        assert connection.execute(
-            "SELECT COUNT(*) FROM messages WHERE run_id = 'run-1' AND role = 'ASSISTANT';"
-        ).fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM audit_events WHERE run_id = 'run-1' "
-            "AND event_type = 'RUN_COMPLETED';"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id = 'run-1' AND role = 'ASSISTANT';"
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE run_id = 'run-1' "
+                "AND event_type = 'RUN_COMPLETED';"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 

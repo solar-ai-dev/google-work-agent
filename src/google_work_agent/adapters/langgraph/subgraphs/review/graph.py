@@ -26,12 +26,16 @@ from google_work_agent.adapters.langgraph.subgraphs.review.nodes.recheck_affecte
 from google_work_agent.adapters.langgraph.subgraphs.review.nodes.validate_review_node import (
     validate_review_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_entry import route_after_entry
+from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_entry import (
+    route_after_entry,
+)
 from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_validation import (
     route_after_validation,
 )
 from google_work_agent.adapters.langgraph.subgraphs.review.state import ReviewState
-from google_work_agent.application.agents.review.contracts.review_findings import ReviewSemanticInvoker
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewSemanticInvoker,
+)
 
 
 @dataclass(frozen=True, slots=True)

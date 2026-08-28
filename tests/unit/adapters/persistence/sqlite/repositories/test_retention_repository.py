@@ -73,6 +73,7 @@ def _seed_retention_database(database_path: Path) -> None:
     finally:
         connection.close()
 
+
 def test_retention_is_bounded_child_first_and_preserves_open_run_replay(
     tmp_path: Path,
 ) -> None:
@@ -96,25 +97,37 @@ def test_retention_is_bounded_child_first_and_preserves_open_run_replay(
         assert first.messages == 1
         assert first.conversations == 1
         assert first.audits == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM runs WHERE status='COMPLETED'"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute("SELECT COUNT(*) FROM runs WHERE status='COMPLETED'").fetchone()[0]
+            == 1
+        )
 
         repository.purge_batch(cutoffs, 1)
-        assert connection.execute(
-            "SELECT COUNT(*) FROM runs WHERE status='COMPLETED'"
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT status FROM runs WHERE id='run-open'"
-        ).fetchone()[0] == "ANALYZING"
-        assert connection.execute(
-            "SELECT status FROM command_receipts WHERE command_id='receipt-open'"
-        ).fetchone()[0] == "APPLIED"
-        assert connection.execute(
-            "SELECT COUNT(*) FROM trace_events WHERE run_id='run-open'"
-        ).fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM audit_events WHERE created_at_ms=1000"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute("SELECT COUNT(*) FROM runs WHERE status='COMPLETED'").fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute("SELECT status FROM runs WHERE id='run-open'").fetchone()[0]
+            == "ANALYZING"
+        )
+        assert (
+            connection.execute(
+                "SELECT status FROM command_receipts WHERE command_id='receipt-open'"
+            ).fetchone()[0]
+            == "APPLIED"
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM trace_events WHERE run_id='run-open'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE created_at_ms=1000"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()

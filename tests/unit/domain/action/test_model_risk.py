@@ -1,6 +1,6 @@
 import pytest
 
-from google_work_agent.application.write_plan_contracts import WriteActionDraft
+from google_work_agent.application.use_cases.plan.write_plan_contracts import WriteActionDraft
 from google_work_agent.domain.action.model import canonicalize_action_risk
 from google_work_agent.domain.results import InvariantViolationError
 

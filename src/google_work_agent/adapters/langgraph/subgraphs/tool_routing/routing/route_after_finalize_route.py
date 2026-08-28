@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal
+
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 
 

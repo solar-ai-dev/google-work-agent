@@ -91,4 +91,11 @@ class ReviewBlockV2(TypedDict):
     blockers: list[ReviewBlockerV1]
 
 
-PlanReviewResultV2 = ReviewPassV2 | ReviewReviseV2 | ReviewRetrieveMoreV2 | ReviewRouteReconsiderationV2 | ReviewConfirmV2 | ReviewBlockV2
+PlanReviewResultV2 = (
+    ReviewPassV2
+    | ReviewReviseV2
+    | ReviewRetrieveMoreV2
+    | ReviewRouteReconsiderationV2
+    | ReviewConfirmV2
+    | ReviewBlockV2
+)

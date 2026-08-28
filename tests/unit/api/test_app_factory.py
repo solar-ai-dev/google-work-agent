@@ -1,5 +1,4 @@
-from dataclasses import dataclass, replace
-from pathlib import Path
+from dataclasses import replace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -13,11 +12,9 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
-    StaticRuntimeStatusProvider,
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.start_run import ResumeRunResponse
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryResult,
 )
@@ -35,15 +32,19 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotResult as RunSnapshot,
 )
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthResult as ResumeRunResponse,
+)
+from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
-    LauncherProbeDecision,
+)
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
+from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
-    RuntimeSummary,
 )
 
 
@@ -93,23 +94,6 @@ class _DenyGuard:
         )
 
 
-@dataclass
-class _QueryStub:
-    database_path = Path("unused-test-query.db")
-    connection_factory = staticmethod(lambda _path: None)
-
-    def get_runtime_summary(self) -> RuntimeSummary:
-        return RuntimeSummary(
-            google="NOT_CONFIGURED",
-            mcp="NOT_CONFIGURED",
-            api_llm="NOT_CONFIGURED",
-            ollama="NOT_AVAILABLE",
-            deployment_profile="test",
-            recovery_required_run_ids=(),
-            open_run_ids=(),
-        )
-
-
 def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _CoordinatorStub]:
     coordinator = _CoordinatorStub()
     clock = FakeClockPort(100)
@@ -118,7 +102,6 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
     signing_secret = b"test-selection-handle-secret-32b"
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
-        query_service=_QueryStub(),
         create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
@@ -148,17 +131,6 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
                 checks=(
                     ReadinessCheckResult(name="sqlite_connection", state=ReadinessState.READY),
                 ),
-            )
-        ),
-        runtime_status_provider=StaticRuntimeStatusProvider(
-            RuntimeSummary(
-                google="NOT_CONFIGURED",
-                mcp="NOT_CONFIGURED",
-                api_llm="NOT_CONFIGURED",
-                ollama="NOT_AVAILABLE",
-                deployment_profile="test",
-                recovery_required_run_ids=(),
-                open_run_ids=(),
             )
         ),
         api_access_guard=guard,
@@ -409,11 +381,6 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
         snapshot_version=1,
     )
 
-    class _RunQueryStub(_QueryStub):
-        def get_run_snapshot(self, run_id: str) -> RunSnapshot | None:
-            return snapshot if run_id == "run-1" else None
-
-    container = replace(container, query_service=_RunQueryStub())
     with (
         patch(
             "google_work_agent.api.routes.runs.GetRunSnapshotHandler",

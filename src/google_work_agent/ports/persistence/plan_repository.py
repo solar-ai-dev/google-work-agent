@@ -27,8 +27,6 @@ class PlanRepository(Protocol):
     ) -> PlanRecord | None: ...
 
 
-def current_plan_tuple(
-    repository: PlanRepository, run_id: str
-) -> tuple[PlanRecord, ...]:
+def current_plan_tuple(repository: PlanRepository, run_id: str) -> tuple[PlanRecord, ...]:
     current = repository.get_current(run_id)
     return () if current is None else (current,)

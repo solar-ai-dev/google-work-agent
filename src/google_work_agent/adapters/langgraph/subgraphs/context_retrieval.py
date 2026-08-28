@@ -109,7 +109,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     allowed_read_tool_ids,
     coarse_resource_category,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.events.observability_events import ObservabilityContext
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[

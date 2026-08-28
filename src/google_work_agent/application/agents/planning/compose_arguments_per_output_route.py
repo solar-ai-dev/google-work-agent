@@ -54,7 +54,15 @@ def compose_arguments_per_output_route(
         refs = candidate.get("evidence_refs", [])
         if not isinstance(arguments, dict):
             raise ValueError("argument candidate requires business arguments")
-        forbidden = {"tool_id", "tool_name", "effect", "approval", "dependencies", "execution", "verification"}
+        forbidden = {
+            "tool_id",
+            "tool_name",
+            "effect",
+            "approval",
+            "dependencies",
+            "execution",
+            "verification",
+        }
         if forbidden.intersection(arguments):
             raise ValueError("argument candidate attempted to author deterministic authority")
         if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):

@@ -7,7 +7,8 @@ import pytest
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationIntegrityError
 from google_work_agent.launcher import dev
-from google_work_agent.ports import ReadinessState, RuntimeOperation
+from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
+from google_work_agent.ports.system.readiness_port import ReadinessState
 
 
 def test_build_container_classifies_migration_integrity_failure(

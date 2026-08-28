@@ -43,7 +43,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.request_understanding import (
     build_user_interrupt_v1,
 )
-from google_work_agent.ports import StructuredLLMResult
+from google_work_agent.ports.llm import StructuredLLMResult
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, object], Any]
 ConfirmInline = Callable[

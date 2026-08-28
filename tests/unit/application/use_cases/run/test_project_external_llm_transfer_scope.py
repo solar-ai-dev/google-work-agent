@@ -51,9 +51,7 @@ def test_project_external_llm_transfer_scope_changes_hash_and_revision() -> None
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(checkpoint)  # type: ignore[arg-type]
     first = handler(
-        ProjectExternalLlmTransferScopeQueryV1(
-            1, "run-1", ("GMAIL",), ("USER_REQUEST",)
-        )
+        ProjectExternalLlmTransferScopeQueryV1(1, "run-1", ("GMAIL",), ("USER_REQUEST",))
     )
     second = handler(
         ProjectExternalLlmTransferScopeQueryV1(

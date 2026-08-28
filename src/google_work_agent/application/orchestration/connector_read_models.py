@@ -3,7 +3,8 @@
 from dataclasses import dataclass
 
 from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
-from google_work_agent.ports import ResourceSnapshot, SelectedResourceRef
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
+from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 
 
 @dataclass(frozen=True, slots=True)

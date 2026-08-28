@@ -6,18 +6,18 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
 )
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     require_action,
     require_attempt,
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import (
@@ -128,9 +128,7 @@ class AbortClaimedExecutionHandler:
             attempt_status=attempt.status,
             attempt_version=attempt.version,
             expected_attempt_version=command.expected_attempt_version,
-            durable_cancel_intent=has_durable_cancel_intent(
-                unit_of_work.cancel_intents, run.id
-            ),
+            durable_cancel_intent=has_durable_cancel_intent(unit_of_work.cancel_intents, run.id),
             begin_receipt_applied=(
                 begin_receipt is not None and begin_receipt.status is CommandReceiptStatus.APPLIED
             ),

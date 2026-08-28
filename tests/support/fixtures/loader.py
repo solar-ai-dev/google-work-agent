@@ -7,7 +7,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 class FixtureLoaderError(RuntimeError):

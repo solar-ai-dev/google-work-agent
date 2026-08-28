@@ -145,14 +145,10 @@ def _validate_policies(
     policies: Mapping[str, RouteConstraintPolicy],
 ) -> None:
     if set(routes) != set(policies):
-        raise RetrievalV2ValidationError(
-            "each frozen route requires exactly one constraint policy"
-        )
+        raise RetrievalV2ValidationError("each frozen route requires exactly one constraint policy")
     for route_id, policy in policies.items():
         if not policy.required_kinds.issubset(policy.supported_kinds):
-            raise RetrievalV2ValidationError(
-                f"route {route_id} requires an unsupported constraint"
-            )
+            raise RetrievalV2ValidationError(f"route {route_id} requires an unsupported constraint")
 
 
 def _canonical_resource_type(resource_type: str) -> str:

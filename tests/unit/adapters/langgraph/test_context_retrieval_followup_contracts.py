@@ -36,7 +36,10 @@ from google_work_agent.application.orchestration.retrieval_read_executor import 
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     SourceFetchPlanBuilder,
 )
-from google_work_agent.ports import WorkflowCorrelationContext, WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    WorkflowCorrelationContext,
+    WorkflowStartRequest,
+)
 
 
 @dataclass

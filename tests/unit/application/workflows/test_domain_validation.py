@@ -1,14 +1,14 @@
 from typing import Literal
 
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionDraftV1,
-    ActionPlanDraftV1,
-    WorkAnalysisResultV1,
-)
 from google_work_agent.application.orchestration.contracts import DomainValidationResult
 from google_work_agent.application.orchestration.domain_validation import (
     DomainValidationService,
     build_domain_validation_output_v1,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ActionDraftV1,
+    ActionPlanDraftV1,
+    WorkAnalysisResultV1,
 )
 
 

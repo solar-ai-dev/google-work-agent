@@ -4,20 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.application.readiness import compose_readiness
-from google_work_agent.ports import (
+from google_work_agent.launcher.readiness_projection import compose_readiness
+from google_work_agent.ports.system.launcher_probe_port import (
     LauncherProbeDecision,
     LauncherProbeVerifier,
+)
+from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
     ReadinessReport,
-    RuntimeStatusProvider,
-    RuntimeSummary,
 )
 
 __all__ = [
     "StaticLauncherProbeVerifier",
     "StaticReadinessAggregator",
-    "StaticRuntimeStatusProvider",
     "compose_readiness",
 ]
 
@@ -30,16 +29,6 @@ class StaticReadinessAggregator(ReadinessAggregator):
 
     def evaluate(self) -> ReadinessReport:
         return self.report
-
-
-@dataclass(frozen=True, slots=True)
-class StaticRuntimeStatusProvider(RuntimeStatusProvider):
-    """Static runtime status provider for tests and local composition."""
-
-    summary: RuntimeSummary
-
-    def get_summary(self) -> RuntimeSummary:
-        return self.summary
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,7 +8,10 @@ from google_work_agent.application.use_cases.component_circuit.record_component_
     RecordComponentCallResultCommandV1,
     RecordComponentCallResultHandler,
 )
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports.connector.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadPort,
     ConnectorReadResultV1,
@@ -19,11 +22,14 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWriteResultV1,
 )
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-from google_work_agent.ports.connectors.failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
 )
-from google_work_agent.ports.llm.contracts import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.llm.structured_inference_port import (
     StructuredInferencePort,
     StructuredInferenceResultV1,
@@ -211,9 +217,7 @@ class CircuitProtectedStructuredInferencePort(StructuredInferencePort):
             )
             raise
         success_key = _llm_key(result.actual_runtime)
-        self._record(
-            RecordComponentCallResultCommandV1(1, success_key, "SUCCESS", None, now_ms)
-        )
+        self._record(RecordComponentCallResultCommandV1(1, success_key, "SUCCESS", None, now_ms))
         return result
 
 

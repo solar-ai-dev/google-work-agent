@@ -78,9 +78,9 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
-from google_work_agent.ports import ResourceSnapshot
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
 from google_work_agent.ports.connector.oauth_credential_port import OAuthCredentialPort
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort

@@ -6,12 +6,15 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event,
+    cancel_pending_actions,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.application.write_persistence import audit_event, cancel_pending_actions
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
@@ -19,7 +22,6 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -27,6 +29,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)

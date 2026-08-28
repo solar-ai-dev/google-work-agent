@@ -50,10 +50,7 @@ class ResolveMismatchRecoveryService:
                     run_version=run.version,
                     plan_status=None,
                 )
-            if (
-                receipt is None
-                and context is None
-            ):
+            if receipt is None and context is None:
                 unit_of_work.recovery_contexts.store_context(
                     {
                         "schema_version": 1,

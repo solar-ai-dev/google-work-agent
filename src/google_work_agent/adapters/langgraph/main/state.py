@@ -54,9 +54,7 @@ from google_work_agent.application.orchestration.tool_routing import (
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
-from google_work_agent.ports import (
-    WorkflowStartRequest,
-)
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class ParentGraphState(MultiAgentGraphState):

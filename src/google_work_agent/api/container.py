@@ -15,17 +15,13 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.ports import (
-    ApiAccessGuard,
-    ClockPort,
-    LauncherProbeVerifier,
-    OperationalLogSink,
-    ReadinessAggregator,
-    RuntimeStatusProvider,
-    SseEventBufferPort,
-    UUIDPort,
-    WorkflowRuntime,
-)
+from google_work_agent.ports.events.observability import OperationalLogSink
+from google_work_agent.ports.system.api_access_port import ApiAccessGuard
+from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeVerifier
+from google_work_agent.ports.system.readiness_port import ReadinessAggregator
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 API_CONTRACT_VERSION = "1"
 
@@ -35,7 +31,6 @@ class ApiContainer:
     """Dependencies and delivery configuration assembled by the launcher."""
 
     unit_of_work_factory: Callable[[], Any]
-    query_service: Any
     create_conversation_handler: Any
     approve_action_service: Any
     modify_action_service: Any
@@ -43,10 +38,9 @@ class ApiContainer:
     prepare_retry_service: Any
     cancel_run_service: Any
     resume_run_service: Any
-    workflow_runtime: WorkflowRuntime
+    workflow_runtime: object
     event_publisher: SseEventBufferPort
     readiness_aggregator: ReadinessAggregator
-    runtime_status_provider: RuntimeStatusProvider
     api_access_guard: ApiAccessGuard
     clock: ClockPort
     id_generator: UUIDPort
@@ -73,6 +67,7 @@ class ApiContainer:
     start_authorization_handler: Any | None = None
     get_connection_status_handler: Any | None = None
     revoke_connection_handler: Any | None = None
+    current_account_id_provider: Callable[[], str | None] = lambda: None
     resource_query_service: Any | None = None
     list_task_lists_handler: Any | None = None
     list_calendars_handler: Any | None = None

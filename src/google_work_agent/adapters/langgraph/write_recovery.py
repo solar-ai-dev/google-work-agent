@@ -10,12 +10,12 @@ from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
 )
-from google_work_agent.application.execution_phase import (
+from google_work_agent.application.orchestration.contracts import WorkflowPhase
+from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
     UnknownRecoveryPhaseRequest,
     WriteExecutionPhaseCoordinator,
 )
-from google_work_agent.application.orchestration.contracts import WorkflowPhase
-from google_work_agent.application.run_terminal import RunTransitionResponse
+from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord

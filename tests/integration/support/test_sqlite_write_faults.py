@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors.google_workspace import (
+from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
 )
 from google_work_agent.adapters.persistence import (
@@ -11,27 +11,22 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval_contracts import (
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from tests.support.legacy_write.write_claim import ClaimWriteActionService
-from tests.support.legacy_write.write_execution import ExecuteWriteActionService
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.application.write_plan import (
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.save_write_plan import (
     SaveWritePlanService,
 )
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
-)
-from tests.support.legacy_write.write_result_persistence import (
-    StoreWriteActionSuccessService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import (
@@ -42,6 +37,11 @@ from tests.support.fakes import (
     fault_injecting_unit_of_work_factory,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
+from tests.support.legacy_write.write_execution import ExecuteWriteActionService
+from tests.support.legacy_write.write_result_persistence import (
+    StoreWriteActionSuccessService,
+)
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"

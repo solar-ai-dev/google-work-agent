@@ -9,7 +9,6 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     approve_semantic_revision,
     build_default_run_budget,
@@ -21,7 +20,8 @@ from google_work_agent.application.orchestration.retrieval_query_planner import 
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalV2ValidationError,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,

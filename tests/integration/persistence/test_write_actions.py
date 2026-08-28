@@ -18,49 +18,28 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.adapters.persistence.sqlite.query_service import (
-    QueryService as PersistenceQueryService,
-)
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
+    ApproveWriteActionCommand,
+)
+from google_work_agent.application.use_cases.action.write_preflight import (
+    PreflightWriteActionService,
+)
+from google_work_agent.application.use_cases.claim.write_execution_integrity import read_claim_token
 from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
     BeginExecutionAttemptCommand,
     BeginExecutionAttemptHandler,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.run.finalize_cancel import FinalizeCancelHandler
-from google_work_agent.application.use_cases.run.get_run_snapshot import (
-    GetRunSnapshotHandler,
-    GetRunSnapshotQuery,
-)
-from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
-from google_work_agent.application.write_approval_contracts import (
-    ApproveWriteActionCommand,
-)
-from google_work_agent.application.write_cancellation_contracts import (
-    FinalizeRunCancellationCommand,
-    RequestRunCancellationCommand,
-)
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
     VerifyWriteActionCommand,
     WriteActionResponse,
 )
-from google_work_agent.application.write_execution_integrity import read_claim_token
-from google_work_agent.application.write_plan import (
-    SaveWritePlanService,
-)
-from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
-    WriteActionDraft,
-    WriteEvidenceDraft,
-)
-from google_work_agent.application.write_preflight import PreflightWriteActionService
-from google_work_agent.application.write_recovery_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
     PrepareWriteRetryCommand,
     RecoverUnknownCreateActionCommand,
@@ -69,6 +48,47 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownUpdateActionCommand,
     RequireWriteReauthCommand,
 )
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.save_write_plan import (
+    SaveWritePlanService,
+)
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
+    PublishWritePlanCommand,
+    SaveWritePlanCommand,
+    WriteActionDraft,
+    WriteEvidenceDraft,
+)
+from google_work_agent.application.use_cases.run.finalize_cancel import FinalizeCancelHandler
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
+    GetRunSnapshotQuery,
+)
+from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
+from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
+    FinalizeRunCancellationCommand,
+    RequestRunCancellationCommand,
+)
+from google_work_agent.domain.action.model import PolicyViolationError
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.domain.results import InvariantViolationError, ResultCode
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    FreeBusyCalendar,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+    TimeRange,
+)
+from tests.support.fakes import (
+    FakeClockPort,
+    FakeGoogleGateway,
+    GoogleGatewayFault,
+    GoogleGatewayFaultKind,
+)
+from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.legacy_write.write_actions import (
     DeliveryCertainty,
     classify_write_delivery,
@@ -85,29 +105,6 @@ from tests.support.legacy_write.write_recovery import (
     RecoverUnknownSendActionService,
     RecoverUnknownUpdateActionService,
 )
-
-
-from google_work_agent.domain.action.model import PolicyViolationError
-from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.domain.results import InvariantViolationError, ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatusV1
-from google_work_agent.ports import (
-    FreeBusyCalendar,
-    GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGatewayError,
-    ResourcePage,
-    ResourceSnapshot,
-    ResourceType,
-    TimeRange,
-)
-from tests.support.fakes import (
-    FakeClockPort,
-    FakeGoogleGateway,
-    GoogleGatewayFault,
-    GoogleGatewayFaultKind,
-)
-from tests.support.fixtures import ProductFixtureSnapshotLoader
 from tests.support.legacy_write.write_result_persistence import (
     StoreWriteActionSuccessService,
 )
@@ -115,18 +112,14 @@ from tests.support.legacy_write.write_verification import VerifyWriteActionServi
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
 
-class QueryService:
-    """Test-only bridge while integration assertions migrate to exact handlers."""
+class SnapshotReader:
+    """Test-only bridge over exact repository/read-handler surfaces."""
 
     def __init__(
         self, *, database_path: Path, connection_factory: object, **kwargs: object
     ) -> None:
+        del connection_factory, kwargs
         self._database_path = database_path
-        self._adapter = PersistenceQueryService(
-            database_path=database_path,
-            connection_factory=connection_factory,  # type: ignore[arg-type]
-            runtime_status_provider=kwargs.get("runtime_status_provider"),  # type: ignore[arg-type]
-        )
 
     def get_run_snapshot(self, run_id: str):  # type: ignore[no-untyped-def]
         return GetRunSnapshotHandler(
@@ -134,7 +127,8 @@ class QueryService:
         )(GetRunSnapshotQuery(run_id))
 
     def has_cancel_intent(self, run_id: str) -> bool:
-        return self._adapter.has_cancel_intent(run_id)
+        with sqlite_unit_of_work_factory(self._database_path)() as unit_of_work:
+            return unit_of_work.cancel_intents.has_durable_intent(run_id)
 
 
 # Test-only compatibility type used by legacy integration fixtures. Production
@@ -235,9 +229,7 @@ class _TransactionCheckingGateway:
                 task_id=str(fallback_resource_id or arguments["task_id"]),
             )
         if tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-            return self.get_gmail_draft(
-                draft_id=str(fallback_resource_id or arguments["draft_id"])
-            )
+            return self.get_gmail_draft(draft_id=str(fallback_resource_id or arguments["draft_id"]))
         if tool_name == "gmail_send":
             return self.get_gmail_message(
                 message_id=str(fallback_resource_id or arguments["message_id"])

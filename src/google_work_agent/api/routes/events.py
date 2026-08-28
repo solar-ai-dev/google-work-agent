@@ -18,7 +18,7 @@ from google_work_agent.application.use_cases.sse_event.list_run_events import (
     ListRunEventsHandler,
     ListRunEventsQuery,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 

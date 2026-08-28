@@ -7,7 +7,7 @@ from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
 
-from google_work_agent.ports.observability_events import (
+from google_work_agent.ports.events.observability_events import (
     SanitizationError,
     assert_persistence_value_secret_free,
     is_forbidden_persistence_key,

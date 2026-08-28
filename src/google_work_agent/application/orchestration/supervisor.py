@@ -362,9 +362,7 @@ def _route_tool_routing(
     return _finalize(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
-        reason_code=result["reason_codes"][0]
-        if result["reason_codes"]
-        else "TOOL_ROUTE_BLOCKED",
+        reason_code=result["reason_codes"][0] if result["reason_codes"] else "TOOL_ROUTE_BLOCKED",
         tool_route_plan=None,
         workflow_signal=result["workflow_signal"],
     )
@@ -1087,9 +1085,7 @@ def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
     # with meta attached, so it is trusted and cast here like every other
     # typed state payload in this module, not re-validated against the
     # narrower LLM output schema.
-    return cast(
-        RequestIntentV2, _require_mapping(state.get("request_intent"), "request_intent")
-    )
+    return cast(RequestIntentV2, _require_mapping(state.get("request_intent"), "request_intent"))
 
 
 def _review_target_from_state(

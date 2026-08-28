@@ -7,7 +7,9 @@ from collections.abc import Mapping, Sequence
 from google_work_agent.adapters.langgraph.subgraphs.review.projections.review_projection import (
     project_review_input,
 )
-from google_work_agent.application.agents.review.contracts.review_findings import ReviewSemanticInvoker
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewSemanticInvoker,
+)
 from google_work_agent.application.agents.review.inspect_action_scope_and_route import (
     inspect_action_scope_and_route,
 )

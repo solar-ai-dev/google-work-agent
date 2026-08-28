@@ -4,7 +4,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from google_work_agent.ports.llm.contracts import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 
 
 @dataclass(frozen=True, slots=True)

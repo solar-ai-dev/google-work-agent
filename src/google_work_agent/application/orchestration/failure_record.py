@@ -182,9 +182,7 @@ def validate_failure_record_v1(value: object) -> FailureRecordV1:
         "failure_origin": cast(FailureOriginV1, root["failure_origin"]),
         "detected_by": cast(DetectedByV1, root["detected_by"]),
         "runtime_disposition": cast(RuntimeDispositionV1, root["runtime_disposition"]),
-        "experiment_disposition": cast(
-            ExperimentDispositionV1, root["experiment_disposition"]
-        ),
+        "experiment_disposition": cast(ExperimentDispositionV1, root["experiment_disposition"]),
         "affected_field_paths": paths,
         "evidence_refs": refs,
     }
@@ -214,9 +212,7 @@ def _string_list(value: object, field: str) -> list[str]:
 
 def _non_empty_string(value: object, field: str) -> None:
     if not isinstance(value, str) or not value:
-        raise FailureRecordValidationError(
-            f"failure_record.{field} must be a non-empty string"
-        )
+        raise FailureRecordValidationError(f"failure_record.{field} must be a non-empty string")
 
 
 def _enum(value: object, field: str, allowed: set[str]) -> None:

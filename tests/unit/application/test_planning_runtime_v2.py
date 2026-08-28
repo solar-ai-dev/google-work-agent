@@ -11,7 +11,7 @@ from google_work_agent.application.orchestration.planning_invocation import (
     PlanningV2Producer,
     PlanningV2RuntimeError,
 )
-from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 

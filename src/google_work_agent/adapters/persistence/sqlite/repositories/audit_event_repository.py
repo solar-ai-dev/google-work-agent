@@ -6,7 +6,7 @@ from json import loads
 from typing import cast
 
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
-from google_work_agent.ports.observability_events import (
+from google_work_agent.ports.events.observability_events import (
     EventCategory,
     ObservabilityContext,
     Severity,

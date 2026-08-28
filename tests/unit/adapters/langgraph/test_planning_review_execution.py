@@ -26,9 +26,7 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
         }
         return {"answer": "done", "evidence_refs": ["e1"]}
 
-    graph = PlanningSubgraph(
-        dependencies=PlanningRuntimeDependencies(invoke=invoke)
-    ).build()
+    graph = PlanningSubgraph(dependencies=PlanningRuntimeDependencies(invoke=invoke)).build()
     result = graph.invoke(
         {
             "user_request": "Summarize it",
@@ -71,16 +69,12 @@ def test_compiled_planning_action_executes_all_canonical_action_stages() -> None
         "selected_tool_id": "tasks_update_task",
         "reason_codes": ["USER_REQUEST"],
     }
-    graph = PlanningSubgraph(
-        dependencies=PlanningRuntimeDependencies(invoke=invoke)
-    ).build()
+    graph = PlanningSubgraph(dependencies=PlanningRuntimeDependencies(invoke=invoke)).build()
     result = graph.invoke(
         {
             "user_request": "Update the task",
             "request_intent": {"goal": "update task"},
-            "tool_route_plan": {
-                "output_plan": {"output_mode": "ACTION", "output_routes": [route]}
-            },
+            "tool_route_plan": {"output_plan": {"output_mode": "ACTION", "output_routes": [route]}},
             "work_analysis": {},
             "evidence": [{"evidence_ref": "e1"}],
             "action_ids_by_route": {"r1": "a1"},
@@ -203,7 +197,9 @@ def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
     ]
 
 
-def test_compiled_review_recheck_uses_public_revision_context_and_refreshes_only_affected_dimensions() -> None:
+def test_compiled_review_recheck_uses_public_revision_context_and_refreshes_only_affected_dimensions() -> (
+    None
+):
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -247,9 +243,7 @@ def test_compiled_review_recheck_uses_public_revision_context_and_refreshes_only
         if isinstance(issue["action_id"], str)
     ]
     affected_route_ids = [
-        issue["route_id"]
-        for issue in public_revision_issues
-        if isinstance(issue["route_id"], str)
+        issue["route_id"] for issue in public_revision_issues if isinstance(issue["route_id"], str)
     ]
 
     graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()

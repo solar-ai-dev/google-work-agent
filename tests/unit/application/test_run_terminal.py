@@ -2,11 +2,11 @@ from copy import deepcopy
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.run_terminal import (
+from google_work_agent.application.orchestration.contracts import build_default_run_budget
+from google_work_agent.application.use_cases.run.run_terminal import (
     build_finalize_state_update,
     derive_finalize_intent,
 )
-from google_work_agent.application.orchestration.contracts import build_default_run_budget
 
 
 def _state(**overrides: object) -> dict[str, object]:

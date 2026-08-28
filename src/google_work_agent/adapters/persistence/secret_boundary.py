@@ -12,7 +12,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repo
 )
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.observability_events import sanitize_persistent_event_json
+from google_work_agent.ports.events.observability_events import sanitize_persistent_event_json
 
 
 class SecretBoundaryAuditEventRepository(SqliteAuditEventRepository):

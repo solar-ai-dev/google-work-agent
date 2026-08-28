@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from json import loads as _loads
 
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
+    DEFAULT_APPROVAL_TTL_MS,
+)
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
@@ -15,7 +18,6 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
-from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
@@ -98,9 +100,7 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
 
     assert required.applied is True
     assert required.current_status == RunStatusV1.RECOVERY_REQUIRED.value
-    assert required.next_allowed_commands == (
-        RunCommand.REQUEST_CANCEL.value,
-    )
+    assert required.next_allowed_commands == (RunCommand.REQUEST_CANCEL.value,)
     assert resolved.applied is True
     assert resolved.current_status == RunStatusV1.PLANNING.value
     connection = connect_sqlite(write_database)

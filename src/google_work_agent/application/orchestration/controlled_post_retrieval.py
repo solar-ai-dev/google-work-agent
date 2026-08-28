@@ -8,8 +8,6 @@ from pathlib import Path
 from time import perf_counter
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.context_retrieval import (
     validate_context_retrieval_result_v1,
 )
@@ -48,8 +46,16 @@ from google_work_agent.application.orchestration.work_analysis import (
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
 )
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference, StructuredLLMResult
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+    StructuredLLMResult,
+)
 
 JsonObject = dict[str, object]
 ControlledProfileId = Literal[

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Response
 
 from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.errors.api_request_error import ApiRequestError
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter()
 

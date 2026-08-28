@@ -27,7 +27,7 @@ from google_work_agent.application.use_cases.resource.opaque_continuation_access
     LocalResourceContinuationStore,
     OpaqueConnectorResourceAccess,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GmailThreadDetail,
     ResourcePage,
     ResourceSnapshot,

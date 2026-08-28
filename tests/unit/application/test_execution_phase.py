@@ -3,36 +3,40 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
-from google_work_agent.application.execution_phase import (
-    UnknownRecoveryPhaseRequest,
-    WriteExecutionDisposition,
-    WriteExecutionPhaseCoordinator,
-    WriteExecutionPhaseRequest,
-)
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionResult
 from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
     ClassifyDispatchResultHandler,
 )
-from google_work_agent.application.use_cases.verification.verify_effect import (
-    VerificationResultV1,
+from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
+    ConnectorWriteProjection,
 )
-from google_work_agent.application.write_dispatch_models import PreparedWriteDispatch
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+    UnknownRecoveryPhaseRequest,
+    WriteExecutionDisposition,
+    WriteExecutionPhaseCoordinator,
+    WriteExecutionPhaseRequest,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    PreparedWriteDispatch,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
+)
+from google_work_agent.application.use_cases.verification.verify_effect import (
+    VerificationResultV1,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
 )
-from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 
 
 class _RecordedCall:
@@ -421,15 +425,11 @@ def _coordinator(
         claim_execution=cast(
             Any,
             claim_call
-            or _RecordedCall(
-                name="claim", calls=calls, result=claim_response or _claim_result()
-            ),
+            or _RecordedCall(name="claim", calls=calls, result=claim_response or _claim_result()),
         ),
         build_claim_context=cast(
             Any,
-            _RecordedCall(
-                name="build_claim_context", calls=calls, result=_claim_context()
-            ),
+            _RecordedCall(name="build_claim_context", calls=calls, result=_claim_context()),
         ),
         begin_execution_attempt=cast(
             Any,
@@ -445,14 +445,10 @@ def _coordinator(
             _ConnectorExecution(calls=calls, snapshot=snapshot, execute_error=execute_error),
         ),
         classify_dispatch_result=cast(Any, _Classify(calls)),
-        store_write_success=cast(
-            Any, _RecordedCall(name="store", calls=calls, result=stored)
-        ),
+        store_write_success=cast(Any, _RecordedCall(name="store", calls=calls, result=stored)),
         begin_verification=cast(
             Any,
-            _RecordedCall(
-                name="begin_verification", calls=calls, result=begin_verification_result
-            ),
+            _RecordedCall(name="begin_verification", calls=calls, result=begin_verification_result),
         ),
         verify_effect=cast(
             Any,
@@ -469,9 +465,7 @@ def _coordinator(
             Any,
             _RecordedCall(name="store_verification", calls=calls, result=verified),
         ),
-        require_recovery=cast(
-            Any, _RecordedCall(name="require_recovery", calls=calls)
-        ),
+        require_recovery=cast(Any, _RecordedCall(name="require_recovery", calls=calls)),
         resolve_recovery=cast(Any, _RecordedCall(name="resolve_recovery", calls=calls)),
         mark_write_failed=cast(
             Any,
@@ -498,12 +492,8 @@ def _coordinator(
             Any,
             _RecordedCall(name="lookup_unknown", calls=calls, error=lookup_error),
         ),
-        recover_existing_result=cast(
-            Any, _RecordedCall(name="recover_existing", calls=calls)
-        ),
-        resolve_as_failed=cast(
-            Any, _RecordedCall(name="resolve_as_failed", calls=calls)
-        ),
+        recover_existing_result=cast(Any, _RecordedCall(name="recover_existing", calls=calls)),
+        resolve_as_failed=cast(Any, _RecordedCall(name="resolve_as_failed", calls=calls)),
     )
 
 

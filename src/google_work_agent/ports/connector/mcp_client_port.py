@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
-from google_work_agent.ports.google_workspace import DeliveryCertainty
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
 type JsonValue = Any
 

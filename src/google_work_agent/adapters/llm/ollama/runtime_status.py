@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.ports import ApprovedModelInfo, AvailabilityState, OllamaRuntimeProbe
+from google_work_agent.ports.llm import (
+    ApprovedModelInfo,
+    AvailabilityState,
+    OllamaRuntimeProbe,
+)
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 

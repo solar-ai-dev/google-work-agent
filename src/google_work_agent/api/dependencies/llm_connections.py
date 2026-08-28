@@ -9,7 +9,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.llm import TestLLMConnectionService
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    TestLLMConnectionService,
+)
 
 
 @dataclass(frozen=True, slots=True)

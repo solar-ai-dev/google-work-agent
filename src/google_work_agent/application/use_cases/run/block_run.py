@@ -7,8 +7,11 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
-from google_work_agent.application.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.action.persistence_cas import (
+    update_action_record,
+    update_plan_record,
+)
+from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
@@ -24,10 +27,10 @@ from google_work_agent.domain.run.model import (
 )
 from google_work_agent.domain.run.transitions.block_run import transition_block_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,9 +180,7 @@ class BlockRunHandler:
         )
         current_plan = plans[0] if len(plans) == 1 else None
         actions = (
-            ()
-            if current_plan is None
-            else unit_of_work.actions.list_for_plan(current_plan.id)
+            () if current_plan is None else unit_of_work.actions.list_for_plan(current_plan.id)
         )
         attempts = tuple(
             attempt
@@ -216,9 +217,7 @@ class BlockRunHandler:
         )
 
     @staticmethod
-    def _settle_children(
-        *, unit_of_work: UnitOfWork, run_id: str, updated_at_ms: int
-    ) -> None:
+    def _settle_children(*, unit_of_work: UnitOfWork, run_id: str, updated_at_ms: int) -> None:
         pending = {
             ActionStatusV1.PROPOSED.value,
             ActionStatusV1.MODIFIED.value,
@@ -249,9 +248,7 @@ class BlockRunHandler:
                     )
                     is None
                 ):
-                    raise RuntimeError(
-                        f"BlockRun could not terminalize pending action {action.id}"
-                    )
+                    raise RuntimeError(f"BlockRun could not terminalize pending action {action.id}")
             if (
                 update_plan_record(
                     unit_of_work,
@@ -294,9 +291,7 @@ class BlockRunHandler:
                 run_id=str(payload["run_id"]),
                 run_status=str(payload["run_status"]),
                 run_version=int(payload["run_version"]),
-                next_allowed_commands=tuple(
-                    str(item) for item in payload["next_allowed_commands"]
-                ),
+                next_allowed_commands=tuple(str(item) for item in payload["next_allowed_commands"]),
                 reason_code=cast(str | None, payload.get("reason_code")),
                 result_kind=cast(str | None, payload.get("result_kind")),
                 conflict_detail=cast(str | None, payload.get("conflict_detail")),

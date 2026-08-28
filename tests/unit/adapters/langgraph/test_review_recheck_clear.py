@@ -24,25 +24,27 @@ def _run_recheck(
             return {"findings": fresh_by_prompt[prompt_id]}
         raise AssertionError(f"unaffected dimension was rechecked: {prompt_id}")
 
-    result = ReviewSubgraph(
-        dependencies=ReviewRuntimeDependencies(invoke=invoke)
-    ).build().invoke(
-        {
-            "review_phase": "RECHECK",
-            "request_intent": {"goal": "revised"},
-            "tool_route_plan": {},
-            "planning_result": {"revision": 2},
-            "work_analysis": {},
-            "evidence": [],
-            "policy_summary": {},
-            "prior_review_findings": prior,
-            "affected_dimensions": affected_dimensions,
-            "affected_action_ids": [],
-            "affected_route_ids": [],
-            "review_artifact_id": "rv2",
-            "review_revision": 2,
-            "review_based_on": [],
-        }
+    result = (
+        ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke))
+        .build()
+        .invoke(
+            {
+                "review_phase": "RECHECK",
+                "request_intent": {"goal": "revised"},
+                "tool_route_plan": {},
+                "planning_result": {"revision": 2},
+                "work_analysis": {},
+                "evidence": [],
+                "policy_summary": {},
+                "prior_review_findings": prior,
+                "affected_dimensions": affected_dimensions,
+                "affected_action_ids": [],
+                "affected_route_ids": [],
+                "review_artifact_id": "rv2",
+                "review_revision": 2,
+                "review_based_on": [],
+            }
+        )
     )
     return result, calls
 

@@ -5,45 +5,45 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
 )
-from google_work_agent.application.resource_ref_projection import (
-    resource_ref_from_snapshot as _resource_ref_from_snapshot,
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event as _audit_event,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    propagate_dependency_blocked as _propagate_dependency_blocked,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_action as _require_action,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_attempt as _require_attempt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_plan as _require_plan,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    resolve_existing_action_receipt as _resolve_existing_action_receipt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    upsert_resource_ref as _upsert_resource_ref,
 )
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionCommandV1,
     AbortClaimedExecutionHandler,
 )
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     MarkWriteActionFailedCommand,
     StoreWriteActionSuccessCommand,
     WriteActionResponse,
 )
-from google_work_agent.application.write_persistence import (
-    audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
-    finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    propagate_dependency_blocked as _propagate_dependency_blocked,
-)
-from google_work_agent.application.write_persistence import (
-    require_action as _require_action,
-)
-from google_work_agent.application.write_persistence import (
-    require_attempt as _require_attempt,
-)
-from google_work_agent.application.write_persistence import (
-    require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
-    resolve_existing_action_receipt as _resolve_existing_action_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    upsert_resource_ref as _upsert_resource_ref,
+from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -56,7 +56,7 @@ from google_work_agent.domain.execution_attempt.transitions.store_success import
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class StoreWriteActionSuccessService:

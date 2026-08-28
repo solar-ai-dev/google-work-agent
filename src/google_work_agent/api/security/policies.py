@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 
 @dataclass(frozen=True, slots=True)

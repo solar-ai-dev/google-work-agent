@@ -21,7 +21,7 @@ from google_work_agent.application.orchestration.handoff_contracts import Eviden
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
     WorkflowOutcome,
@@ -112,11 +112,7 @@ def _compile_corrective_persistence_graph(
             cast(dict[str, Any], state),
             cast(dict[str, Any], draft),
         )
-        return {
-            "__reserved_corrective_plan_id__": state.get(
-                "__reserved_corrective_plan_id__"
-            )
-        }
+        return {"__reserved_corrective_plan_id__": state.get("__reserved_corrective_plan_id__")}
 
     builder = StateGraph(ParentGraphState)
     builder.add_node("persist", persist_node)
@@ -167,9 +163,7 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
             graph_a.invoke(state, config=config)
 
         failed_snapshot = graph_a.get_state(config)
-        assert failed_snapshot.values["__reserved_corrective_plan_id__"] == (
-            "reserved-plan-2"
-        )
+        assert failed_snapshot.values["__reserved_corrective_plan_id__"] == ("reserved-plan-2")
         assert failed_snapshot.next == ("persist",)
     finally:
         checkpoint_a.close()
@@ -206,9 +200,7 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
 
         assert result.outcome is WorkflowOutcome.ACCEPTED
         assert result.payload["run_status"] == "WAITING_APPROVAL"
-        final_snapshot = graph_b.get_state(
-            {"configurable": {"thread_id": "thread-1"}}
-        )
+        final_snapshot = graph_b.get_state({"configurable": {"thread_id": "thread-1"}})
         assert final_snapshot.values["__reserved_corrective_plan_id__"] is None
         assert final_snapshot.next == ()
     finally:

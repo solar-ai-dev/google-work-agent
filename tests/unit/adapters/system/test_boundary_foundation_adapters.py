@@ -24,7 +24,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import (
     SqliteCheckpointAdapter,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1
-from google_work_agent.ports.observability import MaintenanceWindow
+from google_work_agent.ports.events.observability import MaintenanceWindow
 from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitKeyV1
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,

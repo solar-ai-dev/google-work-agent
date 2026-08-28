@@ -34,7 +34,10 @@ from google_work_agent.application.use_cases.verification.verify_effect import (
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import DeliveryCertainty, ResourceSnapshot, UUIDPort
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    DeliveryCertainty,
+    ResourceSnapshot,
+)
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
 )
@@ -45,6 +48,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,9 +163,7 @@ class ReconcileInflightExecutionsHandler:
             action = unit_of_work.actions.get(candidate.action_id)
             attempt = unit_of_work.execution_attempts.get(candidate.execution_attempt_id)
             approval = (
-                None
-                if attempt is None
-                else unit_of_work.approval_history.get(attempt.approval_id)
+                None if attempt is None else unit_of_work.approval_history.get(attempt.approval_id)
             )
             resource_ref = (
                 None
@@ -187,17 +189,13 @@ class ReconcileInflightExecutionsHandler:
                 run_id=candidate.run_id,
                 action_id=action.id,
                 execution_attempt_id=attempt.id,
-                effect=cast(
-                    Literal["CREATE", "UPDATE", "DELETE", "SEND"], action.effect_type
-                ),
+                effect=cast(Literal["CREATE", "UPDATE", "DELETE", "SEND"], action.effect_type),
                 recovery_fingerprint=approval.recovery_fingerprint,
                 target_resource_ref=target,
             )
         )
         command_base = f"system:execution-attempt-reconcile:{attempt.id}"
-        if lookup.disposition == "MUTATION_FOUND" and len(
-            lookup.candidate_resource_refs
-        ) == 1:
+        if lookup.disposition == "MUTATION_FOUND" and len(lookup.candidate_resource_refs) == 1:
             resource_id = lookup.candidate_resource_refs[0]
             snapshot = self._materialize_recovery_snapshot(
                 action.tool_name,

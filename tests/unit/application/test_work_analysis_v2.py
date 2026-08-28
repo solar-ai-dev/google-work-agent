@@ -200,9 +200,9 @@ def test_node_chain_is_exact_approved_amendment_topology() -> None:
 def test_llm_candidate_schemas_do_not_expose_deterministic_authority_fields() -> None:
     assert not hasattr(work_analysis_v2, "WORK_ANALYSIS_CANDIDATE_OUTPUT_SCHEMA")
     assert not hasattr(work_analysis_v2, "WorkAnalysisCandidateV2")
-    assert "validated_risks" not in signature(
-        materialize_complete_work_analysis_result_v2
-    ).parameters
+    assert (
+        "validated_risks" not in signature(materialize_complete_work_analysis_result_v2).parameters
+    )
     schema_text = repr(
         (
             WORK_ANALYSIS_FACTS_OUTPUT_SCHEMA.json_schema,
@@ -427,9 +427,7 @@ class _Provider:
         self.calls.append("resolve_relations")
         assert len(work_facts) == 2
         return {
-            "relation_candidates": _local(
-                relation_type=self.relation_type
-            )["relation_candidates"]
+            "relation_candidates": _local(relation_type=self.relation_type)["relation_candidates"]
         }
 
     def assess_analysis_gaps(

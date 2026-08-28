@@ -13,7 +13,9 @@ from urllib.request import urlopen
 from fastapi.testclient import TestClient
 from uvicorn import Config, Server
 
-from google_work_agent.adapters.system.filesystem_attachment_staging import ATTACHMENT_STAGING_DIR_ENV
+from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
+)
 from google_work_agent.api.app import create_app
 from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
     CreateStagedAttachmentCommand,
@@ -55,7 +57,6 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
         assert live.json()["status"] == "LIVE"
         assert ready.status_code == 200
         assert ready.json()["status"] == "READY"
-        assert container.runtime_status_provider.get_summary().mcp == "READY"
 
     assert isinstance(container.readiness_aggregator, DevelopmentReadinessAggregator)
     assert base_transport.runtime_metadata().process_status == "STOPPED"

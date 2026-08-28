@@ -6,9 +6,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.persistence_cas import update_execution_attempt_record
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
+    update_execution_attempt_record,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     require_action,
     require_approval,
@@ -16,6 +17,7 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.approval.model import Approval, ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash

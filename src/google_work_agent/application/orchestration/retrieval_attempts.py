@@ -59,11 +59,14 @@ def build_query_attempt(
     stop_reason: str | None,
 ) -> QueryAttempt:
     """Record only bounded normalized read meaning, never provider arguments."""
-    resource_type = cast(Literal["EMAIL", "TASK", "CALENDAR"], {
-        "GMAIL": "EMAIL",
-        "TASKS": "TASK",
-        "CALENDAR": "CALENDAR",
-    }[plan["source"]])
+    resource_type = cast(
+        Literal["EMAIL", "TASK", "CALENDAR"],
+        {
+            "GMAIL": "EMAIL",
+            "TASKS": "TASK",
+            "CALENDAR": "CALENDAR",
+        }[plan["source"]],
+    )
     return {
         "schema_version": 1,
         "query_attempt_id": query_attempt_id,

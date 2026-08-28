@@ -4,15 +4,15 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,9 +178,7 @@ def _business_expected(expected: dict[str, object]) -> dict[str, object]:
     return {key: value for key, value in business.items() if key != "recovery_fingerprint"}
 
 
-def _business_actual(
-    actual: dict[str, object], *, normalizer_tool_name: str
-) -> dict[str, object]:
+def _business_actual(actual: dict[str, object], *, normalizer_tool_name: str) -> dict[str, object]:
     payload = actual.get("payload")
     business = (
         actual

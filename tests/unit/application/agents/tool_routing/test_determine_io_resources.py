@@ -10,16 +10,18 @@ from google_work_agent.application.orchestration.contracts import build_default_
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
 
 
 @dataclass

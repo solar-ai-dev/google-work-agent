@@ -6,12 +6,12 @@ from collections.abc import Callable
 from dataclasses import asdict
 from json import dumps
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.read_contracts import (
     FailReadActionCommand,
     ReadActionCommandResponse,
 )
-from google_work_agent.application.read_persistence import (
+from google_work_agent.application.use_cases.action.read_persistence import (
     action_result_response,
     audit_event,
     finish_json_receipt,
@@ -25,7 +25,7 @@ from google_work_agent.application.use_cases.run.complete_read_only_run import (
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.fail_read_action import transition_fail_read_action
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class FailReadActionHandler:

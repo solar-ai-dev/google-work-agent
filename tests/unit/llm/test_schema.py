@@ -122,18 +122,14 @@ def test_if_then_applies_then_only_when_if_matches() -> None:
         "if": {"properties": {"source": {"enum": ["GMAIL", "TASKS"]}}},
         "then": {"properties": {"calendar_read_mode": {"const": None}}},
     }
-    assert validate_output_schema(
-        {"source": "GMAIL", "calendar_read_mode": None}, schema
-    ) == []
+    assert validate_output_schema({"source": "GMAIL", "calendar_read_mode": None}, schema) == []
     assert validate_output_schema(
         {"source": "GMAIL", "calendar_read_mode": "EVENTS_ONLY"}, schema
     ) == ["$.calendar_read_mode must equal None"]
     # "if" does not match (source is CALENDAR) -- "then" is skipped, so an
     # unrelated calendar_read_mode value is not an error here.
     assert (
-        validate_output_schema(
-            {"source": "CALENDAR", "calendar_read_mode": "EVENTS_ONLY"}, schema
-        )
+        validate_output_schema({"source": "CALENDAR", "calendar_read_mode": "EVENTS_ONLY"}, schema)
         == []
     )
 
@@ -164,9 +160,7 @@ def test_min_items_and_max_items_bound_array_length() -> None:
     schema = {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 2}
     assert validate_output_schema(["a"], schema) == []
     assert validate_output_schema([], schema) == ["$ must contain at least 1 items"]
-    assert validate_output_schema(["a", "b", "c"], schema) == [
-        "$ must contain at most 2 items"
-    ]
+    assert validate_output_schema(["a", "b", "c"], schema) == ["$ must contain at most 2 items"]
 
 
 def test_unique_items_rejects_duplicates() -> None:

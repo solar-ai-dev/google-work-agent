@@ -7,11 +7,6 @@ from typing import TypedDict
 import pytest
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.persistence import (
-    apply_migrations,
-    connect_sqlite,
-    sqlite_unit_of_work_factory,
-)
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
@@ -19,37 +14,41 @@ from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegi
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
+from google_work_agent.adapters.persistence import (
+    apply_migrations,
+    connect_sqlite,
+    sqlite_unit_of_work_factory,
+)
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval_contracts import (
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from tests.support.legacy_write.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
 )
-from google_work_agent.application.write_plan import (
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.save_write_plan import (
     SaveWritePlanService,
 )
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
 )
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
-from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
-from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,
 )
@@ -58,6 +57,7 @@ from tests.integration.persistence.test_write_action_dependency_persistence impo
     _task_draft,
 )
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
 

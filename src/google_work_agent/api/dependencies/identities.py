@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -14,14 +13,14 @@ from google_work_agent.api.dependencies.request_context import get_api_container
 @dataclass(frozen=True, slots=True)
 class IdentityRouteDependencies:
     api_contract_version: str
-    query_service: Callable[[], object]
+    get_connection_status_handler: object | None
 
 
 def get_identity_route_dependencies(request: Request) -> IdentityRouteDependencies:
     container = get_api_container(request)
     return IdentityRouteDependencies(
         api_contract_version=container.api_contract_version,
-        query_service=lambda: container.query_service,
+        get_connection_status_handler=container.get_connection_status_handler,
     )
 
 

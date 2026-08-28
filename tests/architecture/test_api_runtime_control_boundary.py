@@ -11,7 +11,7 @@ USE_CASES = ROOT / "src" / "google_work_agent" / "application" / "use_cases"
 
 RUNTIME_CONTROL_BINDINGS = (
     ("runtime_summaries.py", "get_runtime", "GetRuntimeStatusHandler"),
-    ("identities.py", "get_current_google_account", "GetGoogleAccountHandler"),
+    ("identities.py", "get_current_google_account", "GetConnectionStatusHandler"),
     ("llm_connections.py", "get_llm_connection", "GetLlmCredentialStatusHandler"),
     ("llm_connections.py", "store_llm_api_key", "StoreLlmCredentialHandler"),
     ("llm_connections.py", "delete_llm_api_key", "DeleteLlmCredentialHandler"),
@@ -27,13 +27,12 @@ RUNTIME_CONTROL_BINDINGS = (
 APPLICATION_RUNTIME_CONTROL_OWNERS = (
     "runtime_status",
     "runtime_mode",
-    "identity",
+    "connection",
     "llm_credential",
     "llm",
     "setting",
     "backup",
     "shutdown",
-    "health",
 )
 PROVIDER_BOUNDARY_ROUTES = (
     "runtime_summaries.py",
@@ -62,7 +61,13 @@ def _imports_symbol_from_application_use_cases(tree: ast.AST, symbol: str) -> bo
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.module is None:
             continue
-        if not node.module.startswith("google_work_agent.application.use_cases."):
+        if not (
+            node.module.startswith("google_work_agent.application.use_cases.")
+            or (
+                symbol == "GetReadinessHandler"
+                and node.module == "google_work_agent.launcher.get_readiness"
+            )
+        ):
             continue
         if any(alias.name == symbol for alias in node.names):
             return True
@@ -126,15 +131,15 @@ def test_all_runtime_control_routes_bind_expected_application_handlers() -> None
     for route_name, endpoint_name, handler_name in RUNTIME_CONTROL_BINDINGS:
         tree = _parse(ROUTES / route_name)
         endpoint = _route_function(tree, endpoint_name)
-        assert _is_route_endpoint(
-            endpoint
-        ), f"{route_name}:{endpoint_name} is no longer a route endpoint"
-        assert _imports_symbol_from_application_use_cases(
-            tree, handler_name
-        ), f"{route_name}:{endpoint_name} no longer imports canonical {handler_name}"
-        assert _calls_handler(
-            endpoint, handler_name
-        ), f"{route_name}:{endpoint_name} must execute {handler_name}"
+        assert _is_route_endpoint(endpoint), (
+            f"{route_name}:{endpoint_name} is no longer a route endpoint"
+        )
+        assert _imports_symbol_from_application_use_cases(tree, handler_name), (
+            f"{route_name}:{endpoint_name} no longer imports canonical {handler_name}"
+        )
+        assert _calls_handler(endpoint, handler_name), (
+            f"{route_name}:{endpoint_name} must execute {handler_name}"
+        )
 
 
 def test_runtime_and_identity_routes_do_not_call_broad_query_service_semantics() -> None:

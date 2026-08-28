@@ -6,18 +6,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.persistence_cas import update_plan_record
-from google_work_agent.application.run_terminal import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+)
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.run_terminal import (
     RunTransitionResponse,
     _finish_json_receipt,
     _handle_existing_receipt,
     _require_conversation,
     _require_run,
-)
-from google_work_agent.application.use_cases.run.build_terminal_message import (
-    BuildTerminalMessageHandler,
-    BuildTerminalMessageQueryV1,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -36,12 +36,10 @@ from google_work_agent.domain.run.transitions.complete_write_run import (
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.domain.verification.model import VerificationStatus
-from google_work_agent.ports import (
-    UnitOfWork,
-)
 from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,9 +181,7 @@ class CompleteWriteRunHandler:
                 cancel_intent_active=False,
             )
             result_kind = classify_complete_write_run_result(action_statuses)
-            reason_code = (
-                "WRITE_VERIFIED" if result_kind.value == "SUCCESS" else "WRITE_CLOSED"
-            )
+            reason_code = "WRITE_VERIFIED" if result_kind.value == "SUCCESS" else "WRITE_CLOSED"
             if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
                 run.version,
@@ -213,7 +209,9 @@ class CompleteWriteRunHandler:
                 if (
                     update_plan_record(
                         unit_of_work,
-                        plan.id, expected_status=plan.status, next_status=PlanStatusV1.COMPLETED
+                        plan.id,
+                        expected_status=plan.status,
+                        next_status=PlanStatusV1.COMPLETED,
                     )
                     is None
                 ):

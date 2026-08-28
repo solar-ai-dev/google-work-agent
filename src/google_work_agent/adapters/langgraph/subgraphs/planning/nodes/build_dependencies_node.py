@@ -8,7 +8,9 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.projections.plannin
     project_planning_input,
 )
 from google_work_agent.application.agents.planning.build_dependencies import build_dependencies
-from google_work_agent.application.agents.planning.contracts.action_plan_draft import PlanningActionSeedV1
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    PlanningActionSeedV1,
+)
 
 
 def build_dependencies_node(state: Mapping[str, object]) -> dict[str, object]:
@@ -40,7 +42,11 @@ def build_dependencies_node(state: Mapping[str, object]) -> dict[str, object]:
         route_id = route.get("route_id")
         tool_id = route.get("selected_tool_id")
         effect = route.get("effect")
-        if not isinstance(route_id, str) or not isinstance(tool_id, str) or not isinstance(effect, str):
+        if (
+            not isinstance(route_id, str)
+            or not isinstance(tool_id, str)
+            or not isinstance(effect, str)
+        ):
             raise ValueError("output route identity is incomplete")
         candidate = candidate_by_route.get(route_id)
         action_id = action_ids.get(route_id)

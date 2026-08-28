@@ -5,22 +5,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.persistence_cas import update_plan_record
-from google_work_agent.application.use_cases.recovery.require_recovery import (
-    RequireRecoveryCommand,
-    RequireRecoveryHandler,
-)
-from google_work_agent.application.write_cancellation_contracts import (
-    FinalizeRunCancellationCommand,
-)
-from google_work_agent.application.write_execution_contracts import WriteRunResponse
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     cancel_pending_actions,
     finish_json_receipt,
     require_run,
     resolve_existing_run_receipt,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteRunResponse,
+)
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
+    FinalizeRunCancellationCommand,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -29,9 +31,9 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 FinalizeCancelCommand = FinalizeRunCancellationCommand
 FinalizeCancelResult = WriteRunResponse

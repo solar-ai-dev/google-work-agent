@@ -9,16 +9,16 @@ from typing import cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ClarificationQuestionV1,
-)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseKind,
     RequestUnderstandingResult,
     WorkflowPhase,
     validate_confirmation_response_projection_v1,
 )
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.request_understanding import (
     RequestUnderstandingAgent,
     RequestUnderstandingValidationError,
@@ -27,16 +27,18 @@ from google_work_agent.application.orchestration.request_understanding import (
     resolve_confirmation_origin_target,
     validate_request_intent_v2,
 )
-from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
-    SelectedResourceRef,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    SelectedResourceRef,
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

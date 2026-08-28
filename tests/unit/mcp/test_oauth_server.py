@@ -16,10 +16,6 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
 from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
     GoogleOAuthSettings,
 )
-from google_work_agent.application.google_connection import GetGoogleConnectionService
-from google_work_agent.ports.connector.oauth_credential_port import (
-    ConnectionMetadataV1,
-)
 
 CredentialState = server.CredentialState
 
@@ -553,56 +549,6 @@ def test_non_401_userinfo_failure_does_not_refresh(
 
     assert state.connection_state is CredentialState.CONNECTED
     assert state.account_email is None
-
-
-def test_google_connection_provisions_after_valid_token_identity_recovery(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
-    state.access_token = "access-value"
-    state.access_token_expires_at_ms = server._now_ms() + 10_000
-    monkeypatch.setattr(
-        server,
-        "_refresh_access_token",
-        lambda *_args: pytest.fail("valid token must not refresh"),
-    )
-    monkeypatch.setattr(
-        server,
-        "_resolve_account_identity_from_userinfo",
-        lambda _access_token: server._UserInfoIdentityResolution(
-            email="user@example.com", http_status=200
-        ),
-    )
-    provisioned: list[str] = []
-
-    class Provider:
-        def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
-            payload = server._control_call(state, method="google.connection.get")
-            return ConnectionMetadataV1(
-                schema_version=1,
-                connector_id=connector_id,
-                account_id=payload["account_email"],
-                display_email=payload["account_email"],
-                connection_status=(
-                    "CONNECTED" if bool(payload["connected"]) else "DISCONNECTED"
-                ),
-                granted_scopes=(),
-                missing_required_scopes=(),
-            )
-
-    class Provisioner:
-        def ensure_google_account_connected(
-            self, *, email: str, display_name: str | None, now_ms: int
-        ) -> None:
-            del display_name, now_ms
-            provisioned.append(email)
-
-    status = GetGoogleConnectionService(
-        provider=Provider(), account_provisioner=Provisioner(), now_ms=server._now_ms
-    )()
-
-    assert status.account_email == "user@example.com"
-    assert provisioned == ["user@example.com"]
 
 
 def test_userinfo_requires_sub_and_verified_email(

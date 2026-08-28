@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,

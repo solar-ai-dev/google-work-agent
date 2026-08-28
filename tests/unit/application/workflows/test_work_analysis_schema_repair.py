@@ -40,12 +40,6 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.application.llm import (
-    LLMRuntimeService as _LLMRuntimeService,
-)
-from google_work_agent.application.llm import (
-    PromptRepairSchemaRepairer,
-)
 from google_work_agent.application.orchestration.contracts import AnalysisResult
 from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
@@ -56,11 +50,19 @@ from google_work_agent.application.orchestration.work_analysis import (
     WorkAnalysisValidationError,
     validate_work_analysis_result_v1,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    LLMRuntimeService as _LLMRuntimeService,
+)
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    PromptRepairSchemaRepairer,
+)
+from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
     ProviderResponsePayload,
     RuntimePolicy,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
@@ -94,6 +96,7 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
     kwargs.pop("api_provider")
     kwargs.pop("hardware_probe")
     kwargs.pop("api_provider_name")
+    kwargs.pop("credential_service", None)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
         **kwargs,
@@ -264,9 +267,7 @@ def _real_llm_runtime(
         keyring_store=None,
         session_store=SessionMemorySecretStore(),
     )
-    credential_service.store_credential(
-        "generic", b"key-1", "SESSION_ONLY", "test:credential"
-    )
+    credential_service.store_credential("generic", b"key-1", "SESSION_ONLY", "test:credential")
     settings = AppSettings(
         deployment_profile="API_ONLY",
         requested_runtime_mode="API_LLM",

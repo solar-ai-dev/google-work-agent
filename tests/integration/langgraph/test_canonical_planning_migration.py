@@ -19,8 +19,6 @@ from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
-    DeterministicUUID,
-    FakeClockPort,
     FakeGoogleGateway,
     GraphProfile,
     LangGraphWorkflowRuntime,
@@ -37,9 +35,7 @@ from tests.integration.langgraph.test_runtime import (
     _selection_output,
     _start_request,
     _sufficiency_output,
-    _tool_catalog,
     pytest,
-    sqlite_unit_of_work_factory,
 )
 
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -58,7 +54,8 @@ from google_work_agent.application.orchestration.tool_routing import (
     OutputToolRouteV1,
     ToolRoutePlanV2,
 )
-from google_work_agent.ports import LLMInvocationError, WorkflowOutcome
+from google_work_agent.ports.llm import LLMInvocationError
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome
 
 
 class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
@@ -458,9 +455,7 @@ def test_candidate_violating_bound_schema_fails_closed(tmp_path: Path) -> None:
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        with pytest.raises(
-            (PlanningArgumentBindingError, LLMInvocationError)
-        ):
+        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError)):
             runtime._planning_subgraph.invoke(state)  # noqa: SLF001
     finally:
         runtime.close()
@@ -503,9 +498,7 @@ def test_action_id_and_expected_are_deterministically_assembled(tmp_path: Path) 
         assert action["action_id"].startswith("det-")
         # T6: expected is the deterministic write-verification projection,
         # not anything LLM-authored (the candidate has no expected field).
-        assert action["expected"] == {
-            "payload": {"title": "Prepare report", "due": "2026-08-20"}
-        }
+        assert action["expected"] == {"payload": {"title": "Prepare report", "due": "2026-08-20"}}
     finally:
         runtime.close()
 
@@ -533,9 +526,7 @@ def test_candidate_evidence_outside_allowed_set_fails_closed(tmp_path: Path) -> 
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        with pytest.raises(
-            (PlanningArgumentBindingError, LLMInvocationError)
-        ):
+        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError)):
             runtime._planning_subgraph.invoke(state)  # noqa: SLF001
     finally:
         runtime.close()
@@ -652,8 +643,7 @@ def test_revise_plan_only_recalls_writer_for_affected_route(tmp_path: Path) -> N
         compose_calls = [
             call
             for call in llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None)
-            == "planning.compose_arguments.revise"
+            if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_arguments.revise"
         ]
         assert len(compose_calls) == 1
 

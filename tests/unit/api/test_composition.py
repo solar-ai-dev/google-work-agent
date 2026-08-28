@@ -91,12 +91,7 @@ def test_raises_rather_than_looping_forever_on_permanently_stuck_full_batches() 
     """A batch that never shrinks below the limit (e.g. permanently fail-closed
     BLOCKED_BINDING rows) must not spin forever -- it terminates via the
     max_passes circuit breaker instead of hanging."""
-    redrive = _StubRedrive(
-        [
-            RedriveWorkflowHandoffsResult(2, 0, 2, 0, 3, True)
-            for _ in range(3)
-        ]
-    )
+    redrive = _StubRedrive([RedriveWorkflowHandoffsResult(2, 0, 2, 0, 3, True) for _ in range(3)])
 
     with pytest.raises(RuntimeError):
         drain_workflow_handoffs_to_quiescence(redrive, batch_limit=2, max_passes=3)  # type: ignore[arg-type]

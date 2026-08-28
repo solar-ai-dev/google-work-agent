@@ -1,19 +1,8 @@
 import json
 from typing import Literal, cast
 
-from google_work_agent.application.run_terminal import derive_finalize_intent
-from google_work_agent.application.read_only import ReadActionCommandResponse
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionDraftV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    ContextRetrievalResultV1,
-    PlanReviewResultV1,
-    RequestIntentV2,
-    ReviewIssueV1,
-    WorkAnalysisResultV1,
-)
+from tests.support.legacy_write.write_actions import WriteActionResponse
+
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     BudgetProfile,
@@ -28,11 +17,25 @@ from google_work_agent.application.orchestration.contracts import (
     build_semantic_failure_signature_v1,
     validate_user_interrupt_v1,
 )
+from google_work_agent.application.orchestration.handoff_contracts import (
+    AcquisitionResultV1,
+    ActionDraftV1,
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    ContextRetrievalResultV1,
+    PlanReviewResultV1,
+    RequestIntentV2,
+    ReviewIssueV1,
+    WorkAnalysisResultV1,
+)
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
-from tests.support.legacy_write.write_actions import WriteActionResponse
+from google_work_agent.application.use_cases.action.read_contracts import (
+    ReadActionCommandResponse,
+)
+from google_work_agent.application.use_cases.run.run_terminal import derive_finalize_intent
 
 
 def test_request_complete_routes_to_tool_route() -> None:
@@ -1204,9 +1207,7 @@ def _action_draft() -> ActionDraftV1:
 
 
 def _review_result(
-    status: Literal[
-        "PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"
-    ],
+    status: Literal["PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"],
 ) -> PlanReviewResultV1:
     request: AdditionalAcquisitionRequestV1 | None = None
     confirmation: dict[str, object] | None = None

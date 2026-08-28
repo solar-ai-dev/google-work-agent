@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from threading import Lock
 
-from google_work_agent.ports import ResourceSnapshot
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 
 
 class ReadResultContinuationError(ValueError):
@@ -114,9 +114,7 @@ class RunScopedReadResultCache:
                 raise ReadResultContinuationError("raw snapshots were not materialized")
             return entry.snapshots
 
-    def resolve_resource_snapshot(
-        self, *, run_id: str, resource_handle: str
-    ) -> ResourceSnapshot:
+    def resolve_resource_snapshot(self, *, run_id: str, resource_handle: str) -> ResourceSnapshot:
         """Resolve exactly one distinct raw snapshot inside the owning Run."""
         with self._lock:
             matches: list[ResourceSnapshot] = []
@@ -131,9 +129,7 @@ class RunScopedReadResultCache:
             if len(matches) == 1:
                 return matches[0]
             if len(matches) > 1:
-                raise ReadResultContinuationError(
-                    "ambiguous same-run resource snapshot handle"
-                )
+                raise ReadResultContinuationError("ambiguous same-run resource snapshot handle")
 
         raise ReadResultContinuationError("unknown or cross-run resource snapshot handle")
 

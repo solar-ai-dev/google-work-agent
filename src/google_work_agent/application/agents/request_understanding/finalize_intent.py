@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from google_work_agent.application.agents.request_understanding.contracts.request_intent import RequestIntentCandidateV1, RequestIntentV2
-from google_work_agent.application.agents.request_understanding.validate_intent import validate_intent
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentCandidateV1,
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.request_understanding.validate_intent import (
+    validate_intent,
+)
+
 
 def finalize_intent(candidate: RequestIntentCandidateV1, *, artifact_id: str) -> RequestIntentV2:
     if not artifact_id:

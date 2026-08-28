@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from google_work_agent.ports import GoogleWorkspaceGatewayError, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceGatewayError,
+    ResourceType,
+)
 from tests.support.fakes import FakeGoogleGateway, GoogleGatewayFault, GoogleGatewayFaultKind
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 

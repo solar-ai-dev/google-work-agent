@@ -1,7 +1,12 @@
 from json import loads
 
-from google_work_agent.application.resource_ref_projection import resource_ref_from_snapshot
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    resource_ref_from_snapshot,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 def _snapshot(resource_type: ResourceType, payload: dict[str, object]) -> ResourceSnapshot:

@@ -10,13 +10,13 @@ from google_work_agent.adapters.llm.gemini.runtime_status import GeminiLlmRuntim
 from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
 from google_work_agent.adapters.llm.ollama.runtime_status import OllamaLlmRuntimeStatusAdapter
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ApprovedModelInfo,
-    AppSettings,
     OllamaRuntimeProbe,
     RuntimePolicy,
 )
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
+from google_work_agent.ports.system.contracts.runtime import AppSettings
 
 
 @dataclass

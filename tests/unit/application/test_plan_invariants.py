@@ -2,10 +2,10 @@ from dataclasses import dataclass
 
 import pytest
 
-from google_work_agent.application.plan_invariants import validate_plan_structure
 from google_work_agent.application.tool_registry import load_signed_tool_registry
-from google_work_agent.application.write_plan import validate_write_plan
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.plan.plan_invariants import validate_plan_structure
+from google_work_agent.application.use_cases.plan.save_write_plan import validate_write_plan
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,

@@ -19,22 +19,23 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.ports import ClockPort, UnitOfWork, UUIDPort, WorkflowRuntime
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)
 class RunRouteDependencies:
     api_contract_version: str
-    query_service: Callable[[], object]
     unit_of_work_factory: Callable[[], UnitOfWork]
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
-    workflow_runtime: WorkflowRuntime
+    workflow_runtime: object
     resolve_resume_authority: Callable[..., Mapping[str, object] | None]
     resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
     resume_target_registry: object
@@ -94,7 +95,6 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
-        query_service=lambda: container.query_service,
         unit_of_work_factory=unit_of_work_factory,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
@@ -107,10 +107,8 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         id_generator=container.id_generator,
         resolve_selection_handle=resolve_selection_handle,
         resource_connector_id=container.resource_connector_id,
-        current_account_id=lambda: _current_account_id(container.query_service),
-        project_context_preview_handler=getattr(
-            container, "project_context_preview_handler", None
-        ),
+        current_account_id=container.current_account_id_provider,
+        project_context_preview_handler=getattr(container, "project_context_preview_handler", None),
         adjust_context_handler=getattr(container, "adjust_context_handler", None),
         project_recovery_options_handler=getattr(
             container, "project_recovery_options_handler", None
@@ -120,14 +118,6 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
             getattr(container, "project_external_llm_transfer_scope_handler", None)
         ),
     )
-
-
-def _current_account_id(query_service: object) -> str | None:
-    getter = getattr(query_service, "get_current_google_account", None)
-    if getter is None:
-        return None
-    account = getter()
-    return None if account is None else str(account.account_id)
 
 
 RunRouteDependency = Annotated[

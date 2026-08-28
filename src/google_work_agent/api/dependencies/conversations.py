@@ -18,14 +18,13 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
 class ConversationRouteDependencies:
     api_contract_version: str
     unit_of_work_factory: Callable[[], UnitOfWork]
-    query_service: Callable[[], object]
     create_conversation_handler: CreateConversationHandler
     list_conversations_handler: ListConversationsHandler
     get_conversation_history_handler: GetConversationHistoryHandler
@@ -36,7 +35,6 @@ def get_conversation_route_dependencies(request: Request) -> ConversationRouteDe
     return ConversationRouteDependencies(
         api_contract_version=container.api_contract_version,
         unit_of_work_factory=lambda: container.unit_of_work_factory(),
-        query_service=lambda: container.query_service,
         create_conversation_handler=container.create_conversation_handler,
         list_conversations_handler=container.list_conversations_handler,
         get_conversation_history_handler=container.get_conversation_history_handler,

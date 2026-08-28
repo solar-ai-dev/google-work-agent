@@ -106,8 +106,7 @@ class FilesystemAttachmentStagingAdapter:
             if (
                 str(existing_meta.get("filename")) != filename
                 or str(existing_meta.get("mime_type")) != mime_type
-                or int(cast(int | str, existing_meta.get("size_bytes", -1)))
-                != len(file_bytes)
+                or int(cast(int | str, existing_meta.get("size_bytes", -1))) != len(file_bytes)
                 or str(existing_meta.get("sha256")) != digest
             ):
                 raise AttachmentStagingError("ATTACHMENT_OPERATION_CONFLICT")

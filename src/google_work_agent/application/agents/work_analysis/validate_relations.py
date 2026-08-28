@@ -31,7 +31,9 @@ class RelationValidationBundleV1(TypedDict):
     action_necessity: ActionNecessityV1
 
 
-RelationValidator = Callable[[Mapping[str, object], WorkFactV1, WorkFactV1], RelationValidationOutcomeV1]
+RelationValidator = Callable[
+    [Mapping[str, object], WorkFactV1, WorkFactV1], RelationValidationOutcomeV1
+]
 
 
 def validate_relations(
@@ -78,13 +80,15 @@ def validate_relations(
             if necessity == "NOT_REQUIRED":
                 action_necessity = "NOT_REQUIRED"
         if accepted:
-            relations.append({
-                "relation_type": relation_type,
-                "left_ref": left_ref,
-                "right_ref": right_ref,
-                "evidence_refs": evidence_refs,
-                "validator_codes": codes,
-            })
+            relations.append(
+                {
+                    "relation_type": relation_type,
+                    "left_ref": left_ref,
+                    "right_ref": right_ref,
+                    "evidence_refs": evidence_refs,
+                    "validator_codes": codes,
+                }
+            )
     return {
         "validated_relations": relations,
         "ambiguities": ambiguities,
@@ -100,7 +104,9 @@ def _text(value: object, field: str) -> str:
 
 
 def _strings(value: object, field: str) -> list[str]:
-    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) and item for item in value):
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) and item for item in value
+    ):
         raise ValueError(f"{field} must contain non-empty strings")
     result = list(value)
     if len(result) != len(set(result)):

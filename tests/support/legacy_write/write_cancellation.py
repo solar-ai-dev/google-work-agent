@@ -6,24 +6,30 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.write_cancellation_contracts import (
-    RequestRunCancellationCommand,
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event as _audit_event,
 )
-from google_work_agent.application.write_execution_contracts import WriteRunResponse
-from google_work_agent.application.write_persistence import audit_event as _audit_event
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
 )
-from google_work_agent.application.write_persistence import require_run as _require_run
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_run as _require_run,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
     resolve_existing_run_receipt,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteRunResponse,
+)
+from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
+    RequestRunCancellationCommand,
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

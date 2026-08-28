@@ -14,9 +14,7 @@ class SqliteRetentionRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
-    def purge_batch(
-        self, cutoffs: RetentionCutoffs, batch_limit: int
-    ) -> RetentionPurgeResult:
+    def purge_batch(self, cutoffs: RetentionCutoffs, batch_limit: int) -> RetentionPurgeResult:
         if not 1 <= batch_limit <= 500:
             raise ValueError("batch_limit must be between 1 and 500")
         statuses = ",".join("?" for _ in _TERMINAL_RUN_STATUSES)
@@ -118,16 +116,20 @@ class SqliteRetentionRepository:
             "audit_events", "created_at_ms < ?", cutoffs.audit_ms, batch_limit
         )
         return RetentionPurgeResult(
-            runs=len(run_ids), checkpoints=checkpoints, receipts=receipts,
-            messages=messages, conversations=conversations, traces=traces, audits=audits
+            runs=len(run_ids),
+            checkpoints=checkpoints,
+            receipts=receipts,
+            messages=messages,
+            conversations=conversations,
+            traces=traces,
+            audits=audits,
         )
 
-    def _delete_bounded(
-        self, table: str, predicate: str, cutoff_ms: int, limit: int
-    ) -> int:
+    def _delete_bounded(self, table: str, predicate: str, cutoff_ms: int, limit: int) -> int:
         cursor = self._connection.execute(
             f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-            f"WHERE {predicate} ORDER BY rowid LIMIT ?);", (cutoff_ms, limit)
+            f"WHERE {predicate} ORDER BY rowid LIMIT ?);",
+            (cutoff_ms, limit),
         )
         return cursor.rowcount
 

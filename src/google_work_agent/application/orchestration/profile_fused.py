@@ -39,7 +39,10 @@ from google_work_agent.application.orchestration.solution_planning import (
 from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1,
 )
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 
 
 class ProfilePlanningProjectionV1(TypedDict):

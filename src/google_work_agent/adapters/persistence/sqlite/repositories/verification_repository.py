@@ -39,7 +39,8 @@ class SqliteVerificationRepository:
             "v.normalizer_version, v.expected_json, v.actual_json, v.diff_json, "
             "v.verified_at_ms FROM verifications v JOIN execution_attempts ea "
             "ON ea.id=v.execution_attempt_id JOIN approvals ap ON ap.id=ea.approval_id "
-            "WHERE ap.action_id=? ORDER BY v.verified_at_ms, v.id;", (action_id,)
+            "WHERE ap.action_id=? ORDER BY v.verified_at_ms, v.id;",
+            (action_id,),
         ).fetchall()
         return tuple(self._record(row) for row in rows)
 

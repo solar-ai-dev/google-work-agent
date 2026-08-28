@@ -7,8 +7,12 @@ from collections.abc import Mapping, Sequence
 from google_work_agent.adapters.langgraph.subgraphs.review.projections.review_projection import (
     project_review_input,
 )
-from google_work_agent.application.agents.review.contracts.review_findings import ReviewSemanticInvoker
-from google_work_agent.application.agents.review.inspect_goal_and_evidence import inspect_goal_and_evidence
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewSemanticInvoker,
+)
+from google_work_agent.application.agents.review.inspect_goal_and_evidence import (
+    inspect_goal_and_evidence,
+)
 
 
 def inspect_goal_and_evidence_node(

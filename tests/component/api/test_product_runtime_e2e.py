@@ -25,6 +25,10 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write.write_actions import (
+    PrepareWriteRetryService,
+    RequestRunCancellationService,
+)
 from tests.support.legacy_write_action_mutation import (
     ModifyWriteActionService,
     RejectWriteActionService,
@@ -46,7 +50,6 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
-    StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
@@ -56,10 +59,6 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     RequestIntentV2,
-)
-from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
-from google_work_agent.application.start_run import (
-    ResumeRunService,
 )
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
@@ -73,18 +72,18 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from tests.support.legacy_write.write_actions import (
-    PrepareWriteRetryService,
-    RequestRunCancellationService,
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
+)
+from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
-    RuntimeSummary,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
@@ -355,28 +354,13 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         checkpoint_port=checkpoint,
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
-    status_provider = StaticRuntimeStatusProvider(
-        RuntimeSummary(
-            google="CONNECTED",
-            mcp="READY",
-            api_llm="AVAILABLE",
-            ollama="NOT_AVAILABLE",
-            deployment_profile="test",
-            recovery_required_run_ids=(),
-            open_run_ids=(),
-        )
-    )
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=status_provider,
-    )
+    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
     publisher = InMemorySseEventBuffer(service_instance_id="svc-product", capacity_per_run=32)
     id_generator = DeterministicUUID(prefix="api")
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
         checkpoint_path=database_path,
-        query_service=query_service,
+        get_execution_context=get_execution_context,
         unit_of_work_factory=unit_of_work_factory,
         workflow_runtime=runtime,
         event_publisher=publisher,
@@ -400,7 +384,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
-        query_service=query_service,
+        current_account_id_provider=lambda: "account-1",
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -442,10 +426,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        resume_run_service=ResumeRunService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=clock.now_ms,
-        ),
+        resume_run_service=lambda command: command,
         workflow_runtime=runtime,
         event_publisher=publisher,
         readiness_aggregator=StaticReadinessAggregator(
@@ -454,7 +435,6 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
                 checks=(ReadinessCheckResult(name="sqlite", state=ReadinessState.READY),),
             )
         ),
-        runtime_status_provider=status_provider,
         api_access_guard=_AllowGuard(),
         clock=clock,
         id_generator=id_generator,

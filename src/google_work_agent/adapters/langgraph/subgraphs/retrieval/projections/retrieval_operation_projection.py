@@ -4,10 +4,23 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-_ALLOWED = frozenset({"plan_query", "build_query", "execute_read", "normalize_segments", "rag_retrieve_rerank", "select_evidence", "assess_sufficiency", "finalize_retrieval"})
+_ALLOWED = frozenset(
+    {
+        "plan_query",
+        "build_query",
+        "execute_read",
+        "normalize_segments",
+        "rag_retrieve_rerank",
+        "select_evidence",
+        "assess_sufficiency",
+        "finalize_retrieval",
+    }
+)
 
 
-def project_retrieval_operation_input(state: Mapping[str, object], operation: str) -> dict[str, object]:
+def project_retrieval_operation_input(
+    state: Mapping[str, object], operation: str
+) -> dict[str, object]:
     if operation not in _ALLOWED:
         raise ValueError(f"unknown retrieval operation: {operation}")
     inputs = state.get("operation_inputs")

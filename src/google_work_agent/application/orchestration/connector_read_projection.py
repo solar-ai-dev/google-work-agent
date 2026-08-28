@@ -11,7 +11,8 @@ from google_work_agent.application.orchestration.connector_read_models import (
 )
 from google_work_agent.application.orchestration.temporal_query import resolve_temporal_query
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.connector.contracts.google_workspace import (
     FreeBusyCalendar,
     FreeBusyInterval,
     GoogleWorkspaceGatewayError,
@@ -20,7 +21,6 @@ from google_work_agent.ports import (
     ResourceType,
     TimeRange,
 )
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,9 +223,7 @@ class ConnectorReadProjection:
             details: list[ResourceSnapshot] = []
             for item in candidates[: plan["detail_limit"]]:
                 self._require_allowed(request, "tasks_get_task")
-                details.append(
-                    self.get_task(task_list_id=task_list_id, task_id=item.resource_id)
-                )
+                details.append(self.get_task(task_list_id=task_list_id, task_id=item.resource_id))
             request.remaining_budget["details"] -= len(details)
             return NormalizedConnectorRead(
                 tuple(details),
@@ -338,9 +336,7 @@ class ConnectorReadProjection:
             return None, "INVALID_TEMPORAL_QUERY"
         try:
             self._require_allowed(request, "calendar_query_freebusy")
-            calendars = self.query_freebusy(
-                calendar_ids=(calendar_id,), time_range=time_range
-            )
+            calendars = self.query_freebusy(calendar_ids=(calendar_id,), time_range=time_range)
         except GoogleWorkspaceGatewayError:
             return None, None
         request.remaining_budget["details"] -= 1
@@ -352,9 +348,7 @@ class ConnectorReadProjection:
             return
         denied = sorted(set(tool_ids) - request.allowed_read_tool_ids)
         if denied:
-            raise PermissionError(
-                f"Connector READ outside frozen input route: {', '.join(denied)}"
-            )
+            raise PermissionError(f"Connector READ outside frozen input route: {', '.join(denied)}")
 
 
 def _freebusy_snapshot(
@@ -378,8 +372,7 @@ def _freebusy_snapshot(
         else (
             f"{calendar_id} busy intervals between {time_range.start} and {time_range.end}: "
             + "; ".join(
-                f"{item['start']}~{item['end']} ({item['transparency']})"
-                for item in intervals
+                f"{item['start']}~{item['end']} ({item['transparency']})" for item in intervals
             )
         )
     )

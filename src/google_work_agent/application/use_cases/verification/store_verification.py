@@ -4,15 +4,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.use_cases.verification.verify_effect import VerificationResultV1
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
     require_action,
     require_attempt,
     require_plan,
 )
+from google_work_agent.application.use_cases.verification.verify_effect import VerificationResultV1
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import canonicalize_json_value
 from google_work_agent.domain.command_receipt.model import CommandReceipt, CommandReceiptStatus

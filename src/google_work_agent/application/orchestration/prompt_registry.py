@@ -8,7 +8,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from google_work_agent.ports import PromptReference
+from google_work_agent.ports.llm import PromptReference
 
 DEFAULT_INPUT_SCHEMA_VERSION = "agent-node-input-v0.1"
 DEFAULT_OUTPUT_SCHEMA_VERSION = "agent-node-output-v0.1"

@@ -29,12 +29,14 @@ from tests.support.legacy_write.verify_action import (
     VerifyActionHandler,
 )
 
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_execution_integrity import (
+from google_work_agent.application.use_cases.claim.write_execution_integrity import (
     CLAIM_TOKEN_VERSION,
     issue_claim_token,
 )
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
@@ -45,7 +47,10 @@ from google_work_agent.domain.execution_attempt.model import ExecutionAttemptSta
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 _SIGNING_SECRET = "c3-signing-secret"
 _SERVICE_INSTANCE_ID = "svc-c3"
@@ -147,9 +152,7 @@ class _Actions(_ByIdRepo):
     def is_dependency_ready(self, _action_id: str) -> bool:
         return True
 
-    def update_if_version_and_status(
-        self, value_id: str, *args: object, **kwargs: object
-    ) -> bool:
+    def update_if_version_and_status(self, value_id: str, *args: object, **kwargs: object) -> bool:
         item = self.values.get(value_id)
         if item is None:
             return False

@@ -15,7 +15,10 @@ from google_work_agent.application.orchestration.inspect_plan_output import (
     PlanReviewCandidateV2,
     validate_plan_review_candidate_v2,
 )
-from google_work_agent.ports import ToolCallProviderResponse, ToolDefinition
+from google_work_agent.ports.llm import (
+    ToolCallProviderResponse,
+    ToolDefinition,
+)
 
 _STRING: Final = {"type": "string"}
 _NON_EMPTY_STRING: Final = {"type": "string", "minLength": 1}
@@ -97,9 +100,7 @@ REVIEW_V2_RETRIEVE_MORE_TOOL: Final = ToolDefinition(
         "type": "object",
         "additionalProperties": False,
         "required": ["evidence_gaps"],
-        "properties": {
-            "evidence_gaps": {"type": "array", "items": _REVIEW_EVIDENCE_GAP_SCHEMA}
-        },
+        "properties": {"evidence_gaps": {"type": "array", "items": _REVIEW_EVIDENCE_GAP_SCHEMA}},
     },
 )
 REVIEW_V2_ROUTE_RECONSIDERATION_TOOL: Final = ToolDefinition(
@@ -109,9 +110,7 @@ REVIEW_V2_ROUTE_RECONSIDERATION_TOOL: Final = ToolDefinition(
         "type": "object",
         "additionalProperties": False,
         "required": ["route_issues"],
-        "properties": {
-            "route_issues": {"type": "array", "items": _REVIEW_ROUTE_ISSUE_SCHEMA}
-        },
+        "properties": {"route_issues": {"type": "array", "items": _REVIEW_ROUTE_ISSUE_SCHEMA}},
     },
 )
 REVIEW_V2_CONFIRM_TOOL: Final = ToolDefinition(
@@ -173,9 +172,7 @@ def review_tool_call_to_candidate_v2(
     status, payload_key = variant
     arguments = _mapping(call.arguments)
     if set(arguments) != {payload_key}:
-        raise ReviewV2ToolCallError(
-            f"{call.name} arguments must contain only {payload_key}"
-        )
+        raise ReviewV2ToolCallError(f"{call.name} arguments must contain only {payload_key}")
     candidate: dict[str, object] = {
         "schema_version": 2,
         "status": status,

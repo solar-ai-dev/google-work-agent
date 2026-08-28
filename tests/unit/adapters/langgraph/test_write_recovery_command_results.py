@@ -3,9 +3,13 @@ from __future__ import annotations
 from typing import cast
 
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
-from google_work_agent.application.execution_phase import WriteExecutionPhaseCoordinator
-from google_work_agent.application.run_terminal import RunTransitionResponse
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
+from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+    WriteExecutionPhaseCoordinator,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
+from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord

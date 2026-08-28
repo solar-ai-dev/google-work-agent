@@ -5,7 +5,9 @@ from typing import Literal
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRoutingState
 
 
-def route_after_determine_io_resources(state: ToolRoutingState) -> Literal["confirm", "bind_registry_candidates"]:
+def route_after_determine_io_resources(
+    state: ToolRoutingState,
+) -> Literal["confirm", "bind_registry_candidates"]:
     result = state.get("tr_result")
     if result is not None and result["disposition"] == "NEEDS_CONFIRMATION":
         return "confirm"

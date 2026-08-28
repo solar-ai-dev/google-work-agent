@@ -11,8 +11,10 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
     RequestUnderstandingState,
 )
 from google_work_agent.application.agents.request_understanding.identify_goal import identify_goal
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports import PromptReference
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.llm import PromptReference
 
 
 def identify_goal_node(

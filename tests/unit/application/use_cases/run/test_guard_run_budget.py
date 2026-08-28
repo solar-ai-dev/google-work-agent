@@ -42,9 +42,7 @@ def test_guard_run_budget_allows_without_mutating_current_budget() -> None:
     before = budget.copy()
 
     result = GuardRunBudgetHandler()(
-        GuardRunBudgetQueryV1(
-            1, "run-1", budget, RunBudgetDeltaV1(1, "CONNECTOR_CALL", 1), 150
-        )
+        GuardRunBudgetQueryV1(1, "run-1", budget, RunBudgetDeltaV1(1, "CONNECTOR_CALL", 1), 150)
     )
 
     assert result.allowed is True

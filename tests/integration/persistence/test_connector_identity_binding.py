@@ -7,15 +7,15 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    persist_registered_resource_ref,
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
 )
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.read_contracts import (
     CompletedResourceRef,
     CompleteReadActionCommand,
 )
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord

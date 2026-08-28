@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.application.read_contracts import (
-    CompleteReadActionCommand,
-    ReadActionCommandResponse,
-)
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,
 )
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.application.use_cases.action.read_contracts import (
+    CompleteReadActionCommand,
+    ReadActionCommandResponse,
+)
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class ConnectorBoundCompleteReadActionHandler(CompleteReadActionHandler):

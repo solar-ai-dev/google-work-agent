@@ -15,7 +15,7 @@ from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import ResolveRecoveryHandler
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
     WorkflowOutcome,

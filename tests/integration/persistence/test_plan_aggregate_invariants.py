@@ -182,16 +182,12 @@ def test_cross_plan_dependency_and_cross_run_action_evidence_are_rejected(
             sqlite3.IntegrityError,
             match="action evidence must belong to plan run",
         ):
-            connection.execute(
-                "INSERT INTO action_evidence VALUES ('action-1', 'evidence-2');"
-            )
+            connection.execute("INSERT INTO action_evidence VALUES ('action-1', 'evidence-2');")
         with pytest.raises(
             sqlite3.IntegrityError,
             match="action dependency must remain inside one plan",
         ):
-            connection.execute(
-                "INSERT INTO action_dependencies VALUES ('action-2', 'action-1');"
-            )
+            connection.execute("INSERT INTO action_dependencies VALUES ('action-2', 'action-1');")
     finally:
         connection.close()
 
@@ -221,9 +217,7 @@ def test_nfr019_write_safety_triggers_survive_plan_aggregate_migration(
     try:
         actual = {
             row["name"]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'trigger';"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger';")
         }
         assert expected <= actual
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []

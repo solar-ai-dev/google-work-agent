@@ -189,8 +189,7 @@ def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_o
 
     core = SimpleNamespace(
         readiness_aggregator=SimpleNamespace(),
-        runtime_status_provider=SimpleNamespace(),
-        query_service=SimpleNamespace(),
+        current_account_id_provider=lambda: None,
         startup_callbacks=(startup,),
         shutdown_callbacks=(lambda: lifecycle.append("runtime-stop"),),
     )

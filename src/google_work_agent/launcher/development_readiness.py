@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+)
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
     ConnectorRuntimeRegistry,
 )
@@ -19,7 +21,7 @@ from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
     PROJECT_ROOT,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
     ReadinessCheckResult,
     ReadinessReport,

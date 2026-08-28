@@ -47,7 +47,7 @@ from google_work_agent.application.use_cases.shutdown.request_shutdown import (
     RequestShutdownCommand,
     RequestShutdownHandler,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 from google_work_agent.ports.system.settings_port import SettingsPatchV1
 
 router = APIRouter(prefix="/api/v1")

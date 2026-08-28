@@ -39,12 +39,12 @@ from google_work_agent.adapters.system.process_shutdown import (
     ComponentShutdownPort,
     ShutdownPhase,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.runtime import (
     AppSettings,
     SettingsPatch,
+    ShutdownReport,
     WorkHours,
 )
-from google_work_agent.ports.runtime_contracts import ShutdownReport
 
 __all__ = [
     "AppSettings",

@@ -39,7 +39,7 @@ from google_work_agent.application.use_cases.conversation.get_latest_run import 
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsQuery,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/conversations")
 

@@ -17,7 +17,7 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     provider_dispatch_budget_scope,
     provider_dispatch_execution_scope,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMToolCall,
     OutputSchemaDefinition,

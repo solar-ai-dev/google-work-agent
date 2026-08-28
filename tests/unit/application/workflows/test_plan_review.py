@@ -44,7 +44,8 @@ from google_work_agent.application.orchestration.solution_planning import (
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMToolCall,
     OutputSchemaDefinition,
@@ -53,10 +54,11 @@ from google_work_agent.ports import (
     StructuredLLMResult,
     ToolCallProviderResponse,
     ToolDefinition,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
 
 INSPECT_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",

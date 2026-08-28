@@ -31,7 +31,10 @@ from google_work_agent.application.orchestration.contracts import (
     check_llm_call_budget,
     validate_run_budget_v1,
 )
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
+)
 
 _CURRENT_RUN_BUDGET: ContextVar[RunBudgetV1 | None] = ContextVar(
     "google_work_agent_current_provider_dispatch_run_budget",

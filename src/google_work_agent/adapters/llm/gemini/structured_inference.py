@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     AvailabilityState,
     OutputSchemaDefinition,

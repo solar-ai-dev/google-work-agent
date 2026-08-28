@@ -30,9 +30,7 @@ def _meta():
 
 
 def test_candidate_matches_r86_answer_contract() -> None:
-    result = validate_answer_draft_candidate_v2(
-        _candidate(), allowed_evidence_refs={"ev-1"}
-    )
+    result = validate_answer_draft_candidate_v2(_candidate(), allowed_evidence_refs={"ev-1"})
     assert set(result) == {"schema_version", "answer", "evidence_refs"}
     assert result["schema_version"] == 2
 
@@ -49,9 +47,7 @@ def test_candidate_rejects_unavailable_evidence() -> None:
 
 
 def test_materialize_preserves_explicit_lineage() -> None:
-    result = materialize_answer_draft_v2(
-        _candidate(), meta=_meta(), allowed_evidence_refs={"ev-1"}
-    )
+    result = materialize_answer_draft_v2(_candidate(), meta=_meta(), allowed_evidence_refs={"ev-1"})
     assert result == {
         "schema_version": 2,
         "meta": _meta(),

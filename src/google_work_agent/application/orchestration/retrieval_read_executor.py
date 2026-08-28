@@ -17,7 +17,7 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
     RunScopedReadResultCache,
 )
-from google_work_agent.ports import SelectedResourceRef
+from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 
 
 @dataclass(frozen=True, slots=True)

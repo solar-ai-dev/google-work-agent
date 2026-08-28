@@ -28,7 +28,11 @@ from google_work_agent.application.use_cases.resource.list_resources import (
     ResourceListItem,
     ResourceListPage,
 )
-from google_work_agent.ports import GmailAttachmentMetadata, GmailThreadDetail, ResourcePage
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GmailAttachmentMetadata,
+    GmailThreadDetail,
+    ResourcePage,
+)
 
 __all__ = (
     "GMAIL_PRIMARY_QUERY",
@@ -91,9 +95,7 @@ class ConnectorResourceAccess:
             message_id = message_ids[-1]
         get_message = getattr(self._gateway, "get_gmail_message", None)
         message = (
-            get_message(message_id=message_id)
-            if message_id and callable(get_message)
-            else thread
+            get_message(message_id=message_id) if message_id and callable(get_message) else thread
         )
         payload = {**thread_payload, **message.payload}
         resolved_message_id = message_id or message.resource_id

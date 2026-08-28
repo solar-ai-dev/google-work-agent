@@ -14,25 +14,6 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
-from tests.integration.langgraph.test_runtime import (
-    FIXTURE_ROOT,
-    FakeGoogleGateway,
-    ProductFixtureSnapshotLoader,
-    WorkflowOutcome,
-    _QueuedLLMRuntime,
-    _analysis_output,
-    _answer_output,
-    _clear_intent,
-    _make_runtime,
-    _review_output,
-    _runtime_active_manifest_path,
-    _seed_runtime_database,
-    _selection_output,
-    _start_request,
-    _sufficiency_output,
-)
-
-from tests.support.fixtures import ProductFixtureSnapshot
 
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     EvidenceResolutionError,
@@ -40,7 +21,28 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
 from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultContinuationError,
 )
-from google_work_agent.ports import ResourcePage, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourcePage,
+    ResourceType,
+)
+from tests.integration.langgraph.test_runtime import (
+    FIXTURE_ROOT,
+    FakeGoogleGateway,
+    ProductFixtureSnapshotLoader,
+    WorkflowOutcome,
+    _analysis_output,
+    _answer_output,
+    _clear_intent,
+    _make_runtime,
+    _QueuedLLMRuntime,
+    _review_output,
+    _runtime_active_manifest_path,
+    _seed_runtime_database,
+    _selection_output,
+    _start_request,
+    _sufficiency_output,
+)
+from tests.support.fixtures import ProductFixtureSnapshot
 
 
 class _PrivateTaskGateway(FakeGoogleGateway):

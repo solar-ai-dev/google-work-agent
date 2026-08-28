@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors.google_workspace import (
+from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
 )
 from google_work_agent.adapters.persistence import (
@@ -11,7 +11,17 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.execute_read_action import (
+    ExecuteReadActionService,
+)
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.read_contracts import (
     ClaimReadActionCommand,
     CompleteReadActionCommand,
     FinalizeReadActionCommand,
@@ -20,19 +30,11 @@ from google_work_agent.application.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
-from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.read_plan import (
-    SaveReadOnlyPlanService,
-)
-from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
-)
-from google_work_agent.application.use_cases.action.finalize_read_action import (
-    FinalizeReadActionHandler,
-)
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
+)
+from google_work_agent.application.use_cases.plan.save_read_only_plan import (
+    SaveReadOnlyPlanService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import (

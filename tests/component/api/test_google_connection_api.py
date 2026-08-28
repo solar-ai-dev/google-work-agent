@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
 from tests.support.mcp_manifest import build_manifest_payload
 
-from google_work_agent.adapters.connectors.google_workspace import (
+from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
     build_google_workspace_connector_descriptor,
 )
@@ -25,7 +25,6 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     StdioMCPClientAdapter,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -42,6 +41,7 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.application.use_cases.connection.get_connection_status import (
     GetConnectionStatusHandler,
 )
@@ -54,9 +54,12 @@ from google_work_agent.application.use_cases.connection.start_authorization impo
 from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
     GetRuntimeStatusHandler,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
-from google_work_agent.ports import LauncherProbeDecision, ReadinessReport, ReadinessState
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
+from google_work_agent.ports.system.readiness_port import (
+    ReadinessReport,
+    ReadinessState,
+)
 
 
 class _CoordinatorStub:
@@ -65,14 +68,6 @@ class _CoordinatorStub:
 
     def stop(self) -> None:
         return None
-
-
-class _QueryStub:
-    def __init__(self, runtime_provider: MCPRuntimeStatusProvider) -> None:
-        self._runtime_provider = runtime_provider
-
-    def get_runtime_summary(self):  # type: ignore[no-untyped-def]
-        return self._runtime_provider.get_summary()
 
 
 class _LlmStatusStub:
@@ -123,17 +118,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         runtime_registry=runtime_registry,
         mcp_client=transport,
     )
-    operational_replay = FilesystemOperationalCommandReplayAdapter(
-        tmp_path / "operational-replay"
-    )
-    runtime_provider = MCPRuntimeStatusProvider(
-        google_provider=provider,
-        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
-        transport=transport,
-        api_llm="NOT_CONFIGURED",
-        ollama="NOT_AVAILABLE",
-        deployment_profile="test",
-    )
+    operational_replay = FilesystemOperationalCommandReplayAdapter(tmp_path / "operational-replay")
     clock = FakeClockPort(100)
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
@@ -144,7 +129,6 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
     session_manager = InMemoryLocalSessionManager()
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
-        query_service=_QueryStub(runtime_provider),
         create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
@@ -171,7 +155,6 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         readiness_aggregator=StaticReadinessAggregator(
             ReadinessReport(state=ReadinessState.READY, checks=())
         ),
-        runtime_status_provider=runtime_provider,
         api_access_guard=LocalApiAccessGuard(
             expected_host="127.0.0.1:8766",
             expected_origin="http://127.0.0.1:8766",

@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Final, Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     CONFIRMATION_ORIGIN_TARGETS,
     ConfirmationResponseProjectionV1,
@@ -38,12 +36,16 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
-    WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 
@@ -161,6 +163,7 @@ CLARIFICATION_QUESTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
         },
     },
 )
+
 
 class RequestUnderstandingValidationError(ValueError):
     """Raised when a structured RequestIntentV2 is not semantically usable."""
@@ -633,9 +636,7 @@ def _prompt_input_from_request(
         "selected_resources": [
             {
                 "connector_id": _P0_CONNECTOR_ID,
-                "resource_type": _SELECTED_RESOURCE_SOURCE_TO_CATEGORY.get(
-                    ref.source, ref.source
-                ),
+                "resource_type": _SELECTED_RESOURCE_SOURCE_TO_CATEGORY.get(ref.source, ref.source),
                 "external_resource_id": ref.resource_id,
             }
             for ref in request.selected_resources
@@ -707,9 +708,7 @@ def _validate_ambiguity(value: object) -> AmbiguityV1:
             "$.ambiguity.requires_confirmation must be boolean"
         )
     reason_codes = _require_string_list(ambiguity["reason_codes"], "$.ambiguity.reason_codes")
-    missing_fields = _require_string_list(
-        ambiguity["missing_fields"], "$.ambiguity.missing_fields"
-    )
+    missing_fields = _require_string_list(ambiguity["missing_fields"], "$.ambiguity.missing_fields")
     if requires_confirmation and not reason_codes:
         raise RequestUnderstandingValidationError(
             "$.ambiguity.reason_codes is required when requires_confirmation is true"

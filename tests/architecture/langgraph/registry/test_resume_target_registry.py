@@ -51,7 +51,7 @@ def test_agent_resume_target_validation_fails_closed(field: str, value: str) -> 
 
 
 def test_main_resume_stage_registry_is_closed_and_rejects_stale_version() -> None:
-    assert MAIN_RESUME_STAGES == {
+    assert {
         "RETRIEVAL_ENTRY",
         "PLANNING_ENTRY",
         "REVIEW_ENTRY",
@@ -60,7 +60,7 @@ def test_main_resume_stage_registry_is_closed_and_rejects_stale_version() -> Non
         "VERIFICATION",
         "RECOVERY",
         "CANCEL_RESOLUTION",
-    }
+    } == MAIN_RESUME_STAGES
     registry = _registry()
     target = registry.issue_main_stage("SIX_ROLE_BASELINE", "RECOVERY", "graph-v1")
     registry.validate(target)

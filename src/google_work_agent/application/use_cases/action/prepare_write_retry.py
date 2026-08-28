@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     emit_command_rejected_hash_mismatch,
     require_plan_review,

@@ -5,6 +5,9 @@ from typing import cast
 
 import pytest
 
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    build_google_workspace_connector_descriptor,
+)
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     internal_capabilities,
 )
@@ -13,9 +16,6 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     workspace_runtime as workspace_tools,
-)
-from google_work_agent.adapters.connectors.google_workspace import (
-    build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPArtifactConfig
 from google_work_agent.application.tool_registry import (
@@ -83,9 +83,7 @@ def test_google_connector_preserves_explicit_test_module() -> None:
     assert descriptor.artifact_config.module_name == "tests.fakes.mcp_server"
 
 
-DEFAULT_MCP_MODULE = (
-    "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
-)
+DEFAULT_MCP_MODULE = "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
 
 
 def _artifact_config(*, module_name: str = DEFAULT_MCP_MODULE) -> MCPArtifactConfig:

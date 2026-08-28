@@ -4,12 +4,12 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.write_persistence import require_plan_review
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.application.write_persistence import require_plan_review
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.refresh_expired_action import (
     transition_refresh_expired_action,
@@ -18,8 +18,8 @@ from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -57,9 +57,7 @@ class RefreshExpiredActionHandler:
         now_ms: Callable[[], int],
         id_factory: Callable[[], str] | None = None,
         resume_target_registry: ResumeTargetIssuer | None = None,
-        schedule_run_execution: Callable[
-            [ScheduleRunExecutionCommand], RunExecutionAcceptedV1
-        ]
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
         | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory

@@ -43,11 +43,11 @@ from google_work_agent.application.tool_registry.signed_tool_registry import (
     P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
     SignedToolRegistry,
 )
-from google_work_agent.domain.action.model import EffectType
 from google_work_agent.application.use_cases.action.validate_action_arguments import (
     ValidateActionArgumentsHandler,
     ValidateActionArgumentsQueryV1,
 )
+from google_work_agent.domain.action.model import EffectType
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {
@@ -359,9 +359,7 @@ def _validate_action(
         schema = planning_tool_argument_schema(tool_id)
     except ValueError as error:
         raise CanonicalDomainValidationError(str(error)) from error
-    validation = ValidateActionArgumentsHandler()(
-        ValidateActionArgumentsQueryV1(arguments, schema)
-    )
+    validation = ValidateActionArgumentsHandler()(ValidateActionArgumentsQueryV1(arguments, schema))
     if not validation.valid:
         raise CanonicalDomainValidationError(
             f"{path}.arguments violate selected Tool schema: "

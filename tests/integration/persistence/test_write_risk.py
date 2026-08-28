@@ -9,7 +9,9 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+)
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -24,11 +26,11 @@ from tests.integration.persistence.test_write_actions import (
     GoogleWorkspaceErrorCode,
     InvariantViolationError,
     Path,
-    QueryService,
     RequireReauthHandler,
     RequireWriteReauthCommand,
     SaveWritePlanCommand,
     SaveWritePlanService,
+    SnapshotReader,
     WriteActionDraft,
     WriteEvidenceDraft,
     _prepare_write_plan,
@@ -59,9 +61,7 @@ def _register_preflight_resume_target(write_database: Path, clock: FakeClockPort
         )
     )
     checkpoint.flush()
-    target = MainControlResumeTargetV2(
-        "MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1"
-    )
+    target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     admission = WorkflowExecutionAdmissionV1(
         1,
         "admission-1",
@@ -215,7 +215,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     assert action is not None
     assert action.risk == risk
     assert listed[0].risk == risk
-    snapshot = QueryService(
+    snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]

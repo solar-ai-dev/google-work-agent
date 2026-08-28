@@ -231,6 +231,7 @@ def _truncate(value: str, max_chars: int) -> str:
     if len(value) <= max_chars:
         return value
     return value[:max_chars]
+
+
 _require_mapping = partial(_schema.require_mapping, error_cls=ContextRetrievalValidationError)
 _require_string = partial(_schema.require_string, error_cls=ContextRetrievalValidationError)
-

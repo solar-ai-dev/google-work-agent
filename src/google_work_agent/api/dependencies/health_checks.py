@@ -9,9 +9,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.ports import (
-    ClockPort,
-    LauncherProbeVerifier,
+from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeVerifier
+from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
     ReadinessCheckResult,
 )

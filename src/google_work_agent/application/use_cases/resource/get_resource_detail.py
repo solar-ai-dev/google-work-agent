@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import quote
 
-from google_work_agent.ports import (
-    GmailAttachmentMetadata,
-    GmailThreadDetail,
-    GoogleWorkspaceGatewayError,
-)
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_google_workspace_failure,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GmailAttachmentMetadata,
+    GmailThreadDetail,
+    GoogleWorkspaceGatewayError,
 )
 
 

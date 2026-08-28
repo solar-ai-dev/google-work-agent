@@ -9,11 +9,14 @@ from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
+from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextQuery,
+)
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventHandler,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowResumeRequest,
     WorkflowStartRequest,
@@ -32,7 +35,7 @@ class _State(TypedDict):
 def build_test_admission_callbacks(
     *,
     checkpoint_path: Path,
-    query_service: Any,
+    get_execution_context: Any,
     unit_of_work_factory: Any,
     workflow_runtime: Any,
     event_publisher: Any,
@@ -70,9 +73,7 @@ def build_test_admission_callbacks(
             admission.effective_binding.graph_version,
         )
 
-    def materialize(
-        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
-    ):
+    def materialize(admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1):
         binding = admission.effective_binding
         if binding.execution_kind == "START":
             with checkpoint.execution_scope(
@@ -108,9 +109,7 @@ def build_test_admission_callbacks(
                     latest,
                     handoff.control,
                     goto_node=(
-                        None
-                        if handoff.control.kind == "CONFIRMATION_RESPONSE"
-                        else goto_node
+                        None if handoff.control.kind == "CONFIRMATION_RESPONSE" else goto_node
                     ),
                 )
         result = checkpoint.load_same_run_checkpoint(
@@ -122,7 +121,7 @@ def build_test_admission_callbacks(
 
     def request(admission: WorkflowExecutionAdmissionV1) -> WorkflowStartRequest:
         binding = admission.effective_binding
-        context = query_service.get_run_execution_context(binding.run_id)
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
         assert context is not None
         return WorkflowStartRequest(
             run_id=context.run_id,
@@ -142,11 +141,9 @@ def build_test_admission_callbacks(
 
     def invoke(admission: WorkflowExecutionAdmissionV1, _handoff: object) -> None:
         binding = admission.effective_binding
-        context = query_service.get_run_execution_context(binding.run_id)
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
         assert context is not None
-        latest = checkpoint.load_same_run_checkpoint(
-            binding.run_id, binding.langgraph_thread_id
-        )
+        latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
         assert latest is not None
         active_target = (
             target(admission) if binding.execution_kind == "START" else binding.resume_target
@@ -175,7 +172,7 @@ def build_test_admission_callbacks(
                     )
                 )
             )
-        current = query_service.get_run_execution_context(binding.run_id)
+        current = get_execution_context(GetExecutionContextQuery(binding.run_id))
         outcome_handler.handle_result(
             binding.run_id,
             result.outcome,

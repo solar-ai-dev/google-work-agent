@@ -6,7 +6,7 @@ from json import loads
 from typing import cast
 
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.observability_events import (
+from google_work_agent.ports.events.observability_events import (
     EventCategory,
     ObservabilityContext,
     Severity,

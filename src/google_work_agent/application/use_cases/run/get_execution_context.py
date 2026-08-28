@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from google_work_agent.domain.message.model import Message as MessageRecord
-from google_work_agent.ports import SelectedResourceRef
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,9 +38,7 @@ class GetExecutionContextHandler:
             run = unit_of_work.runs.get(query.run_id)
             if run is None:
                 return None
-            message = _first_user_message(
-                unit_of_work, run.conversation_id, query.run_id
-            )
+            message = _first_user_message(unit_of_work, run.conversation_id, query.run_id)
             resources = unit_of_work.resource_refs.list_for_run_bounded(query.run_id, limit=200)
         selected_resource_ids = tuple(record.resource_id for record in resources)
         selected_resources = tuple(_selected_resource_ref(record) for record in resources)

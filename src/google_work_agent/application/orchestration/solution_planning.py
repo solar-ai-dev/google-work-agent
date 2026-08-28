@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Final, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
@@ -41,7 +40,6 @@ from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
@@ -49,14 +47,21 @@ from google_work_agent.application.tool_registry.signed_tool_registry import (
     P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
     SignedToolRegistry,
 )
+from google_work_agent.application.use_cases.action.policy import (
+    EvidencePolicyInput,
+    validate_evidence_policy,
+)
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 from google_work_agent.domain.action.model import EffectType, PolicyViolationError
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
-    WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 ANSWER_DRAFT_SCHEMA_VERSION: Final = 1

@@ -47,8 +47,9 @@ from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
     StagedAttachmentDescriptorV1,
 )
-from google_work_agent.ports import SecretStorePort, TimeRange
+from google_work_agent.ports.connector.contracts.google_workspace import TimeRange
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 
 
 class CredentialState(StrEnum):
@@ -57,6 +58,7 @@ class CredentialState(StrEnum):
     REAUTH_REQUIRED = "REAUTH_REQUIRED"
     KEYRING_UNAVAILABLE = "KEYRING_UNAVAILABLE"
     ERROR = "ERROR"
+
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -1901,12 +1903,12 @@ def _control_call(
         result = cast(
             dict[str, object],
             {
-            "flow_id": flow.flow_id,
-            "authorization_url": _authorization_url(flow),
-            "callback_url": flow.callback_url,
-            "expires_at_ms": flow.expires_at_ms,
-            "oauth_environment": OAuthEnvironment.DEVELOPMENT.value,
-            "scopes": list(REQUIRED_SCOPES),
+                "flow_id": flow.flow_id,
+                "authorization_url": _authorization_url(flow),
+                "callback_url": flow.callback_url,
+                "expires_at_ms": flow.expires_at_ms,
+                "oauth_environment": OAuthEnvironment.DEVELOPMENT.value,
+                "scopes": list(REQUIRED_SCOPES),
             },
         )
         state.operational_results[operation_ref] = {

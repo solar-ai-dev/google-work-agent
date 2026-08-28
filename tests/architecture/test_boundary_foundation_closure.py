@@ -155,8 +155,7 @@ def test_workspace_runtime_routes_public_tools_through_canonical_dispatch() -> N
 
     assert (
         "from google_work_agent.adapters.connectors.google.workspace.mcp_server."
-        "dispatch_tool import ("
-        in source
+        "dispatch_tool import (" in source
     )
     assert "dispatch_tool(" in source
     for entry in load_signed_tool_registry().entries:

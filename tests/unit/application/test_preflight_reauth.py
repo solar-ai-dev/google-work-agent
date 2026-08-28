@@ -3,19 +3,21 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.application.execution_phase import (
+from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
 )
-from google_work_agent.application.write_execution_contracts import WriteRunResponse
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteRunResponse,
+)
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
-    UnitOfWork,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class _Call:

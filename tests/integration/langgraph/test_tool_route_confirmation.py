@@ -28,8 +28,6 @@ from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
-    DeterministicUUID,
-    FakeClockPort,
     FakeGoogleGateway,
     GraphProfile,
     LangGraphWorkflowRuntime,
@@ -54,11 +52,9 @@ from tests.integration.langgraph.test_runtime import (
     _sufficiency_output,
     _synthesize_action_argument_candidate,
     _synthesize_retrieval_query_plan,
-    _tool_catalog,
     _write_plan_output,
     connect_sqlite,
     pytest,
-    sqlite_unit_of_work_factory,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -68,11 +64,11 @@ from tests.support.canonical_workflow_runtime import (
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
-    WorkflowInvocationResult,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
 class _ToolRouteQueuedLLMRuntime:

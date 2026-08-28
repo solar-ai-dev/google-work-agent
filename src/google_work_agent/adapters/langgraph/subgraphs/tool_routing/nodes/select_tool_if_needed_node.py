@@ -8,12 +8,20 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
-from google_work_agent.ports import PromptReference
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.llm import PromptReference
 
 
-def select_tool_if_needed_node(state: ToolRoutingState, *, llm_runtime: StructuredLLMRuntime, prompt_ref: PromptReference | None, revision_prompt_ref: PromptReference | None) -> ToolRoutingState:
+def select_tool_if_needed_node(
+    state: ToolRoutingState,
+    *,
+    llm_runtime: StructuredLLMRuntime,
+    prompt_ref: PromptReference | None,
+    revision_prompt_ref: PromptReference | None,
+) -> ToolRoutingState:
     binding = project_selection_input(state)["binding"]
     retry_budget = state.get("tr_retry_budget", state["retry_budget"])
     request = request_from_state(state)

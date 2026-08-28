@@ -230,11 +230,7 @@ def test_exact_transition_tree_has_thirty_nine_mirrored_operations() -> None:
 
 
 def test_required_guard_tree_has_seventeen_mirrored_behavioral_owners() -> None:
-    sources = sorted(
-        path
-        for path in DOMAIN.glob("*/guards/*.py")
-        if path.name != "__init__.py"
-    )
+    sources = sorted(path for path in DOMAIN.glob("*/guards/*.py") if path.name != "__init__.py")
     mirrors = sorted(
         path for path in (ROOT / "tests" / "unit" / "domain").glob("*/guards/test_*.py")
     )

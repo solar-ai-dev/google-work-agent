@@ -27,8 +27,6 @@ from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
-    DeterministicUUID,
-    FakeClockPort,
     FakeGoogleGateway,
     GraphProfile,
     LangGraphWorkflowRuntime,
@@ -47,10 +45,8 @@ from tests.integration.langgraph.test_runtime import (
     _selection_output,
     _start_request,
     _sufficiency_output,
-    _tool_catalog,
     connect_sqlite,
     pytest,
-    sqlite_unit_of_work_factory,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -58,7 +54,10 @@ from tests.support.canonical_workflow_runtime import (
 )
 
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
+)
 
 
 def _answer_output(

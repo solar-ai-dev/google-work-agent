@@ -7,9 +7,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
-from google_work_agent.application.write_persistence import revoke_active_approvals
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord

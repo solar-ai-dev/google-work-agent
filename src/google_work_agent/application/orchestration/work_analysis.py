@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -43,12 +41,16 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.request_understanding import (
     build_clarification_question_v1,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
-    WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 WORK_ANALYSIS_SCHEMA_VERSION = 1

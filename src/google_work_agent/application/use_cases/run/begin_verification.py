@@ -12,7 +12,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.begin_verification import (
     transition_begin_verification,
 )
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

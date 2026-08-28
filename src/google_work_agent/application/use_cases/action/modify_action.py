@@ -7,43 +7,46 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.calendar_conflicts import (
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     CalendarConflictGateway,
     CalendarConflictValidator,
     calendar_conflict_authority,
     merge_calendar_conflict_risk,
 )
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility import (
     FeasibilityGateway,
     FeasibilityValidator,
     feasibility_authority,
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.policy import (
+    EvidencePolicyInput,
+    validate_evidence_policy,
+)
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
     TaskListGateway,
     duplicate_authority,
     merge_duplicate_risk,
 )
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
-from google_work_agent.application.use_cases.run.schedule_run_execution import (
-    ScheduleRunExecutionCommand,
-)
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     append_approval_revoked_audits,
     audit_event,
     emit_command_rejected_hash_mismatch,
     require_plan_review,
     revoke_active_approvals,
+)
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -62,9 +65,6 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    UUIDPort,
-)
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -72,6 +72,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
     {

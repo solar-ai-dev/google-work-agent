@@ -18,7 +18,11 @@ from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiStructuredInferenceAdapter,
 )
 from google_work_agent.adapters.llm.gemini.transport import GeminiHTTPClient
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference, RuntimePolicy
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+    RuntimePolicy,
+)
 
 
 class _HTTPResponse:

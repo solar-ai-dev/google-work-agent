@@ -1,18 +1,25 @@
 """Canonical persisted ResumeAfterReauth application authority."""
 
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass
 from typing import cast
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
 )
-from google_work_agent.application.use_cases.run.resume_run import (
+from google_work_agent.application.use_cases.run._resume_persistence import (
     ResumeAuthority,
-    ResumeRunCommand,
-    ResumeRunHandler,
-    ResumeRunResult,
     _PersistedRunDecision,
+    _ResumePersistence,
+    _ResumePersistenceCommand,
+)
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.resume_confirmation import (
+    ResumeTargetValidator,
+)
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -25,14 +32,56 @@ from google_work_agent.domain.run.transitions.resume_after_reauth import (
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
-ResumeAfterReauthCommand = ResumeRunCommand
-ResumeAfterReauthResult = ResumeRunResult
 _ResumeDecision = CommandResult[RunStatusV1, RunCommand] | _PersistedRunDecision
 
 
-class ResumeAfterReauthHandler(ResumeRunHandler):
+@dataclass(frozen=True, slots=True)
+class ResumeAfterReauthCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+    resume_kind: str
+    api_contract_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeAfterReauthResult:
+    applied: bool
+    result_code: str
+    run_id: str
+    run_status: str
+    run_version: int
+    should_enqueue: bool
+    request_replayed: bool
+    conflict_detail: str | None = None
+
+
+class ResumeAfterReauthHandler:
     """Own the reauth child-fact matrix, transition, recovery fallback, and replay fence."""
+
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        resolve_resume_authority: Callable[..., Mapping[str, object] | None],
+        id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetValidator,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
+    ) -> None:
+        self._persistence = _ResumePersistence(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            resolve_resume_authority=resolve_resume_authority,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=schedule_run_execution,
+            apply_transition=self._apply_canonical_transition,
+        )
 
     def __call__(
         self,
@@ -43,16 +92,17 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
     ) -> ResumeAfterReauthResult:
         if command.resume_kind != "REAUTH_COMPLETED":
             raise ValueError("ResumeAfterReauthHandler accepts REAUTH_COMPLETED only")
-        return super().__call__(
-            command,
+        result = self._persistence(
+            _ResumePersistenceCommand(**asdict(command)),
             request_id=request_id,
             resume_payload=resume_payload,
         )
+        return ResumeAfterReauthResult(**asdict(result))
 
     def _apply_canonical_transition(
         self,
         unit_of_work: UnitOfWork,
-        command: ResumeRunCommand,
+        command: _ResumePersistenceCommand,
         current_version: int,
         authority: ResumeAuthority | None,
         *,
@@ -213,11 +263,12 @@ class ResumeAfterReauthHandler(ResumeRunHandler):
             ),
             False,
         )
+
     @staticmethod
     def _require_recovery(
         *,
         unit_of_work: UnitOfWork,
-        command: ResumeRunCommand,
+        command: _ResumePersistenceCommand,
         run: object,
         resume_status: RunStatusV1,
         target_stage: object,

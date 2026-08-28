@@ -34,8 +34,8 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_cont
     validate_tool_output,
 )
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import PROTOCOL_VERSION
-from google_work_agent.ports import DeliveryCertainty
 from google_work_agent.ports.connector.claim_context_contract import CLAIM_CONTEXT_MAX_TTL_MS
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
 from .internal_capabilities import (
     INTERNAL_CAPABILITY_REGISTRY_VERSION,

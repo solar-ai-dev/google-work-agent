@@ -153,24 +153,12 @@ def test_legacy_repository_paths_symbols_and_dependency_directions_are_absent() 
         / "sqlite"
         / "repositories"
         / "action_dependency_repository.py",
-        _SOURCE
-        / "adapters"
-        / "persistence"
-        / "sqlite"
-        / "repositories"
-        / "audit_repository.py",
-        _SOURCE
-        / "adapters"
-        / "persistence"
-        / "sqlite"
-        / "repositories"
-        / "trace_repository.py",
+        _SOURCE / "adapters" / "persistence" / "sqlite" / "repositories" / "audit_repository.py",
+        _SOURCE / "adapters" / "persistence" / "sqlite" / "repositories" / "trace_repository.py",
     )
     assert not any(path.exists() for path in old_paths)
 
-    production = "\n".join(
-        path.read_text(encoding="utf-8") for path in _SOURCE.rglob("*.py")
-    )
+    production = "\n".join(path.read_text(encoding="utf-8") for path in _SOURCE.rglob("*.py"))
     for stale in (
         ".add_received(",
         ".finish_json(",
@@ -187,8 +175,7 @@ def test_legacy_repository_paths_symbols_and_dependency_directions_are_absent() 
         assert stale not in production
 
     application = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (_SOURCE / "application").rglob("*.py")
+        path.read_text(encoding="utf-8") for path in (_SOURCE / "application").rglob("*.py")
     )
     persistence = "\n".join(
         path.read_text(encoding="utf-8")

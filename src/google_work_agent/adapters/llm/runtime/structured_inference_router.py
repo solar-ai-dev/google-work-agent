@@ -10,10 +10,10 @@ from typing import Literal, Protocol, cast
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext, Severity
+from google_work_agent.ports.llm import (
     ActualRuntime,
     ApprovedModelInfo,
-    AppSettings,
     AvailabilityState,
     HardwareCapability,
     HardwareCapabilityStatus,
@@ -33,7 +33,7 @@ from google_work_agent.ports import (
 )
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
-from google_work_agent.ports.observability_events import ObservabilityContext, Severity
+from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
 
 
@@ -75,6 +75,39 @@ class StructuredInferenceRuntimeRouter:
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
+
+    def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
+        """Expose the router-owned approved-model lookup to tool-call orchestration."""
+
+        return self.status_service.get_approved_model(model_id)
+
+    def get_runtime_status(self, settings: AppSettings) -> dict[str, object]:
+        """Project the router's canonical local-runtime facts for tool calls."""
+
+        hardware = self.hardware_probe.probe()
+        capability_status = (
+            HardwareCapabilityStatus.VALIDATED
+            if hardware.local_runtime_eligible
+            else HardwareCapabilityStatus.NOT_VALIDATED
+        )
+        return {
+            "ollama": {
+                "availability": self.status_service.get_status("ollama").availability,
+                "hardware_capability": {
+                    "cpu_arch": "unknown",
+                    "core_summary": str(hardware.cpu_logical_cores),
+                    "memory_bytes": hardware.ram_total_bytes,
+                    "gpu_present": hardware.gpu_present,
+                    "gpu_vendor": None,
+                    "gpu_name": hardware.gpu_name,
+                    "gpu_memory_bytes": hardware.vram_total_bytes,
+                    "capability_status": capability_status.value,
+                    "safe_reason_codes": (
+                        () if hardware.local_runtime_eligible else ("LOCAL_HARDWARE_NOT_VALIDATED",)
+                    ),
+                },
+            }
+        }
 
     def infer(
         self,

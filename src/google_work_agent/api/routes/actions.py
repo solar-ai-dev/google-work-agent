@@ -38,7 +38,7 @@ from google_work_agent.application.use_cases.action.reject_action import (
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventHandler,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/actions")
 

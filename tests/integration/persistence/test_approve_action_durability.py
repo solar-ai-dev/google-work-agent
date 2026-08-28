@@ -76,9 +76,7 @@ class _CheckpointFacts:
             requested_mode="AUTO",
         )
 
-    def load_same_run_checkpoint(
-        self, _run_id: str, _thread_id: str
-    ) -> SimpleNamespace:
+    def load_same_run_checkpoint(self, _run_id: str, _thread_id: str) -> SimpleNamespace:
         return SimpleNamespace(checkpoint_id="checkpoint-1", checkpoint_generation=1)
 
 
@@ -146,20 +144,24 @@ def _handler(
     def schedule(command: ScheduleRunExecutionCommand) -> RunExecutionAcceptedV1:
         handoff_id = command.handoff_id
         with connect_sqlite(database_path) as connection:
-            assert connection.execute(
-                "SELECT COUNT(*) FROM workflow_handoffs WHERE handoff_id=?;", (handoff_id,)
-            ).fetchone()[0] == 1
-            assert connection.execute(
-                "SELECT COUNT(*) FROM approvals WHERE action_id='action-1' AND status='ACTIVE';"
-            ).fetchone()[0] == 1
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM workflow_handoffs WHERE handoff_id=?;", (handoff_id,)
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM approvals WHERE action_id='action-1' AND status='ACTIVE';"
+                ).fetchone()[0]
+                == 1
+            )
         scheduled.append(handoff_id)
         return RunExecutionAcceptedV1(1, True, "ACCEPTED")
 
     return ApproveActionHandler(
         get_approval_ttl_minutes=lambda: 30,
-        unit_of_work_factory=cast(
-            Callable[[], UnitOfWork], lambda: uow_type(database_path)
-        ),
+        unit_of_work_factory=cast(Callable[[], UnitOfWork], lambda: uow_type(database_path)),
         now_ms=lambda: 1000,
         id_generator=DeterministicUUID(
             queued_ids=("approval-1", "handoff-1"), require_queued_ids=True
@@ -204,9 +206,7 @@ def test_approve_action_is_atomic_durable_replayable_and_uuid_backed(
     assert [event.event_type for event in audits].count("ACTION_APPROVED") == 1
 
 
-@pytest.mark.parametrize(
-    "uow_type", (_FailingApprovalUnitOfWork, _FailingAuditUnitOfWork)
-)
+@pytest.mark.parametrize("uow_type", (_FailingApprovalUnitOfWork, _FailingAuditUnitOfWork))
 def test_approve_action_required_effect_failure_rolls_back_all_command_facts(
     tmp_path: Path, uow_type: type[SqliteUnitOfWork]
 ) -> None:

@@ -8,49 +8,54 @@ from json import dumps, loads
 from re import fullmatch
 from typing import cast
 
-from google_work_agent.application.calendar_conflicts import (
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     CalendarConflictGateway,
     CalendarConflictValidator,
     calendar_conflict_authority,
     merge_calendar_conflict_risk,
 )
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility import (
     FeasibilityGateway,
     FeasibilityValidator,
     feasibility_authority,
     merge_feasibility_risk,
     refresh_feasibility_input_for_arguments,
 )
-from google_work_agent.application.persistence_cas import update_action_record, update_plan_record
-from google_work_agent.application.policy import EvidencePolicyInput, validate_evidence_policy
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
-from google_work_agent.application.run_command_receipts import (
-    ActionMutationReceiptResponse as _ActionMutationResponse,
+from google_work_agent.application.use_cases.action.persistence_cas import (
+    update_action_record,
 )
-from google_work_agent.application.run_command_receipts import (
-    finish_json_receipt as _finish_json_receipt,
+from google_work_agent.application.use_cases.action.policy import (
+    EvidencePolicyInput,
+    validate_evidence_policy,
 )
-from google_work_agent.application.run_command_receipts import (
-    resolve_existing_receipt as _resolve_existing_receipt,
-)
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
     TaskListGateway,
     duplicate_authority,
     merge_duplicate_risk,
 )
-from google_work_agent.application.tool_registry import (
-    load_signed_tool_registry,
-)
-from google_work_agent.application.write_action_mutation_contracts import (
+from google_work_agent.application.use_cases.action.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
 )
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan_review,
     revoke_active_approvals,
+)
+from google_work_agent.application.use_cases.run.run_command_receipts import (
+    ActionMutationReceiptResponse as _ActionMutationResponse,
+)
+from google_work_agent.application.use_cases.run.run_command_receipts import (
+    finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.use_cases.run.run_command_receipts import (
+    resolve_existing_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -66,19 +71,10 @@ from google_work_agent.domain.canonical import (
     calculate_canonical_json_hash,
     canonicalize_json_value,
 )
-from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.transitions.begin_verification import (
-    transition_begin_verification,
-)
-from google_work_agent.domain.run.transitions.complete_write_run import (
-    transition_complete_write_run,
-)
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    UnitOfWork,
-)
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(
     {ActionStatusV1.PROPOSED.value, ActionStatusV1.MODIFIED.value, ActionStatusV1.APPROVED.value}

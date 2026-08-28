@@ -6,11 +6,11 @@ from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.dependencies.health_checks import HealthRouteDependency
 from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
 from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
-from google_work_agent.application.use_cases.health.get_readiness import (
+from google_work_agent.launcher.get_readiness import (
     GetReadinessHandler,
     GetReadinessQuery,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter()
 

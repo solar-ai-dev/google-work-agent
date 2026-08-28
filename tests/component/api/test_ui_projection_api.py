@@ -10,6 +10,10 @@ from tests.support.fakes import (
     FakeWorkflowRuntime,
 )
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.legacy_write.write_actions import (
+    PrepareWriteRetryService,
+    RequestRunCancellationService,
+)
 from tests.support.legacy_write_action_mutation import RejectWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.workflow_admission import build_test_admission_callbacks
@@ -26,7 +30,6 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_un
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
-    StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
@@ -39,9 +42,8 @@ from google_work_agent.api.security.sessions import (
     InMemoryLocalSessionManager,
     calculate_session_digest,
 )
-from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
-from google_work_agent.application.use_cases.resource.connector_resource_access import (
-    ConnectorResourceAccess,
+from google_work_agent.application.use_cases.connection.get_connection_status import (
+    GetConnectionStatusHandler,
 )
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
@@ -52,6 +54,9 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
+from google_work_agent.application.use_cases.resource.connector_resource_access import (
+    ConnectorResourceAccess,
+)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
     IssueSelectionHandleCommand,
@@ -59,18 +64,19 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from tests.support.legacy_write.write_actions import (
-    PrepareWriteRetryService,
-    RequestRunCancellationService,
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
 )
-from google_work_agent.ports import (
-    LauncherProbeDecision,
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
+from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
+from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
-    ResourceSnapshot,
-    ResourceType,
-    RuntimeSummary,
 )
 
 
@@ -121,22 +127,21 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
     clock = FakeClockPort(1_000)
     runtime = FakeWorkflowRuntime()
     publisher = InMemorySseEventBuffer(service_instance_id="svc-ui", capacity_per_run=8)
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=StaticRuntimeStatusProvider(
-            RuntimeSummary(
-                google="CONNECTED",
-                mcp="READY",
-                api_llm="NOT_CONFIGURED",
-                ollama="NOT_AVAILABLE",
-                deployment_profile="test",
-                recovery_required_run_ids=(),
-                open_run_ids=(),
-            )
-        ),
-    )
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+
+    class _ConnectedCredentials:
+        def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+            return ConnectionMetadataV1(
+                1,
+                connector_id,
+                "account-1",
+                "user@example.com",
+                "CONNECTED",
+                (),
+                (),
+            )
+
+    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
         secret="bootstrap-secret",
@@ -172,7 +177,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
         checkpoint_path=database_path,
-        query_service=query_service,
+        get_execution_context=get_execution_context,
         unit_of_work_factory=unit_of_work_factory,
         workflow_runtime=runtime,
         event_publisher=publisher,
@@ -198,7 +203,8 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
     )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
-        query_service=query_service,
+        current_account_id_provider=lambda: "account-1",
+        get_connection_status_handler=GetConnectionStatusHandler(_ConnectedCredentials()),
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -249,7 +255,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 ),
             )
         ),
-        runtime_status_provider=query_service._runtime_status_provider,
         api_access_guard=LocalApiAccessGuard(
             expected_host="127.0.0.1:8770",
             expected_origin="http://127.0.0.1:8770",

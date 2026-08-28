@@ -4,13 +4,13 @@ from collections.abc import Mapping
 
 import pytest
 
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_DUPLICATE_PAGE_SIZE,
     TaskDuplicateValidator,
     evidence_duplicate_risk,
 )
 from google_work_agent.domain.action.model import PolicyViolationError
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourcePage,

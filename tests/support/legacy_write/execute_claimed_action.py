@@ -23,7 +23,10 @@ from google_work_agent.application.use_cases.execution_attempt.store_success imp
     StoreSuccessCommand,
     StoreSuccessResult,
 )
-from google_work_agent.ports import DeliveryCertainty, GoogleWorkspaceGatewayError
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    DeliveryCertainty,
+    GoogleWorkspaceGatewayError,
+)
 
 
 @dataclass(frozen=True, slots=True)

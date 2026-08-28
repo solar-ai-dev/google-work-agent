@@ -15,7 +15,7 @@ from google_work_agent.api.schemas.sessions.bootstrap_session import (
     BootstrapSessionResponse,
 )
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/session")
 

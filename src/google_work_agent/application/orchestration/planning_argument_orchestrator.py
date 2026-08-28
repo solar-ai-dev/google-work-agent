@@ -37,7 +37,11 @@ from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.ports import PromptReference, StructuredLLMResult, WorkflowStartRequest
+from google_work_agent.ports.llm import (
+    PromptReference,
+    StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
@@ -202,7 +206,10 @@ class PlanningArgumentOrchestrator:
         allowed_evidence_refs = {draft["evidence_id"] for draft in evidence_drafts}
         results: list[RouteArgumentResult] = []
         for route, action in zip(output_routes, write_actions, strict=True):
-            if action["tool_name"] != route["selected_tool_id"] or action["effect"] != route["effect"]:
+            if (
+                action["tool_name"] != route["selected_tool_id"]
+                or action["effect"] != route["effect"]
+            ):
                 raise ValueError(
                     f"existing plan action no longer aligns with frozen output route: {route['route_id']}"
                 )

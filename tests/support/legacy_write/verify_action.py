@@ -6,17 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.use_cases.verification.normalize_snapshot import (
-    normalize_snapshot,
-)
-from google_work_agent.application.write_action_arguments import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.write_action_arguments import (
     dict_argument,
     required_argument_string,
 )
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     action_response_from_result,
     audit_event,
     finish_json_receipt,
@@ -28,7 +23,16 @@ from google_work_agent.application.write_persistence import (
     resolve_existing_action_receipt,
     resolve_snapshot_fallback_resource_id,
 )
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    WriteResultMaterializer,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
+from google_work_agent.application.use_cases.verification.normalize_snapshot import (
+    normalize_snapshot,
+)
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
@@ -49,12 +53,12 @@ from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.domain.verification.transitions.store_verification import (
     transition_store_verification,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceType,
-    UnitOfWork,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 VERIFICATION_NORMALIZER_VERSION = "2026-08-06.p0"
 

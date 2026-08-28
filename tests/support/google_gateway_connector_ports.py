@@ -6,17 +6,13 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
-from google_work_agent.application.write_dispatch_models import (
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     PreparedWriteDispatch,
 )
-from google_work_agent.ports import (
-    GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGatewayError,
-    ResourcePage,
-    ResourceSnapshot,
-    ResourceType,
-    TimeRange,
+from google_work_agent.ports.connector.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
 )
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadResultV1,
@@ -24,9 +20,13 @@ from google_work_agent.ports.connector.connector_read_port import (
 )
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-from google_work_agent.ports.connectors.failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+    TimeRange,
 )
 
 
@@ -61,26 +61,18 @@ class GoogleGatewayConnectorReadPort:
         elif tool_id == "gmail_get_thread":
             output = _item(
                 _read_one(
-                    lambda: self.gateway.get_gmail_thread(
-                        thread_id=str(arguments["thread_id"])
-                    )
+                    lambda: self.gateway.get_gmail_thread(thread_id=str(arguments["thread_id"]))
                 )
             )
         elif tool_id == "gmail_get_message":
             output = _item(
                 _read_one(
-                    lambda: self.gateway.get_gmail_message(
-                        message_id=str(arguments["message_id"])
-                    )
+                    lambda: self.gateway.get_gmail_message(message_id=str(arguments["message_id"]))
                 )
             )
         elif tool_id == "gmail_get_draft":
             output = _item(
-                _read_one(
-                    lambda: self.gateway.get_gmail_draft(
-                        draft_id=str(arguments["draft_id"])
-                    )
-                )
+                _read_one(lambda: self.gateway.get_gmail_draft(draft_id=str(arguments["draft_id"])))
             )
         elif tool_id == "tasks_list_tasklists":
             output = _page(
@@ -141,9 +133,7 @@ class GoogleGatewayConnectorReadPort:
         elif tool_id == "calendar_query_freebusy":
             calendars = self.gateway.query_freebusy(
                 calendar_ids=tuple(cast(list[str], arguments["calendar_ids"])),
-                time_range=TimeRange(
-                    str(arguments["time_min"]), str(arguments["time_max"])
-                ),
+                time_range=TimeRange(str(arguments["time_min"]), str(arguments["time_max"])),
             )
             output = {
                 "calendars": [
@@ -256,9 +246,7 @@ class GoogleGatewayConnectorWritePort:
             )
         payload = cast(dict[str, object], arguments["payload"])
         if tool_id == "gmail_create_draft":
-            return self.gateway.create_gmail_draft(
-                payload=payload, claim_context=claim_context
-            )
+            return self.gateway.create_gmail_draft(payload=payload, claim_context=claim_context)
         if tool_id == "gmail_update_draft":
             return self.gateway.update_gmail_draft(
                 draft_id=str(arguments["draft_id"]),
@@ -341,9 +329,7 @@ class LegacyGatewayWriteProjection:
                 code,
             )
         self._last_snapshot = snapshot
-        self._last_request_id = str(
-            getattr(self._gateway, "last_request_id", "test-request") or ""
-        )
+        self._last_request_id = str(getattr(self._gateway, "last_request_id", "test-request") or "")
         return ConnectorWriteResultV1(
             1,
             True,

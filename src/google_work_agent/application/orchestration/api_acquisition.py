@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.connector_read_models import (
     NormalizedConnectorRead,
     PlannedConnectorRead,
@@ -62,17 +61,22 @@ from google_work_agent.application.orchestration.tool_routing import (
     allowed_read_tool_ids,
     coarse_resource_category,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
+    ResourceSnapshot,
+    TimeRange,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
-    ResourceSnapshot,
     StructuredLLMResult,
-    TimeRange,
-    WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 

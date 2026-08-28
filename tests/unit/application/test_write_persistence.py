@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from json import loads
 
-from google_work_agent.application.write_persistence import audit_event as _audit_event
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event as _audit_event,
+)
 
 
 def test_audit_event_redacts_secret_like_metadata_keys_but_keeps_ids() -> None:

@@ -8,7 +8,7 @@ from google_work_agent.application.use_cases.resource.connector_resource_access 
     ConnectorResourceAccess,
     _gmail_search_permalink,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
@@ -353,9 +353,7 @@ def test_task_projection_preserves_a_provider_title() -> None:
 
 def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() -> None:
     gateway = _TaskGateway()
-    service = ConnectorResourceAccess(
-        gateway=gateway, default_tasklist_id_provider=lambda: None
-    )
+    service = ConnectorResourceAccess(gateway=gateway, default_tasklist_id_provider=lambda: None)
 
     page = service.list_tasks(task_list_id=None, page_token=None, page_size=10)
 

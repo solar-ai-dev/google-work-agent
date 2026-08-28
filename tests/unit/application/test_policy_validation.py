@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from google_work_agent.application.policy import (
+from google_work_agent.application.use_cases.action.policy import (
     ApprovalIntegrityInput,
     EvidencePolicyInput,
     validate_approval_integrity,

@@ -18,10 +18,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    account_provider_dispatch,
-    provider_dispatch_execution_scope,
-)
 from google_work_agent.application.orchestration.contracts import (
     ABSOLUTE_MAX_LLM_CALLS,
     NORMAL_MAX_LLM_CALLS,
@@ -30,7 +26,14 @@ from google_work_agent.application.orchestration.contracts import (
     BudgetProfile,
     build_default_run_budget,
 )
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+    provider_dispatch_execution_scope,
+)
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
+)
 
 
 def _state(*, llm_calls_used: int, profile: str = BudgetProfile.NORMAL.value) -> dict[str, object]:

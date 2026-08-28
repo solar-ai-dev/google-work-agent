@@ -79,9 +79,7 @@ def test_load_prompt_reference_succeeds_for_runtime_active_slot(tmp_path: Path) 
 def test_load_prompt_reference_distinguishes_missing_from_inactive_artifact(
     tmp_path: Path,
 ) -> None:
-    draft_manifest_path = write_draft_manifest(
-        tmp_path, prompt_ids={"planning.compose_arguments"}
-    )
+    draft_manifest_path = write_draft_manifest(tmp_path, prompt_ids={"planning.compose_arguments"})
     with pytest.raises(InactivePromptArtifactError, match="planning.compose_arguments"):
         load_prompt_reference("planning.compose_arguments", draft_manifest_path)
 

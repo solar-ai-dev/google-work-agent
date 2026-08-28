@@ -10,11 +10,13 @@ from google_work_agent.application.orchestration.planning_arguments import Defau
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

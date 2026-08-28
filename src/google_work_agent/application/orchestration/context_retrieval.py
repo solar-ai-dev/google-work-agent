@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.context_segmentation import (
     DEFAULT_CONTEXT_BUDGET,
     _SourceSegment,
@@ -85,11 +83,15 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
-    WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 
@@ -848,9 +850,7 @@ def _resource_handles_for_segment_ids(
     for segment_id in segment_ids:
         segment = by_id.get(segment_id)
         if segment is None:
-            raise ContextRetrievalValidationError(
-                f"RAG_SEGMENT_REFERENCE_INVALID: {segment_id}"
-            )
+            raise ContextRetrievalValidationError(f"RAG_SEGMENT_REFERENCE_INVALID: {segment_id}")
         if segment.resource_handle in seen:
             continue
         seen.add(segment.resource_handle)

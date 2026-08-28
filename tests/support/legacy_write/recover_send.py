@@ -5,18 +5,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
-    RecoverExistingResultCommand,
-    RecoverExistingResultResult,
-)
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     require_action,
     require_approval,
     require_attempt,
 )
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    WriteResultMaterializer,
+)
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

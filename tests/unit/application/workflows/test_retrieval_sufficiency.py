@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.orchestration.contracts import (
-    MAX_ADDITIONAL_ACQUISITIONS,
-)
 from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError,
 )
-from google_work_agent.application.orchestration.contracts import RunBudgetV1
+from google_work_agent.application.orchestration.contracts import (
+    MAX_ADDITIONAL_ACQUISITIONS,
+    RunBudgetV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionEffectValue,
     RequestIntentV2,

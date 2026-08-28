@@ -6,15 +6,15 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
-    BackgroundRunExecutorAdapter,
-)
 from google_work_agent.adapters.langgraph.registry.checkpoint_target_resolver import (
     NativeCheckpointTargetResolver,
 )
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
+)
+from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
+    BackgroundRunExecutorAdapter,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory

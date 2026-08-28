@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from json import loads
 from typing import cast
 
-from google_work_agent.application.recovery_source_projection import (
-    project_source_resource,
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_action,
+    require_approval,
+    require_attempt,
+    resolve_snapshot_fallback_resource_id,
 )
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultCommand,
@@ -18,22 +21,21 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
     ResolveAsFailedCommand,
     ResolveAsFailedResult,
 )
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    WriteResultMaterializer,
+)
+from google_work_agent.application.use_cases.recovery.source_projection import (
+    project_source_resource,
+)
 from google_work_agent.application.use_cases.verification.normalize_snapshot import (
     normalize_snapshot,
 )
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
-from google_work_agent.application.write_persistence import (
-    require_action,
-    require_approval,
-    require_attempt,
-    resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

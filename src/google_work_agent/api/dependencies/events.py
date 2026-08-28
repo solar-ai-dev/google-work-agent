@@ -9,7 +9,9 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.ports import ClockPort, SseEventBufferPort, UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,7 +2,10 @@ from threading import Lock
 from typing import cast
 
 from google_work_agent.adapters.langgraph.main.workflow import GraphState, LangGraphWorkflowRuntime
-from google_work_agent.ports import WorkflowCancelRequest, WorkflowOutcome
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    WorkflowCancelRequest,
+    WorkflowOutcome,
+)
 
 
 def test_cancel_signal_routes_the_next_graph_edge_to_end() -> None:

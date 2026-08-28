@@ -46,7 +46,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     coarse_resource_category,
 )
-from google_work_agent.ports import OutputSchemaDefinition
+from google_work_agent.ports.llm import OutputSchemaDefinition
 
 SUFFICIENCY_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="sufficiency-result-v2",
@@ -299,9 +299,7 @@ def enforce_sufficiency_guard(
     supervisor._route_additional_acquisition already uses) instead of a
     second guard engine. If the deterministic disposition disagrees with the
     LLM's status, the deterministic disposition wins."""
-    read_only = all(
-        effect == "READ" for effect in request_intent["requested_effect_hints"]
-    )
+    read_only = all(effect == "READ" for effect in request_intent["requested_effect_hints"])
     budget_state = budget_state_prompt_projection(retry_budget)
     budget_remaining = cast(int, budget_state["additional_rounds_remaining"])
     issues = tuple(
@@ -319,9 +317,7 @@ def enforce_sufficiency_guard(
     # CONTINUE branches instead. No issue already flagged this as
     # USER-resolvable (that would have matched the NEEDS_CONFIRMATION
     # branch above it), so this never assumes a Write gap is user-fixable.
-    write_required_data_missing = not read_only and any(
-        issue.required for issue in issues
-    )
+    write_required_data_missing = not read_only and any(issue.required for issue in issues)
     disposition = decide_insufficient_data(
         InsufficientDataContext(
             issues=issues,

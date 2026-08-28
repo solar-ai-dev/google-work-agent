@@ -17,7 +17,6 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
 from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     ConfirmationResponseProjectionV1,
@@ -35,9 +34,16 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     provider_dispatch_budget_scope,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports import OutputSchemaDefinition, PromptReference, WorkflowStartRequest
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="route-resource-candidate-v1",

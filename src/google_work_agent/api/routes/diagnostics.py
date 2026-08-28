@@ -15,7 +15,7 @@ from google_work_agent.application.use_cases.diagnostic_bundle.create_diagnostic
     CreateDiagnosticBundleCommand,
     CreateDiagnosticBundleHandler,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 

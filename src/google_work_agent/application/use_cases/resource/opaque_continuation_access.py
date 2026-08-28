@@ -19,7 +19,7 @@ from google_work_agent.application.use_cases.resource.connector_resource_access 
     ResourceCount,
     ResourceListPage,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GmailThreadDetail,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,

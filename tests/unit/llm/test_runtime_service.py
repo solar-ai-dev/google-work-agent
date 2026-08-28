@@ -28,8 +28,11 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.application.llm import LLMRuntimeService as _LLMRuntimeService
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    LLMRuntimeService as _LLMRuntimeService,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
@@ -38,7 +41,6 @@ from google_work_agent.ports import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(
@@ -147,6 +149,7 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
     router_kwargs.setdefault("hardware_probe", _HardwareProbe())
     kwargs.pop("hardware_probe", None)
     kwargs.pop("api_provider")
+    kwargs.pop("credential_service", None)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(
             api_provider_name="generic", **router_kwargs

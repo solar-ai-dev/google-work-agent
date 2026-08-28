@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.read_contracts import (
     ClaimReadActionCommand,
     ReadActionCommandResponse,
 )
-from google_work_agent.application.read_persistence import (
+from google_work_agent.application.use_cases.action.read_persistence import (
     READ_ACTION_TERMINAL_STATUSES,
     action_conflict_response,
     action_result_response,
@@ -26,7 +26,7 @@ from google_work_agent.domain.action.transitions.claim_read_action import (
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class ClaimReadActionHandler:
@@ -80,16 +80,16 @@ class ClaimReadActionHandler:
                 unit_of_work.commit()
                 return response
             if not unit_of_work.actions.is_dependency_ready(action.id):
-                    response = action_conflict_response(
-                        action=action,
-                        result_code=ResultCode.STATE_CONFLICT,
-                        conflict_detail="dependencies are not yet satisfied",
-                    )
-                    finish_json_receipt(
-                        unit_of_work, command.command_id, response, action.version, now_ms
-                    )
-                    unit_of_work.commit()
-                    return response
+                response = action_conflict_response(
+                    action=action,
+                    result_code=ResultCode.STATE_CONFLICT,
+                    conflict_detail="dependencies are not yet satisfied",
+                )
+                finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
 
             result = transition_claim_read_action(
                 ActionStatusV1(action.status),

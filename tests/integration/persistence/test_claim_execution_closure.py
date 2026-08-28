@@ -17,6 +17,9 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
     SqliteExecutionAttemptRepository,
 )
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
+    ApproveWriteActionCommand,
+)
 from google_work_agent.application.use_cases.claim.build_claim_context import (
     BuildClaimContextHandler,
     BuildClaimContextQueryV1,
@@ -24,9 +27,6 @@ from google_work_agent.application.use_cases.claim.build_claim_context import (
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
     ClaimExecutionHandler,
-)
-from google_work_agent.application.write_approval_contracts import (
-    ApproveWriteActionCommand,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.results import ResultCode

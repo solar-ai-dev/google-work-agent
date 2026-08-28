@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -15,7 +14,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
 )
-from google_work_agent.application.orchestration.planning_argument_writer import PlanningArgumentWriter
+from google_work_agent.application.orchestration.planning_argument_writer import (
+    PlanningArgumentWriter,
+)
 from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
@@ -30,12 +31,15 @@ from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
@@ -240,9 +244,7 @@ def test_compat_plan_copies_route_authority_and_builds_expected_deterministicall
     assert action["tool_name"] == "tasks_create_task"
     assert action["effect"] == "CREATE"
     assert action["action_id"] == "action-1"
-    assert action["expected"] == {
-        "payload": {"title": "Prepare report", "due": "2026-08-20"}
-    }
+    assert action["expected"] == {"payload": {"title": "Prepare report", "due": "2026-08-20"}}
     assert action["depends_on_action_ids"] == []
 
 

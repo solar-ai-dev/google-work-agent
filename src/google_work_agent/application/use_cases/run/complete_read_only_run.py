@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -14,8 +14,8 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.complete_read_only_run import (
     transition_complete_read_only_run,
 )
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,8 +142,7 @@ class CompleteReadOnlyRunHandler:
                 raise RuntimeError("CompleteReadOnlyRun requires current Plan authority")
             if (
                 update_plan_record(
-                    unit_of_work,
-                    plan.id, expected_status=plan.status, next_status=next_plan
+                    unit_of_work, plan.id, expected_status=plan.status, next_status=next_plan
                 )
                 is None
             ):

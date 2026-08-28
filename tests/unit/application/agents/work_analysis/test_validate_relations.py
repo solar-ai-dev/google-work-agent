@@ -12,7 +12,14 @@ def test_guarded_relation_requires_deterministic_validator_code() -> None:
     ]
     with pytest.raises(ValueError, match="guarded relation"):
         validate_relations(
-            [{"relation_type": "DUPLICATES", "left_ref": "a", "right_ref": "b", "evidence_refs": ["e1", "e2"]}],
+            [
+                {
+                    "relation_type": "DUPLICATES",
+                    "left_ref": "a",
+                    "right_ref": "b",
+                    "evidence_refs": ["e1", "e2"],
+                }
+            ],
             work_facts=facts,
             validator=lambda _relation, _left, _right: {"accepted": True, "validator_codes": []},
         )
@@ -24,7 +31,14 @@ def test_validated_duplicate_can_mark_action_not_required() -> None:
         {"fact_id": "b", "fact_type": "TASK", "value": "x", "evidence_refs": ["e2"]},
     ]
     result = validate_relations(
-        [{"relation_type": "DUPLICATES", "left_ref": "a", "right_ref": "b", "evidence_refs": ["e1", "e2"]}],
+        [
+            {
+                "relation_type": "DUPLICATES",
+                "left_ref": "a",
+                "right_ref": "b",
+                "evidence_refs": ["e1", "e2"],
+            }
+        ],
         work_facts=facts,
         validator=lambda _relation, _left, _right: {
             "accepted": True,

@@ -18,9 +18,7 @@ from google_work_agent.application.tool_registry import load_signed_tool_registr
 build_google_workspace_internal_capabilities = (
     internal_capabilities.build_google_workspace_internal_capabilities
 )
-INTERNAL_CAPABILITY_REGISTRY_VERSION = (
-    internal_capabilities.INTERNAL_CAPABILITY_REGISTRY_VERSION
-)
+INTERNAL_CAPABILITY_REGISTRY_VERSION = internal_capabilities.INTERNAL_CAPABILITY_REGISTRY_VERSION
 
 
 def main() -> None:

@@ -19,10 +19,13 @@ class ProjectExternalLlmTransferScopeQueryV1:
     schema_version: Literal[1]
     run_id: str
     source_kinds: tuple[str, ...] | None = None
-    data_classes: tuple[
-        Literal["USER_REQUEST", "RESOURCE_METADATA", "EVIDENCE_EXCERPT", "PLAN_CONTEXT"],
-        ...,
-    ] | None = None
+    data_classes: (
+        tuple[
+            Literal["USER_REQUEST", "RESOURCE_METADATA", "EVIDENCE_EXCERPT", "PLAN_CONTEXT"],
+            ...,
+        ]
+        | None
+    ) = None
     occurred_at_ms: int | None = None
 
 

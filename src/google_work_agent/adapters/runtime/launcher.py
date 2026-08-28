@@ -129,9 +129,7 @@ class LauncherCore:
             self.status = LauncherStatus(LauncherState.START_FAILED, detail=ready_state)
             return self.status
         self.status = LauncherStatus(LauncherState.OPENING_BROWSER)
-        opened = self._browser_launcher.open(
-            BrowserLaunchRequest(url=f"http://127.0.0.1:{port}/")
-        )
+        opened = self._browser_launcher.open(BrowserLaunchRequest(url=f"http://127.0.0.1:{port}/"))
         if not opened:
             self.status = LauncherStatus(LauncherState.RUNNING, detail="browser_unavailable")
             return self.status

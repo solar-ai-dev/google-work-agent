@@ -20,7 +20,6 @@ from typing import cast
 
 import google_work_agent.application.orchestration.solution_planning as _planning
 import google_work_agent.application.orchestration.work_analysis as _analysis
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -42,10 +41,12 @@ from google_work_agent.application.orchestration.work_analysis import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     WorkAnalysisAgent,
 )
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports import StructuredLLMResult, WorkflowStartRequest
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import StructuredLLMResult
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class CanonicalOptionalInputWorkAnalysisAgent(WorkAnalysisAgent):
@@ -294,15 +295,12 @@ def assemble_plan_with_optional_analysis(
 
     evidence_by_id = {draft["evidence_id"]: draft for draft in evidence_drafts}
     plan_evidence_refs = _stable_unique(
-        evidence_ref
-        for action in canonical["actions"]
-        for evidence_ref in action["evidence_refs"]
+        evidence_ref for action in canonical["actions"] for evidence_ref in action["evidence_refs"]
     )
     resource_handles = _stable_unique(
         evidence_by_id[evidence_ref]["resource_handle"]
         for evidence_ref in plan_evidence_refs
-        if evidence_ref in evidence_by_id
-        and evidence_by_id[evidence_ref]["resource_handle"]
+        if evidence_ref in evidence_by_id and evidence_by_id[evidence_ref]["resource_handle"]
     )
     resource_refs = [{"resource_handle": handle} for handle in resource_handles]
 
@@ -311,8 +309,7 @@ def assemble_plan_with_optional_analysis(
         action_resource_handles = _stable_unique(
             evidence_by_id[evidence_ref]["resource_handle"]
             for evidence_ref in planned_action["evidence_refs"]
-            if evidence_ref in evidence_by_id
-            and evidence_by_id[evidence_ref]["resource_handle"]
+            if evidence_ref in evidence_by_id and evidence_by_id[evidence_ref]["resource_handle"]
         )
         legacy_actions.append(
             {
@@ -369,14 +366,10 @@ def validate_plan_with_optional_analysis(
 
     allowed_evidence = {draft["evidence_id"] for draft in evidence_drafts}
     allowed_resources = {
-        draft["resource_handle"]
-        for draft in evidence_drafts
-        if draft["resource_handle"]
+        draft["resource_handle"] for draft in evidence_drafts if draft["resource_handle"]
     }
     if any(ref not in allowed_evidence for ref in value["evidence_refs"]):
-        raise _planning.SolutionPlanningValidationError(
-            "plan evidence reference does not exist"
-        )
+        raise _planning.SolutionPlanningValidationError("plan evidence reference does not exist")
     for resource_ref in value["resource_refs"]:
         handle = resource_ref.get("resource_handle")
         if not isinstance(handle, str) or handle not in allowed_resources:
@@ -396,9 +389,7 @@ def validate_plan_with_optional_analysis(
                 "action resource reference does not exist"
             )
         if any(dep not in action_ids for dep in action["depends_on_action_ids"]):
-            raise _planning.SolutionPlanningValidationError(
-                "action dependency not found"
-            )
+            raise _planning.SolutionPlanningValidationError("action dependency not found")
     _planning._validate_action_plan_invariant(value)
     if frozen_output_routes is not None:
         _planning._validate_frozen_output_routes(

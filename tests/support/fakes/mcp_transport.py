@@ -5,12 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.mcp_client_port import (
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPControlResponse,
     MCPRuntimeMetadata,
     MCPToolResponse,
-    MCPClientPortError,
-    MCPClientPortErrorCode,
 )
 
 

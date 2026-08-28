@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from tests.support.mcp_manifest import build_manifest_payload
 
-from google_work_agent.adapters.connectors.google_workspace import (
+from google_work_agent.adapters.connectors.google.workspace.composition import (
     build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
@@ -20,7 +20,7 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     calculate_file_sha256,
 )
 from google_work_agent.application.tool_registry import load_signed_tool_registry
-from google_work_agent.ports import MCPClientPortError
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
 
 
 def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path) -> None:

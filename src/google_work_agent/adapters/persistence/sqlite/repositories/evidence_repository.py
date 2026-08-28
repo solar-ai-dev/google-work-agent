@@ -10,9 +10,7 @@ class SqliteEvidenceRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
-    def insert_bounded(
-        self, record: EvidenceRecord, *, action_ids: tuple[str, ...] = ()
-    ) -> None:
+    def insert_bounded(self, record: EvidenceRecord, *, action_ids: tuple[str, ...] = ()) -> None:
         self._connection.execute(
             "INSERT INTO evidence (id, run_id, origin_type, resource_ref_id, message_id, kind, excerpt, locator_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
             (
@@ -38,7 +36,8 @@ class SqliteEvidenceRepository:
         rows = self._connection.execute(
             "SELECT id, run_id, origin_type, resource_ref_id, message_id, kind, excerpt, "
             "locator_json, created_at_ms FROM evidence WHERE run_id=? "
-            "ORDER BY created_at_ms, id LIMIT ?;", (run_id, limit)
+            "ORDER BY created_at_ms, id LIMIT ?;",
+            (run_id, limit),
         ).fetchall()
         return tuple(self._record(row) for row in rows)
 

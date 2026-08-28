@@ -13,8 +13,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -41,7 +39,15 @@ from google_work_agent.application.orchestration.prompt_registry import (
 )
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.orchestration.tool_routing import OutputToolRouteV1
-from google_work_agent.ports import PromptReference, StructuredLLMResult, WorkflowStartRequest
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    PromptReference,
+    StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class PlanningArgumentWriterV2Protocol(Protocol):

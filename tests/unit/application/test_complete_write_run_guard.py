@@ -18,7 +18,7 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.verification.model import Verification as VerificationRecord
 from google_work_agent.domain.verification.model import VerificationStatus
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class _CancelReader:
@@ -245,9 +245,7 @@ def test_complete_write_run_accepts_only_fully_verified_resolved_aggregate() -> 
 
 
 def test_complete_write_run_rejects_legacy_read_active_plan() -> None:
-    assert "WAITING_APPROVAL" in cast(
-        str, _conflict(plan=_plan(PlanStatusV1.ACTIVE))
-    )
+    assert "WAITING_APPROVAL" in cast(str, _conflict(plan=_plan(PlanStatusV1.ACTIVE)))
 
 
 def test_complete_write_run_rejects_multiple_non_superseded_plans() -> None:

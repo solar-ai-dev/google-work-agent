@@ -30,7 +30,8 @@ from google_work_agent.application.orchestration.prompt_registry import (
     default_prompt_manifest_path,
 )
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
@@ -40,10 +41,11 @@ from google_work_agent.ports import (
     RequestedRuntimeMode,
     RuntimePolicy,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
 
 _WORK_ANALYSIS_ANALYZE_PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r8.6",

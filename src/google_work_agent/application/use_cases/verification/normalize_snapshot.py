@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from google_work_agent.ports import ResourceSnapshot
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 
 
 @dataclass(frozen=True, slots=True)

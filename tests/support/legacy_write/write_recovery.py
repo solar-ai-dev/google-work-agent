@@ -13,69 +13,64 @@ from tests.support.legacy_write.write_verification import (
     normalize_verification_projection,
 )
 
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
 )
-from google_work_agent.application.resource_ref_projection import (
-    resource_ref_from_snapshot as _resource_ref_from_snapshot,
-)
-from google_work_agent.application.use_cases.recovery.require_recovery import (
-    RequireRecoveryCommand,
-    RequireRecoveryHandler,
-)
-from google_work_agent.application.write_action_arguments import (
+from google_work_agent.application.use_cases.action.write_action_arguments import (
     dict_argument as _dict_argument,
 )
-from google_work_agent.application.write_action_arguments import (
+from google_work_agent.application.use_cases.action.write_action_arguments import (
     required_argument_string as _required_argument_string,
 )
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.action.write_persistence import (
+    action_response_from_result as _action_response_from_result,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event as _audit_event,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    propagate_dependency_blocked as _propagate_dependency_blocked,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_action as _require_action,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_approval as _require_approval,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_attempt as _require_attempt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_plan as _require_plan,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_run as _require_run,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    resolve_existing_action_receipt as _resolve_existing_action_receipt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
+)
+from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.action.write_persistence import (
+    upsert_resource_ref as _upsert_resource_ref,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    write_action_version_conflict_response as _write_action_version_conflict_response,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    WriteResultMaterializer,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
     WriteRunResponse,
 )
-from google_work_agent.application.write_persistence import (
-    action_response_from_result as _action_response_from_result,
-)
-from google_work_agent.application.write_persistence import (
-    audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
-    finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    propagate_dependency_blocked as _propagate_dependency_blocked,
-)
-from google_work_agent.application.write_persistence import (
-    require_action as _require_action,
-)
-from google_work_agent.application.write_persistence import (
-    require_approval as _require_approval,
-)
-from google_work_agent.application.write_persistence import (
-    require_attempt as _require_attempt,
-)
-from google_work_agent.application.write_persistence import (
-    require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
-    require_run as _require_run,
-)
-from google_work_agent.application.write_persistence import (
-    resolve_existing_action_receipt as _resolve_existing_action_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.write_persistence import revoke_active_approvals
-from google_work_agent.application.write_persistence import (
-    upsert_resource_ref as _upsert_resource_ref,
-)
-from google_work_agent.application.write_persistence import (
-    write_action_version_conflict_response as _write_action_version_conflict_response,
-)
-from google_work_agent.application.write_recovery_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
     PrepareWriteRetryCommand,
     RecoverExistingWriteResultCommand,
@@ -84,6 +79,13 @@ from google_work_agent.application.write_recovery_contracts import (
     RecoverUnknownSendActionCommand,
     RecoverUnknownUpdateActionCommand,
     ResolveUnknownWriteAsFailedCommand,
+)
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryCommand,
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    resource_ref_from_snapshot as _resource_ref_from_snapshot,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
@@ -110,13 +112,13 @@ from google_work_agent.domain.run.transitions.begin_verification import (
     transition_begin_verification,
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
-    UnitOfWork,
 )
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class MarkWriteActionUnknownResultService:

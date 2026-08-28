@@ -3,8 +3,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.observability import emit_audit_event
-from google_work_agent.ports.observability_events import (
+from google_work_agent.application.use_cases.trace_event.observability import emit_audit_event
+from google_work_agent.ports.events.observability_events import (
     EventCategory,
     ObservabilityContext,
     Severity,

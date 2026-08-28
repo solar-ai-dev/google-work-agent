@@ -272,7 +272,7 @@ def test_legacy_concrete_import_and_construction_are_absent_from_production(
 
 def test_production_callers_import_the_canonical_concrete_owners() -> None:
     launcher = _source("launcher/dev.py")
-    connector = _source("adapters/connectors/google_workspace.py")
+    connector = _source("adapters/connectors/google/workspace/composition.py")
     assert "adapters.connectors.runtime.mcp_oauth_credential import (" in connector
     assert "McpOAuthCredentialAdapter," in connector
     assert "adapters.llm.runtime.structured_inference_router import" in launcher
@@ -286,7 +286,7 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
 
 def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:
     router_source = _source("adapters/llm/runtime/structured_inference_router.py")
-    application_source = _source("application/llm.py")
+    application_source = _source("application/use_cases/llm/structured_inference_runtime.py")
     launcher = _source("launcher/dev.py")
     llm_exports = _source("adapters/llm/__init__.py")
 

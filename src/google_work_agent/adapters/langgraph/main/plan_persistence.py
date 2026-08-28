@@ -19,7 +19,6 @@ from google_work_agent.adapters.langgraph.main.state import (
     _require_state_value,
     _resource_handle_for_ref,
 )
-from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
@@ -27,28 +26,39 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
-from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    persist_registered_resource_ref,
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
 )
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.read_contracts import (
     PublishReadOnlyPlanCommand,
     ReadActionDraft,
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
-from google_work_agent.application.resource_ref_projection import resource_ref_from_snapshot
-from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.action.task_duplicates import (
+    TASK_CREATE_TOOL,
+    evidence_duplicate_risk,
+)
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
+)
+from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    resource_ref_from_snapshot,
+)
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 def replace_llm_expected_with_deterministic_projection(

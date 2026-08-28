@@ -8,16 +8,16 @@ from typing import Protocol
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+    normalize_google_workspace_failure,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
-)
-from google_work_agent.ports.connectors.failure import (
-    ConnectorFailureCode,
-    ConnectorOperationFailure,
-    normalize_google_workspace_failure,
 )
 
 MAX_RESOURCE_PAGE_SIZE = 100

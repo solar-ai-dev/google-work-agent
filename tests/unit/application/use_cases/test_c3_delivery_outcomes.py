@@ -16,7 +16,7 @@ from google_work_agent.application.use_cases.execution_attempt.mark_unknown_resu
     MarkUnknownResultCommand,
     MarkUnknownResultHandler,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,

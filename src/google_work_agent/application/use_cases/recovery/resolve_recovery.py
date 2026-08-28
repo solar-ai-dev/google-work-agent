@@ -6,12 +6,12 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.persistence_cas import update_plan_record
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.write_persistence import (
     cancel_pending_actions,
     revoke_active_approvals,
 )
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus

@@ -19,7 +19,9 @@ _TARGET_IDENTITY_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
-def build_dependencies(action_seeds: Iterable[PlanningActionSeedV1]) -> tuple[ActionDependencyCandidateV1, ...]:
+def build_dependencies(
+    action_seeds: Iterable[PlanningActionSeedV1],
+) -> tuple[ActionDependencyCandidateV1, ...]:
     """Link only consecutive actions targeting the same already-identifiable resource."""
     previous_by_target: dict[tuple[str, ...], str] = {}
     result: list[ActionDependencyCandidateV1] = []
@@ -29,11 +31,13 @@ def build_dependencies(action_seeds: Iterable[PlanningActionSeedV1]) -> tuple[Ac
             continue
         previous = previous_by_target.get(target)
         if previous is not None:
-            result.append({
-                "action_id": seed["action_id"],
-                "depends_on_action_id": previous,
-                "reason": "SAME_RESOURCE_ORDER",
-            })
+            result.append(
+                {
+                    "action_id": seed["action_id"],
+                    "depends_on_action_id": previous,
+                    "reason": "SAME_RESOURCE_ORDER",
+                }
+            )
         previous_by_target[target] = seed["action_id"]
     return tuple(result)
 

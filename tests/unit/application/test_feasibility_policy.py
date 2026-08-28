@@ -4,7 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.use_cases.action.feasibility import (
     FeasibilityValidator,
     evidence_feasibility_risk,
     feasibility_change_requires_reapproval,
@@ -12,9 +13,8 @@ from google_work_agent.application.feasibility import (
     refresh_feasibility_input_for_arguments,
     require_feasibility_approval,
 )
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.domain.action.model import PolicyViolationError
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     FreeBusyCalendar,
     ResourcePage,
     ResourceType,

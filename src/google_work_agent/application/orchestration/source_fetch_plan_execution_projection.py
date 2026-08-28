@@ -197,9 +197,7 @@ def _calendar_constraints(
             "relative_offset": None,
             "weekday": None,
             "daypart": None,
-            "absolute_start": _local_to_rfc3339(
-                cast(str, temporal["start_local"]), timezone_value
-            ),
+            "absolute_start": _local_to_rfc3339(cast(str, temporal["start_local"]), timezone_value),
             "absolute_end": _local_to_rfc3339(cast(str, temporal["end_local"]), timezone_value),
         },
     )

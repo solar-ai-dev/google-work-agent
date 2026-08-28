@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Final, Literal, TypedDict, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
@@ -53,15 +52,18 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 from google_work_agent.application.tool_registry.signed_tool_registry import (
     SignedToolRegistry,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
     ToolCallProviderResponse,
     ToolDefinition,
-    WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 PLAN_REVIEW_SCHEMA_VERSION: Final = 2

@@ -16,17 +16,15 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
+    GetExecutionContextQuery,
+)
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
 from google_work_agent.domain.results import ResultCode
-
-
-class _UnusedRuntimeStatusProvider:
-    def get_summary(self) -> object:
-        raise NotImplementedError
 
 
 def _seeded_database(tmp_path: Path) -> Path:
@@ -137,13 +135,9 @@ def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) ->
         _command(command_id="command-b", request_hash="b" * 64, request_text="관련 메일 찾아줘")
     )
 
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=_UnusedRuntimeStatusProvider(),
-    )
-    context_a = query_service.get_run_execution_context(run_a.run_id)
-    context_b = query_service.get_run_execution_context(run_b.run_id)
+    get_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    context_a = get_context(GetExecutionContextQuery(run_a.run_id))
+    context_b = get_context(GetExecutionContextQuery(run_b.run_id))
 
     assert context_a is not None
     assert context_b is not None

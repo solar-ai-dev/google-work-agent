@@ -17,7 +17,6 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     RESUME_CONTRACT_VERSION,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
@@ -25,6 +24,7 @@ from google_work_agent.application.orchestration.contracts import (
     validate_confirmation_response_projection_v1,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorDecisionV1
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationCommand,
 )

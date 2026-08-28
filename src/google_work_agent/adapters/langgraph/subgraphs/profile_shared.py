@@ -47,8 +47,8 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRouteCoordinator,
     ToolRoutePlanV2,
 )
-from google_work_agent.ports import WorkflowStartRequest
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class ProfileToolRouteError(ValueError):

@@ -7,7 +7,10 @@ from google_work_agent.application.orchestration.review_v2_tools import (
     ReviewV2ToolCallError,
     review_tool_call_to_candidate_v2,
 )
-from google_work_agent.ports import LLMToolCall, ToolCallProviderResponse
+from google_work_agent.ports.llm import (
+    LLMToolCall,
+    ToolCallProviderResponse,
+)
 
 
 def _response(name: str, arguments: dict[str, object]) -> ToolCallProviderResponse:

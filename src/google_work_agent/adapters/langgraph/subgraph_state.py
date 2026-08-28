@@ -47,7 +47,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     ToolRouteResultV1,
 )
-from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class AgentSubgraphInputEnvelope(TypedDict, total=False):

@@ -184,9 +184,7 @@ def test_read_connector_binding_fails_closed_without_matching_route() -> None:
     plan["actions"][0]["tool_name"] = "gmail_get_message"
 
     with pytest.raises(ValueError, match="exactly one frozen connector"):
-        connector_ids_for_read_actions_from_frozen_routes(
-            state=_read_state(), plan_draft=plan
-        )
+        connector_ids_for_read_actions_from_frozen_routes(state=_read_state(), plan_draft=plan)
 
 
 def test_read_connector_binding_fails_closed_on_ambiguous_connectors() -> None:
@@ -206,6 +204,4 @@ def test_read_connector_binding_fails_closed_on_ambiguous_connectors() -> None:
     )
 
     with pytest.raises(ValueError, match="exactly one frozen connector"):
-        connector_ids_for_read_actions_from_frozen_routes(
-            state=state, plan_draft=_read_plan()
-        )
+        connector_ids_for_read_actions_from_frozen_routes(state=state, plan_draft=_read_plan())

@@ -332,21 +332,15 @@ def test_conversation_message_slice_has_one_production_authority() -> None:
 
 
 def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
-    path = USE_CASE_ROOT / "run/resume_run.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    calls = {ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
-    assert not any(name.endswith("runs.resume_confirmation") for name in calls)
-    assert not any(name.endswith("runs.require_recovery") for name in calls)
-    assert any(name.endswith("ResolveRecoveryHandler.recheck_in_unit_of_work") for name in calls)
-    assert not any(name.endswith("runs.resolve_recovery") for name in calls)
-    assert any(name.endswith("commit") for name in calls)
-    assert not any("workflow_runtime.resume" in name for name in calls)
-    assert not any(
-        name.startswith("google_work_agent.adapters.langgraph") for name in _imports(path)
-    )
-
     reauth_path = USE_CASE_ROOT / "run/resume_after_reauth.py"
+    assert not (USE_CASE_ROOT / "run/resume_run.py").exists()
     reauth_tree = ast.parse(reauth_path.read_text(encoding="utf-8"))
+    handler = next(
+        node
+        for node in reauth_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "ResumeAfterReauthHandler"
+    )
+    assert handler.bases == []
     reauth_calls = {
         ast.unparse(node.func) for node in ast.walk(reauth_tree) if isinstance(node, ast.Call)
     }
@@ -354,6 +348,14 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     assert any(
         name.endswith("RequireRecoveryHandler.apply_in_unit_of_work") for name in reauth_calls
     )
+    persistence_path = USE_CASE_ROOT / "run/_resume_persistence.py"
+    persistence_calls = {
+        ast.unparse(node.func)
+        for node in ast.walk(ast.parse(persistence_path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+    }
+    assert any(name.endswith("workflow_handoffs.stage_pending") for name in persistence_calls)
+    assert any(name.endswith("commit") for name in persistence_calls)
 
     confirmation_path = USE_CASE_ROOT / "run/resume_confirmation.py"
     confirmation_tree = ast.parse(confirmation_path.read_text(encoding="utf-8"))
@@ -435,8 +437,8 @@ class Runtime:
 
 
 def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
-    source = (USE_CASE_ROOT / "run/resume_run.py").read_text(encoding="utf-8")
-    assert '"SAFE_CHECKPOINT_RESUME": RunStatusV1.BLOCKED' not in source
+    source = (USE_CASE_ROOT / "run/resume_safe_checkpoint.py").read_text(encoding="utf-8")
+    assert "RunStatusV1.BLOCKED" not in source
 
 
 def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:

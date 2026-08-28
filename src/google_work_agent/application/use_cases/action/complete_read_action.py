@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.read_contracts import (
     CompleteReadActionCommand,
     ReadActionCommandResponse,
 )
-from google_work_agent.application.read_persistence import (
+from google_work_agent.application.use_cases.action.read_persistence import (
     action_conflict_response,
     action_result_response,
     audit_event,
@@ -30,7 +30,7 @@ from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class CompleteReadActionHandler:
@@ -119,7 +119,7 @@ class CompleteReadActionHandler:
                         version_token=resource_ref.version_token,
                         metadata_json=resource_ref.metadata_json,
                         captured_at_ms=now_ms,
-                    )
+                    ),
                 )
 
             for evidence in command.evidence:

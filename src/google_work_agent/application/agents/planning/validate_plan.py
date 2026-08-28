@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.agents.planning.contracts.action_plan_draft import ActionPlanDraftV2
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+)
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 
@@ -26,7 +28,15 @@ def validate_plan(value: object) -> ActionPlanDraftV2:
         if not isinstance(raw, Mapping):
             raise ValueError("planned action must be an object")
         action = dict(raw)
-        required = {"action_id", "route_id", "tool_id", "effect", "arguments", "evidence_refs", "depends_on_action_ids"}
+        required = {
+            "action_id",
+            "route_id",
+            "tool_id",
+            "effect",
+            "arguments",
+            "evidence_refs",
+            "depends_on_action_ids",
+        }
         if set(action) != required:
             raise ValueError("planned action keys do not match contract")
         action_id = _text(action["action_id"], "action_id")
@@ -49,6 +59,7 @@ def validate_plan(value: object) -> ActionPlanDraftV2:
 def _acyclic(edges: dict[str, list[str]]) -> None:
     active: set[str] = set()
     done: set[str] = set()
+
     def visit(node: str) -> None:
         if node in active:
             raise ValueError("action dependency cycle")
@@ -59,6 +70,7 @@ def _acyclic(edges: dict[str, list[str]]) -> None:
             visit(predecessor)
         active.remove(node)
         done.add(node)
+
     for node in edges:
         visit(node)
 

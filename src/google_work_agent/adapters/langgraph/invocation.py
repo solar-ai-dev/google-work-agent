@@ -13,7 +13,7 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     provider_dispatch_execution_scope,
 )
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCancelRequest,
     WorkflowInvocationResult,
     WorkflowOutcome,

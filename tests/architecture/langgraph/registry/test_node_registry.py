@@ -78,15 +78,7 @@ def test_profile_owner_bindings_are_closed_and_exact() -> None:
 
 def test_node_registry_rejects_stale_unknown_and_wrong_owner_bindings() -> None:
     registry = NodeRegistry(graph_version="graph-v1")
-    assert registry.contains(
-        "graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble"
-    )
-    assert not registry.contains(
-        "graph-v0", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble"
-    )
-    assert not registry.contains(
-        "graph-v1", "SIX_ROLE_BASELINE", "REVIEW", "planning.assemble"
-    )
-    assert not registry.contains(
-        "graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.unknown"
-    )
+    assert registry.contains("graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble")
+    assert not registry.contains("graph-v0", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble")
+    assert not registry.contains("graph-v1", "SIX_ROLE_BASELINE", "REVIEW", "planning.assemble")
+    assert not registry.contains("graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.unknown")

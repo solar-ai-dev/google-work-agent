@@ -60,8 +60,8 @@ class SqliteApprovalRepository:
 
     def insert_active_snapshot(self, record: ApprovalRecord) -> None:
         row = self._connection.execute(
-            "SELECT COALESCE(MAX(approval_no), 0) + 1 AS next_no FROM approvals "
-            "WHERE action_id=?;", (record.action_id,)
+            "SELECT COALESCE(MAX(approval_no), 0) + 1 AS next_no FROM approvals WHERE action_id=?;",
+            (record.action_id,),
         ).fetchone()
         approval_no = int(row["next_no"])
         self._connection.execute(
@@ -115,8 +115,7 @@ class SqliteApprovalRepository:
         return tuple(
             self._record(r)
             for r in self._connection.execute(
-                self._SELECT
-                + " WHERE action_id IN (SELECT id FROM actions WHERE plan_id=?) "
+                self._SELECT + " WHERE action_id IN (SELECT id FROM actions WHERE plan_id=?) "
                 "AND status='ACTIVE' ORDER BY approved_at_ms, id;",
                 (plan_id,),
             ).fetchall()

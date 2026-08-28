@@ -74,7 +74,7 @@ from google_work_agent.application.orchestration.work_analysis import (
     WorkAnalysisAgent,
     build_work_analysis_clarification_question,
 )
-from google_work_agent.ports import StructuredLLMResult
+from google_work_agent.ports.llm import StructuredLLMResult
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]

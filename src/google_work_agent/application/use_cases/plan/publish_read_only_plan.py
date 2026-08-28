@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.persistence_cas import update_plan_record
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.action.read_contracts import (
     PublishReadOnlyPlanCommand,
     PublishReadOnlyPlanResponse,
 )
-from google_work_agent.application.read_persistence import (
+from google_work_agent.application.use_cases.action.read_persistence import (
     audit_event,
     finish_json_receipt,
     handle_existing_publish_receipt,
@@ -25,9 +25,7 @@ from google_work_agent.domain.plan.transitions.publish_read_only_plan import (
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    UnitOfWork,
-)
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class PublishReadOnlyPlanHandler:

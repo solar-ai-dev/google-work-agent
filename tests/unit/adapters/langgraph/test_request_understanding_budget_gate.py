@@ -26,10 +26,12 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     account_provider_dispatch,
     provider_dispatch_execution_scope,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
     PromptReference,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

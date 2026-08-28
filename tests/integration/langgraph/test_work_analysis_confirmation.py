@@ -33,8 +33,6 @@ from typing import Any
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
-    DeterministicUUID,
-    FakeClockPort,
     FakeGoogleGateway,
     GraphProfile,
     LangGraphWorkflowRuntime,
@@ -52,10 +50,8 @@ from tests.integration.langgraph.test_runtime import (
     _seed_runtime_database,
     _selection_output,
     _start_request,
-    _tool_catalog,
     connect_sqlite,
     pytest,
-    sqlite_unit_of_work_factory,
 )
 from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
@@ -63,11 +59,11 @@ from tests.support.canonical_workflow_runtime import (
 )
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
-    WorkflowInvocationResult,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
 def _analysis_output(

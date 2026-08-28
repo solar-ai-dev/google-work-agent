@@ -16,7 +16,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 
-from google_work_agent.application.llm import StructuredLLMRuntime
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     ConfirmationResponseProjectionV1,
@@ -43,13 +42,16 @@ from google_work_agent.application.orchestration.tool_routing import (
     normalize_resource_type,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
-    WorkflowStartRequest,
 )
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 def load_tool_route_determine_io_resources_prompt_reference(

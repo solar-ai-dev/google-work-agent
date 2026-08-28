@@ -48,7 +48,11 @@ def assemble_plan(
     _validate_acyclic(by_action)
     return {
         "schema_version": 2,
-        "meta": {"artifact_id": artifact_id, "revision": revision, "based_on": [dict(ref) for ref in based_on]},  # type: ignore[typeddict-item]
+        "meta": {
+            "artifact_id": artifact_id,
+            "revision": revision,
+            "based_on": [dict(ref) for ref in based_on],
+        },  # type: ignore[typeddict-item]
         "actions": [
             {
                 "action_id": seed["action_id"],

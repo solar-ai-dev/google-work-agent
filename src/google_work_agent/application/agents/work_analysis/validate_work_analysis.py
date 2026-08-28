@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import WorkAnalysisResultV2
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAnalysisResultV2,
+)
 
 _GUARDED = frozenset({"DUPLICATES", "CONFLICTS_WITH"})
 _RISK_SEVERITIES = frozenset({"INFO", "WARNING", "BLOCKING"})
@@ -16,8 +18,15 @@ def validate_work_analysis(value: object) -> WorkAnalysisResultV2:
         raise ValueError("WorkAnalysisResultV2 must be an object")
     root = dict(value)
     expected = {
-        "schema_version", "meta", "work_facts", "relations", "ambiguities", "risks",
-        "evidence_refs", "policy_confirmation_receipt_refs", "action_necessity",
+        "schema_version",
+        "meta",
+        "work_facts",
+        "relations",
+        "ambiguities",
+        "risks",
+        "evidence_refs",
+        "policy_confirmation_receipt_refs",
+        "action_necessity",
     }
     if set(root) != expected:
         raise ValueError("WorkAnalysisResultV2 keys do not match the contract")

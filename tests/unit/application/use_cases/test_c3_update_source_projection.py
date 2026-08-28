@@ -12,7 +12,10 @@ from tests.support.legacy_write.recover_update import (
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 class _ByIdRepo:

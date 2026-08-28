@@ -9,7 +9,15 @@ from typing import Any, Literal, TypedDict, cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextBudget,
+    ContextRetrievalAgent,
+    ContextRetrievalValidationError,
+    ContextStatusValue,
+    build_context_clarification_question,
+    load_context_assess_sufficiency_prompt_reference,
+    load_context_select_evidence_prompt_reference,
+)
 from google_work_agent.application.orchestration.contracts import (
     MAX_ADDITIONAL_ACQUISITIONS,
     ContextResult,
@@ -26,26 +34,20 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SufficiencyIssueV2,
     SufficiencyResultV2,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextBudget,
-    ContextRetrievalAgent,
-    ContextRetrievalValidationError,
-    build_context_clarification_question,
-    load_context_assess_sufficiency_prompt_reference,
-    load_context_select_evidence_prompt_reference,
-)
-from google_work_agent.application.orchestration.context_retrieval import ContextStatusValue
 from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.orchestration.retrieval_sufficiency import (
     validate_sufficiency_result_v2,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

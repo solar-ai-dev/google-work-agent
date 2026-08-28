@@ -17,7 +17,7 @@ from google_work_agent.application.orchestration.prompt_input_contract import (
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,

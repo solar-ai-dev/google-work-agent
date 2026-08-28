@@ -8,11 +8,11 @@ from google_work_agent.api.dependencies.contract_version import (
 )
 from google_work_agent.api.dependencies.identities import IdentityRouteDependency
 from google_work_agent.api.schemas.identities.get_google_account import CurrentGoogleAccountResponse
-from google_work_agent.application.use_cases.identity.get_google_account import (
-    GetGoogleAccountHandler,
-    GetGoogleAccountQuery,
+from google_work_agent.application.use_cases.connection.get_connection_status import (
+    GetConnectionStatusHandler,
+    GetConnectionStatusQuery,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
@@ -29,9 +29,16 @@ def get_current_google_account(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    result = GetGoogleAccountHandler(query_service_factory=dependencies.query_service).handle(
-        GetGoogleAccountQuery()
-    )
+    handler = dependencies.get_connection_status_handler
+    account = None
+    if isinstance(handler, GetConnectionStatusHandler):
+        connection = handler(GetConnectionStatusQuery(connector_id="google_workspace")).connection
+        if connection.account_id is not None or connection.display_email is not None:
+            account = {
+                "account_id": connection.account_id,
+                "email": connection.display_email,
+                "display_name": None,
+            }
     return CurrentGoogleAccountResponse(
-        account=result.account, api_contract_version=dependencies.api_contract_version
+        account=account, api_contract_version=dependencies.api_contract_version
     )

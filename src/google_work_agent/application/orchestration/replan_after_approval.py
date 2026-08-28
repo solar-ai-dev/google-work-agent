@@ -134,9 +134,7 @@ def bind_preallocated_identity(
     plan_id, action_ids = _plan_identity(plan)
     revision = plan["meta"]["revision"]
     if current["phase"] == "ROLLOVER_REQUIRED" and revision != 1:
-        raise PostApprovalReplanV2Error(
-            "a fresh post-approval artifact must start at revision 1"
-        )
+        raise PostApprovalReplanV2Error("a fresh post-approval artifact must start at revision 1")
     _validate_fresh_generation(
         source_plan_id=current["source_plan_id"],
         source_action_ids=current["source_action_ids"],

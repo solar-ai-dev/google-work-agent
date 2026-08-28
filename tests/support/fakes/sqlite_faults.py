@@ -49,7 +49,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repo
 from google_work_agent.adapters.persistence.sqlite.repositories.verification_repository import (
     SqliteVerificationRepository,
 )
-from google_work_agent.ports import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class SQLiteFaultStage(StrEnum):

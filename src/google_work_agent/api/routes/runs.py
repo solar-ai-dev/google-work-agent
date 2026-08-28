@@ -73,12 +73,12 @@ from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelHandler,
 )
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthCommand,
     ResumeAfterReauthHandler,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationHandler,
 )
-from google_work_agent.application.use_cases.run.resume_run import ResumeRunCommand
 from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
     ResumeSafeCheckpointCommand,
     ResumeSafeCheckpointHandler,
@@ -91,7 +91,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
@@ -435,7 +435,7 @@ def resume_run(
         schedule_run_execution=dependencies.schedule_run_execution,
     )
     result = handler(
-        ResumeRunCommand(
+        ResumeAfterReauthCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ResumeRunRequestV2", payload={"run_id": run_id, **payload.model_dump()}

@@ -81,9 +81,9 @@ def test_dimension_only_revise_freshly_rechecks_exact_public_dimension(
             "affected_dimensions": [dimension],
         }
     )
-    result = ReviewSubgraph(
-        dependencies=ReviewRuntimeDependencies(invoke=invoke)
-    ).build().invoke(state)
+    result = (
+        ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build().invoke(state)
+    )
 
     assert calls == ["review.recheck_affected_dimensions", inspection_prompt]
     assert result["review_result"]["issues"] == [
@@ -184,9 +184,9 @@ def test_unaffected_prior_findings_are_preserved_and_not_rerun() -> None:
             "affected_dimensions": ["GOAL_EVIDENCE"],
         }
     )
-    result = ReviewSubgraph(
-        dependencies=ReviewRuntimeDependencies(invoke=invoke)
-    ).build().invoke(state)
+    result = (
+        ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build().invoke(state)
+    )
 
     assert calls == [
         "review.recheck_affected_dimensions",
@@ -223,8 +223,6 @@ def test_invalid_or_broadened_dimension_fails_closed() -> None:
             "affected_dimensions": ["GOAL_EVIDENCE"],
         }
     )
-    broadened_graph = ReviewSubgraph(
-        dependencies=ReviewRuntimeDependencies(invoke=broaden)
-    ).build()
+    broadened_graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=broaden)).build()
     with pytest.raises(ValueError, match="canonical affected set"):
         broadened_graph.invoke(broadened_state)

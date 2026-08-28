@@ -4,7 +4,10 @@ from collections.abc import Mapping
 
 import pytest
 
-from google_work_agent.adapters.langgraph.subgraphs.review.graph import ReviewRuntimeDependencies, ReviewSubgraph
+from google_work_agent.adapters.langgraph.subgraphs.review.graph import (
+    ReviewRuntimeDependencies,
+    ReviewSubgraph,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,25 +47,27 @@ def test_public_dimension_only_revision_signal_drives_recheck(
             }
         ],
     }
-    result = ReviewSubgraph(
-        dependencies=ReviewRuntimeDependencies(invoke=invoke)
-    ).build().invoke(
-        {
-            "review_phase": "RECHECK",
-            "request_intent": {"goal": "revise"},
-            "tool_route_plan": {},
-            "planning_result": {"revision": 2},
-            "work_analysis": {},
-            "evidence": [],
-            "policy_summary": {},
-            "prior_review_findings": [],
-            "affected_action_ids": [],
-            "affected_route_ids": [],
-            "workflow_signal": signal,
-            "review_artifact_id": "rv2",
-            "review_revision": 2,
-            "review_based_on": [],
-        }
+    result = (
+        ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke))
+        .build()
+        .invoke(
+            {
+                "review_phase": "RECHECK",
+                "request_intent": {"goal": "revise"},
+                "tool_route_plan": {},
+                "planning_result": {"revision": 2},
+                "work_analysis": {},
+                "evidence": [],
+                "policy_summary": {},
+                "prior_review_findings": [],
+                "affected_action_ids": [],
+                "affected_route_ids": [],
+                "workflow_signal": signal,
+                "review_artifact_id": "rv2",
+                "review_revision": 2,
+                "review_based_on": [],
+            }
+        )
     )
 
     assert calls == ["review.recheck_affected_dimensions", inspection_prompt]

@@ -77,7 +77,7 @@ from google_work_agent.application.orchestration.supervisor import (
     route_supervisor,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
-from google_work_agent.ports import PromptReference
+from google_work_agent.ports.llm import PromptReference
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]

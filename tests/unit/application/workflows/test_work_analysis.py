@@ -9,16 +9,6 @@ from typing import Literal, cast
 import pytest
 from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
 
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.work_analysis import (
-    WORK_ANALYSIS_OUTPUT_SCHEMA,
-    WorkAnalysisAgent,
-    WorkAnalysisValidationError,
-    build_work_analysis_clarification_question,
-    load_work_analysis_analyze_prompt_reference,
-    validate_work_analysis_result_v1,
-    validate_work_analysis_result_v1_from_retrieval_result,
-)
 from google_work_agent.application.orchestration.contracts import (
     AnalysisResult,
     WorkflowPhase,
@@ -30,12 +20,24 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
 )
 from google_work_agent.application.orchestration.prompt_registry import InactivePromptArtifactError
-from google_work_agent.ports import (
+from google_work_agent.application.orchestration.work_analysis import (
+    WORK_ANALYSIS_OUTPUT_SCHEMA,
+    WorkAnalysisAgent,
+    WorkAnalysisValidationError,
+    build_work_analysis_clarification_question,
+    load_work_analysis_analyze_prompt_reference,
+    validate_work_analysis_result_v1,
+    validate_work_analysis_result_v1_from_retrieval_result,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

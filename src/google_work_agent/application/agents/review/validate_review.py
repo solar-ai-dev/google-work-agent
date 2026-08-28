@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.agents.review.contracts.plan_review_result import PlanReviewResultV2
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
 
 _VARIANTS = {
     "PASS": {"schema_version", "meta", "status", "summary"},
@@ -44,4 +46,6 @@ def validate_review(value: object) -> PlanReviewResultV2:
 
 
 def _nonempty_object_list(value: object) -> bool:
-    return isinstance(value, list) and bool(value) and all(isinstance(item, Mapping) for item in value)
+    return (
+        isinstance(value, list) and bool(value) and all(isinstance(item, Mapping) for item in value)
+    )

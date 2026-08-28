@@ -32,9 +32,7 @@ def test_revise_materializes_only_canonical_issue_shape() -> None:
     candidate = {
         "schema_version": 2,
         "status": "REVISE",
-        "issues": [
-            {"code": "PLAN_WRONG_TARGET", "description": "wrong target", "action_id": "a1"}
-        ],
+        "issues": [{"code": "PLAN_WRONG_TARGET", "description": "wrong target", "action_id": "a1"}],
     }
     result = materialize_plan_review_result_v2(candidate, meta=_meta())
     assert result == {"schema_version": 2, "meta": _meta(), **candidate}
@@ -52,6 +50,4 @@ def test_retrieve_more_uses_evidence_gaps_not_legacy_issues() -> None:
 
 def test_block_requires_structured_blocker() -> None:
     with pytest.raises(ReviewV2ValidationError, match="at least one blocker"):
-        validate_plan_review_candidate_v2(
-            {"schema_version": 2, "status": "BLOCK", "blockers": []}
-        )
+        validate_plan_review_candidate_v2({"schema_version": 2, "status": "BLOCK", "blockers": []})

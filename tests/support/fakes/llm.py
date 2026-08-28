@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ApprovedModelInfo,
     AvailabilityState,
     HardwareCapability,

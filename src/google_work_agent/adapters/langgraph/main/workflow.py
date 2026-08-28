@@ -60,17 +60,6 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow impor
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.application.calendar_conflicts import (
-    CALENDAR_CONFLICT_TOOLS,
-    evidence_calendar_conflict_risk,
-)
-from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
-from google_work_agent.application.execution_phase import WriteExecutionPhaseCoordinator
-from google_work_agent.application.use_cases.approval.expire_approval import ExpireApprovalHandler
-from google_work_agent.application.use_cases.action.refresh_expired_action import (
-    RefreshExpiredActionHandler,
-)
-from google_work_agent.application.feasibility import evidence_feasibility_risk
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     load_acquisition_plan_sources_prompt_reference,
@@ -147,11 +136,25 @@ from google_work_agent.application.orchestration.supervisor import (
 from google_work_agent.application.orchestration.tool_route_semantic import ToolRouteAgent
 from google_work_agent.application.orchestration.tool_routing import ToolRouteCoordinator
 from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
-from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    persist_registered_resource_ref,
-)
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
-from google_work_agent.application.read_contracts import (
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+    evidence_calendar_conflict_risk,
+)
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.execute_read_action import (
+    ExecuteReadActionService,
+)
+from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
+from google_work_agent.application.use_cases.action.feasibility import evidence_feasibility_risk
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.read_contracts import (
     ClaimReadActionCommand,
     CompleteReadActionCommand,
     FailReadActionCommand,
@@ -161,28 +164,17 @@ from google_work_agent.application.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
-from google_work_agent.application.read_execution import ExecuteReadActionService
-from google_work_agent.application.read_plan import (
-    SaveReadOnlyPlanService,
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionHandler,
 )
-from google_work_agent.application.run_terminal import (
-    FailRunCommand,
-    FailRunService,
-    derive_finalize_intent,
-)
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
-from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
+from google_work_agent.application.use_cases.action.write_preflight import (
+    PreflightWriteActionService,
 )
-from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
-from google_work_agent.application.use_cases.action.finalize_read_action import (
-    FinalizeReadActionHandler,
-)
+from google_work_agent.application.use_cases.approval.expire_approval import ExpireApprovalHandler
 from google_work_agent.application.use_cases.claim.build_claim_context import (
     BuildClaimContextHandler,
 )
@@ -196,6 +188,12 @@ from google_work_agent.application.use_cases.execution_attempt.begin_execution_a
 )
 from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
     ClassifyDispatchResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
+    ConnectorWriteProjection,
+)
+from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+    WriteExecutionPhaseCoordinator,
 )
 from google_work_agent.application.use_cases.execution_attempt.mark_failed import MarkFailedHandler
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
@@ -218,6 +216,18 @@ from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
     RecordReviewResultHandler,
 )
+from google_work_agent.application.use_cases.plan.save_read_only_plan import (
+    SaveReadOnlyPlanService,
+)
+from google_work_agent.application.use_cases.plan.save_write_plan import (
+    SaveWritePlanService,
+)
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
+    PublishWritePlanCommand,
+    SaveWritePlanCommand,
+    WriteActionDraft,
+    WriteEvidenceDraft,
+)
 from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
     LookupUnknownResultHandler,
 )
@@ -226,6 +236,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
+)
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
 )
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
@@ -255,6 +268,11 @@ from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationHandler,
 )
 from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
+from google_work_agent.application.use_cases.run.run_terminal import (
+    FailRunCommand,
+    FailRunService,
+    derive_finalize_intent,
+)
 from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
@@ -265,16 +283,6 @@ from google_work_agent.application.use_cases.verification.store_verification imp
 from google_work_agent.application.use_cases.verification.verify_effect import (
     VerifyEffectHandler,
 )
-from google_work_agent.application.write_plan import (
-    SaveWritePlanService,
-)
-from google_work_agent.application.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
-    WriteActionDraft,
-    WriteEvidenceDraft,
-)
-from google_work_agent.application.write_preflight import PreflightWriteActionService
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -289,24 +297,22 @@ from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceR
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports import (
-    GoogleWorkspaceGatewayError,
-    PromptReference,
-    UnitOfWork,
+from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
+from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCancelRequest,
     WorkflowInvocationResult,
     WorkflowOutcome,
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
-    WorkflowRuntime,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
-from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 
 JsonObject = dict[str, object]
 
@@ -325,7 +331,7 @@ def _legacy_connector_identity_unavailable() -> str:
     )
 
 
-class WorkflowRuntimeCore(WorkflowRuntime):
+class WorkflowRuntimeCore:
     """LangGraph runtime with selectable Stage 18 graph profiles."""
 
     def __init__(
@@ -1930,9 +1936,7 @@ class WorkflowRuntimeCore(WorkflowRuntime):
                 attempt = self._latest_attempt(action.id)
                 if attempt.status != ExecutionAttemptStatusV1.CLAIMED.value:
                     continue
-                error_detail = (
-                    "process restarted before BeginExecutionAttempt committed"
-                )
+                error_detail = "process restarted before BeginExecutionAttempt committed"
                 response = self._abort_claimed_execution(
                     AbortClaimedExecutionCommandV1(
                         command_id=self._id_factory(),

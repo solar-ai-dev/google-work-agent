@@ -10,7 +10,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactRefV1,
 )
 from google_work_agent.application.orchestration.state_artifacts import AnswerDraftV2
-from google_work_agent.ports import OutputSchemaDefinition
+from google_work_agent.ports.llm import OutputSchemaDefinition
 
 
 class AnswerDraftCandidateV2(TypedDict):
@@ -106,20 +106,14 @@ def _artifact_meta(value: object) -> StateArtifactMetaV1:
     for index, raw in enumerate(based_on):
         item = _mapping(raw, f"$.meta.based_on[{index}]")
         if set(item) != {"artifact_id", "revision"}:
-            raise PlanningAnswerV2ValidationError(
-                f"$.meta.based_on[{index}] keys are invalid"
-            )
+            raise PlanningAnswerV2ValidationError(f"$.meta.based_on[{index}] keys are invalid")
         ref_id = item["artifact_id"]
         ref_revision = item["revision"]
         if not isinstance(ref_id, str) or not ref_id:
             raise PlanningAnswerV2ValidationError(
                 f"$.meta.based_on[{index}].artifact_id must be non-empty"
             )
-        if (
-            not isinstance(ref_revision, int)
-            or isinstance(ref_revision, bool)
-            or ref_revision < 1
-        ):
+        if not isinstance(ref_revision, int) or isinstance(ref_revision, bool) or ref_revision < 1:
             raise PlanningAnswerV2ValidationError(
                 f"$.meta.based_on[{index}].revision must be positive"
             )

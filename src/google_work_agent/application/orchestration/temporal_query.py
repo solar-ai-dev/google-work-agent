@@ -6,7 +6,7 @@ from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from google_work_agent.application.orchestration.handoff_contracts import TemporalQueryV1
-from google_work_agent.ports import TimeRange
+from google_work_agent.ports.connector.contracts.google_workspace import TimeRange
 
 _DAYPART_WINDOWS: dict[str, tuple[time, time]] = {
     "MORNING": (time(6, 0), time(12, 0)),

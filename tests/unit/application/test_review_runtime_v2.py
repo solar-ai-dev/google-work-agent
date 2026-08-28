@@ -148,9 +148,7 @@ def test_review_meta_binds_exact_current_planning_revision() -> None:
     )
     assert result["disposition"] == "PASS"
     assert result["workflow_signal"] is None
-    assert result["typed_result"]["meta"]["based_on"] == [
-        {"artifact_id": "plan-1", "revision": 2}
-    ]
+    assert result["typed_result"]["meta"]["based_on"] == [{"artifact_id": "plan-1", "revision": 2}]
 
 
 def test_review_confirmation_keeps_application_owned_resume_identity() -> None:

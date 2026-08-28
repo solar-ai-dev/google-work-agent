@@ -13,25 +13,27 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
-)
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
 )
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
+from google_work_agent.application.orchestration.context_retrieval import (
+    ContextRetrievalAgent,
+)
+from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )

@@ -37,7 +37,7 @@ from google_work_agent.application.orchestration.state_artifacts import (
     WorkRiskV1,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.ports import OutputSchemaDefinition
+from google_work_agent.ports.llm import OutputSchemaDefinition
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 ActionNecessityV1 = Literal["REQUIRED", "NOT_REQUIRED"]
@@ -346,10 +346,15 @@ def validate_work_analysis_gap_decision_v1(value: object) -> WorkAnalysisGapDeci
         _exact(root, {"disposition", "needs"}, "$.gap_decision")
         raw_needs = _list(root["needs"], "$.gap_decision.needs")
         if not raw_needs:
-            raise WorkAnalysisV2ValidationError("NEEDS_MORE_DATA requires at least one RetrievalNeedV1")
+            raise WorkAnalysisV2ValidationError(
+                "NEEDS_MORE_DATA requires at least one RetrievalNeedV1"
+            )
         return {
             "disposition": "NEEDS_MORE_DATA",
-            "needs": [_retrieval_need(item, f"$.gap_decision.needs[{i}]") for i, item in enumerate(raw_needs)],
+            "needs": [
+                _retrieval_need(item, f"$.gap_decision.needs[{i}]")
+                for i, item in enumerate(raw_needs)
+            ],
         }
     if disposition == "NEEDS_CONFIRMATION":
         _exact(root, {"disposition", "question", "options", "reason_codes"}, "$.gap_decision")
@@ -409,10 +414,15 @@ def project_work_analysis_noncomplete_signal_v1(
 ) -> RouteReconsiderationRequiredV1 | BlockedSignalV1:
     decision = validate_work_analysis_gap_decision_v1(decision)
     if decision["disposition"] == "ROUTE_RECONSIDERATION_REQUIRED":
-        return {"kind": "ROUTE_RECONSIDERATION_REQUIRED", "reason_codes": list(decision["reason_codes"])}
+        return {
+            "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+            "reason_codes": list(decision["reason_codes"]),
+        }
     if decision["disposition"] == "BLOCKED":
         return {"kind": "BLOCKED", "reason_codes": list(decision["reason_codes"])}
-    raise WorkAnalysisV2ValidationError("noncomplete projection requires route reconsideration or block")
+    raise WorkAnalysisV2ValidationError(
+        "noncomplete projection requires route reconsideration or block"
+    )
 
 
 def validate_work_analysis_local_aggregation(
@@ -449,19 +459,36 @@ def validate_work_analysis_local_aggregation(
         "relation_candidates": relations,
         "relation_validation_ambiguities": [
             cast(dict[str, object], value)
-            for value in _ambiguities(root["relation_validation_ambiguities"], "$.relation_validation_ambiguities", allowed_evidence_refs, top_set)
+            for value in _ambiguities(
+                root["relation_validation_ambiguities"],
+                "$.relation_validation_ambiguities",
+                allowed_evidence_refs,
+                top_set,
+            )
         ],
         "ambiguity_candidates": [
             cast(dict[str, object], value)
-            for value in _ambiguities(root["ambiguity_candidates"], "$.ambiguity_candidates", allowed_evidence_refs, top_set)
+            for value in _ambiguities(
+                root["ambiguity_candidates"],
+                "$.ambiguity_candidates",
+                allowed_evidence_refs,
+                top_set,
+            )
         ],
         "risk_candidates": [
             cast(dict[str, object], value)
-            for value in _risk_sequence(root["risk_candidates"], "$.risk_candidates", allowed_evidence_refs, top_set)
+            for value in _risk_sequence(
+                root["risk_candidates"], "$.risk_candidates", allowed_evidence_refs, top_set
+            )
         ],
         "relation_validation_risks": [
             cast(dict[str, object], value)
-            for value in _risk_sequence(root["relation_validation_risks"], "$.relation_validation_risks", allowed_evidence_refs, top_set)
+            for value in _risk_sequence(
+                root["relation_validation_risks"],
+                "$.relation_validation_risks",
+                allowed_evidence_refs,
+                top_set,
+            )
         ],
         "gap_decision": validate_work_analysis_gap_decision_v1(root["gap_decision"]),
         "evidence_refs": top,
@@ -512,7 +539,9 @@ def validate_work_analysis_relations(
         left_fact = facts_by_id.get(relation["left_ref"])
         right_fact = facts_by_id.get(relation["right_ref"])
         if left_fact is None or right_fact is None:
-            raise WorkAnalysisV2ValidationError("relation operands must reference same-invocation WorkFactV1.fact_id")
+            raise WorkAnalysisV2ValidationError(
+                "relation operands must reference same-invocation WorkFactV1.fact_id"
+            )
         if relation["relation_type"] not in _GUARDED_RELATION_TYPES:
             relations.append({**relation, "validator_codes": []})
             continue
@@ -528,7 +557,11 @@ def validate_work_analysis_relations(
                     "code": "RELATION_OPERAND_IDENTITY_UNRESOLVED",
                     "description": "guarded relation operand did not resolve to exactly one connector-scoped current resource identity",
                     "evidence_refs": _ordered_unique(
-                        [*left_fact["evidence_refs"], *right_fact["evidence_refs"], *relation["evidence_refs"]]
+                        [
+                            *left_fact["evidence_refs"],
+                            *right_fact["evidence_refs"],
+                            *relation["evidence_refs"],
+                        ]
                     ),
                 }
             )
@@ -546,15 +579,27 @@ def validate_work_analysis_relations(
                 "right_resource_handle": right_handle,
             }
         )
-        validator_codes = _non_empty_strings(outcome.get("validator_codes"), "$.relation_validation.validator_codes")
+        validator_codes = _non_empty_strings(
+            outcome.get("validator_codes"), "$.relation_validation.validator_codes"
+        )
         if outcome.get("accepted") is True:
             relations.append({**relation, "validator_codes": validator_codes})
         elif outcome.get("ambiguity") is not None:
             ambiguities.append(
-                _ambiguity(cast(Mapping[str, object], outcome["ambiguity"]), "$.relation_validation.ambiguity", allowed_evidence_refs)
+                _ambiguity(
+                    cast(Mapping[str, object], outcome["ambiguity"]),
+                    "$.relation_validation.ambiguity",
+                    allowed_evidence_refs,
+                )
             )
         if outcome.get("risk") is not None:
-            risks.append(_risk(cast(Mapping[str, object], outcome["risk"]), "$.relation_validation.risk", allowed_evidence_refs))
+            risks.append(
+                _risk(
+                    cast(Mapping[str, object], outcome["risk"]),
+                    "$.relation_validation.risk",
+                    allowed_evidence_refs,
+                )
+            )
         necessity = outcome.get("action_necessity")
         if necessity not in {None, "REQUIRED", "NOT_REQUIRED"}:
             raise WorkAnalysisV2ValidationError("invalid action_necessity")
@@ -578,11 +623,15 @@ def materialize_complete_work_analysis_result_v2(
     relation_validator: RelationValidator | None = None,
     fact_identity_resolver: FactIdentityResolver | None = None,
 ) -> WorkAnalysisResultV2:
-    local = validate_work_analysis_local_aggregation(local, allowed_evidence_refs=allowed_evidence_refs)
+    local = validate_work_analysis_local_aggregation(
+        local, allowed_evidence_refs=allowed_evidence_refs
+    )
     if local["gap_decision"]["disposition"] != "COMPLETE":
         raise WorkAnalysisV2ValidationError("COMPLETE artifact requires gap_decision COMPLETE")
     facts = [
-        _fact(cast(Mapping[str, object], value), f"$.fact_candidates[{index}]", allowed_evidence_refs)
+        _fact(
+            cast(Mapping[str, object], value), f"$.fact_candidates[{index}]", allowed_evidence_refs
+        )
         for index, value in enumerate(local["fact_candidates"])
     ]
     relation_bundle = validate_work_analysis_relations(
@@ -605,12 +654,20 @@ def materialize_complete_work_analysis_result_v2(
             "unresolved BLOCKING risk requires BLOCKED workflow signal; COMPLETE artifact is forbidden"
         )
     ambiguities = [
-        _ambiguity(cast(Mapping[str, object], value), f"$.relation_validation_ambiguities[{index}]", allowed_evidence_refs)
+        _ambiguity(
+            cast(Mapping[str, object], value),
+            f"$.relation_validation_ambiguities[{index}]",
+            allowed_evidence_refs,
+        )
         for index, value in enumerate(local["relation_validation_ambiguities"])
     ]
     ambiguities.extend(relation_bundle["relation_validation_ambiguities"])
     ambiguities.extend(
-        _ambiguity(cast(Mapping[str, object], value), f"$.ambiguity_candidates[{index}]", allowed_evidence_refs)
+        _ambiguity(
+            cast(Mapping[str, object], value),
+            f"$.ambiguity_candidates[{index}]",
+            allowed_evidence_refs,
+        )
         for index, value in enumerate(local["ambiguity_candidates"])
     )
     return _assemble_result(
@@ -656,7 +713,9 @@ class WorkAnalysisV2NodeChain:
         resume_target: AgentNodeResumeTargetV2 | None = None,
     ) -> WorkAnalysisResultV2 | WorkflowSignalV1:
         allowed_evidence_refs = set(retrieval_result["evidence_refs"])
-        evidence = _validate_current_run_evidence(evidence_drafts, expected_refs=retrieval_result["evidence_refs"])
+        evidence = _validate_current_run_evidence(
+            evidence_drafts, expected_refs=retrieval_result["evidence_refs"]
+        )
         semantic_input: WorkAnalysisSemanticInputV1 = {
             "user_request": _text(user_request, "user_request"),
             "request_intent": request_intent,
@@ -666,13 +725,18 @@ class WorkAnalysisV2NodeChain:
             semantic_input["confirmation_response"] = dict(confirmation_response)
 
         # extract_work_facts [LLM candidate]
-        fact_output = _mapping(self._candidate_provider.extract_work_facts(semantic_input=semantic_input), "$.extract_work_facts")
+        fact_output = _mapping(
+            self._candidate_provider.extract_work_facts(semantic_input=semantic_input),
+            "$.extract_work_facts",
+        )
         _exact(fact_output, {"fact_candidates"}, "$.extract_work_facts")
         facts = _facts(fact_output["fact_candidates"], allowed_evidence_refs, allowed_evidence_refs)
 
         # resolve_relations [LLM candidate]
         relation_output = _mapping(
-            self._candidate_provider.resolve_relations(semantic_input=semantic_input, work_facts=facts),
+            self._candidate_provider.resolve_relations(
+                semantic_input=semantic_input, work_facts=facts
+            ),
             "$.resolve_relations",
         )
         _exact(relation_output, {"relation_candidates"}, "$.resolve_relations")
@@ -705,9 +769,17 @@ class WorkAnalysisV2NodeChain:
             ),
             "$.assess_analysis_gaps",
         )
-        _exact(gap_output, {"gap_decision", "ambiguity_candidates", "risk_candidates", "evidence_refs"}, "$.assess_analysis_gaps")
+        _exact(
+            gap_output,
+            {"gap_decision", "ambiguity_candidates", "risk_candidates", "evidence_refs"},
+            "$.assess_analysis_gaps",
+        )
         gap_decision = validate_work_analysis_gap_decision_v1(gap_output["gap_decision"])
-        top_evidence = _evidence_refs(gap_output["evidence_refs"], "$.assess_analysis_gaps.evidence_refs", allowed_evidence_refs)
+        top_evidence = _evidence_refs(
+            gap_output["evidence_refs"],
+            "$.assess_analysis_gaps.evidence_refs",
+            allowed_evidence_refs,
+        )
         top_set = set(top_evidence)
         ambiguity_candidates = _ambiguities(
             gap_output["ambiguity_candidates"],
@@ -725,12 +797,17 @@ class WorkAnalysisV2NodeChain:
         # validate_risks [deterministic]
         risks = validate_and_merge_work_analysis_risks(
             risk_candidates=cast(Sequence[Mapping[str, object]], risk_candidates),
-            relation_validation_risks=cast(Sequence[Mapping[str, object]], relation_bundle["relation_validation_risks"]),
+            relation_validation_risks=cast(
+                Sequence[Mapping[str, object]], relation_bundle["relation_validation_risks"]
+            ),
             allowed_evidence_refs=allowed_evidence_refs,
         )
         blocking = [risk for risk in risks if risk["severity"] == "BLOCKING"]
         if blocking:
-            return {"kind": "BLOCKED", "reason_codes": _ordered_unique(risk["code"] for risk in blocking)}
+            return {
+                "kind": "BLOCKED",
+                "reason_codes": _ordered_unique(risk["code"] for risk in blocking),
+            }
 
         receipt_refs = [
             _artifact_ref(value, f"$.policy_confirmation_receipt_refs[{index}]")
@@ -741,22 +818,33 @@ class WorkAnalysisV2NodeChain:
                 *[risk["code"] for risk in risks if risk["code"] in _OVERRIDE_REASON_CODES],
                 *[
                     ambiguity["code"]
-                    for ambiguity in [*relation_bundle["relation_validation_ambiguities"], *ambiguity_candidates]
+                    for ambiguity in [
+                        *relation_bundle["relation_validation_ambiguities"],
+                        *ambiguity_candidates,
+                    ]
                     if ambiguity["code"] in _OVERRIDE_REASON_CODES
                 ],
             ]
         )
-        if override_reasons and not receipt_refs and gap_decision["disposition"] != "NEEDS_CONFIRMATION":
+        if (
+            override_reasons
+            and not receipt_refs
+            and gap_decision["disposition"] != "NEEDS_CONFIRMATION"
+        ):
             raise WorkAnalysisV2ValidationError(
                 "override path without validated receipt reference must remain NEEDS_CONFIRMATION; semantic confirmation text may not be synthesized"
             )
 
         # Non-COMPLETE paths never assemble or return a partial artifact.
         if gap_decision["disposition"] == "NEEDS_MORE_DATA":
-            if self._retrieval_need_satisfier is not None and not self._retrieval_need_satisfier(gap_decision["needs"]):
+            if self._retrieval_need_satisfier is not None and not self._retrieval_need_satisfier(
+                gap_decision["needs"]
+            ):
                 return {
                     "kind": "ROUTE_RECONSIDERATION_REQUIRED",
-                    "reason_codes": _ordered_unique(code for need in gap_decision["needs"] for code in need["reason_codes"]),
+                    "reason_codes": _ordered_unique(
+                        code for need in gap_decision["needs"] for code in need["reason_codes"]
+                    ),
                 }
             return project_work_analysis_retrieval_required_v1(gap_decision)
         if gap_decision["disposition"] == "NEEDS_CONFIRMATION":
@@ -776,7 +864,10 @@ class WorkAnalysisV2NodeChain:
         result = _assemble_result(
             facts=facts,
             relations=relation_bundle["validated_relations"],
-            ambiguities=[*relation_bundle["relation_validation_ambiguities"], *ambiguity_candidates],
+            ambiguities=[
+                *relation_bundle["relation_validation_ambiguities"],
+                *ambiguity_candidates,
+            ],
             risks=risks,
             evidence_refs=top_evidence,
             action_necessity=relation_bundle["action_necessity"],
@@ -786,7 +877,9 @@ class WorkAnalysisV2NodeChain:
         )
 
         # validate [deterministic]
-        return validate_complete_work_analysis_result_v2(result, allowed_evidence_refs=allowed_evidence_refs)
+        return validate_complete_work_analysis_result_v2(
+            result, allowed_evidence_refs=allowed_evidence_refs
+        )
 
 
 def validate_complete_work_analysis_result_v2(
@@ -812,7 +905,9 @@ def validate_complete_work_analysis_result_v2(
     )
     if root["schema_version"] != 2:
         raise WorkAnalysisV2ValidationError("WorkAnalysisResultV2.schema_version must be 2")
-    top = _evidence_refs(root["evidence_refs"], "$.work_analysis_result_v2.evidence_refs", allowed_evidence_refs)
+    top = _evidence_refs(
+        root["evidence_refs"], "$.work_analysis_result_v2.evidence_refs", allowed_evidence_refs
+    )
     top_set = set(top)
     facts = _facts(root["work_facts"], allowed_evidence_refs, top_set)
     fact_ids = {fact["fact_id"] for fact in facts}
@@ -820,16 +915,33 @@ def validate_complete_work_analysis_result_v2(
     for index, raw in enumerate(_list(root["relations"], "$.work_analysis_result_v2.relations")):
         path = f"$.work_analysis_result_v2.relations[{index}]"
         item = _mapping(raw, path)
-        _exact(item, {"relation_type", "left_ref", "right_ref", "evidence_refs", "validator_codes"}, path)
+        _exact(
+            item,
+            {"relation_type", "left_ref", "right_ref", "evidence_refs", "validator_codes"},
+            path,
+        )
         relation = _relation(item, path, allowed_evidence_refs, allow_validator_codes=True)
         if relation["left_ref"] not in fact_ids or relation["right_ref"] not in fact_ids:
-            raise WorkAnalysisV2ValidationError("official relation operand is not a same-invocation fact id")
+            raise WorkAnalysisV2ValidationError(
+                "official relation operand is not a same-invocation fact id"
+            )
         _nested(relation["evidence_refs"], top_set, f"{path}.evidence_refs")
-        relations.append({**relation, "validator_codes": _strings(item["validator_codes"], f"{path}.validator_codes")})
-    ambiguities = _ambiguities(root["ambiguities"], "$.work_analysis_result_v2.ambiguities", allowed_evidence_refs, top_set)
-    risks = _risk_sequence(root["risks"], "$.work_analysis_result_v2.risks", allowed_evidence_refs, top_set)
+        relations.append(
+            {
+                **relation,
+                "validator_codes": _strings(item["validator_codes"], f"{path}.validator_codes"),
+            }
+        )
+    ambiguities = _ambiguities(
+        root["ambiguities"], "$.work_analysis_result_v2.ambiguities", allowed_evidence_refs, top_set
+    )
+    risks = _risk_sequence(
+        root["risks"], "$.work_analysis_result_v2.risks", allowed_evidence_refs, top_set
+    )
     if any(risk["severity"] == "BLOCKING" for risk in risks):
-        raise WorkAnalysisV2ValidationError("WorkAnalysisResultV2 may not contain unresolved BLOCKING risk")
+        raise WorkAnalysisV2ValidationError(
+            "WorkAnalysisResultV2 may not contain unresolved BLOCKING risk"
+        )
     action_necessity = root["action_necessity"]
     if action_necessity not in {"REQUIRED", "NOT_REQUIRED"}:
         raise WorkAnalysisV2ValidationError("invalid action_necessity")
@@ -842,8 +954,15 @@ def validate_complete_work_analysis_result_v2(
         "risks": risks,
         "evidence_refs": top,
         "policy_confirmation_receipt_refs": [
-            _artifact_ref(item, f"$.work_analysis_result_v2.policy_confirmation_receipt_refs[{index}]")
-            for index, item in enumerate(_list(root["policy_confirmation_receipt_refs"], "$.work_analysis_result_v2.policy_confirmation_receipt_refs"))
+            _artifact_ref(
+                item, f"$.work_analysis_result_v2.policy_confirmation_receipt_refs[{index}]"
+            )
+            for index, item in enumerate(
+                _list(
+                    root["policy_confirmation_receipt_refs"],
+                    "$.work_analysis_result_v2.policy_confirmation_receipt_refs",
+                )
+            )
         ],
         "action_necessity": cast(ActionNecessityV1, action_necessity),
     }
@@ -870,7 +989,9 @@ def _assemble_result(
         "relations": [dict(relation) for relation in relations],
         "ambiguities": [dict(ambiguity) for ambiguity in ambiguities],
         "risks": [dict(risk) for risk in risks],
-        "evidence_refs": _evidence_refs(list(evidence_refs), "$.evidence_refs", allowed_evidence_refs),
+        "evidence_refs": _evidence_refs(
+            list(evidence_refs), "$.evidence_refs", allowed_evidence_refs
+        ),
         "policy_confirmation_receipt_refs": [
             _artifact_ref(value, f"$.policy_confirmation_receipt_refs[{index}]")
             for index, value in enumerate(policy_confirmation_receipt_refs)
@@ -893,7 +1014,9 @@ def _validate_current_run_evidence(
             raise WorkAnalysisV2ValidationError("conflicting current-run evidence id")
         by_id[evidence_id] = item
     if set(by_id) != set(expected_refs):
-        raise WorkAnalysisV2ValidationError("current-run Evidence must exactly cover RetrievalResultV1.evidence_refs")
+        raise WorkAnalysisV2ValidationError(
+            "current-run Evidence must exactly cover RetrievalResultV1.evidence_refs"
+        )
     return [by_id[evidence_ref] for evidence_ref in expected_refs]
 
 
@@ -911,14 +1034,18 @@ def _facts(value: object, allowed: set[str], top: set[str]) -> list[WorkFactV1]:
     return result
 
 
-def _relations(value: object, allowed: set[str], top: set[str], fact_ids: set[str]) -> list[WorkRelationLocalCandidate]:
+def _relations(
+    value: object, allowed: set[str], top: set[str], fact_ids: set[str]
+) -> list[WorkRelationLocalCandidate]:
     result: list[WorkRelationLocalCandidate] = []
     for index, raw in enumerate(_list(value, "$.relation_candidates")):
         path = f"$.relation_candidates[{index}]"
         relation = _relation(raw, path, allowed)
         _nested(relation["evidence_refs"], top, f"{path}.evidence_refs")
         if relation["left_ref"] not in fact_ids or relation["right_ref"] not in fact_ids:
-            raise WorkAnalysisV2ValidationError(f"{path} operands must reference same-invocation WorkFactV1.fact_id")
+            raise WorkAnalysisV2ValidationError(
+                f"{path} operands must reference same-invocation WorkFactV1.fact_id"
+            )
         result.append(relation)
     return result
 
@@ -962,7 +1089,9 @@ def _relation(
     }
 
 
-def _ambiguities(value: object, path: str, allowed: set[str], top: set[str]) -> list[WorkAmbiguityV1]:
+def _ambiguities(
+    value: object, path: str, allowed: set[str], top: set[str]
+) -> list[WorkAmbiguityV1]:
     result: list[WorkAmbiguityV1] = []
     for index, raw in enumerate(_list(value, path)):
         item_path = f"{path}[{index}]"
@@ -999,7 +1128,9 @@ def _risk(value: Mapping[str, object], path: str, allowed: set[str]) -> WorkRisk
     refs = _ordered_unique(_strings(value["evidence_refs"], f"{path}.evidence_refs"))
     unknown = [ref for ref in refs if ref not in allowed]
     if unknown:
-        raise WorkAnalysisV2ValidationError(f"{path}.evidence_refs contains unknown/current-run-invalid refs: {unknown}")
+        raise WorkAnalysisV2ValidationError(
+            f"{path}.evidence_refs contains unknown/current-run-invalid refs: {unknown}"
+        )
     return {
         "code": _text(value["code"], f"{path}.code"),
         "severity": cast(Literal["INFO", "WARNING", "BLOCKING"], severity),
@@ -1056,14 +1187,18 @@ def _evidence_refs(value: object, path: str, allowed: set[str]) -> list[str]:
         raise WorkAnalysisV2ValidationError(f"{path} contains duplicates")
     unknown = [ref for ref in refs if ref not in allowed]
     if unknown:
-        raise WorkAnalysisV2ValidationError(f"{path} contains unknown/current-run-invalid evidence refs: {unknown}")
+        raise WorkAnalysisV2ValidationError(
+            f"{path} contains unknown/current-run-invalid evidence refs: {unknown}"
+        )
     return refs
 
 
 def _nested(refs: Sequence[str], top: set[str], path: str) -> None:
     missing = [ref for ref in refs if ref not in top]
     if missing:
-        raise WorkAnalysisV2ValidationError(f"{path} must also be listed in top-level evidence_refs: {missing}")
+        raise WorkAnalysisV2ValidationError(
+            f"{path} must also be listed in top-level evidence_refs: {missing}"
+        )
 
 
 def _ordered_unique(values: Iterable[object]) -> list[str]:
@@ -1084,7 +1219,9 @@ def _ordered_unique_identity(
     seen: set[NormalizedCurrentResourceIdentityV1] = set()
     for raw in values:
         if not isinstance(raw, tuple) or len(raw) != 2:
-            raise WorkAnalysisV2ValidationError("current resource identity must be (connector_id, resource_handle)")
+            raise WorkAnalysisV2ValidationError(
+                "current resource identity must be (connector_id, resource_handle)"
+            )
         connector_id = _text(raw[0], "current_resource_identity.connector_id")
         handle = _text(raw[1], "current_resource_identity.resource_handle")
         identity = (connector_id, handle)

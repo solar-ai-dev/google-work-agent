@@ -5,7 +5,11 @@ from fastapi import Request
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
-from google_work_agent.ports import AccessDecision, ApiRequestContext, EndpointPolicy
+from google_work_agent.ports.system.api_access_port import (
+    AccessDecision,
+    ApiRequestContext,
+    EndpointPolicy,
+)
 
 
 def enforce_access(request: Request, *, policy: EndpointPolicy) -> None:

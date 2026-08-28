@@ -12,26 +12,36 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
-from google_work_agent.application.orchestration.handoff_contracts import (
-    EvidenceDraftV1,
-    RequestIntentV2,
-)
 from google_work_agent.application.orchestration.assemble_planning_answer import (
     ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA,
 )
-from google_work_agent.application.orchestration.post_retrieval_envelopes import PlanningResultV2
-from google_work_agent.application.orchestration.prompt_registry import load_prompt_reference
-from google_work_agent.application.orchestration.inspect_plan_output import PLAN_REVIEW_CANDIDATE_OUTPUT_SCHEMA
-from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2, WorkFactV1, WorkRelationV1, WorkAmbiguityV1
 from google_work_agent.application.orchestration.assemble_work_analysis_output import (
     WORK_ANALYSIS_FACTS_OUTPUT_SCHEMA,
     WORK_ANALYSIS_GAPS_OUTPUT_SCHEMA,
     WORK_ANALYSIS_RELATIONS_OUTPUT_SCHEMA,
     WorkAnalysisSemanticInputV1,
 )
-from google_work_agent.ports import PromptReference, WorkflowStartRequest
+from google_work_agent.application.orchestration.handoff_contracts import (
+    EvidenceDraftV1,
+    RequestIntentV2,
+)
+from google_work_agent.application.orchestration.inspect_plan_output import (
+    PLAN_REVIEW_CANDIDATE_OUTPUT_SCHEMA,
+)
+from google_work_agent.application.orchestration.post_retrieval_envelopes import PlanningResultV2
+from google_work_agent.application.orchestration.prompt_registry import load_prompt_reference
+from google_work_agent.application.orchestration.state_artifacts import (
+    WorkAmbiguityV1,
+    WorkAnalysisResultV2,
+    WorkFactV1,
+    WorkRelationV1,
+)
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class ProductionWorkAnalysisV2CandidateProvider:

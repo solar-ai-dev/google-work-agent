@@ -1,4 +1,4 @@
-from google_work_agent.application.cancel_intent import (
+from google_work_agent.application.use_cases.run.cancel_intent import (
     has_durable_cancel_intent,
     is_applied_request_cancel_receipt,
 )

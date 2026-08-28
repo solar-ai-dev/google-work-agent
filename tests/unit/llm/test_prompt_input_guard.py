@@ -11,7 +11,7 @@ from google_work_agent.application.orchestration.prompt_input_contract import (
 from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
     PromptInputGuardedProvider,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
@@ -68,9 +68,7 @@ def _manifest(tmp_path: Path) -> Path:
             {
                 "forbidden_runtime_fields": ["interrupt_id"],
                 "slots": {
-                    "request_understanding.classify": {
-                        "allowed_root_fields": ["user_request"]
-                    }
+                    "request_understanding.classify": {"allowed_root_fields": ["user_request"]}
                 },
             }
         ),

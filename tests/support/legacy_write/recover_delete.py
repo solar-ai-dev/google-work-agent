@@ -6,25 +6,30 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import loads
 
+from google_work_agent.application.use_cases.action.write_action_arguments import (
+    dict_argument,
+    required_argument_string,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_action,
+    require_attempt,
+)
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultCommand,
     RecoverExistingResultResult,
 )
-from google_work_agent.application.write_action_arguments import (
-    dict_argument,
-    required_argument_string,
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
+    WriteResultMaterializer,
 )
-from google_work_agent.application.write_dispatch_models import WriteResultMaterializer
-from google_work_agent.application.write_persistence import require_action, require_attempt
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
-    UnitOfWork,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 DELETE_TARGETS = {
     "calendar_delete_event": (ResourceType.CALENDAR_EVENT, "event_id", "calendar_id"),

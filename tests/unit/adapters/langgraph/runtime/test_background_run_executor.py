@@ -19,6 +19,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionBindingV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffStageV1,
+    WorkflowHandoffV1,
 )
 
 

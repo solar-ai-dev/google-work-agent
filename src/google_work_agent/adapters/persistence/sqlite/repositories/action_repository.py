@@ -93,16 +93,21 @@ class SqliteActionRepository:
     def list_dependents(self, action_id: str) -> tuple[str, ...]:
         rows = self._connection.execute(
             "SELECT action_id FROM action_dependencies WHERE depends_on_action_id=? "
-            "ORDER BY action_id ASC;", (action_id,)
+            "ORDER BY action_id ASC;",
+            (action_id,),
         ).fetchall()
         return tuple(str(row["action_id"]) for row in rows)
 
     def is_dependency_ready(self, action_id: str) -> bool:
-        return self._connection.execute(
-            "SELECT 1 FROM action_dependencies AS d JOIN actions AS dependency "
-            "ON dependency.id=d.depends_on_action_id WHERE d.action_id=? "
-            "AND dependency.status <> 'VERIFIED' LIMIT 1;", (action_id,)
-        ).fetchone() is None
+        return (
+            self._connection.execute(
+                "SELECT 1 FROM action_dependencies AS d JOIN actions AS dependency "
+                "ON dependency.id=d.depends_on_action_id WHERE d.action_id=? "
+                "AND dependency.status <> 'VERIFIED' LIMIT 1;",
+                (action_id,),
+            ).fetchone()
+            is None
+        )
 
     def update_if_version_and_status(
         self,

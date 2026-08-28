@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
-from google_work_agent.ports import AvailabilityState
+from google_work_agent.ports.llm import AvailabilityState
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 

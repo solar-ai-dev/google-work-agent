@@ -11,16 +11,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
 from google_work_agent.application.orchestration.failure_record import (
     FailureRecordV1,
     build_failure_record_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
-    ReviewIssueV1,
     RequestIntentV2,
+    ReviewIssueV1,
     WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.planning_arguments import (
@@ -34,12 +32,16 @@ from google_work_agent.application.orchestration.prompt_registry import (
 from google_work_agent.application.orchestration.prompt_registry import (
     load_prompt_reference as _load_prompt_reference,
 )
-from google_work_agent.ports import (
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
-    WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA: Final = OutputSchemaDefinition(
     schema_version="tool-argument-candidate-v1",
@@ -237,11 +239,7 @@ def _normalized_failure_record(
             if normalized is not None and normalized not in affected_fields:
                 affected_fields.append(normalized)
         for evidence_ref in issue.get("evidence_refs", []):
-            if (
-                isinstance(evidence_ref, str)
-                and evidence_ref
-                and evidence_ref not in evidence_refs
-            ):
+            if isinstance(evidence_ref, str) and evidence_ref and evidence_ref not in evidence_refs:
                 evidence_refs.append(evidence_ref)
 
     if not affected_fields:

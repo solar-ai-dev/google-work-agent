@@ -16,16 +16,21 @@ from google_work_agent.adapters.langgraph.main.state import (
     _require_state_value,
     _resource_handle_for_ref,
 )
-from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
 from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
-from google_work_agent.application.task_duplicates import TASK_CREATE_TOOL, evidence_duplicate_risk
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+)
+from google_work_agent.application.use_cases.action.task_duplicates import (
+    TASK_CREATE_TOOL,
+    evidence_duplicate_risk,
+)
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,

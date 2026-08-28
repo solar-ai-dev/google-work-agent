@@ -34,9 +34,7 @@ def test_settings_operation_ref_conflict_fails_closed(tmp_path: Path) -> None:
     adapter.update_settings(SettingsPatchV1(schema_version=1, theme="DARK"), "settings-op-1")
 
     with pytest.raises(ValueError, match="different settings patch"):
-        adapter.update_settings(
-            SettingsPatchV1(schema_version=1, theme="LIGHT"), "settings-op-1"
-        )
+        adapter.update_settings(SettingsPatchV1(schema_version=1, theme="LIGHT"), "settings-op-1")
 
 
 def test_settings_unknown_persisted_field_fails_closed(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from google_work_agent.ports import SecretStorePort
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 
 
 class OsKeyringSecretStoreAdapter(SecretStorePort):

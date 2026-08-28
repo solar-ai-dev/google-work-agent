@@ -72,7 +72,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.ports import StructuredLLMResult
+from google_work_agent.ports.llm import StructuredLLMResult
 
 
 class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):

@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.security.bootstrap import BootstrapGrantStore
 from google_work_agent.api.security.sessions import LocalSessionManager
-from google_work_agent.ports import ClockPort
+from google_work_agent.ports.system.clock_port import ClockPort
 
 
 @dataclass(frozen=True, slots=True)

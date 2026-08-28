@@ -4,7 +4,6 @@ from tests.support.fakes import DeterministicUUID, FakeClockPort
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
-    StaticRuntimeStatusProvider,
 )
 from google_work_agent.adapters.system.process_component_circuit_state import (
     ProcessComponentCircuitStateAdapter,
@@ -18,15 +17,14 @@ from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
     GetRuntimeStatusHandler,
 )
-from google_work_agent.ports import (
-    LauncherProbeDecision,
+from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
+from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
     ReadinessReport,
     ReadinessState,
-    RuntimeSummary,
 )
-from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 
 class _CoordinatorStub:
@@ -35,19 +33,6 @@ class _CoordinatorStub:
 
     def stop(self) -> None:
         return None
-
-
-class _QueryStub:
-    def get_runtime_summary(self) -> RuntimeSummary:
-        return RuntimeSummary(
-            google="NOT_CONFIGURED",
-            mcp="NOT_CONFIGURED",
-            api_llm="NOT_CONFIGURED",
-            ollama="NOT_AVAILABLE",
-            deployment_profile="test",
-            recovery_required_run_ids=(),
-            open_run_ids=(),
-        )
 
 
 class _OAuthStatusStub:
@@ -73,7 +58,6 @@ def _build_client(*, with_probe: bool = True) -> TestClient:
     )
     container = ApiContainer(
         unit_of_work_factory=lambda: None,
-        query_service=_QueryStub(),
         create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
@@ -108,7 +92,6 @@ def _build_client(*, with_probe: bool = True) -> TestClient:
                 ),
             )
         ),
-        runtime_status_provider=StaticRuntimeStatusProvider(_QueryStub().get_runtime_summary()),
         api_access_guard=LocalApiAccessGuard(
             expected_host=f"{bind_host}:{bind_port}",
             expected_origin=f"http://{bind_host}:{bind_port}",

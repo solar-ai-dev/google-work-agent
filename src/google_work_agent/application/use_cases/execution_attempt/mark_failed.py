@@ -6,12 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
 )
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
     propagate_dependency_blocked,
@@ -20,6 +19,9 @@ from google_work_agent.application.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
 )
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.mark_failed import (
@@ -27,7 +29,8 @@ from google_work_agent.domain.execution_attempt.transitions.mark_failed import (
 )
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import DeliveryCertainty, UnitOfWork
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

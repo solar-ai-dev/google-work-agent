@@ -135,7 +135,7 @@ def test_canonical_handlers_do_not_call_broad_legacy_semantic_surfaces() -> None
     for path in resource_paths:
         assert _called_names(path).isdisjoint(forbidden_calls), path
 
-    get_connection = USE_CASE_DIR / "connector_connection" / "get_connection.py"
+    get_connection = USE_CASE_DIR / "connection" / "get_connection_status.py"
     imports = _imports(get_connection)
     assert "google_work_agent.application.google_connection" not in imports
 

@@ -28,7 +28,9 @@ def aggregate_review_findings_node(state: Mapping[str, object]) -> dict[str, obj
             _sequence(projected.get("affected_dimension_recheck", ()), "affected_dimension_recheck")
         )
         affected_dimensions = set(_affected_dimensions(projected.get("affected_dimensions", ())))
-        findings = [item for item in prior if item.get("dimension") not in affected_dimensions] + fresh
+        findings = [
+            item for item in prior if item.get("dimension") not in affected_dimensions
+        ] + fresh
     elif phase == "INITIAL":
         findings = []
         for key in (

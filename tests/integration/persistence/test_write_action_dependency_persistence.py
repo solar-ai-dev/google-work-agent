@@ -13,38 +13,40 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.connectors.google_workspace import GOOGLE_WORKSPACE_CONNECTOR_ID
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+)
 from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.write_approval_contracts import (
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from tests.support.legacy_write.write_claim import ClaimWriteActionService
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     MarkWriteActionFailedCommand,
 )
-from google_work_agent.application.write_plan import (
+from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.save_write_plan import (
     SaveWritePlanService,
 )
-from google_work_agent.application.write_plan_contracts import (
+from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
     WriteActionDraft,
     WriteEvidenceDraft,
 )
+from google_work_agent.domain.evidence.model import EvidenceOriginType
+from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.trace_event_repository import TraceEventCursor
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from tests.support.fakes import FakeClockPort
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write.write_result_persistence import (
     MarkWriteActionFailedService,
 )
-from google_work_agent.domain.evidence.model import EvidenceOriginType
-from google_work_agent.ports import UnitOfWork
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.trace_event_repository import TraceEventCursor
-from tests.support.fakes import FakeClockPort
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
 _TASK_PAYLOAD = {"title": "Send summary", "notes": "draft notes"}

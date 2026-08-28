@@ -29,7 +29,11 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
     RunScopedReadResultCache,
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.ports import ResourceSnapshot, ResourceType, WorkflowStartRequest
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class CheckpointSafeAcquisitionFacade:

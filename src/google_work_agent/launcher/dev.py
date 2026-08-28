@@ -59,7 +59,6 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
-from google_work_agent.adapters.persistence.sqlite.query_service import QueryService
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.runtime import (
     BuildProfile,
@@ -95,14 +94,6 @@ from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
-from google_work_agent.application.coordinator_outcomes import RunOutcomeHandler
-from google_work_agent.application.llm import (
-    LLMRuntimeService,
-    PromptRepairSchemaRepairer,
-    TestLLMConnectionService,
-)
-from google_work_agent.application.observability import StaticMaintenanceGate
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
@@ -139,6 +130,7 @@ from google_work_agent.application.use_cases.component_circuit.record_component_
 )
 from google_work_agent.application.use_cases.connection.get_connection_status import (
     GetConnectionStatusHandler,
+    GetConnectionStatusQuery,
 )
 from google_work_agent.application.use_cases.connection.revoke_connection import (
     RevokeConnectionHandler,
@@ -158,6 +150,9 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 from google_work_agent.application.use_cases.diagnostic_bundle.create_diagnostic_bundle import (
     CreateDiagnosticBundleHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
+    ConnectorWriteProjection,
+)
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
     DispatchConnectorWriteHandler,
 )
@@ -170,6 +165,11 @@ from google_work_agent.application.use_cases.execution_attempt.recover_existing_
 )
 from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
     ResolveAsFailedHandler,
+)
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    LLMRuntimeService,
+    PromptRepairSchemaRepairer,
+    TestLLMConnectionService,
 )
 from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
     DeleteLlmCredentialHandler,
@@ -212,9 +212,14 @@ from google_work_agent.application.use_cases.run.continue_cancel_resolution impo
     ContinueCancelResolutionCommandV1,
     ContinueCancelResolutionHandler,
 )
+from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
 from google_work_agent.application.use_cases.run.finalize_cancel import (
     FinalizeCancelCommand,
     FinalizeCancelHandler,
+)
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
+    GetExecutionContextQuery,
 )
 from google_work_agent.application.use_cases.run.project_context_preview import (
     ProjectContextPreviewHandler,
@@ -242,6 +247,7 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
 from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
     EmitTraceEventHandler,
 )
+from google_work_agent.application.use_cases.trace_event.observability import StaticMaintenanceGate
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.launcher.connector_composition import build_connectors
 from google_work_agent.launcher.development_constants import (
@@ -250,17 +256,17 @@ from google_work_agent.launcher.development_constants import (
 from google_work_agent.launcher.development_readiness import (
     DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
+from google_work_agent.ports.llm import (
     ApprovedModelInfo,
-    AppSettings,
-    LauncherProbeDecision,
-    ReadinessAggregator,
-    ReadinessCheckResult,
-    ReadinessReport,
-    ReadinessState,
     RuntimePolicy,
-    RuntimeStatusProvider,
-    RuntimeSummary,
+)
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.runtime import (
+    AppSettings,
+    WorkHours,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCancelRequest,
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
@@ -268,14 +274,18 @@ from google_work_agent.ports import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
     WorkflowStartRequest,
-    WorkHours,
 )
-from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
+)
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
+from google_work_agent.ports.system.readiness_port import (
+    ReadinessAggregator,
+    ReadinessCheckResult,
+    ReadinessReport,
+    ReadinessState,
 )
 from google_work_agent.ports.system.settings_port import SettingsViewV1
 
@@ -384,26 +394,6 @@ class _BootReadinessAggregator(ReadinessAggregator):
         return self._delegate.evaluate()
 
 
-class _BootRuntimeStatusProvider:
-    def get_summary(self) -> RuntimeSummary:
-        return RuntimeSummary(
-            google="NOT_CONFIGURED",
-            mcp="INITIALIZING",
-            api_llm="NOT_CONFIGURED",
-            ollama="NOT_CONFIGURED",
-            deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
-            recovery_required_run_ids=(),
-            open_run_ids=(),
-            safe_mode=True,
-            safe_mode_reason_codes=("CORE_INITIALIZING",),
-        )
-
-
-class _BootQueryService:
-    def get_runtime_summary(self) -> RuntimeSummary:
-        return _BootRuntimeStatusProvider().get_summary()
-
-
 class _DeferredApiContainer:
     """Stable DI shell used by FastAPI while the concrete core is built."""
 
@@ -422,8 +412,7 @@ class _DeferredApiContainer:
         self.safe_mode_controller = SafeModeController()
         self.core_initialization_in_progress = True
         self.readiness_aggregator = _BootReadinessAggregator(self.safe_mode_controller)
-        self.runtime_status_provider: RuntimeStatusProvider = _BootRuntimeStatusProvider()
-        self.query_service: Any = _BootQueryService()
+        self.current_account_id_provider: Callable[[], str | None] = lambda: None
         self.create_conversation_handler: Any = None
         self.list_conversations_handler: Any = None
         self.get_conversation_history_handler: Any = None
@@ -507,8 +496,7 @@ class _DeferredApiContainer:
             return
         self._core = core
         self.readiness_aggregator.bind(core.readiness_aggregator)
-        self.runtime_status_provider = core.runtime_status_provider
-        self.query_service = core.query_service
+        self.current_account_id_provider = core.current_account_id_provider
         self.core_initialization_in_progress = False
         self.safe_mode_controller.disable()
 
@@ -601,18 +589,23 @@ def build_container(
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
     connector_registry = connector_bundle.runtime_registry
     google_connector = connector_bundle.google_connector
-    runtime_status_provider = connector_bundle.runtime_status_provider
     google_provider = google_connector.oauth_port
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    query_service = QueryService(
-        database_path=database_path,
-        connection_factory=connect_sqlite,
-        runtime_status_provider=runtime_status_provider,
+    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    get_connection_status = GetConnectionStatusHandler(
+        google_provider,
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=clock.now_ms,
     )
+
+    def current_account_id() -> str | None:
+        return get_connection_status(
+            GetConnectionStatusQuery(connector_id="google_workspace")
+        ).connection.account_id
+
     try:
-        llm_runtime, settings_service = _build_llm_runtime(
+        llm_runtime, settings_service, credential_service, llm_status_service = _build_llm_runtime(
             settings_path=root / "settings" / "app-settings.json",
-            query_service=query_service,
             prompt_manifest_path=prompt_manifest_path,
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -743,7 +736,7 @@ def build_container(
 
     def _start_request(admission: WorkflowExecutionAdmissionV1) -> WorkflowStartRequest:
         binding = admission.effective_binding
-        context = query_service.get_run_execution_context(binding.run_id)
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
         if (
             context is None
             or context.workflow_key != binding.langgraph_thread_id
@@ -824,7 +817,7 @@ def build_container(
         admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
     ) -> None:
         binding = admission.effective_binding
-        context = query_service.get_run_execution_context(binding.run_id)
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
         if (
             context is None
             or context.workflow_key != binding.langgraph_thread_id
@@ -894,7 +887,7 @@ def build_container(
                         )
                     )
         except Exception as error:
-            current = query_service.get_run_execution_context(binding.run_id)
+            current = get_execution_context(GetExecutionContextQuery(binding.run_id))
             outcome_handler.handle_result(
                 binding.run_id,
                 WorkflowOutcome.FAILED,
@@ -902,7 +895,7 @@ def build_container(
                 context.version if current is None else current.version,
             )
             return
-        current = query_service.get_run_execution_context(binding.run_id)
+        current = get_execution_context(GetExecutionContextQuery(binding.run_id))
         outcome_handler.handle_result(
             binding.run_id,
             result.outcome,
@@ -991,16 +984,18 @@ def build_container(
     )
     continue_cancel_resolution = ContinueCancelResolutionHandler(
         unit_of_work_factory=unit_of_work_factory,
-        settle_pending_action=lambda action_id, version: cancel_pending_action(
-            CancelPendingActionCommand(
-                command_id=f"system:cancel-resolution:action:{action_id}:{version}",
-                request_hash=calculate_canonical_json_hash(
-                    {"action_id": action_id, "expected_version": version}
-                ),
-                action_id=action_id,
-                expected_version=version,
-            )
-        ).applied,
+        settle_pending_action=lambda action_id, version: (
+            cancel_pending_action(
+                CancelPendingActionCommand(
+                    command_id=f"system:cancel-resolution:action:{action_id}:{version}",
+                    request_hash=calculate_canonical_json_hash(
+                        {"action_id": action_id, "expected_version": version}
+                    ),
+                    action_id=action_id,
+                    expected_version=version,
+                )
+            ).applied
+        ),
         reconcile_inflight_action=lambda _action_id: (
             production_runtime.reconcile_inflight_executions(
                 ReconcileInflightExecutionsCommand(1, 256)
@@ -1019,16 +1014,18 @@ def build_container(
             ).progressed_count
             > 0
         ),
-        finalize_cancel=lambda run_id, version: finalize_cancel(
-            FinalizeCancelCommand(
-                command_id=f"system:cancel-resolution:finalize:{run_id}:{version}",
-                request_hash=calculate_canonical_json_hash(
-                    {"run_id": run_id, "expected_run_version": version}
-                ),
-                run_id=run_id,
-                expected_run_version=version,
-            )
-        ).applied,
+        finalize_cancel=lambda run_id, version: (
+            finalize_cancel(
+                FinalizeCancelCommand(
+                    command_id=f"system:cancel-resolution:finalize:{run_id}:{version}",
+                    request_hash=calculate_canonical_json_hash(
+                        {"run_id": run_id, "expected_run_version": version}
+                    ),
+                    run_id=run_id,
+                    expected_run_version=version,
+                )
+            ).applied
+        ),
     )
     project_context_preview = ProjectContextPreviewHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -1058,7 +1055,6 @@ def build_container(
 
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
-        query_service=query_service,
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -1082,7 +1078,6 @@ def build_container(
             mcp_manifest_path=mcp_manifest_path,
             prompt_active=prompt_active,
         ),
-        runtime_status_provider=runtime_status_provider,
         api_access_guard=LocalApiAccessGuard(
             expected_host=f"{host}:{port}",
             expected_origin=f"http://{host}:{port}",
@@ -1106,7 +1101,8 @@ def build_container(
             credentials=google_provider,
             replay=operational_replay,
         ),
-        get_connection_status_handler=GetConnectionStatusHandler(google_provider),
+        get_connection_status_handler=get_connection_status,
+        current_account_id_provider=current_account_id,
         revoke_connection_handler=RevokeConnectionHandler(
             credentials=google_provider,
             replay=operational_replay,
@@ -1168,9 +1164,7 @@ def build_container(
             ),
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
-        project_recovery_options_handler=ProjectRecoveryOptionsHandler(
-            unit_of_work_factory
-        ),
+        project_recovery_options_handler=ProjectRecoveryOptionsHandler(unit_of_work_factory),
         project_error_actions_handler=ProjectErrorActionsHandler(),
         project_external_llm_transfer_scope_handler=(
             ProjectExternalLlmTransferScopeHandler(
@@ -1178,9 +1172,7 @@ def build_container(
                 ProjectRunEventHandler(event_publisher),
             )
         ),
-        get_llm_credential_status_handler=GetLlmCredentialStatusHandler(
-            llm_runtime.credential_service
-        ),
+        get_llm_credential_status_handler=GetLlmCredentialStatusHandler(credential_service),
         get_settings_handler=GetSettingsHandler(settings_service),
         update_settings_handler=UpdateSettingsHandler(
             settings=settings_service,
@@ -1204,11 +1196,11 @@ def build_container(
             replay=operational_replay,
         ),
         store_llm_credential_handler=StoreLlmCredentialHandler(
-            credentials=llm_runtime.credential_service,
+            credentials=credential_service,
             replay=operational_replay,
         ),
         delete_llm_credential_handler=DeleteLlmCredentialHandler(
-            credentials=llm_runtime.credential_service,
+            credentials=credential_service,
             replay=operational_replay,
         ),
         test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
@@ -1216,7 +1208,7 @@ def build_container(
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=runtime_mode,
             oauth=google_provider,
-            llm_status=llm_runtime.status_service,
+            llm_status=llm_status_service,
             circuits=component_circuits,
         ),
         update_runtime_mode_handler=UpdateRuntimeModeHandler(
@@ -1285,11 +1277,15 @@ def _close_container(container: ApiContainer) -> None:
 def _build_llm_runtime(
     *,
     settings_path: Path,
-    query_service: QueryService,
     prompt_manifest_path: Path,
     unit_of_work_factory: Callable[[], UnitOfWork],
     now_ms: Callable[[], int],
-) -> tuple[LLMRuntimeService, JsonSettingsAdapter]:
+) -> tuple[
+    LLMRuntimeService,
+    JsonSettingsAdapter,
+    LlmCredentialRouter,
+    LlmRuntimeStatusRouter,
+]:
     settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
     )
@@ -1351,8 +1347,7 @@ def _build_llm_runtime(
     )
     llm_runtime = LLMRuntimeService(
         settings_service=runtime_settings,
-        status_service=status_service,
-        credential_service=credential_service,
+        status_service=structured_inference,
         ollama_provider_factory=structured_inference.ollama_provider_factory,
         structured_inference=structured_inference,
         runtime_policy=RuntimePolicy(),
@@ -1364,7 +1359,7 @@ def _build_llm_runtime(
             now_ms=now_ms,
         ),
     )
-    return llm_runtime, settings_service
+    return llm_runtime, settings_service, credential_service, status_service
 
 
 def _project_runtime_settings(settings: SettingsViewV1) -> AppSettings:

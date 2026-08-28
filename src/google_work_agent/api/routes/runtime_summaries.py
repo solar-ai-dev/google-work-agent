@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.runtime_status.get_runtime_status i
     GetRuntimeStatusHandler,
     GetRuntimeStatusQuery,
 )
-from google_work_agent.ports import EndpointPolicy
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
@@ -62,9 +62,7 @@ def get_runtime(
     summary.update(
         {
             "safe_mode": bool(safe_mode and safe_mode.enabled),
-            "safe_mode_reason_codes": []
-            if safe_mode is None
-            else list(safe_mode.reason_codes),
+            "safe_mode_reason_codes": [] if safe_mode is None else list(safe_mode.reason_codes),
             "safe_mode_allowed_operations": []
             if safe_mode is None
             else list(safe_mode.allowed_operations),

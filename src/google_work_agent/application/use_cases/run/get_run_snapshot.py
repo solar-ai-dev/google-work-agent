@@ -91,8 +91,7 @@ class GetRunSnapshotHandler:
         project_context_preview: ProjectContextPreviewHandler | None = None,
         project_recovery_options: ProjectRecoveryOptionsHandler | None = None,
         project_error_actions: ProjectErrorActionsHandler | None = None,
-        project_external_llm_transfer_scope: ProjectExternalLlmTransferScopeHandler
-        | None = None,
+        project_external_llm_transfer_scope: ProjectExternalLlmTransferScopeHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._project_context_preview = project_context_preview
@@ -205,9 +204,7 @@ class GetRunSnapshotHandler:
                 )
             },
             result_kind=(
-                None
-                if run.terminal_result_kind is None
-                else run.terminal_result_kind.value
+                None if run.terminal_result_kind is None else run.terminal_result_kind.value
             ),
             next_allowed_commands=tuple(
                 item.value for item in next_allowed_run_commands(run_status)

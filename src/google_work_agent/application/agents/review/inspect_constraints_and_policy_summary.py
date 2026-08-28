@@ -45,12 +45,16 @@ def inspect_constraints_and_policy_summary(
         required = item.get("required_information", [])
         if not isinstance(required, list) or not all(isinstance(value, str) for value in required):
             raise ValueError("required_information must be strings")
-        result.append({
-            "dimension": "CONSTRAINTS_POLICY",
-            "code": code,
-            "description": description,
-            "action_id": item.get("action_id") if isinstance(item.get("action_id"), str) else None,
-            "route_id": item.get("route_id") if isinstance(item.get("route_id"), str) else None,
-            "required_information": list(required),
-        })
+        result.append(
+            {
+                "dimension": "CONSTRAINTS_POLICY",
+                "code": code,
+                "description": description,
+                "action_id": item.get("action_id")
+                if isinstance(item.get("action_id"), str)
+                else None,
+                "route_id": item.get("route_id") if isinstance(item.get("route_id"), str) else None,
+                "required_information": list(required),
+            }
+        )
     return tuple(result)

@@ -8,11 +8,14 @@ from datetime import datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from google_work_agent.ports import GoogleWorkspaceGatewayError, ResourcePage
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
     normalize_google_workspace_failure,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceGatewayError,
+    ResourcePage,
 )
 
 MAX_RESOURCE_PAGE_SIZE = 100

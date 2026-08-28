@@ -26,9 +26,7 @@ class _Retention:
     def __init__(self) -> None:
         self.call: tuple[RetentionCutoffs, int] | None = None
 
-    def purge_batch(
-        self, cutoffs: RetentionCutoffs, batch_limit: int
-    ) -> RetentionPurgeResult:
+    def purge_batch(self, cutoffs: RetentionCutoffs, batch_limit: int) -> RetentionPurgeResult:
         self.call = (cutoffs, batch_limit)
         return RetentionPurgeResult(runs=2, traces=3, audits=4)
 

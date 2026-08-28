@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from google_work_agent.adapters.connectors.google_workspace import (
+from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
     GoogleWorkspaceConnector,
     build_google_workspace_connector_descriptor,
@@ -21,8 +21,6 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPArtifactConfig,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.mcp.stdio_transport import MCPRuntimeStatusProvider
-from google_work_agent.adapters.runtime import BuildProfile
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
 )
@@ -41,7 +39,6 @@ class DevelopmentConnectorBundle:
     tool_registry: SignedToolRegistry
     installed_manifest: InstalledConnectorManifestV1
     google_connector: GoogleWorkspaceConnector
-    runtime_status_provider: MCPRuntimeStatusProvider
 
 
 def build_connectors(
@@ -89,18 +86,10 @@ def build_connectors(
         descriptor=descriptor,
         runtime_registry=runtime_registry,
     )
-    transport = google_connector.start()
+    google_connector.start()
     return DevelopmentConnectorBundle(
         runtime_registry=runtime_registry,
         tool_registry=tool_registry,
         installed_manifest=installed_manifest,
         google_connector=google_connector,
-        runtime_status_provider=MCPRuntimeStatusProvider(
-            google_provider=google_connector.oauth_port,
-            connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
-            api_llm="NOT_CONFIGURED",
-            ollama="NOT_CONFIGURED",
-            deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
-            transport=transport,
-        ),
     )

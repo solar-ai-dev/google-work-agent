@@ -36,7 +36,9 @@ def assemble_work_analysis(
         "ambiguities": [dict(item) for item in ambiguities],  # type: ignore[list-item]
         "risks": [dict(item) for item in risks],  # type: ignore[list-item]
         "evidence_refs": _unique(evidence_refs),
-        "policy_confirmation_receipt_refs": [dict(item) for item in policy_confirmation_receipt_refs],  # type: ignore[list-item]
+        "policy_confirmation_receipt_refs": [
+            dict(item) for item in policy_confirmation_receipt_refs
+        ],  # type: ignore[list-item]
         "action_necessity": action_necessity,
     }
     return result

@@ -11,10 +11,10 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.state_artifacts import (
     PlanReviewResultV2,
-    ReviewBlockV2,
     ReviewBlockerV1,
-    ReviewConfirmV2,
+    ReviewBlockV2,
     ReviewConfirmationV1,
+    ReviewConfirmV2,
     ReviewEvidenceGapV1,
     ReviewIssueV1,
     ReviewPassV2,
@@ -23,7 +23,7 @@ from google_work_agent.application.orchestration.state_artifacts import (
     ReviewRouteIssueV1,
     ReviewRouteReconsiderationV2,
 )
-from google_work_agent.ports import OutputSchemaDefinition
+from google_work_agent.ports.llm import OutputSchemaDefinition
 
 ReviewStatusV2 = Literal[
     "PASS",

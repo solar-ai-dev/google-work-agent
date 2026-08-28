@@ -6,62 +6,67 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import Protocol, cast
 
-from google_work_agent.application.calendar_conflicts import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_calendar_conflict_authority,
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
 )
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility import (
     approval_feasibility_authority,
     feasibility_authority,
     feasibility_change_requires_reapproval,
 )
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
 )
-from google_work_agent.application.policy import ApprovalIntegrityInput, validate_approval_integrity
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.policy import (
+    ApprovalIntegrityInput,
+    validate_approval_integrity,
+)
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_duplicate_authority,
     duplicate_authority,
     duplicate_change_requires_reapproval,
 )
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
+from google_work_agent.application.use_cases.action.write_action_arguments import (
+    dict_argument as _dict_argument,
 )
-from google_work_agent.application.write_action_arguments import dict_argument as _dict_argument
-from google_work_agent.application.write_execution_contracts import (
-    ClaimWriteActionCommand,
-    WriteActionResponse,
+from google_work_agent.application.use_cases.action.write_persistence import (
+    action_response_from_result as _action_response_from_result,
 )
-from google_work_agent.application.write_execution_integrity import (
+from google_work_agent.application.use_cases.action.write_persistence import (
+    audit_event as _audit_event,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    finish_json_receipt as _finish_json_receipt,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_action as _require_action,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_plan as _require_plan,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_run as _require_run,
+)
+from google_work_agent.application.use_cases.action.write_persistence import (
+    resolve_existing_action_receipt as _resolve_existing_action_receipt,
+)
+from google_work_agent.application.use_cases.claim.write_execution_integrity import (
     CLAIM_TOKEN_VERSION,
     issue_claim_token,
 )
-from google_work_agent.application.write_persistence import (
-    action_response_from_result as _action_response_from_result,
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    ClaimWriteActionCommand,
+    WriteActionResponse,
 )
-from google_work_agent.application.write_persistence import (
-    audit_event as _audit_event,
-)
-from google_work_agent.application.write_persistence import (
-    finish_json_receipt as _finish_json_receipt,
-)
-from google_work_agent.application.write_persistence import (
-    require_action as _require_action,
-)
-from google_work_agent.application.write_persistence import (
-    require_plan as _require_plan,
-)
-from google_work_agent.application.write_persistence import (
-    require_run as _require_run,
-)
-from google_work_agent.application.write_persistence import (
-    resolve_existing_action_receipt as _resolve_existing_action_receipt,
-)
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -74,17 +79,17 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    AttachmentStagingError,
-    StagedAttachmentDescriptorV1,
-    UnitOfWork,
-)
 from google_work_agent.ports.connector.claim_context_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     validate_claim_ttl_ms,
 )
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.attachment_staging_port import (
+    AttachmentStagingError,
+    StagedAttachmentDescriptorV1,
+)
 
 
 class AttachmentDescriptorVerifier(Protocol):

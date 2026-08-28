@@ -40,31 +40,35 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
 from google_work_agent.application.tool_registry import load_signed_tool_registry
-from google_work_agent.ports import (
-    ActualRuntime,
-    FreeBusyCalendar,
-    GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGatewayError,
-    LLMErrorCode,
-    LLMInvocationError,
-    OutputSchemaDefinition,
-    PromptReference,
-    RequestedRuntimeMode,
-    ResourcePage,
-    ResourceSnapshot,
-    ResourceType,
-    SelectedResourceRef,
-    StructuredLLMResult,
-    TimeRange,
-    WorkflowCorrelationContext,
-    WorkflowStartRequest,
-)
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadResultV1,
     JsonValue,
 )
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    FreeBusyCalendar,
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+    ResourcePage,
+    ResourceSnapshot,
+    ResourceType,
+    TimeRange,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import (
+    ActualRuntime,
+    LLMErrorCode,
+    LLMInvocationError,
+    OutputSchemaDefinition,
+    PromptReference,
+    RequestedRuntimeMode,
+    StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    SelectedResourceRef,
+    WorkflowCorrelationContext,
+    WorkflowStartRequest,
+)
 
 PROMPT_REF = PromptReference(
     prompt_bundle_version="agent-r4-v0.1-baseline",
@@ -419,9 +423,7 @@ class RecordingConnectorReadPort:
                 self.gateway.get_gmail_message(message_id=str(arguments["message_id"]))
             )
         elif tool_id == "gmail_get_draft":
-            output = _item_output(
-                self.gateway.get_gmail_draft(draft_id=str(arguments["draft_id"]))
-            )
+            output = _item_output(self.gateway.get_gmail_draft(draft_id=str(arguments["draft_id"])))
         elif tool_id == "tasks_list_tasklists":
             value = self.gateway.list_task_lists(
                 page_token=cast(str | None, arguments.get("page_token")),
@@ -1158,9 +1160,7 @@ def test_retrieval_ambiguity_uses_planning_confirmation_not_request_understandin
     assert gateway.calls == []
 
 
-def test_additional_acquisition_request_is_accepted_but_not_leaked_into_plan_query_prompt() -> (
-    None
-):
+def test_additional_acquisition_request_is_accepted_but_not_leaked_into_plan_query_prompt() -> None:
     """retrieval.plan_query's Prompt Runtime Input Contract has no
     planning_mode/additional_acquisition_request field (additionalProperties:
     false); repeat-round signalling belongs to Retrieval Local State / the

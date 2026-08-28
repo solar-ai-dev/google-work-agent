@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
-from google_work_agent.application.calendar_conflicts import CALENDAR_CONFLICT_TOOLS
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     EvidenceDraftV1,
@@ -17,12 +16,15 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.orchestration.tool_routing import ToolRoutePlanV2
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+)
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
-from google_work_agent.ports import ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceType
 
 
 class V2PersistenceProjectionError(ValueError):

@@ -4,16 +4,19 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
-    LocalResourceContinuationStore,
-    OpaqueConnectorResourceAccess,
-)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     GmailResourceDetail,
     ResourceCount,
     ResourceListPage,
 )
-from google_work_agent.ports import GoogleWorkspaceErrorCode, GoogleWorkspaceGatewayError
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    LocalResourceContinuationStore,
+    OpaqueConnectorResourceAccess,
+)
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+)
 
 
 class _ResourceServiceStub:

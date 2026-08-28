@@ -25,6 +25,4 @@ class RetentionPurgeResult:
 
 
 class RetentionRepository(Protocol):
-    def purge_batch(
-        self, cutoffs: RetentionCutoffs, batch_limit: int
-    ) -> RetentionPurgeResult: ...
+    def purge_batch(self, cutoffs: RetentionCutoffs, batch_limit: int) -> RetentionPurgeResult: ...

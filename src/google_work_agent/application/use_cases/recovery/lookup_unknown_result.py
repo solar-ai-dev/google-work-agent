@@ -7,11 +7,11 @@ from google_work_agent.application.tool_registry.signed_tool_registry import Sig
 from google_work_agent.application.use_cases.verification.verify_effect import (
     SelectedResourceRefV1,
 )
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 
 
 @dataclass(frozen=True, slots=True)

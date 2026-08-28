@@ -6,44 +6,48 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.approval_source_snapshot import (
+from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.approval_source_snapshot import (
     build_approval_source_snapshot,
 )
-from google_work_agent.application.calendar_conflicts import (
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_source_snapshot_for_calendar_conflict,
     calendar_conflict_authority,
     require_calendar_conflict_acknowledgement,
 )
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility import (
     approval_source_snapshot_for_feasibility,
     feasibility_authority,
     require_feasibility_approval,
 )
-from google_work_agent.application.persistence_cas import update_action_record
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_source_snapshot_for_task_duplicate,
     duplicate_authority,
     require_duplicate_acknowledgement,
 )
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
-from google_work_agent.application.use_cases.run.schedule_run_execution import (
-    ScheduleRunExecutionCommand,
-)
-from google_work_agent.application.write_execution_contracts import WriteActionResponse
-from google_work_agent.application.write_execution_integrity import calculate_recovery_fingerprint
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_persistence import (
     action_response_from_result,
     audit_event,
     finish_json_receipt,
     require_action,
     require_plan,
     resolve_existing_action_receipt,
+)
+from google_work_agent.application.use_cases.claim.write_execution_integrity import (
+    calculate_recovery_fingerprint,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -63,17 +67,15 @@ from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    UnitOfWork,
-    UUIDPort,
-)
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)

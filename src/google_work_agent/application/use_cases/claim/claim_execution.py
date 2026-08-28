@@ -7,38 +7,38 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.calendar_conflicts import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_calendar_conflict_authority,
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
 )
-from google_work_agent.application.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility import (
     approval_feasibility_authority,
     feasibility_authority,
     feasibility_change_requires_reapproval,
 )
-from google_work_agent.application.persistence_cas import (
+from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
 )
-from google_work_agent.application.task_duplicates import (
+from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_duplicate_authority,
     duplicate_authority,
     duplicate_change_requires_reapproval,
 )
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
-from google_work_agent.application.write_action_arguments import dict_argument
-from google_work_agent.application.write_persistence import (
+from google_work_agent.application.use_cases.action.write_action_arguments import dict_argument
+from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
     require_action,
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
 from google_work_agent.domain.approval.model import ApprovalStatusV1
@@ -58,11 +58,9 @@ from google_work_agent.domain.execution_attempt.model import (
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import (
-    UnitOfWork,
-)
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

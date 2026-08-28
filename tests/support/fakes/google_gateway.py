@@ -8,11 +8,11 @@ from email.utils import parseaddr
 from enum import StrEnum
 from typing import cast
 
-from google_work_agent.application.write_dispatch_models import (
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     PreparedWriteDispatch,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     FreeBusyCalendar,
     FreeBusyInterval,
     GmailAttachmentMetadata,

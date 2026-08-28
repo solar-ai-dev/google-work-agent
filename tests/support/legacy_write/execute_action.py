@@ -7,25 +7,25 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
+from google_work_agent.application.use_cases.claim.write_execution_integrity import read_claim_token
 from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
     BeginExecutionAttemptCommand,
     BeginExecutionAttemptHandler,
 )
-from google_work_agent.application.write_action_arguments import coerce_int
-from google_work_agent.application.write_dispatch_models import (
+from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     WriteResultMaterializer,
 )
-from google_work_agent.application.write_execution_integrity import read_claim_token
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports import (
+from google_work_agent.ports.connector.contracts.google_workspace import (
     DeliveryCertainty,
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
-    UnitOfWork,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

@@ -169,7 +169,7 @@ def build_recovery_context(
 
     Pure (no I/O) -- shared by every atomic writer that must persist a durable
     RequireRecovery outcome inside its own single transaction (this handler,
-    and ``ResumeRunHandler``'s REAUTH_COMPLETED dispatch-uncertain fail-safe).
+    and ``ResumeAfterReauthHandler``'s dispatch-uncertain fail-safe).
     ``RecoveryRepository.store_context`` remains the sole write authority.
     """
     context: dict[str, object] = {

@@ -2,7 +2,10 @@ from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.ports import ApiRequestContext, EndpointPolicy
+from google_work_agent.ports.system.api_access_port import (
+    ApiRequestContext,
+    EndpointPolicy,
+)
 
 
 def test_local_bind_policy_requires_exact_ipv4_loopback() -> None:

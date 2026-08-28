@@ -7,7 +7,12 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from re import fullmatch
 
-from google_work_agent.application.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.write_persistence import (
+    append_approval_revoked_audits,
+    emit_command_rejected_hash_mismatch,
+    revoke_active_approvals,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -15,11 +20,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventCommand,
     ProjectRunEventHandler,
-)
-from google_work_agent.application.write_persistence import (
-    append_approval_revoked_audits,
-    emit_command_rejected_hash_mismatch,
-    revoke_active_approvals,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -33,7 +33,6 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UUIDPort
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -41,6 +40,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,9 +74,7 @@ class RejectActionHandler:
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetIssuer,
-        schedule_run_execution: Callable[
-            [ScheduleRunExecutionCommand], RunExecutionAcceptedV1
-        ],
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         project_run_event: ProjectRunEventHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -229,9 +227,7 @@ class RejectActionHandler:
                     )
                 )
             if handoff_id is not None:
-                self._schedule_run_execution(
-                    ScheduleRunExecutionCommand(handoff_id=handoff_id)
-                )
+                self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
             return response
 
     def _stage_preflight_handoff(

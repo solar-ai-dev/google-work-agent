@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import pytest
+from tests.support.legacy_write.write_claim import ClaimWriteActionService
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     workspace_runtime as server,
 )
-from google_work_agent.application.write_approval_contracts import DEFAULT_APPROVAL_TTL_MS
-from tests.support.legacy_write.write_claim import ClaimWriteActionService
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
+    DEFAULT_APPROVAL_TTL_MS,
+)
 from google_work_agent.ports.connector.claim_context_contract import (
     CLAIM_CONTEXT_DEFAULT_TTL_MS,
     CLAIM_CONTEXT_MAX_TTL_MS,

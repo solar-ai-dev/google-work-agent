@@ -10,7 +10,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     workspace_runtime as workspace_tools,
 )
-from google_work_agent.ports import DeliveryCertainty
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
 
 def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:

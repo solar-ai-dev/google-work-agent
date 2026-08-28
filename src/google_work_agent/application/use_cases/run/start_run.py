@@ -6,13 +6,15 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.action.write_persistence import (
+    emit_command_rejected_hash_mismatch,
+)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
 )
-from google_work_agent.application.write_persistence import emit_command_rejected_hash_mismatch
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
@@ -24,7 +26,6 @@ from google_work_agent.domain.run.model import RunCreate as RunCreateRecord
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.start_run import transition_start_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import SelectedResourceRef
 from google_work_agent.ports.persistence.audit_event_repository import (
     AuditEventCursor,
     PersistedAuditEventRecord,
@@ -39,6 +40,7 @@ from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
     WorkflowBindingV1,
 )
+from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
@@ -370,7 +372,7 @@ class StartRunHandler:
                     version_token=identity.version_token,
                     metadata_json="{}",
                     captured_at_ms=now_ms,
-                )
+                ),
             )
             selected.append(
                 SelectedResourceRef(

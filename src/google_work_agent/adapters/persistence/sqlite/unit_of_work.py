@@ -13,6 +13,9 @@ from google_work_agent.adapters.persistence.sqlite.approval_history_reader impor
 from google_work_agent.adapters.persistence.sqlite.cancel_intent_reader import (
     SqliteCancelIntentReader,
 )
+from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
+    SqliteConnectedAccountStore,
+)
 from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
     SqliteActionRepository,
 )
@@ -78,6 +81,7 @@ class SqliteUnitOfWork:
         connection = connect_sqlite(self._database_path)
         connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
+        self.connected_accounts = SqliteConnectedAccountStore(connection)
         self.conversations = SqliteConversationRepository(connection)
         self.runs = SqliteRunRepository(connection)
         self.messages = SqliteMessageRepository(connection)

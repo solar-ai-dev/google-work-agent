@@ -11,8 +11,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
-from google_work_agent.application.llm import StructuredLLMRuntime
-from google_work_agent.ports.observability_events import ObservabilityContext
+from google_work_agent.application.orchestration.compose_planning_arguments import (
+    PlanningArgumentOrchestratorV2,
+)
 from google_work_agent.application.orchestration.failure_record import (
     FailureRecordV1,
     build_failure_record_v1,
@@ -26,9 +27,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.planning_argument_orchestrator import (
     PlanningActionPreparationResultV1,
-)
-from google_work_agent.application.orchestration.compose_planning_arguments import (
-    PlanningArgumentOrchestratorV2,
 )
 from google_work_agent.application.orchestration.planning_argument_writer import (
     TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
@@ -56,7 +54,12 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     output_routes,
 )
-from google_work_agent.ports import PromptReference, WorkflowStartRequest
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
 class PlanningV2RevisionError(ValueError):
@@ -91,41 +94,25 @@ class PlanningV2RevisionProducer:
         evidence_drafts: Sequence[EvidenceDraftV1],
     ) -> SubgraphReturnV2[PlanningResultV2]:
         if review_result["status"] != "REVISE":
-            raise PlanningV2RevisionError(
-                "Planning revision requires Review V2 REVISE"
-            )
+            raise PlanningV2RevisionError("Planning revision requires Review V2 REVISE")
         required_review_ref = {
             "artifact_id": current_plan["meta"]["artifact_id"],
             "revision": current_plan["meta"]["revision"],
         }
         if required_review_ref not in review_result["meta"]["based_on"]:
-            raise PlanningV2RevisionError(
-                "stale Review V2 for current Planning V2 revision"
-            )
+            raise PlanningV2RevisionError("stale Review V2 for current Planning V2 revision")
 
         routes = output_routes(tool_route_plan)
         if not routes:
-            raise PlanningV2RevisionError(
-                "ACTION revision requires frozen output routes"
-            )
-        preparations = self._argument_orchestrator.prepare_actions(
-            output_routes=routes
-        )
+            raise PlanningV2RevisionError("ACTION revision requires frozen output routes")
+        preparations = self._argument_orchestrator.prepare_actions(output_routes=routes)
         ready_by_route = self._ready_preparations(preparations)
-        action_by_route = {
-            action["route_id"]: action for action in current_plan["actions"]
-        }
-        if set(action_by_route) != {
-            route["route_id"] for route in routes
-        }:
-            raise PlanningV2RevisionError(
-                "current plan no longer matches frozen output routes"
-            )
+        action_by_route = {action["route_id"]: action for action in current_plan["actions"]}
+        if set(action_by_route) != {route["route_id"] for route in routes}:
+            raise PlanningV2RevisionError("current plan no longer matches frozen output routes")
 
         evidence = list(evidence_drafts)
-        allowed_evidence_refs = {
-            item["evidence_id"] for item in evidence
-        }
+        allowed_evidence_refs = {item["evidence_id"] for item in evidence}
         revised_candidates: list[ToolArgumentCandidateV1] = []
         for route in routes:
             route_id = route["route_id"]
@@ -134,9 +121,7 @@ class PlanningV2RevisionProducer:
                 action["tool_id"] != route["selected_tool_id"]
                 or action["effect"] != route["effect"]
             ):
-                raise PlanningV2RevisionError(
-                    "current action escapes frozen Tool Route authority"
-                )
+                raise PlanningV2RevisionError("current action escapes frozen Tool Route authority")
             bound = ready_by_route[route_id]["bound_tool_schema"]
             current_candidate = validate_tool_argument_candidate_v1(
                 {
@@ -151,8 +136,7 @@ class PlanningV2RevisionProducer:
             issues = [
                 issue
                 for issue in review_result["issues"]
-                if issue["action_id"] is None
-                or issue["action_id"] == action["action_id"]
+                if issue["action_id"] is None or issue["action_id"] == action["action_id"]
             ]
             candidate = current_candidate
             for issue in issues:
@@ -172,20 +156,14 @@ class PlanningV2RevisionProducer:
                                 "connector_id": route["connector_id"],
                                 "resource_type": route["resource_type"],
                                 "effect": route["effect"],
-                                "selected_tool_id": route[
-                                    "selected_tool_id"
-                                ],
+                                "selected_tool_id": route["selected_tool_id"],
                             },
-                            "selected_tool_schema": bound[
-                                "argument_schema"
-                            ],
+                            "selected_tool_schema": bound["argument_schema"],
                             "work_analysis": work_analysis_result,
                             "evidence": _evidence_projection(evidence),
                         },
                         "candidate_output": candidate,
-                        "failure_record": validate_failure_record_v1(
-                            failure_record
-                        ),
+                        "failure_record": validate_failure_record_v1(failure_record),
                     },
                     output_schema=TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
                     trace_context=ObservabilityContext(
@@ -220,8 +198,7 @@ class PlanningV2RevisionProducer:
             argument_candidates=revised_candidates,
             action_id_factory=lambda: "unused-action-id",
             action_id_by_route={
-                route_id: action["action_id"]
-                for route_id, action in action_by_route.items()
+                route_id: action["action_id"] for route_id, action in action_by_route.items()
             },
         )
         revised_plan = assemble_action_plan_draft_v2(
@@ -233,17 +210,11 @@ class PlanningV2RevisionProducer:
                     "revision": current_plan["meta"]["revision"],
                 },
                 {
-                    "artifact_id": tool_route_plan[
-                        "output_plan"
-                    ]["meta"]["artifact_id"],
-                    "revision": tool_route_plan[
-                        "output_plan"
-                    ]["meta"]["revision"],
+                    "artifact_id": tool_route_plan["output_plan"]["meta"]["artifact_id"],
+                    "revision": tool_route_plan["output_plan"]["meta"]["revision"],
                 },
                 {
-                    "artifact_id": work_analysis_result[
-                        "meta"
-                    ]["artifact_id"],
+                    "artifact_id": work_analysis_result["meta"]["artifact_id"],
                     "revision": work_analysis_result["meta"]["revision"],
                 },
                 {
@@ -272,12 +243,9 @@ class PlanningV2RevisionProducer:
         for preparation in preparations:
             if preparation["disposition"] != "READY":
                 raise PlanningV2RevisionError(
-                    "corrective Planning prerequisites changed; "
-                    "revision must fail closed"
+                    "corrective Planning prerequisites changed; revision must fail closed"
                 )
-            result[preparation["route_id"]] = cast(
-                Mapping[str, object], preparation
-            )
+            result[preparation["route_id"]] = cast(Mapping[str, object], preparation)
         return result
 
 

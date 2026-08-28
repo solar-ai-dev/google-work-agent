@@ -91,10 +91,7 @@ def validate_route(value: object, *, tool_catalog: SignedToolRegistry) -> ToolRo
             if effect is EffectType.READ:
                 raise ToolRouteValidationError("output route effect must be a write effect")
             entry = tool_catalog.get_required(connector_id=connector_id, tool_id=tool_id)
-            if (
-                entry.effect_type is not effect
-                or entry.resource_type.upper() != resource_type
-            ):
+            if entry.effect_type is not effect or entry.resource_type.upper() != resource_type:
                 raise ToolRouteValidationError("output route tool binding is invalid")
             if entry.registry_version != registry_version:
                 raise ToolRouteValidationError("output route registry version is stale")

@@ -28,7 +28,7 @@ from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     AvailabilityState,
     OutputSchemaDefinition,
     ProbeResult,

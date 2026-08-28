@@ -3,7 +3,7 @@ from typing import Any
 from google_work_agent.adapters.llm.ollama.structured_inference import (
     OllamaStructuredInferenceAdapter,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     ProviderResponsePayload,

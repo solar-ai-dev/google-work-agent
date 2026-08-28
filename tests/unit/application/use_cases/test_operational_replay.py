@@ -28,9 +28,7 @@ def test_operational_command_executes_once_and_replays_bounded_result(tmp_path: 
         command_id="command-1",
         operation_kind="TEST_OPERATION",
         request_payload={"value": 1},
-        reconcile=lambda operation_ref: OperationalReconcileResultV1(
-            "SAFE_TO_RETRY", None, None
-        ),
+        reconcile=lambda operation_ref: OperationalReconcileResultV1("SAFE_TO_RETRY", None, None),
         execute=execute,
     )
     second = execute_operational_command(
@@ -38,9 +36,7 @@ def test_operational_command_executes_once_and_replays_bounded_result(tmp_path: 
         command_id="command-1",
         operation_kind="TEST_OPERATION",
         request_payload={"value": 1},
-        reconcile=lambda operation_ref: OperationalReconcileResultV1(
-            "SAFE_TO_RETRY", None, None
-        ),
+        reconcile=lambda operation_ref: OperationalReconcileResultV1("SAFE_TO_RETRY", None, None),
         execute=execute,
     )
 
@@ -57,9 +53,7 @@ def test_operational_command_rejects_same_identity_with_different_input(tmp_path
         command_id="command-1",
         operation_kind="TEST_OPERATION",
         request_payload={"value": 1},
-        reconcile=lambda operation_ref: OperationalReconcileResultV1(
-            "SAFE_TO_RETRY", None, None
-        ),
+        reconcile=lambda operation_ref: OperationalReconcileResultV1("SAFE_TO_RETRY", None, None),
         execute=lambda operation_ref: ("result-1", {"accepted": True}),
     )
 
@@ -89,9 +83,7 @@ def test_reserved_command_reconciles_before_any_retry(tmp_path: Path) -> None:
             reconcile=lambda operation_ref: OperationalReconcileResultV1(
                 "SAFE_TO_RETRY", None, None
             ),
-            execute=lambda operation_ref: (_ for _ in ()).throw(
-                RuntimeError("simulated crash")
-            ),
+            execute=lambda operation_ref: (_ for _ in ()).throw(RuntimeError("simulated crash")),
         )
 
     recovered = execute_operational_command(
@@ -124,9 +116,7 @@ def test_uncertain_reconciliation_never_executes_again(tmp_path: Path) -> None:
             reconcile=lambda operation_ref: OperationalReconcileResultV1(
                 "SAFE_TO_RETRY", None, None
             ),
-            execute=lambda operation_ref: (_ for _ in ()).throw(
-                RuntimeError("simulated crash")
-            ),
+            execute=lambda operation_ref: (_ for _ in ()).throw(RuntimeError("simulated crash")),
         )
 
     with pytest.raises(OperationalCommandUncertain):

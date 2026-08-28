@@ -51,11 +51,11 @@ from google_work_agent.application.use_cases.resource.list_task_lists import (
 from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
     ResourceAccess,
 )
-from google_work_agent.ports import EndpointPolicy
-from google_work_agent.ports.connectors.failure import (
+from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
 )
+from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/resources")
 
@@ -92,9 +92,7 @@ def list_calendars(
     return cast(dict[str, object], asdict(result))
 
 
-def _resource_service(
-    dependencies: ResourceRouteDependency, *, request_id: str
-) -> ResourceAccess:
+def _resource_service(dependencies: ResourceRouteDependency, *, request_id: str) -> ResourceAccess:
     service = dependencies.resource_query_service()
     if service is None:
         raise ApiRequestError(
@@ -398,9 +396,7 @@ def _raise_resource_handler_unavailable(request: Request) -> None:
     )
 
 
-def _selection_identity(
-    request: Request, dependencies: ResourceRouteDependency
-) -> tuple[str, str]:
+def _selection_identity(request: Request, dependencies: ResourceRouteDependency) -> tuple[str, str]:
     session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
     account_id = dependencies.current_account_id()
     if session_token is None or account_id is None:

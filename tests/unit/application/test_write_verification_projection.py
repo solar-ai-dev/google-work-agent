@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from google_work_agent.application.write_verification_projection import (
+from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,

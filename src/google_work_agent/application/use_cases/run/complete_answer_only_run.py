@@ -22,8 +22,8 @@ from google_work_agent.domain.run.transitions.complete_answer_only_run import (
     transition_complete_answer_only_run,
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports import UnitOfWork
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,6 +319,7 @@ def _response_json(response: AnswerOnlyResponse) -> str:
         },
         sort_keys=True,
     )
+
 
 __all__ = [
     "CompleteAnswerOnlyRunCommand",

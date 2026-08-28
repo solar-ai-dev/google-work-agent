@@ -45,7 +45,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     ToolRoutePlanV2,
     output_routes,
 )
-from google_work_agent.ports import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
@@ -292,9 +292,7 @@ def _preparation_control_return(
     blocked = [item for item in preparations if item["disposition"] == "BLOCKED"]
     if blocked:
         reasons = _ordered_unique(
-            reason
-            for item in blocked
-            for reason in cast(Sequence[str], item["reason_codes"])
+            reason for item in blocked for reason in cast(Sequence[str], item["reason_codes"])
         )
         return validate_planning_return_v2(
             {
@@ -308,9 +306,7 @@ def _preparation_control_return(
     ]
     if reconsider:
         reasons = _ordered_unique(
-            reason
-            for item in reconsider
-            for reason in cast(Sequence[str], item["reason_codes"])
+            reason for item in reconsider for reason in cast(Sequence[str], item["reason_codes"])
         )
         return validate_planning_return_v2(
             {
@@ -356,7 +352,9 @@ def _validate_current_upstream(
         raise PlanningV2RuntimeError("stale Tool Route output artifact")
     input_ref = _artifact_ref(tool_route_plan["input_plan"]["meta"])
     if input_ref not in retrieval_result["meta"]["based_on"]:
-        raise PlanningV2RuntimeError("stale RetrievalResultV1 for current Tool Route input artifact")
+        raise PlanningV2RuntimeError(
+            "stale RetrievalResultV1 for current Tool Route input artifact"
+        )
     retrieval_ref = _artifact_ref(retrieval_result["meta"])
     if retrieval_ref not in work_analysis_result["meta"]["based_on"]:
         raise PlanningV2RuntimeError("stale WorkAnalysisResultV2 for current RetrievalResultV1")

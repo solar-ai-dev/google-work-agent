@@ -1,4 +1,4 @@
-from google_work_agent.ports import (
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowInvocationResult,
     WorkflowOutcome,

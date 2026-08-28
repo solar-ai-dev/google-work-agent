@@ -51,9 +51,7 @@ def _handler(unit_of_work: MagicMock, id_generator: MagicMock) -> ApproveActionH
 
 
 def _action(*, status: ActionStatusV1 = ActionStatusV1.PROPOSED) -> SimpleNamespace:
-    arguments = {
-        "payload": {"to": ["person@example.com"], "subject": "Subject", "body": "Body"}
-    }
+    arguments = {"payload": {"to": ["person@example.com"], "subject": "Subject", "body": "Body"}}
     return SimpleNamespace(
         id="action-1",
         plan_id="plan-1",

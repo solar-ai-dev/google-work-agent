@@ -14,7 +14,10 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultContinuationError,
     RunScopedReadResultCache,
 )
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 def test_raw_snapshot_is_cache_owned_and_checkpoint_projection_is_bounded() -> None:
@@ -42,12 +45,15 @@ def test_raw_snapshot_is_cache_owned_and_checkpoint_projection_is_bounded() -> N
     assert sentinel not in dumps(safe_result, sort_keys=True)
     assert continuation not in dumps(cache.bounded_summary(run_id="run-a", handle="read-1"))
     assert cache.resolve_snapshots(run_id="run-a", handle="read-1")[0].payload["notes"] == sentinel
-    assert cache.resolve_next_page(
-        run_id="run-a",
-        handle="read-1",
-        route_id="route-task",
-        query_hash="query-hash",
-    ) == continuation
+    assert (
+        cache.resolve_next_page(
+            run_id="run-a",
+            handle="read-1",
+            route_id="route-task",
+            query_hash="query-hash",
+        )
+        == continuation
+    )
 
     hydrated = hydrate_acquisition_for_segmentation(
         run_id="run-a",
@@ -88,7 +94,6 @@ def test_raw_snapshot_resolution_is_run_scoped_and_terminal_discarded() -> None:
         cache.resolve_snapshots(run_id="run-a", handle="read-a")
 
 
-
 def test_run_cache_rejects_attachment_or_binary_bytes() -> None:
     cache = RunScopedReadResultCache()
     snapshot = ResourceSnapshot(
@@ -115,9 +120,8 @@ def test_run_cache_rejects_attachment_or_binary_bytes() -> None:
     )
 
     with pytest.raises(ReadResultContinuationError, match="binary bytes"):
-        cache.attach_snapshots(
-            run_id="run-a", handle="read-binary", snapshots=(snapshot,)
-        )
+        cache.attach_snapshots(run_id="run-a", handle="read-binary", snapshots=(snapshot,))
+
 
 def test_bounded_projection_drops_raw_body_notes_binary_token_and_provider_blob() -> None:
     snapshot = ResourceSnapshot(

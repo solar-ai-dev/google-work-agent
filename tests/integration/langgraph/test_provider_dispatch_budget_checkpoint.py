@@ -23,7 +23,7 @@ from google_work_agent.application.orchestration.prompt_input_guarded_provider i
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     provider_dispatch_execution_scope,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,

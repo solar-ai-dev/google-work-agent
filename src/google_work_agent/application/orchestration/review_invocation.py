@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
-from typing import Callable, Protocol, cast
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Protocol, cast
 
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
@@ -136,9 +136,7 @@ def _review_signal(
                 )
         if not needs:
             raise ReviewV2RuntimeError("RETRIEVE_MORE requires at least one RetrievalNeedV1")
-        reason_codes = _ordered_unique(
-            code for need in needs for code in need["reason_codes"]
-        )
+        reason_codes = _ordered_unique(code for need in needs for code in need["reason_codes"])
         if retrieval_need_satisfier is not None and not retrieval_need_satisfier(needs):
             return {
                 "kind": "ROUTE_RECONSIDERATION_REQUIRED",

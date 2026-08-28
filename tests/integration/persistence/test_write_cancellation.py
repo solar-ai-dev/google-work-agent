@@ -26,12 +26,12 @@ from tests.integration.persistence.test_write_actions import (
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
     Path,
-    QueryService,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
     RequestRunCancellationCommand,
     RequestRunCancellationService,
     ResultCode,
+    SnapshotReader,
     StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
     VerifyWriteActionCommand,
@@ -428,7 +428,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     assert finalized.run_status == "CANCEL_REQUESTED"
     assert "awaits verification" in (finalized.conflict_detail or "")
     assert finalized.result_kind is None
-    snapshot = QueryService(
+    snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
@@ -543,7 +543,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
 
     assert finalized.run_status == "CANCELLED"
     assert finalized.result_kind == "PARTIAL"
-    snapshot = QueryService(
+    snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
@@ -649,7 +649,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     )
 
     assert finalized.run_status == "RECOVERY_REQUIRED"
-    snapshot = QueryService(
+    snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
@@ -716,7 +716,7 @@ def test_cancel_result_reflects_durably_observed_external_mutation(
 
     assert result.run_status == "CANCELLED"
     assert result.result_kind == expected_result_kind
-    snapshot = QueryService(
+    snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]
@@ -932,7 +932,7 @@ def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
     finally:
         connection.close()
 
-    query_service = QueryService(
+    query_service = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
         runtime_status_provider=None,  # type: ignore[arg-type]

@@ -125,14 +125,10 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
             {**result, "acquisition_result": safe_acquisition},
         )
 
-    def _build_context_result(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalResultV1:
+    def _build_context_result(self, state: ContextRetrievalLocalState) -> ContextRetrievalResultV1:
         return super()._build_context_result(self._ephemeral_raw_state(state))
 
-    def _ephemeral_raw_state(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalLocalState:
+    def _ephemeral_raw_state(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         acquisition = state.get("acquisition_result")
         if acquisition is None:
             return state

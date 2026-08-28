@@ -63,21 +63,21 @@ from tests.support.canonical_workflow_runtime import (
 from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
 )
-from google_work_agent.application.use_cases.run.resume_after_reauth import (
-    ResumeAfterReauthHandler,
-)
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
 )
-from google_work_agent.application.use_cases.run.resume_run import (
-    ResumeRunCommand,
-    ResumeRunHandler,
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthCommand,
+    ResumeAfterReauthHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
-    ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
-from google_work_agent.ports import LLMErrorCode, LLMInvocationError, ResourceSnapshot
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
+)
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -355,9 +355,7 @@ def _resume_through_application(
 
     executor = _executor(
         runtime,
-        materialize=lambda admission, _handoff: _materialize_resume_target(
-            runtime, admission
-        ),
+        materialize=lambda admission, _handoff: _materialize_resume_target(runtime, admission),
         invoke=invoke,
     )
     try:
@@ -366,10 +364,7 @@ def _resume_through_application(
             workflow_execution=executor,
             id_factory=lambda: f"admission-{command_id}",
         )
-        handler_type = (
-            ResumeAfterReauthHandler if resume_kind == "REAUTH_COMPLETED" else ResumeRunHandler
-        )
-        handler = handler_type(
+        handler = ResumeAfterReauthHandler(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
             now_ms=FakeClockPort(2000).now_ms,
             resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
@@ -382,7 +377,7 @@ def _resume_through_application(
             schedule_run_execution=schedule,
         )
         application_result = handler(
-            ResumeRunCommand(
+            ResumeAfterReauthCommand(
                 command_id=command_id,
                 request_hash=sha256(command_id.encode("utf-8")).hexdigest(),
                 run_id="run-1",
@@ -413,9 +408,7 @@ def _materialize_resume_target(runtime: LangGraphWorkflowRuntime, admission: obj
         latest,
         goto_node=runtime.control_resume_node(target.stage_id),
     )
-    materialized = checkpoint.load_same_run_checkpoint(
-        binding.run_id, binding.langgraph_thread_id
-    )
+    materialized = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
     assert materialized is not None
     return materialized
 

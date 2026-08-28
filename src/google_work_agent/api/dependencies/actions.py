@@ -9,14 +9,19 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
-from google_work_agent.application.calendar_conflicts import CalendarConflictGateway
-from google_work_agent.application.task_duplicates import TaskListGateway
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CalendarConflictGateway,
+)
+from google_work_agent.application.use_cases.action.task_duplicates import TaskListGateway
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.ports import ClockPort, SseEventBufferPort, UnitOfWork, UUIDPort
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 from google_work_agent.application.orchestration.context_segmentation import _SourceSegment
-from google_work_agent.application.orchestration.handoff_contracts import ConstraintV1, RequestIntentV2
+from google_work_agent.application.orchestration.handoff_contracts import (
+    ConstraintV1,
+    RequestIntentV2,
+)
 from google_work_agent.application.orchestration.retrieval_ranking import (
     EXACT_RESOURCE_REASON,
     KEYWORD_MATCH_REASON,
@@ -99,8 +102,7 @@ def test_exact_resource_match_scores_highest_and_is_labeled() -> None:
     intent = _intent(goal="project follow-up meeting", selected_resource_ids=["thread-selected"])
 
     candidates = {
-        c["segment_id"]: c
-        for c in rank_segments([exact, other], request_intent=intent, top_k=10)
+        c["segment_id"]: c for c in rank_segments([exact, other], request_intent=intent, top_k=10)
     }
 
     assert EXACT_RESOURCE_REASON in candidates["seg-1"]["reason_codes"]

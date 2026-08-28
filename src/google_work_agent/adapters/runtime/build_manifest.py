@@ -8,7 +8,11 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from google_work_agent.ports import ArtifactSignatureVerifier, ReadinessCheckResult, ReadinessState
+from google_work_agent.ports.system.artifact_signature_verifier import ArtifactSignatureVerifier
+from google_work_agent.ports.system.readiness_port import (
+    ReadinessCheckResult,
+    ReadinessState,
+)
 
 
 class BuildProfile(StrEnum):

@@ -49,7 +49,6 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.connector_write_projection import ConnectorWriteProjection
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
@@ -78,24 +77,29 @@ from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,
 )
-from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
-    DispatchConnectorWriteHandler,
-)
-from google_work_agent.application.write_action_mutation_contracts import (
+from google_work_agent.application.use_cases.action.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
     RejectWriteActionCommand,
 )
-from google_work_agent.application.write_approval_contracts import (
+from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.write_execution_contracts import (
+from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
+    ConnectorWriteProjection,
+)
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     ActualRuntime,
     RequestedRuntimeMode,
     StructuredLLMResult,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowOutcome,
     WorkflowRecoveryRequest,

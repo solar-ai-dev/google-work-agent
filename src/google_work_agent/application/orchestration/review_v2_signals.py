@@ -61,7 +61,9 @@ def _retrieval_required(review: Mapping[str, object]) -> RetrievalRequiredV1:
             reason_codes.append(code)
         required_information = gap.get("required_information")
         if not isinstance(required_information, list):
-            raise ReviewV2SignalProjectionError("evidence gap required_information must be an array")
+            raise ReviewV2SignalProjectionError(
+                "evidence gap required_information must be an array"
+            )
         for raw_information in required_information:
             information = _text(raw_information, "required information")
             needs.append(
@@ -162,7 +164,9 @@ def _validate_resume_target(value: AgentNodeResumeTargetV2) -> None:
     if not isinstance(value, AgentNodeResumeTargetV2):
         raise ReviewV2SignalProjectionError("resume_target must be AgentNodeResumeTargetV2")
     if value.semantic_owner_id != "REVIEW":
-        raise ReviewV2SignalProjectionError("Review confirmation resume_target must belong to REVIEW")
+        raise ReviewV2SignalProjectionError(
+            "Review confirmation resume_target must belong to REVIEW"
+        )
 
 
 def _text(value: object, label: str) -> str:

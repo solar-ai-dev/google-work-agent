@@ -7,7 +7,10 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
     ReadResultContinuationError,
     RunScopedReadResultCache,
 )
-from google_work_agent.ports import ResourceSnapshot, ResourceType
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    ResourceSnapshot,
+    ResourceType,
+)
 
 
 def test_same_run_distinct_resource_snapshots_fail_closed() -> None:

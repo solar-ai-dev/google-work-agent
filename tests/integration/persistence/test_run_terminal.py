@@ -8,14 +8,14 @@ from google_work_agent.adapters.persistence import (
     connect_sqlite,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.run_terminal import (
-    FailRunCommand,
-    FailRunService,
-    RunTransitionResponse,
-)
 from google_work_agent.application.use_cases.run.block_run import (
     BlockRunCommand,
     BlockRunHandler,
+)
+from google_work_agent.application.use_cases.run.run_terminal import (
+    FailRunCommand,
+    FailRunService,
+    RunTransitionResponse,
 )
 
 TerminalCommand = BlockRunCommand | FailRunCommand

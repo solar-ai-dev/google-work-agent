@@ -16,7 +16,7 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     bind_provider_dispatch_budget,
     merge_provider_dispatch_usage,
 )
-from google_work_agent.ports import (
+from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
     PromptReference,

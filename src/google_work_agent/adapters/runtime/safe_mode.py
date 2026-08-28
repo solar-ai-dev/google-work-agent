@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.ports import ReadinessCheckResult, ReadinessState, RuntimeOperation
+from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
+from google_work_agent.ports.system.readiness_port import (
+    ReadinessCheckResult,
+    ReadinessState,
+)
 
 
 @dataclass(frozen=True, slots=True)

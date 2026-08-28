@@ -46,7 +46,7 @@ from google_work_agent.application.orchestration.tool_routing import (
     OutputToolRouteV1,
     output_routes,
 )
-from google_work_agent.ports import StructuredLLMResult
+from google_work_agent.ports.llm import StructuredLLMResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +71,9 @@ class PlanningSubgraph:
 
     def build(self) -> Any:
         graph = StateGraph(PlanningState)
-        graph.add_node("choose_answer_or_action_from_route", choose_answer_or_action_from_route_node)
+        graph.add_node(
+            "choose_answer_or_action_from_route", choose_answer_or_action_from_route_node
+        )
         graph.add_node("outline_answer", outline_answer_node)
         graph.add_node(
             "compose_answer",
@@ -105,7 +107,9 @@ class PlanningSubgraph:
         )
         graph.add_edge("outline_answer", "compose_answer")
         graph.add_edge("compose_answer", END)
-        graph.add_edge("draft_action_objective_per_output_route", "compose_arguments_per_output_route")
+        graph.add_edge(
+            "draft_action_objective_per_output_route", "compose_arguments_per_output_route"
+        )
         graph.add_edge("compose_arguments_per_output_route", "build_dependencies")
         graph.add_edge("build_dependencies", "assemble_plan")
         graph.add_edge("assemble_plan", "validate_plan")

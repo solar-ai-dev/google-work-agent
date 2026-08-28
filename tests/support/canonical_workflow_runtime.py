@@ -22,8 +22,11 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
-from google_work_agent.ports import WorkflowCorrelationContext, WorkflowResumeRequest
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    WorkflowCorrelationContext,
+    WorkflowResumeRequest,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     ConfirmationResumeControlV1,
     RunExecutionRefV1,
@@ -88,9 +91,7 @@ def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
     results: list[Any] = []
     errors: list[BaseException] = []
 
-    def materialize(
-        admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
-    ):
+    def materialize(admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1):
         with checkpoint.execution_scope(
             admission,
             applied_handoff_id=admission.handoff_id,

@@ -19,19 +19,19 @@ from typing import Any, Literal, cast
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
     ConnectorRuntimeRegistry,
 )
-from google_work_agent.ports import (
-    ArtifactSignatureDecision,
-    ArtifactSignatureVerifier,
-    DeliveryCertainty,
-    MCPClientPortError,
-    MCPClientPortErrorCode,
-    MCPRuntimeMetadata,
-)
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.connector.mcp_client_port import (
     JsonValue,
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPRestartResultV1,
+    MCPRuntimeMetadata,
     MCPToolCallResultV1,
     MCPToolDescriptorV1,
+)
+from google_work_agent.ports.system.artifact_signature_verifier import (
+    ArtifactSignatureDecision,
+    ArtifactSignatureVerifier,
 )
 
 JsonObject = dict[str, object]
