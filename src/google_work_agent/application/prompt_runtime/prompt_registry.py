@@ -25,7 +25,7 @@ _DEFAULT_MANIFEST_PATH = _PACKAGE_DIR / "prompt_manifest.json"
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _MANIFEST_FILENAME_PATTERN = re.compile(r"^prompt-manifest-v(\d+)\.(\d+)\.(\d+)\.json$")
 _ACTIVATION_STATUSES: Final = frozenset(
-    {"DRAFT", "DEV_VALIDATED", "HOLDOUT_VALIDATED", "SAFETY_VALIDATED", "RUNTIME_ACTIVE", "RETIRED"}
+    {"DRAFT", "DEV_VALIDATED", "HOLDOUT_VALIDATED", "RUNTIME_ACTIVE", "RETIRED"}
 )
 _MANIFEST_ROOT_FIELDS: Final = {
     "schema_version",

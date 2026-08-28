@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "prompt_bundle_version": "canonical-prompt-runtime-v1",
-  "activation_policy": "DRAFT -> DEV_VALIDATED -> HOLDOUT_VALIDATED -> SAFETY_VALIDATED -> MANIFEST_APPROVED -> RUNTIME_ACTIVE",
+  "activation_policy": "DRAFT -> DEV_VALIDATED -> HOLDOUT_VALIDATED -> RUNTIME_ACTIVE -> RETIRED; RUNTIME_ACTIVE requires safety_gate_pass and manifest_approved",
   "slots": [
     {"prompt_slot_id":"request_understanding.identify_goal","prompt_id":"request_understanding.identify_goal","runtime_node_id":"request.identify_goal","prompt_version":"1.0.0","content_hash":"e5d7c5217633f351aca1b6c22a1f6d14f08fb42ccd21809e238d717f70580824","activation_status":"DRAFT","node_dev_pass":false,"node_holdout_pass":false,"safety_gate_pass":false,"manifest_approved":false,"agent_role":"request_understanding","subgraph_name":"request_understanding","node_name":"identify_goal","node_state":"INITIAL","purpose":"identify_goal","input_schema_version":1,"output_schema_version":1,"source":"sources/request_understanding.identify_goal.md"},
     {"prompt_slot_id":"request_understanding.detect_ambiguity","prompt_id":"request_understanding.detect_ambiguity","runtime_node_id":"request.detect_ambiguity","prompt_version":"1.0.0","content_hash":"27c16bd43ed2d60ed6587c8012db6df06ca3b12035784f030bc411544f439647","activation_status":"DRAFT","node_dev_pass":false,"node_holdout_pass":false,"safety_gate_pass":false,"manifest_approved":false,"agent_role":"request_understanding","subgraph_name":"request_understanding","node_name":"detect_ambiguity","node_state":"INITIAL","purpose":"detect_ambiguity","input_schema_version":1,"output_schema_version":1,"source":"sources/request_understanding.detect_ambiguity.md"},

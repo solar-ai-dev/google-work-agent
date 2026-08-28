@@ -10,6 +10,7 @@ from tests.support.canonical_prompt_runtime import (
     copy_prompt_runtime_artifacts,
 )
 
+from google_work_agent.application.prompt_runtime import prompt_registry as prompt_registry_module
 from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input_contract import (
     REQUIRED_PROMPT_SLOT_IDS,
 )
@@ -20,6 +21,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     PromptSelectionKey,
     default_prompt_manifest_path,
     load_prompt_reference,
+)
+
+CANONICAL_ACTIVATION_STATUSES = frozenset(
+    {"DRAFT", "DEV_VALIDATED", "HOLDOUT_VALIDATED", "RUNTIME_ACTIVE", "RETIRED"}
 )
 
 
@@ -35,6 +40,21 @@ def test_prompt_registry_rejects_draft_product_selection() -> None:
 
     with pytest.raises(InactivePromptArtifactError, match="DRAFT"):
         registry.lookup_by_id("planning.compose_answer")
+
+
+def test_prompt_registry_accepts_exact_canonical_activation_status_vocabulary() -> None:
+    assert prompt_registry_module._ACTIVATION_STATUSES == CANONICAL_ACTIVATION_STATUSES
+
+
+def test_prompt_registry_rejects_safety_gate_as_activation_status(tmp_path: Path) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slots = cast(list[dict[str, object]], manifest["slots"])
+    slots[0]["activation_status"] = "SAFETY_VALIDATED"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(PromptRegistryError, match="unknown activation status"):
+        PromptRegistry(manifest_path, contract_path)
 
 
 def test_prompt_registry_selects_only_gate_complete_active_slot(tmp_path: Path) -> None:
