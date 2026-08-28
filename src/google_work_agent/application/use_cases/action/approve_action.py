@@ -180,7 +180,7 @@ class ApproveActionHandler:
                     or current_plan is None
                     or current_plan.id != plan.id
                     or getattr(run, "status", RunStatusV1.WAITING_APPROVAL)
-                    is not RunStatusV1.WAITING_APPROVAL
+                    not in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
                 ):
                     result = ApproveActionResult(
                         applied=False,
@@ -363,6 +363,7 @@ class ApproveActionHandler:
                     plan_review_passed=plan.review_status is PlanReviewStatus.PASSED,
                     plan_status=plan.status,
                     plan_is_current=current_plan is not None and current_plan.id == plan.id,
+                    run_status=RunStatusV1(run.status),
                 )
                 if not approval_result.applied:
                     response = action_response_from_result(

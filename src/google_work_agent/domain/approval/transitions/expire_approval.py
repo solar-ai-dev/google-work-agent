@@ -7,6 +7,8 @@ from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 
+_ALLOWED_PLAN_STATUSES = frozenset({PlanStatusV1.WAITING_APPROVAL})
+
 
 def transition_expire_approval(
     *,
@@ -16,7 +18,9 @@ def transition_expire_approval(
     plan_is_current: bool,
 ) -> tuple[ActionStatusV1, ApprovalStatusV1]:
     authority_conflict = guard_current_plan_authority(
-        plan_status=plan_status, plan_is_current=plan_is_current
+        plan_status=plan_status,
+        plan_is_current=plan_is_current,
+        allowed_statuses=_ALLOWED_PLAN_STATUSES,
     )
     if authority_conflict is not None:
         raise ValueError(authority_conflict)

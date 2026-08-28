@@ -146,6 +146,7 @@ def test_only_one_active_approval_is_allowed_per_action(
         recovery_policy="RESOURCE_SEARCH",
     )
     migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
     migrated_connection.execute(
         "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = 'action-approval-1';"
     )
@@ -196,6 +197,7 @@ def test_only_one_active_execution_attempt_is_allowed_per_approval(
         recovery_policy="GET_TARGET",
     )
     migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
     migrated_connection.execute(
         "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = 'action-attempt-1';"
     )
@@ -254,6 +256,7 @@ def test_active_approval_and_action_status_are_enforced_bidirectionally(
         recovery_policy="RESOURCE_SEARCH",
     )
     migrated_connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    migrated_connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
     migrated_connection.execute(
         "UPDATE actions SET status = 'REJECTED' WHERE id = 'action-approval-guard';"
     )
@@ -488,6 +491,7 @@ def _claim_write_action(
     attempt_id: str,
 ) -> None:
     connection.execute("UPDATE plans SET status = 'WAITING_APPROVAL' WHERE id = 'plan-1';")
+    connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'run-1';")
     connection.execute(
         "UPDATE actions SET status = 'APPROVED', version = 1 WHERE id = ?;", (action_id,)
     )

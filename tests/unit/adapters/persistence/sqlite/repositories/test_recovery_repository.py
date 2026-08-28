@@ -5,11 +5,15 @@ from pathlib import Path
 import pytest
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.repositories.retention_repository import (
+    SqliteRetentionRepository,
+)
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.ports.persistence.recovery_repository import (
     RecoveryConflictError,
     RecoveryContextV1,
 )
+from google_work_agent.ports.persistence.retention_repository import RetentionCutoffs
 from google_work_agent.ports.system.contracts.workflow_handoff import MainControlResumeTargetV2
 
 
@@ -104,6 +108,84 @@ def test_clear_context_preserves_version_monotonicity_across_recreation(tmp_path
         unit_of_work.commit()
 
     assert recreated["version"] == 1
+
+
+def test_cleared_context_tombstone_does_not_block_terminal_run_retention(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.store_context(_context(version=0))
+        unit_of_work.commit()
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.clear_context("r-1", expected_version=0)
+        unit_of_work.commit()
+
+    connection = connect_sqlite(database_path)
+    try:
+        tombstone = connection.execute(
+            "SELECT last_version FROM recovery_context_tombstones WHERE run_id='r-1';"
+        ).fetchone()
+        assert tombstone is not None and tombstone[0] == 0
+        connection.execute(
+            "UPDATE runs SET status='COMPLETED', terminal_result_kind='SUCCESS', "
+            "finished_at_ms=20 WHERE id='r-1';"
+        )
+        result = SqliteRetentionRepository(connection).purge_batch(
+            RetentionCutoffs(
+                terminal_run_ms=100,
+                message_ms=0,
+                conversation_ms=0,
+                trace_ms=0,
+                audit_ms=0,
+            ),
+            10,
+        )
+
+        assert result.runs == 1
+        assert connection.execute("SELECT COUNT(*) FROM runs WHERE id='r-1';").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM recovery_context_tombstones WHERE run_id='r-1';"
+        ).fetchone()[0] == 0
+        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
+    finally:
+        connection.close()
+
+
+def test_active_recovery_context_still_protects_terminal_run_from_retention(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.store_context(_context(version=0))
+        unit_of_work.commit()
+
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            "UPDATE runs SET status='COMPLETED', terminal_result_kind='SUCCESS', "
+            "finished_at_ms=20 WHERE id='r-1';"
+        )
+        result = SqliteRetentionRepository(connection).purge_batch(
+            RetentionCutoffs(
+                terminal_run_ms=100,
+                message_ms=0,
+                conversation_ms=0,
+                trace_ms=0,
+                audit_ms=0,
+            ),
+            10,
+        )
+
+        assert result.runs == 0
+        assert connection.execute("SELECT COUNT(*) FROM runs WHERE id='r-1';").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM recovery_contexts WHERE run_id='r-1';"
+        ).fetchone()[0] == 1
+    finally:
+        connection.close()
 
 
 def test_list_candidates_bounded_orders_by_created_at(tmp_path: Path) -> None:

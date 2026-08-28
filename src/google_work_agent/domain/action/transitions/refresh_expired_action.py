@@ -7,6 +7,8 @@ from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1,
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 
+_ALLOWED_PLAN_STATUSES = frozenset({PlanStatusV1.WAITING_APPROVAL})
+
 
 def transition_refresh_expired_action(
     current_status: ActionStatusV1,
@@ -18,7 +20,9 @@ def transition_refresh_expired_action(
     plan_is_current: bool,
 ) -> CommandResult[ActionStatusV1, ActionCommand]:
     authority_conflict = guard_current_plan_authority(
-        plan_status=plan_status, plan_is_current=plan_is_current
+        plan_status=plan_status,
+        plan_is_current=plan_is_current,
+        allowed_statuses=_ALLOWED_PLAN_STATUSES,
     )
     if authority_conflict is not None:
         return CommandResult(

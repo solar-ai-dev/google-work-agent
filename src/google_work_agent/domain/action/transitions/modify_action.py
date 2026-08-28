@@ -16,6 +16,7 @@ _ALLOWED = frozenset(
         ActionStatusV1.MODIFIED,
     }
 )
+_ALLOWED_PLAN_STATUSES = frozenset({PlanStatusV1.WAITING_APPROVAL})
 
 
 def transition_modify_action(
@@ -28,7 +29,9 @@ def transition_modify_action(
     plan_is_current: bool,
 ) -> CommandResult[ActionStatusV1, ActionCommand]:
     authority_conflict = guard_current_plan_authority(
-        plan_status=plan_status, plan_is_current=plan_is_current
+        plan_status=plan_status,
+        plan_is_current=plan_is_current,
+        allowed_statuses=_ALLOWED_PLAN_STATUSES,
     )
     if authority_conflict is not None:
         return CommandResult(
@@ -38,6 +41,15 @@ def transition_modify_action(
             current_version,
             (),
             authority_conflict,
+        )
+    if effect_type is EffectType.READ:
+        return CommandResult(
+            False,
+            ResultCode.STATE_CONFLICT,
+            current_status,
+            current_version,
+            (),
+            "MODIFY_ACTION is write-only",
         )
     if current_version < 0 or expected_version < 0:
         raise ValueError("action version must be non-negative")

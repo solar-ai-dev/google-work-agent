@@ -87,6 +87,7 @@ def _unit_of_work(
     action: SimpleNamespace | None = None,
     plan: SimpleNamespace | None = None,
     current_plan: SimpleNamespace | None = None,
+    run_status: RunStatusV1 = RunStatusV1.WAITING_APPROVAL,
 ) -> MagicMock:
     unit_of_work = MagicMock()
     unit_of_work.__enter__.return_value = unit_of_work
@@ -98,7 +99,7 @@ def _unit_of_work(
     unit_of_work.plans.load_bundle.return_value = plan
     unit_of_work.plans.get_current.return_value = plan if current_plan is None else current_plan
     unit_of_work.runs.get.return_value = SimpleNamespace(
-        id="run-1", conversation_id="conversation-1", status=RunStatusV1.WAITING_APPROVAL
+        id="run-1", conversation_id="conversation-1", status=run_status
     )
     unit_of_work.conversations.get.return_value = SimpleNamespace(account_id="acct-1")
     unit_of_work.resource_refs.get.return_value = SimpleNamespace(id="resource-ref-1")
@@ -202,6 +203,19 @@ def test_approve_requires_current_waiting_plan_and_passed_review(reason: str) ->
     assert result.result_code == ResultCode.STATE_CONFLICT.value
     unit_of_work.actions.update_if_version_and_status.assert_not_called()
     unit_of_work.approvals.insert_active_snapshot.assert_not_called()
+
+
+@pytest.mark.parametrize("run_status", list(RunStatusV1))
+def test_approve_application_matches_exact_parent_run_matrix(run_status: RunStatusV1) -> None:
+    unit_of_work = _unit_of_work(run_status=run_status)
+    id_generator = MagicMock()
+    id_generator.new_uuid.side_effect = ["approval-1", "handoff-1"]
+
+    result = _handler(unit_of_work, id_generator)(_command())
+
+    assert result.applied is (
+        run_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
+    )
 
 
 @pytest.mark.parametrize("repository", ("approvals", "audits"))

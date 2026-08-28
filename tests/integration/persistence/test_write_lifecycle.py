@@ -655,6 +655,7 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
     )
     connection = connect_sqlite(write_database)
     try:
+        connection.execute("UPDATE runs SET status = 'VERIFYING' WHERE id = 'run-1';")
         connection.execute(
             """
             INSERT INTO approvals (
@@ -669,6 +670,7 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
             """,
             ("a" * 64, "b" * 64, "c" * 64, "d" * 64),
         )
+        connection.execute("UPDATE runs SET status = 'RECOVERY_REQUIRED' WHERE id = 'run-1';")
         connection.commit()
     finally:
         connection.close()

@@ -1,3 +1,5 @@
+import pytest
+
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.prepare_write_retry import (
     transition_prepare_write_retry,
@@ -17,3 +19,18 @@ def test_prepare_write_retry_preserves_the_stronger_write_only_guard() -> None:
 
     assert result.applied is True
     assert result.current_status is ActionStatusV1.MODIFIED
+
+
+@pytest.mark.parametrize("plan_status", list(PlanStatusV1))
+def test_prepare_write_retry_requires_current_waiting_write_plan(
+    plan_status: PlanStatusV1,
+) -> None:
+    result = transition_prepare_write_retry(
+        ActionStatusV1.FAILED,
+        current_version=2,
+        expected_version=2,
+        effect_type=EffectType.CREATE,
+        plan_status=plan_status,
+        plan_is_current=True,
+    )
+    assert result.applied is (plan_status is PlanStatusV1.WAITING_APPROVAL)

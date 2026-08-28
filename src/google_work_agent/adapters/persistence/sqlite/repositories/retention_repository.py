@@ -82,6 +82,10 @@ class SqliteRetentionRepository:
             self._connection.execute(
                 f"DELETE FROM workflow_handoffs WHERE run_id IN ({marks});", run_ids
             )
+            self._connection.execute(
+                f"DELETE FROM recovery_context_tombstones WHERE run_id IN ({marks});",
+                run_ids,
+            )
             self._connection.execute(f"DELETE FROM runs WHERE id IN ({marks});", run_ids)
         messages = self._delete_bounded(
             "messages", "created_at_ms < ? AND run_id IS NULL", cutoffs.message_ms, batch_limit

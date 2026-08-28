@@ -125,7 +125,7 @@ def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 14
+    assert len(migrations) == 15
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -155,6 +155,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[12].name == "resource_ref_registry_type"
     assert migrations[13].version == 14
     assert migrations[13].name == "run_terminal_result_kind"
+    assert migrations[14].version == 15
+    assert migrations[14].name == "canonical_final_defense"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -167,7 +169,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 14
+        assert len(first_results) == 15
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -184,6 +186,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (12, "recovery_context_currentness"),
             (13, "resource_ref_registry_type"),
             (14, "run_terminal_result_kind"),
+            (15, "canonical_final_defense"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -194,9 +197,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 14
+        assert len(second_results) == 15
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 14
+        assert len(rows) == 15
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -271,7 +274,7 @@ def test_populated_0011_upgrade_preserves_current_recovery_context(tmp_path: Pat
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 11 + [True, True, True]
+        assert [result.applied for result in results] == [False] * 11 + [True] * 4
         row = connection.execute(
             "SELECT recovery_fingerprint, version FROM recovery_contexts WHERE run_id = 'r-1';"
         ).fetchone()
@@ -346,7 +349,7 @@ def test_populated_0013_upgrade_backfills_terminal_result_kind(tmp_path: Path) -
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 13 + [True]
+        assert [result.applied for result in results] == [False] * 13 + [True, True]
         rows = connection.execute(
             "SELECT id, terminal_result_kind FROM runs ORDER BY id;"
         ).fetchall()
@@ -422,6 +425,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,

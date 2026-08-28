@@ -15,6 +15,8 @@ _ALLOWED = frozenset(
         ActionStatusV1.EXPIRED,
     }
 )
+_WRITE_PLAN_STATUSES = frozenset({PlanStatusV1.WAITING_APPROVAL})
+_READ_PLAN_STATUSES = frozenset({PlanStatusV1.ACTIVE})
 
 
 def transition_cancel_pending_action(
@@ -27,7 +29,11 @@ def transition_cancel_pending_action(
     plan_is_current: bool,
 ) -> CommandResult[ActionStatusV1, ActionCommand]:
     authority_conflict = guard_current_plan_authority(
-        plan_status=plan_status, plan_is_current=plan_is_current
+        plan_status=plan_status,
+        plan_is_current=plan_is_current,
+        allowed_statuses=(
+            _READ_PLAN_STATUSES if effect_type is EffectType.READ else _WRITE_PLAN_STATUSES
+        ),
     )
     if authority_conflict is not None:
         return CommandResult(

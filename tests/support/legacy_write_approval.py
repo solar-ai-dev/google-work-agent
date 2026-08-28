@@ -325,6 +325,7 @@ class ApproveWriteActionService:
                 plan_review_passed=plan.review_status is PlanReviewStatus.PASSED,
                 plan_status=plan.status,
                 plan_is_current=current_plan is not None and current_plan.id == plan.id,
+                run_status=RunStatusV1(run.status),
             )
             if not approval_result.applied:
                 response = _action_response_from_result(

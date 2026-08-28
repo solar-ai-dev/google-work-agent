@@ -155,24 +155,6 @@ class BeginPlanningHandler:
         except RunTransitionRejected as error:
             return _result(False, ResultCode.STATE_CONFLICT, status, version, str(error))
 
-        applied = unit_of_work.runs.update_if_version_and_status(
-            command.run_id,
-            command.expected_version,
-            frozenset({status}),
-            {"status": next_status.value, "version": version + 1, "finished_at_ms": None},
-        )
-        if not applied:
-            current = unit_of_work.runs.get(command.run_id)
-            if current is None:
-                raise LookupError(f"run not found: {command.run_id}")
-            return _result(
-                False,
-                ResultCode.VERSION_CONFLICT,
-                current.status,
-                current.version,
-                "compare-and-set rejected the transition",
-            )
-
         if plan is not None:
             for action in actions:
                 revoke_active_approvals(unit_of_work, action.id)
@@ -186,6 +168,15 @@ class BeginPlanningHandler:
                 is None
             ):
                 raise RuntimeError(f"validated Plan supersession CAS failed: {plan.id}")
+
+        applied = unit_of_work.runs.update_if_version_and_status(
+            command.run_id,
+            command.expected_version,
+            frozenset({status}),
+            {"status": next_status.value, "version": version + 1, "finished_at_ms": None},
+        )
+        if not applied:
+            raise RuntimeError("validated Run planning CAS failed")
 
         handoff_id = None
         if command.context_adjustment is not None:
