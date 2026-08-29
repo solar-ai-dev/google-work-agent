@@ -256,11 +256,11 @@ def test_ret_int_01_initial_search_reaches_evidence_and_retrieval_result(tmp_pat
         state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
         routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
         result = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
-        assert result["context_result"]["status"] == "SUFFICIENT"
         assert result["retrieval_result"] is not None
+        assert result["retrieval_result"]["coverage"] == "SUFFICIENT"
         assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 1
         assert any(call["prompt_ref"].prompt_id == "retrieval.plan_query" for call in llm.calls)
-        assert result["context_result"]["evidence_drafts"]
+        assert result["retrieval_result"]["evidence_refs"]
     finally:
         runtime.close()
 
@@ -360,7 +360,7 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
         }
         routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
         round_one = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
-        assert round_one["context_result"]["status"] == "SUFFICIENT"
+        assert round_one["retrieval_result"]["coverage"] == "SUFFICIENT"
         assert round_one["retrieval_result"]["retrieval_rounds"] == 1
         assert llm.planner_calls == llm.sufficiency_calls == 1
         assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 1

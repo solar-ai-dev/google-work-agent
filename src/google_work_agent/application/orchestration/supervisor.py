@@ -18,9 +18,6 @@ from google_work_agent.application.orchestration.confirmation import (
     build_user_interrupt_v1,
     validate_clarification_question_v1,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
-    build_context_clarification_question,
-)
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     BudgetDecision,
@@ -46,7 +43,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ClarificationQuestionV1,
-    ContextRetrievalResultV1,
     PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
@@ -130,7 +126,6 @@ def route_supervisor(
     phase: WorkflowPhase | str,
     state: MultiAgentGraphState,
     result: object | None = None,
-    legacy_retrieval_result: ContextRetrievalResultV1 | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
     reconsideration = _route_reconsideration(current_phase, result)
@@ -159,12 +154,9 @@ def route_supervisor(
         WorkflowPhase.CONTEXT_RETRIEVAL,
         WorkflowPhase.CONTEXT_EVALUATION,
     }:
-        if legacy_retrieval_result is None:
-            raise ValueError("retrieval routing requires legacy_retrieval_result")
         return _route_retrieval(
             state=state,
             retrieval_return=cast(RetrievalRouteResultV1, _require_mapping(result, "result")),
-            legacy_result=legacy_retrieval_result,
         )
     if current_phase is WorkflowPhase.WORK_ANALYSIS:
         return _route_analysis(
@@ -455,16 +447,8 @@ def _route_retrieval(
     *,
     state: MultiAgentGraphState,
     retrieval_return: RetrievalRouteResultV1,
-    legacy_result: ContextRetrievalResultV1,
 ) -> SupervisorDecisionV1:
-    """Route Retrieval's outcome on ``retrieval_return`` alone (Q2-HANDOFF).
-
-    ``legacy_result`` is still threaded through for the off-ramps below
-    (NEEDS_MORE_DATA/NEEDS_CONFIRMATION/BLOCKED), which keep their existing
-    mechanisms unchanged and out of this migration's scope; it is stored in
-    Main State only as a one-way compatibility by-product, never read back
-    as routing authority.
-    """
+    """Route only the canonical Retrieval return artifact/disposition."""
     disposition = retrieval_return["disposition"]
     retrieval_result = retrieval_return["typed_result"]
     if disposition in {"SUFFICIENT", "PARTIAL"}:
@@ -472,7 +456,7 @@ def _route_retrieval(
         # (Q2-HANDOFF coverage gating); compatibility fixtures without one
         # still route on disposition alone, same as before this migration --
         # they simply have no canonical artifact to attach.
-        work_analysis_update: GraphStateUpdateV1 = {"context_result": legacy_result}
+        work_analysis_update: GraphStateUpdateV1 = {}
         if retrieval_result is not None:
             work_analysis_update["retrieval_result"] = retrieval_result
         return _decision(
@@ -485,31 +469,13 @@ def _route_retrieval(
             reason_code=disposition,
         )
     if disposition == "NEEDS_MORE_DATA":
-        return _route_additional_acquisition(
-            state=state,
-            reason_code="CONTEXT_NEEDS_MORE_DATA",
-            current_update={"context_result": legacy_result},
-            request=legacy_result["additional_acquisition_request"],
-        )
+        raise ValueError("Retrieval NEEDS_MORE_DATA must remain inside its bounded local loop")
     if disposition == "NEEDS_CONFIRMATION":
-        question = build_context_clarification_question(
-            result=legacy_result,
-            request_intent=_request_intent_from_state(state),
-        )
-        return _decision(
-            target=SupervisorTarget.WAITING_CONFIRMATION,
-            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
-            state_update=_confirmation_state_update(
-                question=question,
-                context_result=legacy_result,
-            ),
-            reason_code=question["reason_code"],
-        )
+        raise ValueError("Retrieval confirmation must be handled at its owner checkpoint")
     return _finalize(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
         reason_code="CONTEXT_BLOCKED",
-        context_result=legacy_result,
     )
 
 

@@ -4,5 +4,6 @@ from ..projections.execute_read_projection import project_execute_read_input
 from ..state import RetrievalState
 
 
-def execute_read_node(state: RetrievalState) -> RetrievalState:
-    return {"read_result": execute_read(**project_execute_read_input(state))}
+def execute_read_node(state: RetrievalState) -> dict[str, object]:
+    result = execute_read(**project_execute_read_input(state))
+    return {"read_result_handles": [result.read_result_handle]}

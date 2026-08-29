@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, overload
+from typing import Literal
 
 from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
@@ -29,7 +28,6 @@ class RetrievalReadExecutionV1:
     provider_called: bool
 
 
-@overload
 def execute_read(
     *,
     plan: SourceFetchPlanV1,
@@ -39,64 +37,8 @@ def execute_read(
     connector_reader: ConnectorReadPort,
     read_result_cache: RunRetrievalCachePort,
     read_result_handle: str,
-    compatibility_execution: None = None,
-) -> RetrievalReadExecutionV1: ...
-
-
-@overload
-def execute_read[CompatibilityResultT](
-    *,
-    compatibility_execution: Callable[[], CompatibilityResultT],
-    plan: None = None,
-    run_id: None = None,
-    binding: None = None,
-    tool_arguments: None = None,
-    connector_reader: None = None,
-    read_result_cache: None = None,
-    read_result_handle: None = None,
-) -> CompatibilityResultT: ...
-
-
-def execute_read[CompatibilityResultT](
-    *,
-    plan: SourceFetchPlanV1 | None = None,
-    run_id: str | None = None,
-    binding: ValidatedConnectorToolBindingV1 | None = None,
-    tool_arguments: dict[str, JsonValue] | None = None,
-    connector_reader: ConnectorReadPort | None = None,
-    read_result_cache: RunRetrievalCachePort | None = None,
-    read_result_handle: str | None = None,
-    compatibility_execution: Callable[[], CompatibilityResultT] | None = None,
-) -> RetrievalReadExecutionV1 | CompatibilityResultT:
+) -> RetrievalReadExecutionV1:
     """Execute one registry-validated READ and keep its opaque continuation cache-local."""
-    if compatibility_execution is not None:
-        if any(
-            value is not None
-            for value in (
-                plan,
-                run_id,
-                binding,
-                tool_arguments,
-                connector_reader,
-                read_result_cache,
-                read_result_handle,
-            )
-        ):
-            raise TypeError("compatibility execution cannot mix canonical read inputs")
-        # #114 owns removal of the whole-Retrieval materialization delegate.
-        # It cannot select routes or mutate #113 state; it preserves the
-        # existing provider materialization behind this exact owner only.
-        return compatibility_execution()
-    if (
-        plan is None
-        or run_id is None
-        or binding is None
-        or tool_arguments is None
-        or connector_reader is None
-        or read_result_cache is None
-        or read_result_handle is None
-    ):
-        raise TypeError("canonical retrieval read inputs are required")
     _validate_binding(plan, binding)
     arguments = dict(tool_arguments)
     if "page_token" in arguments or "next_page_token" in arguments:

@@ -12,9 +12,13 @@ from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2 as CanonicalRequestIntentV2,
 )
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    StateArtifactRefV1,
+)
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
 )
@@ -35,8 +39,10 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceSelectionResultV2,
     PlanReviewResultV1,
     RequestIntentV2,
+    RetrievalNeedV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
+    RetrievalSourceStatusV1,
     RouteReconsiderationRequiredV1,
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
@@ -107,7 +113,8 @@ class ContextRetrievalInputState(AgentSubgraphInputEnvelope, total=False):
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
+    exclusion_obligation_segment_ids: list[str]
+    pending_user_retrieval_need: RetrievalNeedV1 | None
 
 
 class WorkAnalysisInputState(AgentSubgraphInputEnvelope, total=False):
@@ -151,7 +158,20 @@ class AcquisitionLocalState(GraphState):
 
 
 class ContextRetrievalLocalState(GraphState):
-    query_plan: NotRequired[RetrievalQueryPlanV2]
+    # Exact RetrievalStateV2 semantic channels. The remaining fields below
+    # are runtime envelope/scratch channels and are removed at the Parent
+    # projection boundary.
+    input_route_ref: NotRequired[StateArtifactRefV1]
+    input_routes: NotRequired[list[InputToolRouteV1]]
+    query_attempts: NotRequired[list[QueryAttemptV1]]
+    source_statuses: NotRequired[list[RetrievalSourceStatusV1]]
+    read_result_handles: NotRequired[list[str]]
+    segment_handles: NotRequired[list[str]]
+    rag_candidates: NotRequired[list[RagCandidateV1]]
+    evidence_selection: NotRequired[EvidenceSelectionResultV2 | None]
+    sufficiency: NotRequired[SufficiencyResultV2 | None]
+    final_result: NotRequired[RetrievalResultV1 | None]
+    query_plan: NotRequired[RetrievalQueryPlanV2 | None]
     segments: NotRequired[list[str]]
     ranked_segments: NotRequired[list[RagCandidateV1]]
     availability_results: NotRequired[list[AvailableIntervalV1]]

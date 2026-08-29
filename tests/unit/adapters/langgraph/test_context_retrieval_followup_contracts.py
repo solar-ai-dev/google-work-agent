@@ -6,6 +6,7 @@ from typing import Any, cast
 import pytest
 
 from google_work_agent.adapters.langgraph.main.state import (
+    CONTEXT_AGENT_LOCAL_KEY,
     CONTEXT_CANONICAL_PLANS_KEY,
     CONTEXT_CURRENT_ROUND_NO_KEY,
     CONTEXT_DETAIL_CANDIDATES_KEY,
@@ -14,8 +15,8 @@ from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_NEXT_PAGE_HANDLES_KEY,
     CONTEXT_QUERY_ATTEMPTS_KEY,
 )
-from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
-    ContextRetrieverSubgraph,
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.graph import (
+    RetrievalSubgraph,
     _resolve_availability_from_reads,
 )
 from google_work_agent.application.orchestration.api_acquisition import (
@@ -415,7 +416,7 @@ def _subgraph(
     acquisition: _Acquisition,
     planner: _Planner | None = None,
 ) -> Any:
-    subgraph = object.__new__(ContextRetrieverSubgraph)
+    subgraph = object.__new__(RetrievalSubgraph)
     subgraph._read_result_cache = cache  # noqa: SLF001
     subgraph._retrieval_read_executor = RetrievalReadExecutor(  # noqa: SLF001
         connector_reader=reader,
@@ -462,6 +463,7 @@ def _state() -> dict[str, object]:
 
 def _changed_state() -> dict[str, object]:
     state = _state()
+    state[CONTEXT_AGENT_LOCAL_KEY] = {}
     state["request_intent"] = {
         "schema_version": 2,
         "meta": {"artifact_id": "intent", "revision": 1, "based_on": []},

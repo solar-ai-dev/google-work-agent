@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Literal, cast
 
 from google_work_agent.application.agents.retrieval.normalize_segments import (
     DEFAULT_CONTEXT_BUDGET,
     ContextBudget,
     SourceSegment,
+    _truncate,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.orchestration.contracts import (
@@ -18,6 +20,7 @@ from google_work_agent.application.orchestration.contracts import (
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.handoff_contracts import (
+    EvidenceDraftV1,
     EvidenceRoleDraftV2,
     EvidenceSelectionResultV2,
     RequestIntentV2,
@@ -78,10 +81,16 @@ def select_evidence(
     segments: list[SourceSegment],
     retry_budget: RunBudgetV1,
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
+    exclusion_obligation_segment_ids: Collection[str] = (),
 ) -> tuple[EvidenceSelectionResultV2, RunBudgetV1]:
     """Select evidence only from the bounded ranked segments supplied by RAG."""
-    projection = _ranked_segments_projection(rag_candidates, segments)
-    candidate_ids = {candidate["segment_id"] for candidate in rag_candidates}
+    obligations = _stable_unique(exclusion_obligation_segment_ids)
+    excluded = set(obligations)
+    eligible_candidates = [
+        candidate for candidate in rag_candidates if candidate["segment_id"] not in excluded
+    ]
+    projection = _ranked_segments_projection(eligible_candidates, segments)
+    candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
     result = llm_runtime.invoke_structured(
         prompt_ref=prompt_ref,
         prompt_input={"request_intent": request_intent, "ranked_segments": projection},
@@ -90,10 +99,13 @@ def select_evidence(
     )
     try:
         return (
-            _validate_selection(
-                result.structured_output,
-                candidate_segment_ids=candidate_ids,
-                context_budget=context_budget,
+            _apply_exclusions(
+                _validate_selection(
+                    result.structured_output,
+                    candidate_segment_ids=candidate_ids,
+                    context_budget=context_budget,
+                ),
+                obligations,
             ),
             retry_budget,
         )
@@ -104,7 +116,7 @@ def select_evidence(
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
-            return _empty_selection(), decision["run_budget"]
+            return _empty_selection(obligations), decision["run_budget"]
         revision = llm_runtime.invoke_structured(
             prompt_ref=revision_prompt_ref,
             prompt_input={
@@ -132,15 +144,18 @@ def select_evidence(
         )
         try:
             return (
-                _validate_selection(
-                    revision.structured_output,
-                    candidate_segment_ids=candidate_ids,
-                    context_budget=context_budget,
+                _apply_exclusions(
+                    _validate_selection(
+                        revision.structured_output,
+                        candidate_segment_ids=candidate_ids,
+                        context_budget=context_budget,
+                    ),
+                    obligations,
                 ),
                 decision["run_budget"],
             )
         except ValueError:
-            return _empty_selection(), decision["run_budget"]
+            return _empty_selection(obligations), decision["run_budget"]
 
 
 def _ranked_segments_projection(
@@ -226,10 +241,83 @@ def _string_list(value: object, field: str) -> list[str]:
     return list(value)
 
 
-def _empty_selection() -> EvidenceSelectionResultV2:
+def _empty_selection(excluded_segment_ids: Collection[str] = ()) -> EvidenceSelectionResultV2:
     return {
         "schema_version": 2,
         "evidence_drafts": [],
         "selected_segment_ids": [],
-        "excluded_segment_ids": [],
+        "excluded_segment_ids": _stable_unique(excluded_segment_ids),
     }
+
+
+def _apply_exclusions(
+    selection: EvidenceSelectionResultV2,
+    obligations: Collection[str],
+) -> EvidenceSelectionResultV2:
+    excluded = _stable_unique([*obligations, *selection["excluded_segment_ids"]])
+    excluded_set = set(excluded)
+    return {
+        "schema_version": 2,
+        "evidence_drafts": [
+            draft
+            for draft in selection["evidence_drafts"]
+            if draft["segment_id"] not in excluded_set
+        ],
+        "selected_segment_ids": [
+            segment_id
+            for segment_id in selection["selected_segment_ids"]
+            if segment_id not in excluded_set
+        ],
+        "excluded_segment_ids": excluded,
+    }
+
+
+def _stable_unique(values: Collection[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def materialize_evidence_drafts(
+    selection: EvidenceSelectionResultV2,
+    *,
+    segments: list[SourceSegment],
+    context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
+) -> list[EvidenceDraftV1]:
+    """Join thin model-selected segment roles to deterministic source-owned fields."""
+    by_id = {segment.segment_id: segment for segment in segments}
+    result: list[EvidenceDraftV1] = []
+    seen: set[tuple[str, str, str]] = set()
+    for role_draft in selection["evidence_drafts"]:
+        segment = by_id.get(role_draft["segment_id"])
+        if segment is None:
+            raise ValueError(f"RAG_SEGMENT_REFERENCE_INVALID: {role_draft['segment_id']}")
+        excerpt = _truncate(segment.text, context_budget.max_excerpt_chars)
+        key = (segment.resource_handle, segment.segment_id, excerpt)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(
+            {
+                "schema_version": 1,
+                "evidence_id": f"evidence-{segment.segment_id}",
+                "resource_handle": segment.resource_handle,
+                "segment_id": segment.segment_id,
+                "kind": "excerpt",
+                "excerpt": excerpt,
+                "locator": dict(segment.locator),
+                "reason_codes": [role_draft["role"]],
+            }
+        )
+    return result
+
+
+__all__ = [
+    "EVIDENCE_SELECTION_OUTPUT_SCHEMA",
+    "materialize_evidence_drafts",
+    "select_evidence",
+]

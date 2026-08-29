@@ -233,8 +233,8 @@ class EvidenceRoleDraftV2(TypedDict):
 
     Thin reference + classification only -- the LLM never re-supplies
     resource_handle/excerpt/locator; those are joined back from the
-    normalized SourceSegment by segment_id (see context_retrieval.py
-    _materialize_evidence_drafts)."""
+    normalized SourceSegment by segment_id (see
+    retrieval/select_evidence.py ``materialize_evidence_drafts``)."""
 
     segment_id: str
     role: Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"]
@@ -296,8 +296,13 @@ class MissingInformationV1(TypedDict):
 
 class RetrievalSourceStatusV1(TypedDict):
     route_id: str
+    resource_type: str
     status: Literal["COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED"]
-    reason_codes: list[str]
+    evidence_refs: list[str]
+    failure_kind: Literal[
+        "AUTH", "SCOPE", "RATE_LIMIT", "TIMEOUT", "PROVIDER",
+        "NOT_FOUND", "BUDGET", "OTHER",
+    ] | None
 
 
 class RetrievalResultV1(TypedDict):
@@ -309,8 +314,10 @@ class RetrievalResultV1(TypedDict):
     context_bundle_ref: str | None
     evidence_refs: list[str]
     selected_segment_ids: list[str]
+    excluded_segment_ids: list[str]
     source_resource_refs: list[str]
     source_statuses: list[RetrievalSourceStatusV1]
+    availability_results: list[dict[str, object]]
     missing_information: list[MissingInformationV1]
     retrieval_rounds: int
 

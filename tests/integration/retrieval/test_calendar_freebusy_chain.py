@@ -13,14 +13,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    normalize_segments,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
 )
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
-)
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
 )
 from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
@@ -252,13 +252,7 @@ def test_availability_required_request_calls_freebusy_once_and_hands_off_summary
     ]
     assert len(freebusy_handles) == 1
 
-    context_agent = ContextRetrievalAgent(
-        llm_runtime=_FakeLLMRuntime(),
-        select_prompt_ref=SELECT_PROMPT_REF,
-        sufficiency_prompt_ref=SUFFICIENCY_PROMPT_REF,
-        select_revision_prompt_ref=SELECT_REVISION_PROMPT_REF,
-    )
-    segments = context_agent.build_segments_from_acquisition(acquisition)
+    segments = normalize_segments(acquisition)
     freebusy_segment = next(
         segment for segment in segments if segment.resource_handle.startswith("calendar_freebusy:")
     )

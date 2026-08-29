@@ -67,9 +67,6 @@ from google_work_agent.application.orchestration.api_acquisition import (
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
-)
 from google_work_agent.application.orchestration.contracts import (
     BudgetDecision,
     ConfirmationResponseProjectionV1,
@@ -409,10 +406,6 @@ class WorkflowRuntimeCore:
             now_ms=now_ms,
             timezone_provider=timezone_provider,
         )
-        self._context = ContextRetrievalAgent(
-            llm_runtime=llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
         self._retrieval_query_planner = RetrievalQueryPlannerAgent(
             llm_runtime=llm_runtime,
             prompt_ref=load_acquisition_plan_sources_prompt_reference(prompt_manifest_path),
@@ -701,7 +694,6 @@ class WorkflowRuntimeCore:
             prompt_manifest_path=prompt_manifest_path,
             acquisition_agent=self._acquisition,
             retrieval_query_planner=self._retrieval_query_planner,
-            context_agent=self._context,
             tool_catalog=tool_catalog,
             id_factory=id_factory,
             graph_profile=self._graph_profile,

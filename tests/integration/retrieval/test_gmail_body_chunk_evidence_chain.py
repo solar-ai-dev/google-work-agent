@@ -14,6 +14,19 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from google_work_agent.application.agents.retrieval.assess_sufficiency import (
+    assess_sufficiency,
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    normalize_segments,
+)
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
+    rag_retrieve_rerank,
+)
+from google_work_agent.application.agents.retrieval.select_evidence import (
+    materialize_evidence_drafts,
+    select_evidence,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     RetrievalBudget,
@@ -21,10 +34,10 @@ from google_work_agent.application.orchestration.api_acquisition import (
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
+from google_work_agent.application.orchestration.contracts import (
+    ApiAcquisitionResult,
+    build_default_run_budget,
 )
-from google_work_agent.application.orchestration.contracts import ApiAcquisitionResult
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
@@ -100,15 +113,6 @@ SELECT_REVISION_PROMPT_REF = PromptReference(
     input_schema_version="agent-node-input-v0.1",
     output_schema_version="agent-node-output-v0.1",
 )
-
-
-def _context_agent(runtime: _FakeLLMRuntime) -> ContextRetrievalAgent:
-    return ContextRetrievalAgent(
-        llm_runtime=runtime,
-        select_prompt_ref=SELECT_PROMPT_REF,
-        sufficiency_prompt_ref=SUFFICIENCY_PROMPT_REF,
-        select_revision_prompt_ref=SELECT_REVISION_PROMPT_REF,
-    )
 
 
 @dataclass
@@ -226,8 +230,7 @@ def test_gmail_thread_search_to_detail_to_body_to_segment_chain() -> None:
         "get_gmail_message",
     ]
 
-    context_agent = _context_agent(_FakeLLMRuntime())
-    segments = context_agent.build_segments_from_acquisition(acquisition)
+    segments = normalize_segments(acquisition)
 
     segment_texts = {segment.resource_handle: segment.text for segment in segments}
     assert (
@@ -290,8 +293,7 @@ def test_resource_selected_gmail_thread_reaches_body_and_segments() -> None:
     call_names = [record.operation for record in gateway.call_log]
     assert call_names == ["get_gmail_thread", "get_gmail_message", "get_gmail_message"]
 
-    context_agent = _context_agent(_FakeLLMRuntime())
-    segments = context_agent.build_segments_from_acquisition(acquisition)
+    segments = normalize_segments(acquisition)
     segment_texts = {segment.resource_handle: segment.text for segment in segments}
     assert (
         segment_texts["gmail_message:message-project-1"]
@@ -334,8 +336,7 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
     acquisition = acquisition_agent.acquire(plans=[_plan()], request=_request())
 
     context_runtime = _FakeLLMRuntime()
-    context_agent = _context_agent(context_runtime)
-    segments = context_agent.build_segments_from_acquisition(acquisition)
+    segments = normalize_segments(acquisition)
     target_handle = "gmail_message:message-project-1"
     target_segment = next(
         segment for segment in segments if segment.resource_handle == target_handle
@@ -366,16 +367,46 @@ def test_evidence_selection_uses_only_the_selected_message_segment() -> None:
         )
     )
 
-    result = context_agent.retrieve(
+    ranked = rag_retrieve_rerank(segments, request_intent=_intent(), top_k=24)
+    selection, budget = select_evidence(
+        llm_runtime=context_runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_REVISION_PROMPT_REF,
+        trace_context=_trace(),
         request_intent=_intent(),
+        rag_candidates=ranked,
+        segments=segments,
+        retry_budget=build_default_run_budget(),
+    )
+    evidence = materialize_evidence_drafts(selection, segments=segments)
+    result = assess_sufficiency(
+        llm_runtime=context_runtime,
+        prompt_ref=SUFFICIENCY_PROMPT_REF,
+        trace_context=_trace(),
+        request_intent=_intent(),
+        tool_route_plan=None,
         acquisition_result=acquisition,
-        request=_request(),
+        evidence_drafts=evidence,
+        retry_budget=budget,
     )
 
     assert result["status"] == "SUFFICIENT"
-    assert result["context_bundle"]["evidence_refs"] == [f"evidence-{target_segment.segment_id}"]
-    assert result["context_bundle"]["normalized_context"][0]["excerpt"] == (
+    assert [item["evidence_id"] for item in evidence] == [
+        f"evidence-{target_segment.segment_id}"
+    ]
+    assert evidence[0]["excerpt"] == (
         "Please summarize the open items and draft a calm reply."
+    )
+
+
+def _trace() -> ObservabilityContext:
+    return ObservabilityContext(
+        request_id="request-1",
+        command_id="command-1",
+        conversation_id="conversation-1",
+        run_id="run-1",
+        langgraph_thread_id="thread-1",
+        llm_call_id="run-1:retrieval",
     )
 
 

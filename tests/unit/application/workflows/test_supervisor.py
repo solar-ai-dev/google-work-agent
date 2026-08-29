@@ -1,6 +1,7 @@
 import json
 from typing import Literal, cast
 
+import pytest
 from tests.support.legacy_write.write_actions import WriteActionResponse
 
 from google_work_agent.application.orchestration.contracts import (
@@ -209,25 +210,12 @@ def test_context_needs_more_data_routes_to_source_planning_with_budget_update() 
         request_intent=_request_intent(),
         workflow_phase=WorkflowPhase.CONTEXT_EVALUATION,
     )
-    result = _context_result("NEEDS_MORE_DATA")
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.CONTEXT_EVALUATION,
-        state=state,
-        result={"disposition": "NEEDS_MORE_DATA", "typed_result": None},
-        legacy_retrieval_result=result,
-    )
-
-    assert decision["target"] == SupervisorTarget.SOURCE_PLANNING.value
-    assert decision["next_phase"] == WorkflowPhase.SOURCE_PLANNING.value
-    assert decision["budget_decision"] is not None
-    assert decision["state_update"]["retry_budget"] is not None
-    assert decision["budget_decision"]["decision"] == "ALLOW"
-    assert decision["state_update"]["retry_budget"]["additional_acquisitions_used"] == 1
-    assert (
-        decision["state_update"]["retry_budget"]["profile"] == BudgetProfile.RETRIEVAL_HEAVY.value
-    )
-    assert decision["state_update"]["context_result"] == result
+    with pytest.raises(ValueError, match="bounded local loop"):
+        route_supervisor(
+            phase=WorkflowPhase.CONTEXT_EVALUATION,
+            state=state,
+            result={"disposition": "NEEDS_MORE_DATA", "typed_result": None},
+        )
 
 
 def test_context_needs_confirmation_becomes_user_interrupt() -> None:
@@ -235,22 +223,12 @@ def test_context_needs_confirmation_becomes_user_interrupt() -> None:
         request_intent=_request_intent(),
         workflow_phase=WorkflowPhase.CONTEXT_EVALUATION,
     )
-    result = _context_result("NEEDS_CONFIRMATION")
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.CONTEXT_EVALUATION,
-        state=state,
-        result={"disposition": "NEEDS_CONFIRMATION", "typed_result": None},
-        legacy_retrieval_result=result,
-    )
-
-    assert decision["target"] == SupervisorTarget.WAITING_CONFIRMATION.value
-    assert decision["next_phase"] == WorkflowPhase.WAITING_CONFIRMATION.value
-    user_interrupt = validate_user_interrupt_v1(decision["state_update"]["user_interrupt"])
-
-    assert user_interrupt["origin_target"] == "context.assess_sufficiency"
-    assert user_interrupt["resume_kind"] == "CONFIRMATION"
-    assert decision["state_update"]["finalize_intent"] is None
+    with pytest.raises(ValueError, match="owner checkpoint"):
+        route_supervisor(
+            phase=WorkflowPhase.CONTEXT_EVALUATION,
+            state=state,
+            result={"disposition": "NEEDS_CONFIRMATION", "typed_result": None},
+        )
 
 
 def test_analysis_complete_routes_to_solution_planning() -> None:

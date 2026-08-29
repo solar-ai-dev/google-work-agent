@@ -356,7 +356,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
         runtime.close()
 
 
-def test_context_subgraph_routes_needs_more_data_back_to_source_planning(
+def test_retrieval_rejects_execution_without_a_frozen_tool_route(
     tmp_path: Path,
 ) -> None:
     """Retrieval's own local-loop NEEDS_MORE_DATA (no frozen tool_route_plan
@@ -425,11 +425,8 @@ def test_context_subgraph_routes_needs_more_data_back_to_source_planning(
             "missing_slots": [],
             "remaining_budget": {"sources": 3, "pages": 3, "candidates": 60, "details": 30},
         }
-        routed = runtime._context_subgraph.invoke(state)  # noqa: SLF001
-
-        assert routed["__logical_target__"] == "context_retriever"
-        assert routed["__target__"] == "context_retriever"
-        assert "__context_agent_local__" not in routed
+        with pytest.raises(ValueError, match="tool_route_plan"):
+            runtime._context_subgraph.invoke(state)  # noqa: SLF001
     finally:
         runtime.close()
 
@@ -522,7 +519,6 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
         # fail-closed by design).
         review_state = runtime._initial_state(_start_request())  # noqa: SLF001
         review_state["request_intent"] = _clear_intent()
-        review_state["context_result"] = context["context_result"]
         review_state["retrieval_result"] = context["retrieval_result"]
         evidence_ref = context["retrieval_result"]["evidence_refs"][0]
         segment_ref = context["retrieval_result"]["selected_segment_ids"][0]

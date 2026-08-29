@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -12,25 +13,26 @@ def test_normalize_segments_exact_node_projection_and_router() -> None:
     )
     assert (owner / "projections/normalize_segments_projection.py").exists()
     assert (
-        'return "rag_retrieve"'
-        in (owner / "routing/route_after_normalize_segments.py").read_text()
+        'return "rag_retrieve"' in (owner / "routing/route_after_normalize_segments.py").read_text()
     )
 
 
-def test_production_retrieval_uses_exact_five_core_node_boundaries() -> None:
+def test_production_retrieval_uses_exact_eight_node_boundaries() -> None:
     root = Path(__file__).resolve().parents[5]
     source = (
-        root
-        / "src/google_work_agent/adapters/langgraph/subgraphs/projected_context_retrieval.py"
+        root / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval/graph.py"
     ).read_text()
-    for node_name in (
+    expected = {
         "plan_query",
         "build_query",
         "execute_read",
         "normalize_segments",
         "rag_retrieve",
-    ):
-        assert f'graph.add_node("{node_name}"' in source
+        "select_evidence",
+        "assess_sufficiency",
+        "finalize",
+    }
+    assert set(re.findall(r'graph\.add_node\("([^"]+)"', source)) == expected
     for legacy_name in (
         "execute_initial_read",
         "plan_followup",
@@ -40,8 +42,12 @@ def test_production_retrieval_uses_exact_five_core_node_boundaries() -> None:
     ):
         assert f'graph.add_node("{legacy_name}"' not in source
 
-    operation_source = (
-        root / "src/google_work_agent/adapters/langgraph/subgraphs/context_retrieval.py"
-    ).read_text()
-    assert "resolve_availability(" in operation_source
+    assert "resolve_availability(" in source
     assert 'graph.add_node("resolve_availability"' not in source
+
+    composition = (
+        root / "src/google_work_agent/adapters/langgraph/pre_analysis_composition.py"
+    ).read_text()
+    assert "subgraphs.retrieval.graph" in composition
+    assert "ProjectedContextRetrieverSubgraph" not in composition
+    assert "ContextRetrieverSubgraph" not in composition

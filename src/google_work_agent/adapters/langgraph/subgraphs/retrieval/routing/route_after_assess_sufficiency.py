@@ -11,5 +11,10 @@ def route_after_assess_sufficiency(state: Mapping[str, object]) -> str:
     if isinstance(candidate, Mapping):
         disposition = candidate.get("disposition") or candidate.get("status")
         if disposition in {"NEEDS_MORE_DATA", "RETRIEVE_MORE"}:
-            return "plan_query"
-    return "finalize_retrieval"
+            attempts = state.get("query_attempts", [])
+            if not isinstance(attempts, list):
+                return "finalize"
+            rounds = {item.get("round_no") for item in attempts if isinstance(item, Mapping)}
+            if len(rounds) < 3:
+                return "plan_query"
+    return "finalize"

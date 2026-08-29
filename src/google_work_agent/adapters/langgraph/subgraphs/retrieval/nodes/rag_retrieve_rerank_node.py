@@ -4,5 +4,5 @@ from ..projections.rag_retrieve_rerank_projection import project_rag_retrieve_re
 from ..state import RetrievalState
 
 
-def rag_retrieve_rerank_node(state: RetrievalState) -> RetrievalState:
-    return {"ranked_segments": rag_retrieve_rerank(**project_rag_retrieve_rerank_input(state))}
+def rag_retrieve_rerank_node(state: RetrievalState) -> dict[str, object]:
+    return {"rag_candidates": rag_retrieve_rerank(**project_rag_retrieve_rerank_input(state))}

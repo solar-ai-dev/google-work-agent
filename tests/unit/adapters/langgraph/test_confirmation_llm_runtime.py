@@ -63,7 +63,7 @@ def test_confirmation_is_injected_only_into_originating_prompt_slot() -> None:
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
         run_id="run-1",
-        origin_target="context.assess_sufficiency",
+        origin_target="retrieval.assess_sufficiency",
         response=_response(),  # type: ignore[arg-type]
     )
 

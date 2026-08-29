@@ -9,20 +9,17 @@ from typing import Any
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
-from google_work_agent.adapters.langgraph.subgraphs.projected_context_retrieval import (
-    ProjectedContextRetrieverSubgraph,
-)
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.graph import (
+    RetrievalSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
     build_tool_routing_subgraph,
 )
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
-)
-from google_work_agent.application.orchestration.context_retrieval import (
-    ContextRetrievalAgent,
 )
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
@@ -68,7 +65,6 @@ def build_pre_analysis_subgraphs(
     prompt_manifest_path: Path | None,
     acquisition_agent: ApiDiscoveryAcquisitionAgent,
     retrieval_query_planner: RetrievalQueryPlannerAgent,
-    context_agent: ContextRetrievalAgent,
     tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     graph_profile: GraphProfile,
@@ -124,8 +120,9 @@ def build_pre_analysis_subgraphs(
             merge_decision=merge_decision,
             read_result_cache=read_result_cache,
         ).build(),
-        context_retrieval=ProjectedContextRetrieverSubgraph(
-            agent=context_agent,
+        context_retrieval=RetrievalSubgraph(
+            llm_runtime=llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             graph_profile=graph_profile,
             transition_run=transition_run,

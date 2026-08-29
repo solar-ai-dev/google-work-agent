@@ -4,5 +4,5 @@ from ..projections.build_query_projection import project_build_query_input
 from ..state import RetrievalState
 
 
-def build_query_node(state: RetrievalState) -> RetrievalState:
+def build_query_node(state: RetrievalState) -> dict[str, object]:
     return {"fetch_plan": build_query(**project_build_query_input(state))}

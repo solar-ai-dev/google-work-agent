@@ -22,6 +22,9 @@ from google_work_agent.application.agents.request_understanding.finalize_intent 
 from google_work_agent.application.agents.request_understanding.validate_intent import (
     validate_intent,
 )
+from google_work_agent.application.agents.retrieval.finalize_retrieval import (
+    finalize_retrieval,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
     normalize_resource_type,
@@ -50,9 +53,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.profile_fused import (
     ProfilePlanningProjectionV1,
     ProfileReasonPlanOutputV1,
-)
-from google_work_agent.application.orchestration.retrieval_finalize import (
-    finalize_retrieval_result,
 )
 from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningAgent,
@@ -164,7 +164,7 @@ def build_profile_retrieval_result(
     evidence_drafts = [
         item for item in context_result["evidence_drafts"] if item["segment_id"] in selected
     ]
-    result = finalize_retrieval_result(
+    result = finalize_retrieval(
         artifact_id=artifact_id,
         request_intent=request_intent,
         tool_route_plan=tool_route_plan,

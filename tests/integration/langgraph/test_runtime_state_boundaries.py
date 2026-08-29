@@ -312,7 +312,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
         acquired = runtime._acquisition_subgraph.invoke(routed)  # noqa: SLF001
         context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
         assert context["__target__"] == "work_analysis"
-        evidence_ref = context["context_result"]["evidence_drafts"][0]["evidence_id"]
+        evidence_ref = context["retrieval_result"]["evidence_refs"][0]
         assert evidence_ref.startswith("evidence-seg_")
         assert CONTEXT_RAG_CANDIDATES_KEY not in context
 

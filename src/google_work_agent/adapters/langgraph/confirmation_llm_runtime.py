@@ -30,7 +30,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
             "profile.three.stage1.initial",
         }
     ),
-    "context.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
+    "retrieval.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
     "analysis.analyze": frozenset({"work_analysis.analyze"}),
     "planning.answer_only": frozenset({"planning.compose_answer"}),
     "planning.draft_plan": frozenset({"planning.compose_arguments"}),

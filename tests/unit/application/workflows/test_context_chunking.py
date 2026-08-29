@@ -7,13 +7,15 @@ pipeline in context_retrieval.py that wires them into SourceSegment output.
 
 from __future__ import annotations
 
-from google_work_agent.application.orchestration.api_acquisition import AcquisitionResultV1
-from google_work_agent.application.orchestration.context_retrieval import (
+from google_work_agent.application.agents.retrieval.normalize_segments import (
     ContextBudget,
     _chunk_text,
     _estimate_tokens,
-    _segments_from_acquisition,
     _strip_email_quote_and_signature,
+)
+from google_work_agent.application.orchestration.api_acquisition import AcquisitionResultV1
+from google_work_agent.application.orchestration.context_segmentation import (
+    _segments_from_acquisition,
 )
 
 DEFAULT_BUDGET = ContextBudget()

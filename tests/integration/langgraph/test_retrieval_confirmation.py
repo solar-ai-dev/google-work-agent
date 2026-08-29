@@ -2,9 +2,9 @@
 integration tests.
 
 Retrieval's only NEEDS_CONFIRMATION trigger is ``retrieval.assess_sufficiency``
-(``ContextRetrievalAgent.assess_sufficiency``) returning
+(``assess_sufficiency``) returning
 ``status="NEEDS_CONFIRMATION"`` -- always the LAST LLM step in one round
-(after ``select_evidence``/``selection_validate`` already completed and
+(after ``select_evidence`` and deterministic evidence materialization completed and
 committed). These tests focus on: the interrupt genuinely living inside
 Retrieval's own nested task (not the shared Main-Graph
 ``waiting_confirmation`` node), zero re-execution of Tool Route/query
@@ -165,7 +165,7 @@ def test_retrieval_needs_confirmation_pauses_inside_own_nested_task(tmp_path: Pa
         assert first.outcome is WorkflowOutcome.ACCEPTED
         interrupt = first.payload["user_interrupt"]
         assert interrupt is not None
-        assert interrupt["origin_target"] == "context.assess_sufficiency"
+        assert interrupt["origin_target"] == "retrieval.assess_sufficiency"
         interrupt_id = interrupt["interrupt_id"]
         assert interrupt_id is not None
 
@@ -471,7 +471,7 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
     round2_task = _nested_context_retriever_task(runtime)
     assert round2_task.state.next == ("finalize",)
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
-    assert second.payload["user_interrupt"]["origin_target"] == "context.assess_sufficiency"
+    assert second.payload["user_interrupt"]["origin_target"] == "retrieval.assess_sufficiency"
     assert round2_interrupt_id != round1_interrupt_id
 
     # --- Round 3: resolved -- Retrieval and the downstream ANSWER path

@@ -11,7 +11,7 @@ from google_work_agent.application.agents.request_understanding.validate_intent 
 from google_work_agent.application.orchestration.api_acquisition import (
     validate_source_fetch_plans_v1,
 )
-from google_work_agent.application.orchestration.context_retrieval import (
+from google_work_agent.application.orchestration.context_retrieval_result_validation import (
     validate_context_retrieval_result_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (

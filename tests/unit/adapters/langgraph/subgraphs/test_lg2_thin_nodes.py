@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 import inspect
 
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.execute_read_node import (
@@ -6,8 +8,8 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.execute_read
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.plan_query_node import (
     plan_query_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.retrieval_operation_projection import (
-    project_retrieval_operation_input,
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.select_evidence_projection import (
+    project_select_evidence_input,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.validate_relations_node import (
     validate_relations_node,
@@ -30,18 +32,16 @@ def test_owned_nodes_do_not_execute_mcp_or_provider_directly():
 
 def test_retrieval_projection_is_operation_allowlisted():
     state = {
-        "operation_inputs": {
-            "select_evidence": {"candidates": "c"},
-            "foreign": {"secret": True},
-        }
+        "request_intent": {"goal": "find evidence"},
+        "rag_candidates": [],
+        "exclusion_obligation_segment_ids": ["segment-1"],
+        "foreign": {"secret": True},
     }
-    assert project_retrieval_operation_input(state, "select_evidence") == {"candidates": "c"}
-    try:
-        project_retrieval_operation_input(state, "foreign")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("foreign retrieval operation must not project")
+    assert project_select_evidence_input(state) == {
+        "request_intent": {"goal": "find evidence"},
+        "rag_candidates": [],
+        "exclusion_obligation_segment_ids": ["segment-1"],
+    }
 
 
 def test_work_analysis_projection_is_operation_allowlisted():

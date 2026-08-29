@@ -1,20 +1,51 @@
-"""Owner-local LangGraph state for Retrieval."""
+"""Canonical owner-local state for the Retrieval subgraph."""
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import TypedDict
+
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    StateArtifactRefV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
+from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    EvidenceSelectionResultV2,
+    RequestIntentV2,
+    RetrievalNeedV1,
+    RetrievalResultV1,
+    RetrievalSourceStatusV1,
+    SufficiencyResultV2,
+)
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
+    RetrievalQueryPlanV2,
+)
 
 
-class RetrievalState(TypedDict):
-    """Invocation-local state. Only final_result/workflow_signal are parent-facing patches."""
+class RetrievalStateV2(TypedDict, total=False):
+    """The exact 05-owned Retrieval-local semantic state."""
 
-    operation_inputs: NotRequired[dict[str, dict[str, object]]]
-    query_plan: NotRequired[object]
-    fetch_plan: NotRequired[object]
-    read_result: NotRequired[object]
-    segments: NotRequired[object]
-    ranked_segments: NotRequired[object]
-    evidence_selection: NotRequired[object]
-    sufficiency: NotRequired[object]
-    final_result: NotRequired[object]
-    workflow_signal: NotRequired[object]
+    request_intent: RequestIntentV2
+    input_route_ref: StateArtifactRefV1
+    input_routes: list[InputToolRouteV1]
+    query_plan: RetrievalQueryPlanV2 | None
+    query_attempts: list[QueryAttemptV1]
+    source_statuses: list[RetrievalSourceStatusV1]
+    read_result_handles: list[str]
+    segment_handles: list[str]
+    availability_results: list[AvailableIntervalV1]
+    rag_candidates: list[RagCandidateV1]
+    exclusion_obligation_segment_ids: list[str]
+    pending_user_retrieval_need: RetrievalNeedV1 | None
+    evidence_selection: EvidenceSelectionResultV2 | None
+    sufficiency: SufficiencyResultV2 | None
+    final_result: RetrievalResultV1 | None
+
+
+RetrievalState = RetrievalStateV2
+
+__all__ = ["RetrievalState", "RetrievalStateV2"]

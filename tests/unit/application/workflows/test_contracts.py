@@ -307,7 +307,7 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
         "request.detect_ambiguity",
         "tool_route.finalize",
         "acquisition.plan_sources",
-        "context.assess_sufficiency",
+        "retrieval.assess_sufficiency",
         "analysis.analyze",
         "planning.answer_only",
         "planning.draft_plan",

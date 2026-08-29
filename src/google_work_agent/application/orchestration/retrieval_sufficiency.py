@@ -4,7 +4,7 @@ SS5.7, SS19.1, SS19.2).
 
 Owned separately from context_retrieval.py's select_evidence/finalize
 responsibility once this bundle grew independent -- mirrors
-retrieval_ranking.py's Q2-RAG split. ContextRetrievalAgent.assess_sufficiency
+retrieval_ranking.py's Q2-RAG split. The canonical assess_sufficiency
 (context_retrieval.py) is the thin orchestration wrapper that calls into
 this module, the same way it calls retrieval_ranking.rank_segments.
 """
@@ -147,7 +147,7 @@ def selected_evidence_prompt_projection(
     (docs/05 section 5.6 deterministic Segment join) -- assess_sufficiency
     never re-derives evidence from EvidenceSelectionResultV2/segments
     itself. role is read back from reason_codes[0], where
-    context_retrieval._materialize_evidence_drafts stores the LLM's role
+    select_evidence.materialize_evidence_drafts stores the LLM's role
     classification."""
     return [
         {
@@ -375,7 +375,7 @@ def sufficiency_ambiguity_projection(
     section 19 keeps Retrieval NEEDS_CONFIRMATION issues separate from
     Request Understanding's own RequestIntentV2.ambiguity -- item 19 of the
     Q2-D scope). This reconstructs only the minimal shape
-    build_context_clarification_question already requires, from the first
+    the deterministic confirmation projection requires, from the first
     USER-resolution_source issue."""
     if sufficiency_result["status"] != "NEEDS_CONFIRMATION":
         return None
