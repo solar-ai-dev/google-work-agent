@@ -13,7 +13,6 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.main.state import REQUEST_AGENT_LOCAL_KEY
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
@@ -120,21 +119,13 @@ def _state(*, llm_calls_used: int) -> dict[str, object]:
             correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
         ),
         "prompt_context": {},
-        "ru_invocation_id": "ru-invocation-test",
-        REQUEST_AGENT_LOCAL_KEY: {
-            "schema_version": 1,
-            "agent_role": "request_understanding",
-            "invocation_id": "invocation-1",
-            "node_state": "INITIALIZED",
-            "input_projection": {},
-            "candidate_output": None,
-            "prompt_ref": None,
-            "attempt_no": 1,
-            "schema_repair_count": 0,
-            "semantic_revision_count": 0,
-            "failure_record": None,
-            "disposition": None,
-            "typed_result": None,
+        "trace_context": {
+            "agent_node_log": [
+                {
+                    "agent_subgraph_id": "request_understanding",
+                    "agent_invocation_id": "ru-invocation-test",
+                }
+            ],
         },
         "retry_budget": {
             **build_default_run_budget(),

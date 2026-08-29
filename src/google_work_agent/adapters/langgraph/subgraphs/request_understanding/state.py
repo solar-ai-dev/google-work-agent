@@ -1,51 +1,59 @@
-"""Request-understanding state with inherited LangGraph type resolution names."""
+"""Canonical owner-local state and parent patch for Request Understanding."""
 
 # LangGraph resolves inherited TypedDict annotations in this module namespace.
 # ruff: noqa: F401
 
 from __future__ import annotations
 
-from typing import NotRequired
+from typing import Literal, NotRequired, TypedDict
 
 from google_work_agent.adapters.langgraph.subgraph_state import (
+    AgentSubgraphInputEnvelope,
     RequestUnderstandingInputState,
-    RequestUnderstandingLocalState,
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     AmbiguityV1,
     RequestGoalCandidateV1,
     RequestIntentV2,
 )
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ScopeExpansionRequiredV1,
-    ToolRoutePlanV2,
-)
 from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    FinalizeIntentV1,
     PolicyConfirmationReceiptV1,
     RunBudgetV1,
     UserInterruptV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    ContextRetrievalResultV1,
-    PlanReviewResultV1,
-    RetrievalRequiredV1,
-    RetrievalResultV1,
-    RouteReconsiderationRequiredV1,
-    SourceFetchPlanV1,
-    WorkAnalysisResultV1,
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    SelectedResourceRef,
+    WorkflowStartRequest,
 )
 
 
-class RequestUnderstandingStateV2(RequestUnderstandingLocalState, total=False):
-    """Owner-local working fields for Request Understanding only."""
+class RequestUnderstandingStateV2(RequestUnderstandingInputState, total=False):
+    """The exact 06-owned local fields plus the allowed parent patch channels."""
 
-    ru_candidate: NotRequired[RequestGoalCandidateV1]
-    ru_ambiguity: NotRequired[AmbiguityV1]
-    ru_intent: NotRequired[RequestIntentV2]
-    ru_confirmation_response: NotRequired[ConfirmationResponseProjectionV1 | None]
-    ru_invocation_id: NotRequired[str]
+    request_text: str
+    entry_mode: Literal["AGENT_SEARCH", "RESOURCE_SELECTED"]
+    selected_resource_refs: list[SelectedResourceRef]
+    goal_candidate: RequestGoalCandidateV1 | None
+    ambiguity_candidate: AmbiguityV1 | None
+    final_intent: RequestIntentV2 | None
+
+    request_intent: RequestIntentV2 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
+    execution_summary: dict[str, object] | None
+
+
+class RequestUnderstandingParentOutputState(AgentSubgraphInputEnvelope, total=False):
+    """Only fields that Request Understanding may project back to Main."""
+
+    request_intent: RequestIntentV2 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
+    execution_summary: dict[str, object] | None
+
+
+__all__ = [
+    "RequestUnderstandingInputState",
+    "RequestUnderstandingParentOutputState",
+    "RequestUnderstandingStateV2",
+]

@@ -32,7 +32,6 @@ def identify_goal_node(
         confirmation_response=projection.get("confirmation_response"),
     )
     return {
-        "ru_candidate": candidate,
-        "ru_confirmation_response": None,
+        "goal_candidate": candidate,
         "retry_budget": consume_llm_call_budget(state),
     }

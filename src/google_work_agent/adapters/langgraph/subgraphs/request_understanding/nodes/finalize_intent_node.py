@@ -24,4 +24,4 @@ def finalize_intent_node(
         projection["ambiguity_candidate"],
         artifact_id=id_factory(),
     )
-    return {"ru_intent": intent, "request_intent": intent}
+    return {"final_intent": intent, "request_intent": intent}

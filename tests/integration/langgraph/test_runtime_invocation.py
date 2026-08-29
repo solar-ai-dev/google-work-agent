@@ -169,8 +169,8 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     nested_snapshot = outer_task.state
     # The canonical owner-local graph pauses at its explicit confirmation
     # node after goal identification and ambiguity detection have committed.
-    assert nested_snapshot.next == ("confirm",)
-    assert nested_snapshot.values["ru_candidate"]["goal"]
+    assert nested_snapshot.next == ("finalize_intent",)
+    assert nested_snapshot.values["goal_candidate"]["goal"]
 
     # The API-facing paused-run projection (WorkflowInvocationResult.payload)
     # must still surface the confirmation question even though it never got
@@ -264,6 +264,8 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
             "selected_option": None,
             "free_text": "I mean Kim from project alpha.",
         }
+        assert prompt_input["user_request"] == "Please handle the follow-up."
+        assert "[clarification]" not in str(prompt_input["user_request"])
         for forbidden_key in ("interrupt_id", "resume_target", "checkpoint", "owner_subgraph"):
             assert forbidden_key not in prompt_input
 
@@ -439,8 +441,8 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     first = start_with_admission(runtime, database_path, _start_request())
     assert first.outcome is WorkflowOutcome.ACCEPTED
     round1_task = _nested_request_understanding_task(runtime)
-    assert round1_task.state.next == ("confirm",)
-    assert round1_task.state.values["ru_candidate"]["goal"]
+    assert round1_task.state.next == ("finalize_intent",)
+    assert round1_task.state.values["goal_candidate"]["goal"]
     round1_interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
     assert first.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
     runtime.close()
@@ -491,8 +493,8 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
     # fresh task for round 2, it did not fall back through
     # init -> classify -> finalize (which "next" would show as ("init",) or
     # ("classify",) immediately after a resume, not "finalize").
-    assert round2_task.state.next == ("confirm",)
-    assert round2_task.state.values["ru_candidate"]["goal"]
+    assert round2_task.state.next == ("finalize_intent",)
+    assert round2_task.state.values["goal_candidate"]["goal"]
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
     assert second.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
     # A genuinely new interrupt instance for round 2, not a stale replay of

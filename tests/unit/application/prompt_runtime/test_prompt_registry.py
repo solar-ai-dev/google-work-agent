@@ -42,6 +42,37 @@ def test_prompt_registry_rejects_draft_product_selection() -> None:
         registry.lookup_by_id("planning.compose_answer")
 
 
+def test_request_understanding_prompts_are_gate_complete_and_runtime_active() -> None:
+    registry = PromptRegistry()
+
+    for prompt_id in (
+        "request_understanding.identify_goal",
+        "request_understanding.detect_ambiguity",
+    ):
+        assert registry.lookup_by_id(prompt_id).prompt_id == prompt_id
+
+    manifest = cast(
+        dict[str, object],
+        json.loads(default_prompt_manifest_path().read_text(encoding="utf-8")),
+    )
+    slots = cast(list[dict[str, object]], manifest["slots"])
+    request_slots = [
+        slot for slot in slots if str(slot["prompt_slot_id"]).startswith("request_understanding.")
+    ]
+    assert len(request_slots) == 2
+    for slot in request_slots:
+        assert slot["activation_status"] == "RUNTIME_ACTIVE"
+        assert all(
+            slot[field] is True
+            for field in (
+                "node_dev_pass",
+                "node_holdout_pass",
+                "safety_gate_pass",
+                "manifest_approved",
+            )
+        )
+
+
 def test_prompt_registry_accepts_exact_canonical_activation_status_vocabulary() -> None:
     assert prompt_registry_module._ACTIVATION_STATUSES == CANONICAL_ACTIVATION_STATUSES
 

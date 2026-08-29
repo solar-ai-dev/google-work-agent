@@ -10,7 +10,7 @@ typed parent boundary.
 
 from __future__ import annotations
 
-from json import dumps
+from collections.abc import Mapping
 from typing import Final, NotRequired, cast
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -90,8 +90,6 @@ class ProductionGraphStateV2(ParentGraphState, total=False):
 GraphState = ProductionGraphStateV2
 
 
-REQUEST_AGENT_LOCAL_KEY: Final = "__request_agent_local__"
-REQUEST_OUTPUT_KEY: Final = "__request_output__"
 ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
 ACQUISITION_PLANNING_OUTPUT_KEY: Final = "__acquisition_planning_output__"
 CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
@@ -216,38 +214,11 @@ def _acquired_resource_by_handle(
     return None
 
 
-def request_from_state(state: GraphState) -> WorkflowStartRequest:
+def request_from_state(state: Mapping[str, object]) -> WorkflowStartRequest:
     request = state.get("__request__")
     if not isinstance(request, WorkflowStartRequest):
         raise TypeError("workflow state is missing WorkflowStartRequest")
-    prompt_context = cast(dict[str, object], state.get("prompt_context", {}))
-    confirmation_response = prompt_context.get("confirmation_response")
-    if not isinstance(confirmation_response, dict):
-        return request
-    request_text = (
-        request.request_text
-        + "\n\n[clarification]\n"
-        + dumps(
-            {
-                "response_kind": cast(str, confirmation_response.get("response_kind")),
-                "selected_option": cast(str | None, confirmation_response.get("selected_option")),
-                "free_text": cast(str | None, confirmation_response.get("free_text")),
-            },
-            ensure_ascii=True,
-            sort_keys=True,
-        )
-    )
-    return WorkflowStartRequest(
-        run_id=request.run_id,
-        conversation_id=request.conversation_id,
-        workflow_key=request.workflow_key,
-        entry_mode=request.entry_mode,
-        requested_mode=request.requested_mode,
-        request_text=request_text,
-        selected_resource_ids=request.selected_resource_ids,
-        correlation=request.correlation,
-        selected_resources=request.selected_resources,
-    )
+    return request
 
 
 def _stored_resource_type_for_acquired_resource(

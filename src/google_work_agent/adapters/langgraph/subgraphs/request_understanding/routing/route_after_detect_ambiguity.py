@@ -9,8 +9,8 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
 
 def route_after_detect_ambiguity(
     state: RequestUnderstandingStateV2,
-) -> Literal["confirm", "finalize_intent"]:
-    ambiguity = state.get("ru_ambiguity")
+) -> Literal["finalize_intent"]:
+    ambiguity = state.get("ambiguity_candidate")
     if ambiguity is None:
         raise ValueError("request-understanding ambiguity result is required")
-    return "confirm" if ambiguity["requires_confirmation"] else "finalize_intent"
+    return "finalize_intent"

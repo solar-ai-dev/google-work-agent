@@ -273,7 +273,7 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
             subgraphs=True,
         )
         assert snapshot.next == ("request_understanding",)
-        assert snapshot.tasks[0].state.next == ("confirm",)
+        assert snapshot.tasks[0].state.next == ("finalize_intent",)
         assert snapshot.tasks[0].state.values["workflow_phase"] == "WAITING_CONFIRMATION"
         assert gateway.call_log == []
     finally:

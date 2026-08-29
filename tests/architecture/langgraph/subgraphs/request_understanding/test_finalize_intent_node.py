@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -34,7 +35,19 @@ def test_request_understanding_graph_and_state_are_exact() -> None:
 
     assert "RequestUnderstandingStateV2" in state
     assert "RequestUnderstandingStateV2" in graph
-    assert 'graph.add_node("identify_goal"' in graph
-    assert 'graph.add_node("detect_ambiguity"' in graph
-    assert 'graph.add_node("finalize_intent"' in graph
-    assert 'graph.add_node("validate_intent"' not in graph
+    assert re.findall(r'graph\.add_node\("([^"]+)"', graph) == [
+        "identify_goal",
+        "detect_ambiguity",
+        "finalize_intent",
+    ]
+    assert "RequestUnderstandingLocalState" not in state
+    assert "GraphState" not in state
+    for field in (
+        "request_text",
+        "entry_mode",
+        "selected_resource_refs",
+        "goal_candidate",
+        "ambiguity_candidate",
+        "final_intent",
+    ):
+        assert field in state

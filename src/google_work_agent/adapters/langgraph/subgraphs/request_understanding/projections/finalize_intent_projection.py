@@ -18,8 +18,8 @@ class FinalizeIntentInput(TypedDict):
 
 def project_finalize_intent_input(state: RequestUnderstandingStateV2) -> FinalizeIntentInput:
     """Project only the same-invocation Request Understanding candidates."""
-    goal_candidate = state.get("ru_candidate")
-    ambiguity_candidate = state.get("ru_ambiguity")
+    goal_candidate = state.get("goal_candidate")
+    ambiguity_candidate = state.get("ambiguity_candidate")
     if goal_candidate is None or ambiguity_candidate is None:
         raise ValueError("request-understanding candidates are required")
     return {

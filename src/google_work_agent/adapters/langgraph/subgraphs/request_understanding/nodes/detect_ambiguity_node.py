@@ -28,7 +28,7 @@ def detect_ambiguity_node(
     projection = project_detect_ambiguity_input(state)
     ensure_llm_call_budget(state)
     return {
-        "ru_ambiguity": detect_ambiguity(
+        "ambiguity_candidate": detect_ambiguity(
             llm_runtime=llm_runtime,
             request=projection["request"],
             goal_candidate=projection["goal_candidate"],

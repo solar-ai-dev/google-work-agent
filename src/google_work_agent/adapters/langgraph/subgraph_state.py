@@ -17,7 +17,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
+    PolicyConfirmationReceiptV1,
     RunBudgetV1,
+    UserInterruptV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
@@ -29,7 +31,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceSelectionResultV2,
     PlanReviewResultV1,
     RequestIntentV2,
-    RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
     RetrievalResultV1,
     RouteReconsiderationRequiredV1,
@@ -74,6 +75,9 @@ class AgentSubgraphInputEnvelope(TypedDict, total=False):
 
 class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):
     """Parent projection for Request Understanding."""
+
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
 class ToolRoutingInputState(AgentSubgraphInputEnvelope, total=False):
@@ -133,21 +137,10 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
 
-class RequestUnderstandingLocalState(GraphState):
-    __request_agent_local__: NotRequired[AgentLocalStateV1]
-    __request_output__: NotRequired[RequestUnderstandingOutputV1]
-    # Set only when a resolved-but-still-ambiguous confirmation round needs
-    # another nested interrupt: routes the self-loop conditional edge back
-    # into "finalize" as a genuinely new task (never consumed outside this
-    # subgraph -- explicitly popped before the final merge_decision return).
-    __request_understanding_retry_confirmation__: NotRequired[bool]
-
-
 class ToolRoutingLocalState(GraphState):
     __tool_route_result__: NotRequired[ToolRouteResultV1]
-    # Same purpose as RequestUnderstandingLocalState's retry marker: routes
-    # the self-loop conditional edge back into "finalize" as a fresh task
-    # for the next confirmation round.
+    # Routes the self-loop conditional edge back into "finalize" as a fresh
+    # task for the next confirmation round.
     __tool_route_retry_confirmation__: NotRequired[bool]
 
 
@@ -170,18 +163,15 @@ class ContextRetrievalLocalState(GraphState):
     __context_followup_operation__: NotRequired[str]
     __context_next_page_handles__: NotRequired[dict[str, str]]
     __context_detail_candidates__: NotRequired[dict[str, str]]
-    # Same purpose as ToolRoutingLocalState/RequestUnderstandingLocalState's
-    # retry markers: routes the self-loop conditional edge back into
-    # "finalize" as a fresh task for the next confirmation round.
+    # Same purpose as ToolRoutingLocalState's retry marker: routes the
+    # self-loop conditional edge back into "finalize" as a fresh task.
     __context_retrieval_retry_confirmation__: NotRequired[bool]
 
 
 class WorkAnalysisLocalState(GraphState):
     __analysis_agent_local__: NotRequired[AgentLocalStateV1]
-    # Same purpose as ContextRetrievalLocalState/ToolRoutingLocalState/
-    # RequestUnderstandingLocalState's retry markers: routes the self-loop
-    # conditional edge back into "finalize" as a fresh task for the next
-    # confirmation round.
+    # Same purpose as ContextRetrievalLocalState/ToolRoutingLocalState's retry
+    # markers: routes the self-loop back into "finalize" as a fresh task.
     __work_analysis_retry_confirmation__: NotRequired[bool]
 
 
@@ -234,7 +224,6 @@ __all__ = [
     "ProfileReasonPlanLocalState",
     "ProfileRequestSourceLocalState",
     "RequestUnderstandingInputState",
-    "RequestUnderstandingLocalState",
     "ReviewInputState",
     "ReviewLocalState",
     "SingleWorkflowLocalState",
