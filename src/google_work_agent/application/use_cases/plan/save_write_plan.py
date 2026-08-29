@@ -14,6 +14,7 @@ from google_work_agent.application.tool_registry.signed_tool_registry import (
 )
 from google_work_agent.application.use_cases.action.policy import (
     EvidencePolicyInput,
+    count_independent_evidence,
     validate_evidence_policy,
 )
 from google_work_agent.application.use_cases.action.task_duplicates import (
@@ -247,6 +248,7 @@ def validate_write_plan(command: SaveWritePlanCommand, catalog: SignedToolRegist
     validate_plan_structure(
         actions=command.actions, evidence=command.evidence, plan_label="write plan"
     )
+    evidence_by_id = {item.evidence_id: item for item in command.evidence}
     for action in command.actions:
         if not action.connector_id:
             raise ValueError("write action connector_id is required")
@@ -259,6 +261,11 @@ def validate_write_plan(command: SaveWritePlanCommand, catalog: SignedToolRegist
                 evidence_count=len(action.evidence_ids),
                 requires_existing_resource=entry.effect_type
                 in {EffectType.UPDATE, EffectType.DELETE},
+                independent_evidence_count=count_independent_evidence(
+                    evidence_by_id[evidence_id]
+                    for evidence_id in action.evidence_ids
+                    if evidence_id in evidence_by_id
+                ),
                 has_user_selected_resource=action.target_resource_ref_id is not None,
                 has_explicit_resource_relation=action.target_resource_ref_id is not None,
             )

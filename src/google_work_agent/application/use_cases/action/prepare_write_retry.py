@@ -12,6 +12,10 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
     require_plan_review,
 )
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.prepare_write_retry import (
@@ -24,6 +28,12 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
+    WorkflowHandoffStageV1,
+)
+from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +58,7 @@ class PrepareWriteRetryResult:
     safe_error_code: str | None = None
     request_replayed: bool = False
     conflict_detail: str | None = None
+    handoff_id: str | None = None
 
 
 class PrepareWriteRetryHandler:
@@ -58,9 +69,16 @@ class PrepareWriteRetryHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        id_generator: UUIDPort,
+        resume_target_registry: ResumeTargetIssuer,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
+        | None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._id_generator = id_generator
+        self._resume_target_registry = resume_target_registry
+        self._schedule_run_execution = schedule_run_execution
 
     def __call__(self, command: PrepareWriteRetryCommand) -> PrepareWriteRetryResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -153,6 +171,7 @@ class PrepareWriteRetryHandler:
                 command_id=command.command_id,
                 created_at_ms=now_ms,
             )
+            handoff_id = self._stage_review_handoff(unit_of_work, plan.run_id, command.command_id)
             response = PrepareWriteRetryResult(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,
@@ -164,6 +183,7 @@ class PrepareWriteRetryHandler:
                     for item in result.next_allowed_commands
                     if item is not ActionCommand.APPROVE_ACTION
                 ),
+                handoff_id=handoff_id,
             )
             unit_of_work.traces.append(
                 TraceEventRecord(
@@ -200,7 +220,10 @@ class PrepareWriteRetryHandler:
                     created_at_ms=now_ms,
                 )
             )
-            return self._finish(unit_of_work, command, response, now_ms)
+            self._finish(unit_of_work, command, response, now_ms)
+        if self._schedule_run_execution is not None:
+            self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
+        return response
 
     def _resolve_existing_receipt(
         self,
@@ -247,8 +270,47 @@ class PrepareWriteRetryHandler:
         payload.setdefault("claim_token", None)
         payload.setdefault("safe_error_code", None)
         payload.setdefault("request_replayed", False)
+        payload.setdefault("handoff_id", None)
         payload["next_allowed_commands"] = tuple(payload["next_allowed_commands"])
         return replace(PrepareWriteRetryResult(**payload), request_replayed=True)
+
+    def _stage_review_handoff(
+        self, unit_of_work: UnitOfWork, run_id: str, trigger_command_id: str
+    ) -> str:
+        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        if binding is None:
+            raise RuntimeError("write retry preparation requires a workflow binding")
+        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            run_id, binding.langgraph_thread_id
+        )
+        if checkpoint is None:
+            raise RuntimeError("write retry preparation requires a workflow checkpoint")
+        target = self._resume_target_registry.issue_main_stage(
+            binding.graph_profile, "REVIEW_ENTRY", binding.graph_version
+        )
+        handoff = unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id=self._id_generator.new_uuid(),
+                trigger_command_id=trigger_command_id,
+                execution=RunExecutionRefV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=run_id,
+                    langgraph_thread_id=binding.langgraph_thread_id,
+                    graph_profile=binding.graph_profile,
+                    graph_version=binding.graph_version,
+                    requested_mode=binding.requested_mode,
+                    resume_target=target,
+                ),
+                checkpoint_id=checkpoint.checkpoint_id,
+                checkpoint_generation=checkpoint.checkpoint_generation,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        return handoff.handoff_id
 
     @staticmethod
     def _finish(

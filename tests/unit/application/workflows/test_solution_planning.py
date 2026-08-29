@@ -763,7 +763,7 @@ def test_action_plan_confirmation_invariants_are_enforced() -> None:
         validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
 
 
-def test_update_action_uses_existing_policy_validator() -> None:
+def test_update_action_accepts_explicit_gmail_resource_relationship() -> None:
     output = _plan_output(
         PlanningResult.PLAN_READY.value,
         actions=[
@@ -780,8 +780,9 @@ def test_update_action_uses_existing_policy_validator() -> None:
         evidence_refs=["evidence-1"],
     )
 
-    with pytest.raises(SolutionPlanningValidationError, match="existing resource updates require"):
-        validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+    result = validate_action_plan_draft_v1(output, analysis_result=_analysis_result())
+
+    assert result["actions"][0]["tool_name"] == "tasks_update_task"
 
 
 def test_task_provider_due_is_rejected_by_plan_semantic_validation() -> None:

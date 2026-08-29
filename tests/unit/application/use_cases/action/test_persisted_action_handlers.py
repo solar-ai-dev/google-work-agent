@@ -14,6 +14,10 @@ from google_work_agent.application.use_cases.action.prepare_write_retry import (
     PrepareWriteRetryCommand,
     PrepareWriteRetryHandler,
 )
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionCommand,
+    RefreshExpiredActionHandler,
+)
 from google_work_agent.application.use_cases.action.reject_action import (
     RejectActionCommand,
     RejectActionHandler,
@@ -22,6 +26,7 @@ from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1,
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
+from google_work_agent.domain.resource_ref.model import ResourceRef
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -337,6 +342,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 3000,
+        **_handoff_dependencies(unit_of_work),
     )(
         PrepareWriteRetryCommand(
             command_id="cmd-retry",
@@ -348,12 +354,120 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
 
     assert result.applied is True
     assert result.action_status == ActionStatusV1.MODIFIED.value
+    assert result.handoff_id == "handoff-1"
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
     assert unit_of_work.approvals.method_calls == [call.list_active_for_plan("plan-1")]
     assert unit_of_work.execution_attempts.method_calls == []
     assert unit_of_work.verifications.method_calls == []
     unit_of_work.plans.record_review_result.assert_called_once()
+    stage = unit_of_work.workflow_handoffs.stage_pending.call_args.args[0]
+    assert stage.trigger_command_id == "cmd-retry"
+    assert stage.execution.resume_target.stage_id == "REVIEW_ENTRY"
     unit_of_work.commit.assert_called_once()
+
+
+def test_prepare_retry_handoff_failure_prevents_command_commit() -> None:
+    unit_of_work = _uow()
+    action = _action(status=ActionStatusV1.FAILED, version=5)
+    unit_of_work.command_receipts.get_by_command_id.return_value = None
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
+        id=action.plan_id,
+        run_id="run-1",
+        status=PlanStatusV1.WAITING_APPROVAL,
+        review_status=PlanReviewStatus.REQUIRED,
+        review_version=10,
+    )
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(review_version=11)
+    dependencies = _handoff_dependencies(unit_of_work)
+    unit_of_work.workflow_handoffs.stage_pending.side_effect = RuntimeError("handoff stage failed")
+
+    with pytest.raises(RuntimeError, match="handoff stage failed"):
+        PrepareWriteRetryHandler(
+            unit_of_work_factory=MagicMock(return_value=unit_of_work),
+            now_ms=lambda: 3000,
+            **dependencies,
+        )(
+            PrepareWriteRetryCommand(
+                command_id="cmd-retry-stage-failure",
+                request_hash="hash-retry-stage-failure",
+                action_id=action.id,
+                expected_action_version=5,
+            )
+        )
+
+    unit_of_work.command_receipts.store_result.assert_not_called()
+    unit_of_work.commit.assert_not_called()
+
+
+def test_refresh_expired_action_reuses_fresh_source_and_updates_target_ref() -> None:
+    unit_of_work = _uow()
+    action = _action(status=ActionStatusV1.EXPIRED, version=2)
+    action.effect_type = EffectType.UPDATE.value
+    action.target_resource_ref_id = "resource-1"
+    action.tool_name = "tasks_update_task"
+    unit_of_work.command_receipts.get_by_command_id.return_value = None
+    unit_of_work.actions.get.return_value = action
+    unit_of_work.approvals.get_active_for_action.return_value = None
+    unit_of_work.actions.update_if_version_and_status.return_value = True
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
+        id="plan-1",
+        run_id="run-1",
+        status=PlanStatusV1.WAITING_APPROVAL,
+        review_status=PlanReviewStatus.REQUIRED,
+        review_version=10,
+    )
+    unit_of_work.plans.record_review_result.return_value = SimpleNamespace(review_version=11)
+    resource = ResourceRef(
+        id="resource-1",
+        run_id="run-1",
+        connector_id="google_workspace",
+        resource_type="task",
+        resource_id="task-1",
+        parent_resource_id="list-1",
+        canonical_url=None,
+        title=None,
+        event_time_ms=None,
+        version_token="old-version",
+        metadata_json="{}",
+        captured_at_ms=1,
+    )
+    unit_of_work.resource_refs.get.return_value = resource
+    source_snapshot = {
+        "resource_type": "task",
+        "resource_id": "task-1",
+        "parent_id": "list-1",
+        "version": "fresh-version",
+    }
+    dependencies = _handoff_dependencies(unit_of_work)
+
+    result = RefreshExpiredActionHandler(
+        unit_of_work_factory=MagicMock(return_value=unit_of_work),
+        now_ms=lambda: 3000,
+        id_factory=dependencies["id_generator"].new_uuid,
+        resume_target_registry=dependencies["resume_target_registry"],
+        schedule_run_execution=dependencies["schedule_run_execution"],
+    )(
+        RefreshExpiredActionCommand(
+            command_id="cmd-refresh",
+            request_hash="hash-refresh",
+            action_id=action.id,
+            expected_version=2,
+            fresh_source_snapshot=source_snapshot,
+            fresh_source_snapshot_hash=calculate_canonical_json_hash(source_snapshot),
+            fresh_policy_version="policy-v1",
+            fresh_tool_schema_version="schema-v1",
+            fresh_risk={"source": "fresh"},
+        )
+    )
+
+    assert result.applied is True
+    refreshed_ref = unit_of_work.resource_refs.upsert_bound_ref.call_args.args[0]
+    assert refreshed_ref.version_token == "fresh-version"
+    assert refreshed_ref.captured_at_ms == 3000
+    stage = unit_of_work.workflow_handoffs.stage_pending.call_args.args[0]
+    assert stage.execution.resume_target.stage_id == "REVIEW_ENTRY"
 
 
 def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
@@ -370,6 +484,7 @@ def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 3500,
+        **_handoff_dependencies(unit_of_work),
     )(
         PrepareWriteRetryCommand(
             command_id="cmd-retry-superseded",
@@ -403,6 +518,7 @@ def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatusV
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 4000,
+        **_handoff_dependencies(unit_of_work),
     )(
         PrepareWriteRetryCommand(
             command_id=f"cmd-{status.value.lower()}",

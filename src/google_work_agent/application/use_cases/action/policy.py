@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.action.evaluate_action_policy import (
+    evaluate_evidence_policy,
+)
 from google_work_agent.domain.action.model import PolicyViolationError
 
 
@@ -13,6 +17,7 @@ class EvidencePolicyInput:
 
     evidence_count: int
     requires_existing_resource: bool
+    independent_evidence_count: int = 0
     has_user_selected_resource: bool = False
     has_explicit_resource_relation: bool = False
 
@@ -36,27 +41,39 @@ class ApprovalIntegrityInput:
 
 
 def validate_evidence_policy(policy_input: EvidencePolicyInput) -> None:
-    """Enforce the documented evidence minimum and update safety rules."""
+    """Project owner call-site facts through the single policy evaluator."""
 
-    if policy_input.evidence_count < 1:
-        raise PolicyViolationError("every action requires at least one evidence")
-
-    if not policy_input.requires_existing_resource:
-        return
-
-    if policy_input.has_user_selected_resource:
-        return
-
-    if policy_input.has_explicit_resource_relation:
-        return
-
-    if policy_input.evidence_count >= 2:
-        return
-
-    raise PolicyViolationError(
-        "existing resource updates require a user-selected target, "
-        "two evidences, or one explicit resource relation"
+    result = evaluate_evidence_policy(
+        evidence_count=policy_input.evidence_count,
+        independent_evidence_count=policy_input.independent_evidence_count,
+        requires_existing_resource=policy_input.requires_existing_resource,
+        target_is_user_selected=policy_input.has_user_selected_resource,
+        has_explicit_resource_relation=policy_input.has_explicit_resource_relation,
     )
+    if result is not None:
+        raise PolicyViolationError(result[1])
+
+
+def count_independent_evidence(evidence: Iterable[object]) -> int:
+    """Count distinct source authorities, not duplicate excerpts from one source."""
+
+    identities: set[tuple[object, ...]] = set()
+    for item in evidence:
+        origin_type = getattr(item, "origin_type", None)
+        resource_ref_id = getattr(item, "resource_ref_id", None)
+        message_id = getattr(item, "message_id", None)
+        if resource_ref_id is not None or message_id is not None:
+            identities.add((origin_type, resource_ref_id, message_id))
+            continue
+        identities.add(
+            (
+                origin_type,
+                getattr(item, "locator_json", None),
+                getattr(item, "kind", None),
+                getattr(item, "excerpt", None),
+            )
+        )
+    return len(identities)
 
 
 def validate_approval_integrity(policy_input: ApprovalIntegrityInput) -> None:

@@ -563,11 +563,25 @@ class WorkflowRuntimeCore:
             now_ms=now_ms,
         )
         self._classify_dispatch_result = ClassifyDispatchResultHandler()
+        self._expire_approval = ExpireApprovalHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._refresh_expired_action = RefreshExpiredActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            id_factory=id_factory,
+            resume_target_registry=self._resume_target_registry,
+            schedule_run_execution=None,
+        )
         self._preflight_write = PreflightWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             gateway=connector_reader,
             now_ms=now_ms,
             work_hours_provider=self._work_hours_provider,
+            expire_approval=self._expire_approval,
+            refresh_expired_action=self._refresh_expired_action,
+            block_run=self._block_run,
         )
         self._store_write_success = StoreSuccessHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -626,17 +640,8 @@ class WorkflowRuntimeCore:
             request_hash=self._request_hash,
             should_stop_for_cancel=self._should_stop_for_cancel,
             preflight_write=self._preflight_write,
-            expire_approval=ExpireApprovalHandler(
-                unit_of_work_factory=unit_of_work_factory,
-                now_ms=now_ms,
-            ),
-            refresh_expired_action=RefreshExpiredActionHandler(
-                unit_of_work_factory=unit_of_work_factory,
-                now_ms=now_ms,
-                id_factory=id_factory,
-                resume_target_registry=self._resume_target_registry,
-                schedule_run_execution=None,
-            ),
+            expire_approval=self._expire_approval,
+            refresh_expired_action=self._refresh_expired_action,
             claim_execution=self._claim_execution,
             build_claim_context=self._build_claim_context,
             begin_execution_attempt=self._begin_execution_attempt,

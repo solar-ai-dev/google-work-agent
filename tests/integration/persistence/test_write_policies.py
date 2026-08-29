@@ -4,8 +4,26 @@
 
 from __future__ import annotations
 
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionHandler,
+)
+from google_work_agent.application.use_cases.approval.expire_approval import (
+    ExpireApprovalCommand,
+    ExpireApprovalHandler,
+)
+from google_work_agent.application.use_cases.run.block_run import BlockRunHandler
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from tests.integration.persistence.test_action_reject_vertical_slice import (
+    _service as _seed_workflow_checkpoint,
+)
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -31,8 +49,69 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
+
+
+def _stale_lifecycle_dependencies(database_path: Path, clock: FakeClockPort) -> dict[str, object]:
+    _seed_workflow_checkpoint(database_path, clock)
+    registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
+    )
+    factory = sqlite_unit_of_work_factory(database_path)
+    return {
+        "expire_approval": ExpireApprovalHandler(
+            unit_of_work_factory=factory,
+            now_ms=clock.now_ms,
+        ),
+        "refresh_expired_action": RefreshExpiredActionHandler(
+            unit_of_work_factory=factory,
+            now_ms=clock.now_ms,
+            id_factory=DeterministicUUID(prefix="preflight-review").new_uuid,
+            resume_target_registry=registry,
+            schedule_run_execution=None,
+        ),
+        "block_run": BlockRunHandler(
+            unit_of_work_factory=factory,
+            now_ms=clock.now_ms,
+        ),
+    }
+
+
+def test_still_current_active_approval_cannot_be_expired(write_database: Path) -> None:
+    clock = FakeClockPort(1000)
+    suffix = "still-current-expiry"
+    _approve_preflight_action(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        risk=_duplicate_risk("NOT_DUPLICATE"),
+    )
+    factory = sqlite_unit_of_work_factory(write_database)
+    with factory() as unit_of_work:
+        approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+    assert approval is not None
+
+    with pytest.raises(ValueError, match="still-current"):
+        ExpireApprovalHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+            ExpireApprovalCommand(
+                command_id="expire-still-current",
+                request_hash="ab" * 32,
+                approval_id=approval.id,
+                expected_action_version=approval.action_version,
+                current_source_snapshot=loads(approval.source_snapshot_json),
+            )
+        )
+
+    with factory() as unit_of_work:
+        current = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+        action = unit_of_work.actions.get(f"action-{suffix}")
+        receipt = unit_of_work.command_receipts.get_by_command_id("expire-still-current")
+    assert current is not None and current.status.value == "ACTIVE"
+    assert action is not None and action.status == "APPROVED"
+    assert receipt is None
 
 
 @pytest.mark.parametrize(
@@ -145,16 +224,27 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=gateway,  # type: ignore[arg-type]
             now_ms=clock.now_ms,
+            **_stale_lifecycle_dependencies(write_database, clock),  # type: ignore[arg-type]
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
         action = unit_of_work.actions.get(f"action-{suffix}")
         approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+        expired_approval = unit_of_work.approval_history.get(f"approval-{suffix}")
     assert action is not None
     assert action.status == "MODIFIED"
-    assert action.version == 2
+    assert action.version == 3
     assert action.risk["duplicate"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
     assert approval is None
+    assert expired_approval is not None and expired_approval.status.value == "EXPIRED"
+    with connect_sqlite(write_database) as connection:
+        handoff = connection.execute(
+            """SELECT status, resume_target_json FROM workflow_handoffs
+               WHERE trigger_command_id=?;""",
+            (f"system:preflight-refresh:approval-{suffix}",),
+        ).fetchone()
+    assert handoff is not None and handoff["status"] == "PENDING"
+    assert loads(handoff["resume_target_json"])["stage_id"] == "REVIEW_ENTRY"
 
 
 def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
@@ -261,7 +351,7 @@ def test_infeasible_action_cannot_be_approved(write_database: Path) -> None:
     assert any(event.event_type == "FEASIBILITY_APPROVAL_BLOCKED" for event in events)
 
 
-def test_feasibility_preflight_change_revokes_approval_before_claim(
+def test_feasibility_preflight_denial_blocks_run_before_claim(
     write_database: Path,
 ) -> None:
     clock = FakeClockPort(1000)
@@ -289,17 +379,19 @@ def test_feasibility_preflight_change_revokes_approval_before_claim(
         },
     )
 
-    with pytest.raises(PolicyViolationError, match="reapproval"):
+    with pytest.raises(PolicyViolationError, match="FEASIBILITY_BLOCKED"):
         PreflightWriteActionService(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=_FeasibilityPreflightGateway(busy_event=busy),  # type: ignore[arg-type]
             now_ms=clock.now_ms,
             work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+            **_stale_lifecycle_dependencies(write_database, clock),  # type: ignore[arg-type]
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
         action = unit_of_work.actions.get(f"action-{suffix}")
         approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
+        run = unit_of_work.runs.get("run-1")
     connection = connect_sqlite(write_database)
     try:
         attempt_count = connection.execute(
@@ -313,9 +405,10 @@ def test_feasibility_preflight_change_revokes_approval_before_claim(
         ).fetchone()[0]
     finally:
         connection.close()
-    assert action is not None and action.status == "MODIFIED"
+    assert action is not None and action.status == "BLOCKED"
     assert action.risk["feasibility"]["decision"] == "INFEASIBLE"  # type: ignore[index]
     assert approval is None
+    assert run is not None and run.status.value == "BLOCKED"
     assert attempt_count == 0
 
 

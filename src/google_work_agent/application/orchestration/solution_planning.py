@@ -1147,8 +1147,17 @@ def _validate_action_draft(
                 evidence_count=len(evidence_refs),
                 requires_existing_resource=entry.effect_type
                 in {EffectType.UPDATE, EffectType.DELETE},
+                independent_evidence_count=len(evidence_refs),
                 has_user_selected_resource=target_resource_ref_id is not None,
-                has_explicit_resource_relation=target_resource_ref_id is not None,
+                has_explicit_resource_relation=(
+                    target_resource_ref_id is not None
+                    or any(
+                        (evidence_ref, resource_ref)
+                        in refs["evidence_resource_relations"]
+                        for evidence_ref in evidence_refs
+                        for resource_ref in resource_refs
+                    )
+                ),
             )
         )
     except PolicyViolationError as error:
@@ -1263,9 +1272,19 @@ def _validate_action_plan_invariant(result: ActionPlanDraftV1) -> None:
 class _ReferenceSpace(TypedDict):
     evidence_ids: set[str]
     resource_handles: set[str]
+    evidence_resource_relations: set[tuple[str, str]]
 
 
 def _reference_space(analysis_result: WorkAnalysisResultV1) -> _ReferenceSpace:
+    relations: set[tuple[str, str]] = set()
+    for finding in analysis_result["findings"]:
+        if finding["kind"] != "RELATIONSHIP":
+            continue
+        relations.update(
+            (evidence_ref, resource_handle)
+            for evidence_ref in finding["evidence_refs"]
+            for resource_handle in finding["related_resource_handles"]
+        )
     return {
         "evidence_ids": set(analysis_result["evidence_refs"]),
         "resource_handles": {
@@ -1273,6 +1292,7 @@ def _reference_space(analysis_result: WorkAnalysisResultV1) -> _ReferenceSpace:
             for ref in analysis_result["resource_refs"]
             if isinstance(ref.get("resource_handle"), str)
         },
+        "evidence_resource_relations": relations,
     }
 
 

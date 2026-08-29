@@ -16,6 +16,7 @@ from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CalendarConflictGateway,
     CalendarConflictValidator,
     approval_calendar_conflict_authority,
+    approval_source_snapshot_for_calendar_conflict,
     calendar_conflict_authority,
     calendar_conflict_change_requires_reapproval,
     merge_calendar_conflict_risk,
@@ -28,16 +29,23 @@ from google_work_agent.application.use_cases.action.feasibility import (
     FeasibilityGateway,
     FeasibilityValidator,
     approval_feasibility_authority,
+    approval_source_snapshot_for_feasibility,
     feasibility_authority,
     feasibility_change_requires_reapproval,
     merge_feasibility_risk,
 )
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
+from google_work_agent.application.use_cases.action.policy import count_independent_evidence
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionCommand,
+    RefreshExpiredActionHandler,
+)
 from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     TaskDuplicateValidator,
     TaskListGateway,
     approval_duplicate_authority,
+    approval_source_snapshot_for_task_duplicate,
     duplicate_authority,
     duplicate_change_requires_reapproval,
     merge_duplicate_risk,
@@ -57,16 +65,19 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan as _require_plan,
 )
-from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.approval.expire_approval import (
+    ExpireApprovalCommand,
+    ExpireApprovalHandler,
+)
+from google_work_agent.application.use_cases.run.block_run import BlockRunCommand, BlockRunHandler
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
-from google_work_agent.domain.action.transitions.modify_action import transition_modify_action
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -120,12 +131,18 @@ class PreflightWriteActionService:
         gateway: PreflightWriteGateway,
         now_ms: Callable[[], int] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
+        expire_approval: ExpireApprovalHandler | None = None,
+        refresh_expired_action: RefreshExpiredActionHandler | None = None,
+        block_run: BlockRunHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         self._registry = load_signed_tool_registry()
         self._evaluate_action_policy = EvaluateActionPolicyHandler()
+        self._expire_approval = expire_approval
+        self._refresh_expired_action = refresh_expired_action
+        self._block_run = block_run
         self._task_duplicates = TaskDuplicateValidator(gateway=gateway, now_ms=self._now_ms)
         self._calendar_conflicts = CalendarConflictValidator(
             gateway=gateway,
@@ -145,7 +162,7 @@ class PreflightWriteActionService:
             action = _require_action(unit_of_work, action_id)
             if action.status != ActionStatusV1.APPROVED.value:
                 raise PolicyViolationError("write preflight requires an approved action")
-            self._registry.get_required(action.connector_id, action.tool_name)
+            registry_entry = self._registry.get_required(action.connector_id, action.tool_name)
             arguments = _dict_argument(loads(action.arguments_json))
             action_version = action.version
             arguments_hash = action.arguments_hash
@@ -155,6 +172,7 @@ class PreflightWriteActionService:
                 raise PolicyViolationError("write preflight requires an active approval")
             approval_id = approval.id
             approval_snapshot = _dict_argument(loads(approval.source_snapshot_json))
+            evidence = tuple(unit_of_work.evidence.list_for_action(action.id))
             target_ref = (
                 None
                 if action.target_resource_ref_id is None
@@ -163,18 +181,30 @@ class PreflightWriteActionService:
 
         policy = self._evaluate_action_policy(
             EvaluateActionPolicyQueryV1(
+                schema_version=1,
+                run_id=plan.run_id,
+                action_id=action.id,
+                action_version=action.version,
+                tool_id=action.tool_name,
                 effect=cast(
                     Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"],
                     action.effect_type,
                 ),
+                arguments_hash=action.arguments_hash,
+                source_snapshot_ref=approval.source_snapshot_hash,
+                policy_version=registry_entry.registry_version,
                 required_scopes_granted=True,
+                evidence_count=len(evidence),
+                evidence_refs=tuple(sorted(str(item.id) for item in evidence)),
+                independent_evidence_count=count_independent_evidence(evidence),
                 target_is_user_selected=(
                     action.effect_type not in {EffectType.UPDATE.value, EffectType.DELETE.value}
                     or target_ref is not None
                 ),
+                has_explicit_resource_relation=target_ref is not None,
             )
         )
-        if policy.disposition == "BLOCK":
+        if policy.decision != "ALLOW":
             raise PolicyViolationError(",".join(policy.reason_codes))
 
         if action.tool_name == "gmail_update_draft":
@@ -248,12 +278,6 @@ class PreflightWriteActionService:
             must_reapprove = False
             with self._unit_of_work_factory() as unit_of_work:
                 current = _require_action(unit_of_work, action_id)
-                current_plan = _require_plan(unit_of_work, current.plan_id)
-                latest_plan = max(
-                    current_plan_tuple(unit_of_work.plans, current_plan.run_id),
-                    key=lambda candidate: getattr(candidate, "revision_no", 0),
-                    default=None,
-                )
                 current_approval = unit_of_work.approvals.get_active_for_action(action_id)
                 if (
                     current.status != ActionStatusV1.APPROVED.value
@@ -271,69 +295,20 @@ class PreflightWriteActionService:
                     current=duplicate_authority(merged_risk),
                 )
                 now_ms = self._now_ms()
-                if must_reapprove:
-                    revoke_active_approvals(unit_of_work, current.id)
-                    result = transition_modify_action(
-                        ActionStatusV1(current.status),
-                        current.version,
-                        current.version,
-                        effect_type=EffectType(current.effect_type),
-                        plan_status=current_plan.status,
-                        plan_is_current=(
-                            latest_plan is not None and latest_plan.id == current_plan.id
-                        ),
+                if (
+                    not must_reapprove
+                    and update_action_record(
+                        unit_of_work,
+                        current.id,
+                        expected_version=current.version,
+                        expected_status=ActionStatusV1(current.status),
+                        next_status=ActionStatusV1(current.status),
+                        updated_at_ms=now_ms,
+                        risk=merged_risk,
                     )
-                    if (
-                        not result.applied
-                        or update_action_record(
-                            unit_of_work,
-                            current.id,
-                            expected_version=current.version,
-                            expected_status=ActionStatusV1(current.status),
-                            next_status=result.current_status,
-                            updated_at_ms=now_ms,
-                            arguments_json=current.arguments_json,
-                            arguments_hash=current.arguments_hash,
-                            risk=merged_risk,
-                        )
-                        is None
-                    ):
-                        raise PolicyViolationError(
-                            "write action changed during task duplicate preflight"
-                        )
-                    unit_of_work.audits.append(
-                        _audit_event(
-                            run_id=plan.run_id,
-                            action_id=current.id,
-                            event_type="TASK_DUPLICATE_PREFLIGHT_BLOCKED",
-                            outcome="REAPPROVAL_REQUIRED",
-                            metadata={
-                                "decision": (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[
-                                    0
-                                ],
-                                "matched_count": len(
-                                    (duplicate_authority(merged_risk) or ("UNKNOWN", ()))[1]
-                                ),
-                            },
-                            created_at_ms=now_ms,
-                        )
-                    )
-                else:
-                    if (
-                        update_action_record(
-                            unit_of_work,
-                            current.id,
-                            expected_version=current.version,
-                            expected_status=ActionStatusV1(current.status),
-                            next_status=ActionStatusV1(current.status),
-                            updated_at_ms=now_ms,
-                            risk=merged_risk,
-                        )
-                        is None
-                    ):
-                        raise PolicyViolationError(
-                            "write action changed during duplicate preflight"
-                        )
+                    is None
+                ):
+                    raise PolicyViolationError("write action changed during duplicate preflight")
                 authority = duplicate_authority(merged_risk) or ("UNKNOWN", ())
                 unit_of_work.audits.append(
                     _audit_event(
@@ -351,6 +326,18 @@ class PreflightWriteActionService:
                 )
                 unit_of_work.commit()
             if must_reapprove:
+                fresh_snapshot = approval_source_snapshot_for_task_duplicate(
+                    risk=merged_risk, acknowledged=False
+                )
+                self._expire_and_refresh(
+                    action_id=action_id,
+                    approval_id=approval_id,
+                    expected_action_version=action_version,
+                    current_source_snapshot=fresh_snapshot,
+                    current_policy_version=registry_entry.registry_version,
+                    current_tool_schema_version=registry_entry.input_schema_version,
+                    fresh_risk=merged_risk,
+                )
                 raise PolicyViolationError(
                     "task duplicate result changed; acknowledgement and reapproval are required"
                 )
@@ -388,12 +375,6 @@ class PreflightWriteActionService:
             must_reapprove = False
             with self._unit_of_work_factory() as unit_of_work:
                 current = _require_action(unit_of_work, action_id)
-                current_plan = _require_plan(unit_of_work, current.plan_id)
-                latest_plan = max(
-                    current_plan_tuple(unit_of_work.plans, current_plan.run_id),
-                    key=lambda candidate: getattr(candidate, "revision_no", 0),
-                    default=None,
-                )
                 current_approval = unit_of_work.approvals.get_active_for_action(action_id)
                 if (
                     current.status != ActionStatusV1.APPROVED.value
@@ -414,59 +395,32 @@ class PreflightWriteActionService:
                     approved=approval_feasibility_authority(approval_snapshot),
                     current=feasibility_authority(merged_risk),
                 )
+                policy_denied = (feasibility_authority(merged_risk) or (None,))[0] == "INFEASIBLE"
                 now_ms = self._now_ms()
-                if must_reapprove:
-                    revoke_active_approvals(unit_of_work, current.id)
-                    result = transition_modify_action(
-                        ActionStatusV1(current.status),
-                        current.version,
-                        current.version,
-                        effect_type=EffectType(current.effect_type),
-                        plan_status=current_plan.status,
-                        plan_is_current=(
-                            latest_plan is not None and latest_plan.id == current_plan.id
-                        ),
+                if (not must_reapprove or policy_denied) and update_action_record(
+                    unit_of_work,
+                    current.id,
+                    expected_version=current.version,
+                    expected_status=ActionStatusV1(current.status),
+                    next_status=ActionStatusV1(current.status),
+                    updated_at_ms=now_ms,
+                    risk=merged_risk,
+                ) is None:
+                    raise PolicyViolationError(
+                        "write action changed during calendar conflict preflight"
                     )
-                    if (
-                        not result.applied
-                        or update_action_record(
-                            unit_of_work,
-                            current.id,
-                            expected_version=current.version,
-                            expected_status=ActionStatusV1(current.status),
-                            next_status=result.current_status,
-                            updated_at_ms=now_ms,
-                            arguments_json=current.arguments_json,
-                            arguments_hash=current.arguments_hash,
-                            risk=merged_risk,
-                        )
-                        is None
-                    ):
-                        raise PolicyViolationError(
-                            "write action changed during calendar conflict preflight"
-                        )
-                else:
-                    if (
-                        update_action_record(
-                            unit_of_work,
-                            current.id,
-                            expected_version=current.version,
-                            expected_status=ActionStatusV1(current.status),
-                            next_status=ActionStatusV1(current.status),
-                            updated_at_ms=now_ms,
-                            risk=merged_risk,
-                        )
-                        is None
-                    ):
-                        raise PolicyViolationError(
-                            "write action changed during calendar conflict preflight"
-                        )
                 unit_of_work.audits.append(
                     _audit_event(
                         run_id=plan.run_id,
                         action_id=current.id,
                         event_type="CALENDAR_CONFLICT_CHECKED",
-                        outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                        outcome=(
+                            "BLOCKED"
+                            if policy_denied
+                            else "REAPPROVAL_REQUIRED"
+                            if must_reapprove
+                            else "ALLOWED"
+                        ),
                         metadata={
                             **_calendar_conflict_audit_metadata(
                                 risk=merged_risk, action_id=current.id
@@ -481,13 +435,42 @@ class PreflightWriteActionService:
                             run_id=plan.run_id,
                             action_id=current.id,
                             event_type="FEASIBILITY_CHECKED",
-                            outcome="REAPPROVAL_REQUIRED" if must_reapprove else "ALLOWED",
+                            outcome=(
+                                "BLOCKED"
+                                if policy_denied
+                                else "REAPPROVAL_REQUIRED"
+                                if must_reapprove
+                                else "ALLOWED"
+                            ),
                             metadata=_feasibility_audit_metadata(merged_risk),
                             created_at_ms=now_ms,
                         )
                     )
                 unit_of_work.commit()
+            if policy_denied:
+                self._block_current_run(
+                    run_id=plan.run_id,
+                    action_id=action_id,
+                    reason_code="PREFLIGHT_FEASIBILITY_DENIED",
+                )
+                raise PolicyViolationError("FEASIBILITY_BLOCKED")
             if must_reapprove:
+                fresh_snapshot = {
+                    **update_source_snapshot,
+                    **approval_source_snapshot_for_calendar_conflict(
+                        risk=merged_risk, acknowledged=False
+                    ),
+                    **approval_source_snapshot_for_feasibility(risk=merged_risk),
+                }
+                self._expire_and_refresh(
+                    action_id=action_id,
+                    approval_id=approval_id,
+                    expected_action_version=action_version,
+                    current_source_snapshot=fresh_snapshot,
+                    current_policy_version=registry_entry.registry_version,
+                    current_tool_schema_version=registry_entry.input_schema_version,
+                    fresh_risk=merged_risk,
+                )
                 raise PolicyViolationError(
                     "calendar conflict result changed; acknowledgement and reapproval are required"
                 )
@@ -531,6 +514,90 @@ class PreflightWriteActionService:
                 expected_parent_id=task_list_id,
             )
         return {}
+
+    def _expire_and_refresh(
+        self,
+        *,
+        action_id: str,
+        approval_id: str,
+        expected_action_version: int,
+        current_source_snapshot: dict[str, object],
+        current_policy_version: str,
+        current_tool_schema_version: str,
+        fresh_risk: dict[str, object],
+    ) -> None:
+        if self._expire_approval is None or self._refresh_expired_action is None:
+            raise RuntimeError("write preflight stale-approval lifecycle is not configured")
+        current_source_snapshot_hash = calculate_canonical_json_hash(current_source_snapshot)
+        expire_request = {
+            "approval_id": approval_id,
+            "expected_action_version": expected_action_version,
+            "current_source_snapshot": current_source_snapshot,
+        }
+        expired = self._expire_approval(
+            ExpireApprovalCommand(
+                command_id=f"system:preflight-expire:{approval_id}",
+                request_hash=calculate_canonical_json_hash(expire_request),
+                approval_id=approval_id,
+                expected_action_version=expected_action_version,
+                current_source_snapshot=current_source_snapshot,
+            )
+        )
+        if not expired.applied:
+            raise PolicyViolationError(
+                expired.conflict_detail or "approval could not be expired during preflight"
+            )
+        refresh_request = {
+            "action_id": action_id,
+            "expected_version": expired.action_version,
+            "fresh_source_snapshot": current_source_snapshot,
+            "fresh_source_snapshot_hash": current_source_snapshot_hash,
+            "fresh_policy_version": current_policy_version,
+            "fresh_tool_schema_version": current_tool_schema_version,
+            "fresh_risk": fresh_risk,
+        }
+        refreshed = self._refresh_expired_action(
+            RefreshExpiredActionCommand(
+                command_id=f"system:preflight-refresh:{approval_id}",
+                request_hash=calculate_canonical_json_hash(refresh_request),
+                action_id=action_id,
+                expected_version=expired.action_version,
+                fresh_source_snapshot=current_source_snapshot,
+                fresh_source_snapshot_hash=current_source_snapshot_hash,
+                fresh_policy_version=current_policy_version,
+                fresh_tool_schema_version=current_tool_schema_version,
+                fresh_risk=fresh_risk,
+            )
+        )
+        if not refreshed.applied:
+            raise PolicyViolationError(
+                refreshed.conflict_detail or "expired action could not be refreshed"
+            )
+
+    def _block_current_run(self, *, run_id: str, action_id: str, reason_code: str) -> None:
+        if self._block_run is None:
+            raise RuntimeError("write preflight policy-denial lifecycle is not configured")
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(run_id)
+        if run is None:
+            raise LookupError(f"run not found: {run_id}")
+        request = {
+            "run_id": run_id,
+            "expected_version": run.version,
+            "reason_code": reason_code,
+            "action_id": action_id,
+        }
+        result = self._block_run(
+            BlockRunCommand(
+                command_id=f"system:preflight-block:{action_id}:{run.version}",
+                request_hash=calculate_canonical_json_hash(request),
+                run_id=run_id,
+                expected_version=run.version,
+                reason_code=reason_code,
+            )
+        )
+        if not result.applied:
+            raise PolicyViolationError(result.conflict_detail or "Run could not be blocked")
 
 
 def _update_source_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:

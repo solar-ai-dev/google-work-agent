@@ -325,6 +325,12 @@ def test_child_mutations_require_explicit_current_plan_facts(module_name: str) -
         if name.startswith("transition_") and callable(value)
     )
     parameters = signature(operation).parameters
+    if module_name == "approval.transitions.expire_approval":
+        expiry_input = module.ApprovalExpiryInput
+        annotations = expiry_input.__annotations__
+        assert "plan_status" in annotations
+        assert "plan_is_current" in annotations
+        return
     assert parameters["plan_status"].default is Parameter.empty
     assert parameters["plan_is_current"].default is Parameter.empty
 

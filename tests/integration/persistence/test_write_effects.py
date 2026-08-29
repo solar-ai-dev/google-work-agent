@@ -340,30 +340,28 @@ def test_task_delete_uses_preflight_claim_get_absent_and_verification(
     assert fixture_gateway.count_calls("get_task") == 1
 
 
-def test_task_delete_preflight_rejects_ambiguous_target_without_persisted_reference(
+def test_task_delete_plan_requires_confirmation_when_evidence_is_not_independent(
     write_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     clock = FakeClockPort(1000)
-    _prepare_effect_write_plan(
-        write_database=write_database,
-        clock=clock,
-        suffix="task-delete-ambiguous",
-        tool_name="tasks_delete_task",
-        arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
-        expected={"resource_type": "task", "resource_id": "task-followup", "absent": True},
-        target_resource_ref_id=None,
-        evidence_count=2,
-    )
-    _approve_effect_action(
-        write_database=write_database, clock=clock, suffix="task-delete-ambiguous"
-    )
-
-    with pytest.raises(PolicyViolationError, match="TARGET_NOT_USER_SELECTED"):
-        PreflightWriteActionService(
-            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-            gateway=fixture_gateway,
-        )(action_id="action-task-delete-ambiguous")
+    with pytest.raises(
+        PolicyViolationError, match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED"
+    ):
+        _prepare_effect_write_plan(
+            write_database=write_database,
+            clock=clock,
+            suffix="task-delete-ambiguous",
+            tool_name="tasks_delete_task",
+            arguments={"task_list_id": "task-list-default", "task_id": "task-followup"},
+            expected={
+                "resource_type": "task",
+                "resource_id": "task-followup",
+                "absent": True,
+            },
+            target_resource_ref_id=None,
+            evidence_count=2,
+        )
 
     assert fixture_gateway.count_calls("delete_task") == 0
 

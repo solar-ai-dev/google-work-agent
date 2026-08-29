@@ -94,7 +94,7 @@ def test_write_plan_evidence_policy_counts_each_actions_links_not_plan_total() -
 
     with pytest.raises(
         PolicyViolationError,
-        match="existing resource updates require a user-selected target, two evidences",
+        match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED",
     ):
         validate_write_plan(command, load_signed_tool_registry())
 

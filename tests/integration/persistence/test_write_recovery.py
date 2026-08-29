@@ -6,11 +6,25 @@ from __future__ import annotations
 
 from json import loads as _loads
 
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
+from google_work_agent.application.use_cases.action.prepare_write_retry import (
+    PrepareWriteRetryCommand,
+    PrepareWriteRetryHandler,
+)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
+from tests.integration.persistence.test_action_reject_vertical_slice import (
+    _service as _seed_workflow_checkpoint,
+)
 from tests.integration.persistence.test_write_actions import (
     DeliveryCertainty,
     ExecuteWriteActionService,
@@ -24,8 +38,6 @@ from tests.integration.persistence.test_write_actions import (
     MarkWriteActionUnknownResultCommand,
     MarkWriteActionUnknownResultService,
     Path,
-    PrepareWriteRetryCommand,
-    PrepareWriteRetryService,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownCreateActionService,
     RecoverUnknownDeleteActionCommand,
@@ -51,6 +63,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
@@ -597,20 +610,49 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
     assert resolved.applied is True
     assert resolved.action_status == "FAILED"
 
-    retry_service = PrepareWriteRetryService(
+    _seed_workflow_checkpoint(write_database, clock)
+    scheduled: list[str] = []
+    retry_service = PrepareWriteRetryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
+        id_generator=DeterministicUUID(prefix="retry-review"),
+        resume_target_registry=ResumeTargetRegistry(
+            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+            graph_version=RESUME_CONTRACT_VERSION,
+        ),
+        schedule_run_execution=lambda command: scheduled.append(command.handoff_id),  # type: ignore[arg-type,return-value]
     )
-    retried = retry_service(
-        PrepareWriteRetryCommand(
-            command_id="retry-update-1",
-            request_hash="v3" * 32,
-            action_id="action-update",
-            expected_action_version=4,
-        )
+    retry_command = PrepareWriteRetryCommand(
+        command_id="retry-update-1",
+        request_hash="v3" * 32,
+        action_id="action-update",
+        expected_action_version=4,
     )
+    retried = retry_service(retry_command)
+    replayed = retry_service(retry_command)
     assert retried.applied is True
     assert retried.action_status == "MODIFIED"
+    assert retried.handoff_id is not None
+    assert scheduled == [retried.handoff_id]
+    assert replayed.request_replayed is True
+    assert replayed.handoff_id == retried.handoff_id
+    with connect_sqlite(write_database) as connection:
+        handoff = connection.execute(
+            "SELECT status, resume_target_json FROM workflow_handoffs WHERE handoff_id=?;",
+            (retried.handoff_id,),
+        ).fetchone()
+        handoff_count = connection.execute(
+            "SELECT COUNT(*) FROM workflow_handoffs WHERE trigger_command_id=?;",
+            (retry_command.command_id,),
+        ).fetchone()[0]
+        audit_count = connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE event_type='WRITE_RETRY_PREPARED' "
+            "AND action_id='action-update';"
+        ).fetchone()[0]
+    assert handoff is not None and handoff["status"] == "PENDING"
+    assert _loads(handoff["resume_target_json"])["stage_id"] == "REVIEW_ENTRY"
+    assert handoff_count == 1
+    assert audit_count == 1
 
 
 def test_update_recovery_get_runs_without_sqlite_write_transaction(

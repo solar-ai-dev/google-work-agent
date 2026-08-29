@@ -8,6 +8,9 @@ from enum import StrEnum
 from json import loads
 from typing import Literal, cast
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.refresh_expired_action import (
     RefreshExpiredActionCommand,
     RefreshExpiredActionHandler,
@@ -260,47 +263,69 @@ class WriteExecutionPhaseCoordinator:
         )
         if not claimed.applied:
             if (
-                claimed.conflict_detail == "approval expired"
+                claimed.conflict_detail
+                in {
+                    "approval expired",
+                    "approval action version is stale",
+                    "approval arguments binding is stale",
+                    "approval source snapshot is stale",
+                    "approval policy version is stale",
+                    "approval tool schema version is stale",
+                }
                 and claimed.approval_id is not None
                 and self._expire_approval is not None
             ):
+                with self._unit_of_work_factory() as unit_of_work:
+                    approval = unit_of_work.approval_history.get(claimed.approval_id)
+                    current_action = unit_of_work.actions.get(claimed.action_id)
+                if approval is None or current_action is None:
+                    raise LookupError("stale approval authority disappeared")
+                entry = load_signed_tool_registry().get_required(
+                    current_action.connector_id, current_action.tool_name
+                )
+                current_source_snapshot = (
+                    source_snapshot
+                    if claimed.conflict_detail == "approval source snapshot is stale"
+                    else cast(dict[str, object], loads(approval.source_snapshot_json))
+                )
+                current_source_snapshot_hash = calculate_canonical_json_hash(
+                    current_source_snapshot
+                )
+                expire_request = {
+                    "approval_id": claimed.approval_id,
+                    "expected_action_version": claimed.current_version,
+                    "current_source_snapshot": current_source_snapshot,
+                }
                 expired = self._expire_approval(
                     ExpireApprovalCommand(
                         command_id=f"system:expire-approval:{claimed.approval_id}",
-                        request_hash=calculate_canonical_json_hash(
-                            {
-                                "approval_id": claimed.approval_id,
-                                "expected_action_version": claimed.current_version,
-                            }
-                        ),
+                        request_hash=calculate_canonical_json_hash(expire_request),
                         approval_id=claimed.approval_id,
                         expected_action_version=claimed.current_version,
+                        current_source_snapshot=current_source_snapshot,
                     )
                 )
                 if expired.applied and self._refresh_expired_action is not None:
-                    with self._unit_of_work_factory() as unit_of_work:
-                        approval = unit_of_work.approval_history.get(expired.approval_id)
-                    if approval is None:
-                        raise LookupError(f"approval not found: {expired.approval_id}")
+                    refresh_request = {
+                        "action_id": claimed.action_id,
+                        "expected_version": expired.action_version,
+                        "fresh_source_snapshot": current_source_snapshot,
+                        "fresh_source_snapshot_hash": current_source_snapshot_hash,
+                        "fresh_policy_version": entry.registry_version,
+                        "fresh_tool_schema_version": entry.input_schema_version,
+                        "fresh_risk": current_action.risk,
+                    }
                     refreshed = self._refresh_expired_action(
                         RefreshExpiredActionCommand(
                             command_id=f"system:refresh-expired-action:{claimed.action_id}",
-                            request_hash=calculate_canonical_json_hash(
-                                {
-                                    "action_id": claimed.action_id,
-                                    "action_version": expired.action_version,
-                                    "source_snapshot": source_snapshot,
-                                    "policy_version": approval.policy_version,
-                                    "tool_schema_version": approval.tool_schema_version,
-                                }
-                            ),
+                            request_hash=calculate_canonical_json_hash(refresh_request),
                             action_id=claimed.action_id,
                             expected_version=expired.action_version,
-                            fresh_source_snapshot_hash=calculate_canonical_json_hash(
-                                source_snapshot
-                            ),
-                            fresh_policy_version=approval.policy_version,
-                            fresh_tool_schema_version=approval.tool_schema_version,
+                            fresh_source_snapshot=current_source_snapshot,
+                            fresh_source_snapshot_hash=current_source_snapshot_hash,
+                            fresh_policy_version=entry.registry_version,
+                            fresh_tool_schema_version=entry.input_schema_version,
+                            fresh_risk=current_action.risk,
                         )
                     )
                     return WriteExecutionPhaseResult(

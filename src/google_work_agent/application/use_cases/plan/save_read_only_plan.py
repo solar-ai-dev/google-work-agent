@@ -11,7 +11,10 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 from google_work_agent.application.tool_registry.signed_tool_registry import (
     SignedToolRegistry,
 )
-from google_work_agent.application.use_cases.action.policy import validate_evidence_policy
+from google_work_agent.application.use_cases.action.policy import (
+    EvidencePolicyInput,
+    validate_evidence_policy,
+)
 from google_work_agent.application.use_cases.action.read_contracts import (
     SaveReadOnlyPlanCommand,
     SaveReadOnlyPlanResponse,
@@ -235,14 +238,8 @@ def _validate_read_only_plan(command: SaveReadOnlyPlanCommand, catalog: SignedTo
         if entry.recovery_policy.value != "NONE":
             raise ValueError(f"read-only plan requires recovery_policy=NONE: {action.tool_name}")
         validate_evidence_policy(
-            type(
-                "EvidencePolicyInput",
-                (),
-                {
-                    "evidence_count": len(action.evidence_ids),
-                    "requires_existing_resource": False,
-                    "has_user_selected_resource": False,
-                    "has_explicit_resource_relation": False,
-                },
-            )()
+            EvidencePolicyInput(
+                evidence_count=len(action.evidence_ids),
+                requires_existing_resource=False,
+            )
         )

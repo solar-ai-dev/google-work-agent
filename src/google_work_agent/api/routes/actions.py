@@ -211,6 +211,9 @@ def prepare_retry(
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
+        id_generator=dependencies.id_generator,
+        resume_target_registry=dependencies.resume_target_registry,
+        schedule_run_execution=dependencies.schedule_run_execution,
     )(
         PrepareWriteRetryCommand(
             command_id=payload.command_id,

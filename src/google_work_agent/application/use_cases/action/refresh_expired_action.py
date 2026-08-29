@@ -1,7 +1,7 @@
 """Canonical persisted RefreshExpiredAction application boundary."""
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
@@ -10,11 +10,12 @@ from google_work_agent.application.use_cases.run.resume_confirmation import Resu
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.domain.action.model import ActionStatusV1, EffectType
+from google_work_agent.domain.action.model import Action, ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.refresh_expired_action import (
     transition_refresh_expired_action,
 )
 from google_work_agent.domain.audit_event.model import AuditEvent
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
@@ -33,9 +34,11 @@ class RefreshExpiredActionCommand:
     request_hash: str
     action_id: str
     expected_version: int
+    fresh_source_snapshot: dict[str, object]
     fresh_source_snapshot_hash: str
     fresh_policy_version: str
     fresh_tool_schema_version: str
+    fresh_risk: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,10 +58,10 @@ class RefreshExpiredActionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        id_factory: Callable[[], str] | None = None,
-        resume_target_registry: ResumeTargetIssuer | None = None,
+        id_factory: Callable[[], str],
+        resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
-        | None = None,
+        | None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -75,6 +78,11 @@ class RefreshExpiredActionHandler:
             )
         ):
             raise ValueError("RefreshExpiredAction requires freshly recomputed snapshots")
+        if (
+            calculate_canonical_json_hash(command.fresh_source_snapshot)
+            != command.fresh_source_snapshot_hash
+        ):
+            raise ValueError("RefreshExpiredAction source snapshot hash mismatch")
         handoff_id: str | None = None
         with self._unit_of_work_factory() as unit_of_work:
             now_ms = self._now_ms()
@@ -132,7 +140,7 @@ class RefreshExpiredActionHandler:
                     plan_is_current=len(current) == 1 and current[0].id == plan.id,
                 )
                 if decision.applied:
-                    refreshed_risk = dict(action.risk)
+                    refreshed_risk = dict(command.fresh_risk)
                     refreshed_risk["refresh_snapshot"] = {
                         "source_snapshot_hash": command.fresh_source_snapshot_hash,
                         "policy_version": command.fresh_policy_version,
@@ -149,6 +157,9 @@ class RefreshExpiredActionHandler:
                     )
                     if updated is None:
                         raise RuntimeError("validated RefreshExpiredAction CAS failed")
+                    self._refresh_target_resource_ref(
+                        unit_of_work, action, command.fresh_source_snapshot, now_ms
+                    )
                     require_plan_review(
                         unit_of_work,
                         plan.id,
@@ -202,11 +213,39 @@ class RefreshExpiredActionHandler:
             self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
         return result
 
+    @staticmethod
+    def _refresh_target_resource_ref(
+        unit_of_work: UnitOfWork,
+        action: Action,
+        snapshot: dict[str, object],
+        now_ms: int,
+    ) -> None:
+        target_id = getattr(action, "target_resource_ref_id", None)
+        if target_id is None or not snapshot:
+            return
+        current = unit_of_work.resource_refs.get(target_id)
+        if current is None:
+            raise RuntimeError("expired Action refresh target ResourceRef is missing")
+        resource_id = snapshot.get("resource_id")
+        resource_type = snapshot.get("resource_type")
+        version = snapshot.get("version")
+        if (
+            resource_id != current.resource_id
+            or resource_type != current.resource_type
+            or not isinstance(version, str)
+            or not version
+        ):
+            raise ValueError("fresh source snapshot does not match target ResourceRef")
+        parent_id = snapshot.get("parent_id")
+        if parent_id is not None and parent_id != current.parent_resource_id:
+            raise ValueError("fresh source snapshot parent does not match target ResourceRef")
+        unit_of_work.resource_refs.upsert_bound_ref(
+            replace(current, version_token=version, captured_at_ms=now_ms)
+        )
+
     def _stage_review_handoff(
         self, unit_of_work: UnitOfWork, run_id: str, trigger_command_id: str
-    ) -> str | None:
-        if self._id_factory is None or self._resume_target_registry is None:
-            return None
+    ) -> str:
         binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
         if binding is None:
             raise RuntimeError("expired Action refresh requires a workflow binding")
@@ -243,7 +282,7 @@ class RefreshExpiredActionHandler:
         return handoff.handoff_id
 
 
-def _require_action(unit_of_work: UnitOfWork, action_id: str):
+def _require_action(unit_of_work: UnitOfWork, action_id: str) -> Action:
     action = unit_of_work.actions.get(action_id)
     if action is None:
         raise LookupError(f"action not found: {action_id}")

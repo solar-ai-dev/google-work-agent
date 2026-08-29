@@ -12,7 +12,7 @@ from google_work_agent.domain.action.model import PolicyViolationError
 
 
 def test_evidence_policy_requires_at_least_one_evidence() -> None:
-    with pytest.raises(PolicyViolationError, match="at least one evidence"):
+    with pytest.raises(PolicyViolationError, match="EVIDENCE_REQUIRED"):
         validate_evidence_policy(
             EvidencePolicyInput(
                 evidence_count=0,
@@ -26,8 +26,22 @@ def test_evidence_policy_allows_existing_resource_update_with_two_evidences() ->
         EvidencePolicyInput(
             evidence_count=2,
             requires_existing_resource=True,
+            independent_evidence_count=2,
         )
     )
+
+
+def test_evidence_policy_does_not_treat_duplicate_evidence_as_independent() -> None:
+    with pytest.raises(
+        PolicyViolationError, match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED"
+    ):
+        validate_evidence_policy(
+            EvidencePolicyInput(
+                evidence_count=2,
+                independent_evidence_count=1,
+                requires_existing_resource=True,
+            )
+        )
 
 
 def test_evidence_policy_allows_existing_resource_update_with_user_selected_target() -> None:
@@ -41,7 +55,9 @@ def test_evidence_policy_allows_existing_resource_update_with_user_selected_targ
 
 
 def test_evidence_policy_blocks_under_evidenced_existing_resource_update() -> None:
-    with pytest.raises(PolicyViolationError, match="existing resource updates require"):
+    with pytest.raises(
+        PolicyViolationError, match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED"
+    ):
         validate_evidence_policy(
             EvidencePolicyInput(
                 evidence_count=1,

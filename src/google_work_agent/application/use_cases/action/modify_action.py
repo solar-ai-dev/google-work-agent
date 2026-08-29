@@ -28,6 +28,7 @@ from google_work_agent.application.use_cases.action.feasibility import (
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.policy import (
     EvidencePolicyInput,
+    count_independent_evidence,
     validate_evidence_policy,
 )
 from google_work_agent.application.use_cases.action.task_duplicates import (
@@ -288,11 +289,13 @@ class ModifyActionHandler:
                     now_ms,
                 )
 
+            action_evidence = tuple(unit_of_work.evidence.list_for_action(action.id))
             validate_evidence_policy(
                 EvidencePolicyInput(
-                    evidence_count=len(unit_of_work.evidence.list_for_action(action.id)),
+                    evidence_count=len(action_evidence),
                     requires_existing_resource=effect_type
                     in {EffectType.UPDATE, EffectType.DELETE},
+                    independent_evidence_count=count_independent_evidence(action_evidence),
                     has_user_selected_resource=action.target_resource_ref_id is not None,
                     has_explicit_resource_relation=action.target_resource_ref_id is not None,
                 )

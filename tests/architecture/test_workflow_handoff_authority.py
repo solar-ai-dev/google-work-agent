@@ -66,3 +66,19 @@ def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
     assert "SqliteCheckpointAdapter.for_transaction(" in unit_of_work
     assert 'root / "langgraph-checkpoints.sqlite3"' not in launcher
     assert "checkpoint = SqliteCheckpointAdapter(" in launcher
+
+
+def test_retry_and_stale_preflight_use_durable_review_handoff_authority() -> None:
+    retry = (ROOT / "application/use_cases/action/prepare_write_retry.py").read_text(
+        encoding="utf-8"
+    )
+    preflight = (ROOT / "application/use_cases/action/write_preflight.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'issue_main_stage(\n            binding.graph_profile, "REVIEW_ENTRY"' in retry
+    assert "workflow_handoffs.stage_pending(" in retry
+    assert "ExpireApprovalCommand(" in preflight
+    assert "RefreshExpiredActionCommand(" in preflight
+    assert "transition_modify_action" not in preflight
+    assert "revoke_active_approvals" not in preflight

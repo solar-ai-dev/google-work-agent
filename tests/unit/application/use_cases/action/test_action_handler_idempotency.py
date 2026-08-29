@@ -137,6 +137,9 @@ def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> 
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
+        id_generator=MagicMock(),
+        resume_target_registry=MagicMock(),
+        schedule_run_execution=MagicMock(),
     )(
         PrepareWriteRetryCommand(
             command_id="cmd-1",
@@ -148,4 +151,6 @@ def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> 
     assert result.request_replayed is True
     unit_of_work.actions.prepare_write_retry.assert_not_called()
     assert unit_of_work.execution_attempts.method_calls == []
+    unit_of_work.workflow_handoffs.stage_pending.assert_not_called()
+    unit_of_work.audits.append.assert_not_called()
     unit_of_work.command_receipts.add_received.assert_not_called()

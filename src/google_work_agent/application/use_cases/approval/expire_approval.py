@@ -4,13 +4,20 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.approval.transitions.expire_approval import transition_expire_approval
+from google_work_agent.domain.approval.transitions.expire_approval import (
+    ApprovalExpiryInput,
+    transition_expire_approval,
+)
 from google_work_agent.domain.audit_event.model import AuditEvent
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
@@ -24,6 +31,7 @@ class ExpireApprovalCommand:
     request_hash: str
     approval_id: str
     expected_action_version: int
+    current_source_snapshot: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +80,10 @@ class ExpireApprovalHandler:
             action = unit_of_work.actions.get(approval.action_id)
             if action is None:
                 raise LookupError(f"action not found: {approval.action_id}")
+            entry = load_signed_tool_registry().get_required(action.connector_id, action.tool_name)
+            current_source_snapshot_hash = calculate_canonical_json_hash(
+                command.current_source_snapshot
+            )
             plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
@@ -84,10 +96,24 @@ class ExpireApprovalHandler:
                 result = _current(unit_of_work, command, ResultCode.VERSION_CONFLICT)
             else:
                 next_action, next_approval = transition_expire_approval(
-                    action_status=ActionStatusV1(action.status),
-                    approval_status=approval.status,
-                    plan_status=plan.status,
-                    plan_is_current=len(current) == 1 and current[0].id == plan.id,
+                    ApprovalExpiryInput(
+                        action_status=ActionStatusV1(action.status),
+                        action_version=action.version,
+                        current_arguments_hash=action.arguments_hash,
+                        approval_status=approval.status,
+                        approval_action_version=approval.action_version,
+                        approval_arguments_hash=approval.canonical_arguments_hash,
+                        approval_source_snapshot_hash=approval.source_snapshot_hash,
+                        current_source_snapshot_hash=current_source_snapshot_hash,
+                        approval_policy_version=approval.policy_version,
+                        current_policy_version=entry.registry_version,
+                        approval_tool_schema_version=approval.tool_schema_version,
+                        current_tool_schema_version=entry.input_schema_version,
+                        expires_at_ms=approval.expires_at_ms,
+                        now_ms=now_ms,
+                        plan_status=plan.status,
+                        plan_is_current=len(current) == 1 and current[0].id == plan.id,
+                    )
                 )
                 if not update_approval_status(
                     unit_of_work,
