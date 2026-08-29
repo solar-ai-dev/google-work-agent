@@ -151,19 +151,24 @@ def test_resume_rejects_arbitrary_payload_and_confirmation_kind() -> None:
         ResumeRunRequestV2.model_validate({**base, "resume_kind": "CONFIRMATION"})
 
 
-def test_recovery_schema_allows_only_three_canonical_choices() -> None:
+def test_recovery_schema_uses_shared_target_and_closed_resolution_vocabulary() -> None:
     base = {
         "command_id": "recovery-1",
         "expected_version": 4,
-        "action_id": "action-1",
+        "target": {"target_kind": "ACTION", "action_id": "action-1"},
         "resolution_kind": "ACCEPT_PARTIAL",
         "api_contract_version": VERSION,
     }
     assert ResolveRecoveryRequestV1.model_validate(base)
-    assert ResolveRecoveryRequestV1.model_validate(
-        {**base, "resolution_kind": "CREATE_CORRECTIVE_PLAN"}
-    )
-    assert ResolveRecoveryRequestV1.model_validate({**base, "resolution_kind": "FAIL"})
+    for resolution_kind in ("RECHECK", "CREATE_CORRECTIVE_PLAN", "CANCEL", "FAIL"):
+        assert ResolveRecoveryRequestV1.model_validate({**base, "resolution_kind": resolution_kind})
+    assert ResolveRecoveryRequestV1.model_validate({**base, "target": {"target_kind": "RUN"}})
 
     with pytest.raises(ValidationError):
         ResolveRecoveryRequestV1.model_validate({**base, "resolution_kind": "RETRY_WRITE"})
+    with pytest.raises(ValidationError):
+        ResolveRecoveryRequestV1.model_validate({**base, "target": {"target_kind": "ACTION"}})
+    with pytest.raises(ValidationError):
+        ResolveRecoveryRequestV1.model_validate(
+            {**base, "target": {"target_kind": "RUN", "action_id": "action-1"}}
+        )

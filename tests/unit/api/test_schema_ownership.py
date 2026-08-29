@@ -16,6 +16,11 @@ from google_work_agent.api.schemas.health_checks.get_readiness import ReadyRespo
 from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2
 from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
+from google_work_agent.api.schemas.runs.recovery import (
+    ActionRecoveryTargetV1,
+    RecoveryUiProjectionV1,
+    RunRecoveryTargetV1,
+)
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest
@@ -38,6 +43,9 @@ def test_run_transport_contracts_live_in_operation_modules() -> None:
     assert ResumeRunRequestV2.__module__.endswith(".runs.resume_run")
     assert CancelRunRequestV2.__module__.endswith(".runs.cancel_run")
     assert ResolveRecoveryRequestV1.__module__.endswith(".runs.resolve_recovery")
+    assert RunRecoveryTargetV1.__module__.endswith(".runs.recovery")
+    assert ActionRecoveryTargetV1.__module__.endswith(".runs.recovery")
+    assert RecoveryUiProjectionV1.__module__.endswith(".runs.recovery")
 
 
 def test_other_plural_resource_contracts_live_in_operation_modules() -> None:

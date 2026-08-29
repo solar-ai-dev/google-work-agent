@@ -146,7 +146,7 @@ colab_outputs/
 colab_tmp/
 wandb/
 mlruns/
-runs/
+/runs/
 lightning_logs/
 .cache/huggingface/
 hf_cache/

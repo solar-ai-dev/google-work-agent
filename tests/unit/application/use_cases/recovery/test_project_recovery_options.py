@@ -51,6 +51,11 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
     result = ProjectRecoveryOptionsHandler(factory)(ProjectRecoveryOptionsQueryV1("run-1"))
 
     assert result.allowed_resolution_kinds == expected
+    assert result.target == (
+        {"target_kind": "ACTION", "action_id": "action-1"}
+        if reason in {"UNKNOWN_RESULT", "VERIFICATION_MISMATCH"}
+        else {"target_kind": "RUN"}
+    )
 
 
 def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:

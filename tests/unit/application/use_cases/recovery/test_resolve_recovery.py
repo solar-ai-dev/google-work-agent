@@ -97,6 +97,36 @@ def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) 
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
+def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    result = handler(
+        ResolveRecoveryCommandV1(
+            run_id="r-1",
+            expected_version=0,
+            command_id="cmd-target-conflict",
+            request_hash="c" * 64,
+            resolution=RecoveryResolution.ACCEPT_PARTIAL,
+            target_kind="RUN",
+        )
+    )
+
+    assert not result.applied and result.result_code == "STATE_CONFLICT"
+    with connect_sqlite(database_path) as connection:
+        assert connection.execute("SELECT status FROM plans WHERE id='plan-1';").fetchone()[0] == (
+            "DRAFT"
+        )
+        assert (
+            connection.execute("SELECT status FROM actions WHERE id='action-1';").fetchone()[0]
+            == "MISMATCH"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
+
+
 def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     with connect_sqlite(database_path) as connection:

@@ -18,8 +18,7 @@ class ProjectRecoveryOptionsQueryV1:
 @dataclass(frozen=True, slots=True)
 class ProjectRecoveryOptionsResultV1:
     reason_code: str
-    target: str
-    action_id: str | None
+    target: dict[str, str]
     allowed_resolution_kinds: tuple[str, ...]
 
 
@@ -80,8 +79,11 @@ class ProjectRecoveryOptionsHandler:
         )
         return ProjectRecoveryOptionsResultV1(
             reason,
-            "ACTION" if action_id is not None else "RUN",
-            action_id,
+            (
+                {"target_kind": "RUN"}
+                if action_id is None
+                else {"target_kind": "ACTION", "action_id": action_id}
+            ),
             options,
         )
 

@@ -342,10 +342,15 @@ def test_immediate_persistence_port_sqlite_mirror() -> None:
 def test_immediate_api_and_langgraph_target_grammar() -> None:
     errors: list[str] = []
     schemas = SRC / "api" / "schemas"
+    canonical_shared_schemas = {("runs", "recovery.py")}
     if schemas.exists():
         for resource in (p for p in schemas.iterdir() if p.is_dir()):
             for path in resource.glob("*.py"):
-                if path.name != "__init__.py" and "_" not in path.stem:
+                if (
+                    path.name != "__init__.py"
+                    and "_" not in path.stem
+                    and (resource.name, path.name) not in canonical_shared_schemas
+                ):
                     errors.append(f"API schema must be <verb>_<object>.py: {rel(path)}")
     lg = SRC / "adapters" / "langgraph"
     targets = [lg / "main", *(lg / "subgraphs" / role for role in ROLES)]

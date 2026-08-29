@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
+from typing import Literal
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
@@ -57,6 +58,8 @@ class ResolveRecoveryCommandV1:
     command_id: str
     request_hash: str
     resolution: RecoveryResolution
+    target_kind: Literal["RUN", "ACTION"] | None = None
+    target_action_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +122,18 @@ class ResolveRecoveryHandler:
                     run.version,
                     tuple(item.value for item in next_allowed_run_commands(run.status)),
                     "expected_version does not match current_version",
+                )
+                self._finish_result(unit_of_work, command, result, now_ms)
+                unit_of_work.commit()
+                return result
+            if not self._target_matches_context(command, context):
+                result = ResolveRecoveryResult(
+                    False,
+                    ResultCode.STATE_CONFLICT.value,
+                    run.status.value,
+                    run.version,
+                    tuple(item.value for item in next_allowed_run_commands(run.status)),
+                    "requested recovery target does not match current RecoveryContextV1",
                 )
                 self._finish_result(unit_of_work, command, result, now_ms)
                 unit_of_work.commit()
@@ -270,6 +285,21 @@ class ResolveRecoveryHandler:
         if handoff_id is not None and self._schedule_run_execution is not None:
             self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
         return result
+
+    @staticmethod
+    def _target_matches_context(
+        command: ResolveRecoveryCommandV1, context: RecoveryContextV1
+    ) -> bool:
+        if command.target_kind is None:
+            return command.target_action_id is None
+        if command.target_kind != context["scope"]:
+            return False
+        expected_action_id = context.get("action_id")
+        return (
+            command.target_action_id is None
+            if command.target_kind == "RUN"
+            else command.target_action_id == expected_action_id
+        )
 
     @staticmethod
     def _recovered_action_status(

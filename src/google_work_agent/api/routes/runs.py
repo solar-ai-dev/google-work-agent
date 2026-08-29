@@ -24,6 +24,7 @@ from google_work_agent.api.schemas.runs.confirm_run import (
 )
 from google_work_agent.api.schemas.runs.get_run import RunSnapshotResponse
 from google_work_agent.api.schemas.runs.get_run_context import RunContextResponse
+from google_work_agent.api.schemas.runs.recovery import RecoveryUiProjectionV1
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
@@ -235,6 +236,12 @@ def get_run_snapshot(
             request_id=request.state.request_id,
         )
     projection = asdict(snapshot)
+    recovery_options = projection.pop("recovery_options")
+    projection["recovery"] = (
+        None
+        if recovery_options is None
+        else RecoveryUiProjectionV1.model_validate(recovery_options).model_dump()
+    )
     pending = (
         dependencies.resolve_pending_confirmation(run_id)
         if snapshot.status == "WAITING_CONFIRMATION"
@@ -532,6 +539,8 @@ def resolve_recovery(
             run_id=run_id,
             expected_version=payload.expected_version,
             resolution=RecoveryResolution(payload.resolution_kind),
+            target_kind=payload.target.target_kind,
+            target_action_id=getattr(payload.target, "action_id", None),
         ),
     )
     response.status_code = (

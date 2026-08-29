@@ -15,6 +15,9 @@ from google_work_agent.adapters.readiness.composite import (
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
+from google_work_agent.application.use_cases.recovery.project_recovery_options import (
+    ProjectRecoveryOptionsResultV1,
+)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryResult,
 )
@@ -282,7 +285,7 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
             json={
                 "command_id": "recovery-1",
                 "expected_version": 2,
-                "action_id": "action-1",
+                "target": {"target_kind": "ACTION", "action_id": "action-1"},
                 "resolution_kind": "ACCEPT_PARTIAL",
                 "api_contract_version": "1",
             },
@@ -292,6 +295,8 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
     assert resolved.status_code == 200
     assert captured["confirm"].request_hash != "confirm-1"  # type: ignore[attr-defined]
     assert captured["recovery"].request_hash != "recovery-1"  # type: ignore[attr-defined]
+    assert captured["recovery"].target_kind == "ACTION"  # type: ignore[attr-defined]
+    assert captured["recovery"].target_action_id == "action-1"  # type: ignore[attr-defined]
     assert coordinator.resume_calls == []
 
 
@@ -379,6 +384,11 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
         result_kind=None,
         next_allowed_commands=("REQUEST_CANCEL",),
         snapshot_version=1,
+        recovery_options=ProjectRecoveryOptionsResultV1(
+            reason_code="VERIFICATION_MISMATCH",
+            target={"target_kind": "ACTION", "action_id": "action-1"},
+            allowed_resolution_kinds=("RECHECK", "ACCEPT_PARTIAL"),
+        ),
     )
 
     with (
@@ -392,6 +402,12 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
 
     assert response.status_code == 200
     assert response.json()["snapshot"]["actions"][0]["risk"] == risk
+    assert response.json()["snapshot"]["recovery"] == {
+        "reason_code": "VERIFICATION_MISMATCH",
+        "target": {"target_kind": "ACTION", "action_id": "action-1"},
+        "allowed_resolution_kinds": ["RECHECK", "ACCEPT_PARTIAL"],
+    }
+    assert "recovery_options" not in response.json()["snapshot"]
 
 
 def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume() -> None:
