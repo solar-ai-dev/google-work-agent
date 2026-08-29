@@ -23,18 +23,14 @@ def bind_registry_candidates_node(
         request_intent=projection["request_intent"],
         candidate=projection["candidate"],
         policy_confirmation_receipts=projection["policy_confirmation_receipts"],
-        current_interrupt_id=state.get("tr_current_interrupt_id"),
+        current_interrupt_id=projection["current_interrupt_id"],
     )
     if resolution.workflow_signal is not None:
         return {
-            "tr_binding": None,
-            "tr_result": {
-                "schema_version": 1,
-                "disposition": "NEEDS_CONFIRMATION",
-                "tool_route_plan": None,
-                "workflow_signal": resolution.workflow_signal,
-                "reason_codes": ["SCOPE_EXPANSION_REQUIRED"],
-            },
+            "registry_candidates": [],
+            "bound_input_routes": [],
+            "bound_output_routes": [],
+            "workflow_signal": resolution.workflow_signal,
         }
     binding = bind_registry_candidates(
         candidate=resolution.candidate,
@@ -42,8 +38,9 @@ def bind_registry_candidates_node(
         id_factory=id_factory,
     )
     return {
-        "tr_semantic_candidate": resolution.candidate,
-        "tr_binding": binding,
-        "tr_result": None,
-        "tr_current_interrupt_id": None,
+        "io_resource_candidate": resolution.candidate,
+        "registry_candidates": list(binding.output_candidates),
+        "bound_input_routes": [route.copy() for route in binding.input_routes],
+        "bound_output_routes": [],
+        "workflow_signal": None,
     }

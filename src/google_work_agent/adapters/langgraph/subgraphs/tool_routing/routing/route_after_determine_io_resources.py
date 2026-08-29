@@ -7,12 +7,7 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 
 def route_after_determine_io_resources(
     state: ToolRouteStateV1,
-) -> Literal["confirm", "bind_registry_candidates"]:
-    result = state.get("tr_result")
-    if result is not None:
-        if result["disposition"] == "NEEDS_CONFIRMATION":
-            return "confirm"
-        raise ValueError(f"unexpected determine disposition: {result['disposition']}")
-    if state.get("tr_semantic_candidate") is None:
-        raise ValueError("tool-routing semantic candidate is required")
+) -> Literal["finalize_route", "bind_registry_candidates"]:
+    if state.get("io_resource_candidate") is None:
+        return "finalize_route"
     return "bind_registry_candidates"

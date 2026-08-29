@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.state import (
-    ParentGraphState,
-    _require_state_value,
-    request_from_state,
-)
+from google_work_agent.adapters.langgraph.main.state import _require_state_value, request_from_state
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (  # noqa: E501
     bind_registry_candidates_node,
@@ -33,9 +29,6 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.validate_
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_bind_registry_candidates import (  # noqa: E501
     route_after_bind_registry_candidates,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_confirmation import (  # noqa: E501
-    route_after_confirmation,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_determine_io_resources import (  # noqa: E501
     route_after_determine_io_resources,
 )
@@ -51,22 +44,21 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_a
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRouteStateV1,
     ToolRoutingInputState,
+    ToolRoutingParentOutputState,
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
+    ToolRouteResultV1,
 )
-from google_work_agent.application.orchestration.confirmation import (
-    build_user_interrupt_v1,
-)
+from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
+    UserInterruptV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ClarificationQuestionV1,
-)
+from google_work_agent.application.orchestration.handoff_contracts import ClarificationQuestionV1
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
@@ -82,7 +74,8 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
-    [ToolRouteStateV1], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
+    [ToolRouteStateV1],
+    tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
 
 
@@ -97,7 +90,7 @@ def _scope_expansion_affected_route_ids(resource_types: list[str]) -> list[str]:
 
 
 class ToolRoutingSubgraph:
-    """Compile the five canonical Tool Routing operations."""
+    """Compile exactly the five canonical Tool Routing runtime nodes."""
 
     def __init__(
         self,
@@ -126,23 +119,21 @@ class ToolRoutingSubgraph:
 
     def build(self) -> Any:
         graph = StateGraph(
-            ToolRouteStateV1, input_schema=ToolRoutingInputState, output_schema=ParentGraphState
+            ToolRouteStateV1,
+            input_schema=ToolRoutingInputState,
+            output_schema=ToolRoutingParentOutputState,
         )
-        graph.add_node("initialize", self._initialize_node)
         graph.add_node("determine_io_resources", self._determine_io_resources_node)
         graph.add_node("bind_registry_candidates", self._bind_registry_candidates_node)
         graph.add_node("select_tool_if_needed", self._select_tool_if_needed_node)
         graph.add_node("finalize_route", self._finalize_route_node)
-        graph.add_node("prepare_confirmation", self._prepare_confirmation_node)
-        graph.add_node("confirm", self._confirm_node)
         graph.add_node("validate_route", self._validate_route_node)
-        graph.add_edge(START, "initialize")
-        graph.add_edge("initialize", "determine_io_resources")
+        graph.add_edge(START, "determine_io_resources")
         graph.add_conditional_edges(
             "determine_io_resources",
             route_after_determine_io_resources,
             {
-                "confirm": "prepare_confirmation",
+                "finalize_route": "finalize_route",
                 "bind_registry_candidates": "bind_registry_candidates",
             },
         )
@@ -150,7 +141,7 @@ class ToolRoutingSubgraph:
             "bind_registry_candidates",
             route_after_bind_registry_candidates,
             {
-                "confirm": "prepare_confirmation",
+                "finalize_route": "finalize_route",
                 "select_tool_if_needed": "select_tool_if_needed",
             },
         )
@@ -162,12 +153,6 @@ class ToolRoutingSubgraph:
         graph.add_conditional_edges(
             "finalize_route",
             route_after_finalize_route,
-            {"confirm": "prepare_confirmation", "validate_route": "validate_route"},
-        )
-        graph.add_edge("prepare_confirmation", "confirm")
-        graph.add_conditional_edges(
-            "confirm",
-            route_after_confirmation,
             {
                 "determine_io_resources": "determine_io_resources",
                 "bind_registry_candidates": "bind_registry_candidates",
@@ -177,60 +162,75 @@ class ToolRoutingSubgraph:
         graph.add_conditional_edges("validate_route", route_after_validate_route, {"end": END})
         return graph.compile(name="tool_routing_subgraph")
 
-    def _initialize_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
-        invocation_id = self._id_factory()
-        return cast(
-            ToolRouteStateV1,
-            {
-                **state,
-                "tr_invocation_id": invocation_id,
-                "trace_context": merge_trace_context(
-                    state,
-                    graph_profile=self._graph_profile.value,
-                    agent_subgraph_id="tool_route",
-                    agent_role="tool_routing",
-                    agent_invocation_id=invocation_id,
-                    subgraph_namespace="tool_routing",
-                    node_name="init",
-                    prompt_ref=self._determine_prompt_ref,
-                    agent_invocation_increment=1,
-                ),
-            },
-        )
-
     def _determine_io_resources_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
+        request = request_from_state(cast(Any, state))
+        invocation_id = self._invocation_id(state)
+        is_first_node = invocation_id is None
+        if invocation_id is None:
+            invocation_id = self._id_factory()
+        initial_fields: ToolRouteStateV1 = {}
+        if is_first_node:
+            initial_fields = {
+                "request_intent": _require_state_value(
+                    state.get("request_intent"), "request_intent"
+                ),
+                "registry_snapshot_ref": self._tool_catalog.contract_version,
+                "io_resource_candidate": None,
+                "registry_candidates": [],
+                "bound_input_routes": [],
+                "bound_output_routes": [],
+                "final_route": None,
+            }
+        working_state = cast(ToolRouteStateV1, {**state, **initial_fields})
         patch = determine_io_resources_node(
-            state,
+            working_state,
             llm_runtime=self._llm_runtime,
             tool_catalog=self._tool_catalog,
             prompt_ref=self._determine_prompt_ref,
         )
-        request = request_from_state(state)
-        return {
+        prompt_context = dict(cast(Mapping[str, object], state.get("prompt_context", {})))
+        prompt_context.pop("confirmation_response", None)
+        prompt_context.pop("confirmation_interrupt", None)
+        result: ToolRouteStateV1 = {
+            **initial_fields,
             **patch,
+            "prompt_context": prompt_context,
             "trace_context": self._trace(
-                state,
+                working_state,
                 node_name="determine_io_resources",
                 llm_call_id=f"{request.run_id}:route.determine_resources",
                 prompt_ref=self._determine_prompt_ref,
                 llm_call_increment=1,
+                invocation_id=invocation_id,
+                agent_invocation_increment=1 if is_first_node else 0,
             ),
         }
+        if result.get("io_resource_candidate") is None:
+            result.update(self._confirmation_signal(cast(ToolRouteStateV1, {**state, **result})))
+        return result
 
     def _bind_registry_candidates_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
-        return {
-            **bind_registry_candidates_node(
-                state, tool_catalog=self._tool_catalog, id_factory=self._id_factory
-            ),
+        patch = bind_registry_candidates_node(
+            state, tool_catalog=self._tool_catalog, id_factory=self._id_factory
+        )
+        result: ToolRouteStateV1 = {
+            **patch,
             "trace_context": self._trace(state, node_name="bind_registry_candidates"),
         }
+        working_state = cast(ToolRouteStateV1, {**state, **patch})
+        if working_state.get("workflow_signal") is not None:
+            result.update(self._confirmation_signal(working_state))
+            return result
+        prompt_context = dict(cast(Mapping[str, object], state.get("prompt_context", {})))
+        prompt_context.pop("confirmation_response", None)
+        prompt_context.pop("confirmation_interrupt", None)
+        result.update({"user_interrupt": None, "prompt_context": prompt_context})
+        return result
 
     def _select_tool_if_needed_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
-        binding = _require_state_value(state.get("tr_binding"), "tr_binding")
-        llm_call_count = sum(
-            len(candidate.eligible_tool_ids) != 1 for candidate in binding.output_candidates
-        )
-        request = request_from_state(state)
+        candidates = state.get("registry_candidates", [])
+        llm_call_count = sum(len(candidate.eligible_tool_ids) != 1 for candidate in candidates)
+        request = request_from_state(cast(Any, state))
         return {
             **select_tool_if_needed_node(
                 state,
@@ -247,6 +247,8 @@ class ToolRoutingSubgraph:
         }
 
     def _finalize_route_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
+        if state.get("user_interrupt") is not None:
+            return self._resolve_confirmation(state)
         return {
             **finalize_route_node(
                 state,
@@ -256,12 +258,46 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(state, node_name="finalize_route"),
         }
 
-    def _prepare_confirmation_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
-        result = state.get("tr_result")
-        if result is None:
-            raise ValueError("tool-routing confirmation result is required")
+    def _resolve_confirmation(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
+        raw_interrupt = cast(Mapping[str, object], state["user_interrupt"])
+        interrupt_id = cast(str, raw_interrupt["interrupt_id"])
+        is_scope_expansion = isinstance(raw_interrupt.get("policy_confirmation"), Mapping)
+        confirmation_response, early_return_patch = self._confirm_inline(state)
+        trace_context = self._trace(state, node_name="finalize_route")
+        if early_return_patch is not None:
+            return cast(
+                ToolRouteStateV1,
+                {**early_return_patch, "user_interrupt": None, "trace_context": trace_context},
+            )
+        if confirmation_response is None:
+            raise ValueError("tool-routing confirmation response is required")
+        origin = "scope_expansion" if is_scope_expansion else "semantic"
+        prompt_context = dict(cast(Mapping[str, object], state.get("prompt_context", {})))
+        prompt_context["confirmation_interrupt"] = {
+            "semantic_owner_id": "TOOL_ROUTE",
+            "origin_target": "tool_route.finalize",
+            "origin": origin,
+            "interrupt_id": interrupt_id,
+        }
+        if is_scope_expansion:
+            prompt_context.pop("confirmation_response", None)
+        else:
+            prompt_context["confirmation_response"] = dict(confirmation_response)
+        patch: ToolRouteStateV1 = {
+            "user_interrupt": None,
+            "prompt_context": prompt_context,
+            "policy_confirmation_receipts": list(state.get("policy_confirmation_receipts", [])),
+            "trace_context": trace_context,
+        }
+        if is_scope_expansion:
+            patch["workflow_signal"] = None
+        else:
+            patch["io_resource_candidate"] = None
+        return patch
+
+    def _confirmation_signal(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         request_intent = _require_state_value(state.get("request_intent"), "request_intent")
-        signal = result.get("workflow_signal")
+        signal = state.get("workflow_signal")
         if isinstance(signal, Mapping) and signal.get("kind") == "SCOPE_EXPANSION_REQUIRED":
             typed_signal = cast(ScopeExpansionRequiredV1, signal)
             resources = ", ".join(typed_signal["required_resource_types"])
@@ -269,17 +305,24 @@ class ToolRoutingSubgraph:
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
                 "question": (
-                    f"요청한 작업을 처리하려면 {resources} 데이터를 "
-                    "추가 확인해야 합니다. 진행할까요?"
+                    f"This request requires additional read scope for {resources}. Proceed?"
                 ),
                 "affected_field_paths": ["requested_resource_hints"],
-                "reason_code": typed_signal["reason_codes"][0]
-                if typed_signal["reason_codes"]
-                else "SCOPE_EXPANSION_REQUIRED",
+                "reason_code": (
+                    typed_signal["reason_codes"][0]
+                    if typed_signal["reason_codes"]
+                    else "SCOPE_EXPANSION_REQUIRED"
+                ),
                 "known_context_summary": request_intent["goal"],
                 "options": [
-                    {"option_id": "APPROVED", "label": "진행"},
-                    {"option_id": "DECLINED", "label": "진행하지 않음"},
+                    {
+                        "option_id": "APPROVED",
+                        "label": "네, 확인하고 진행합니다",
+                    },
+                    {
+                        "option_id": "DECLINED",
+                        "label": "아니요, 진행하지 않습니다",
+                    },
                 ],
             }
             origin = "scope_expansion"
@@ -287,100 +330,70 @@ class ToolRoutingSubgraph:
             question = {
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
-                "question": "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요.",
-                "affected_field_paths": ["requested_resource_hints", "requested_effect_hints"],
-                "reason_code": result["reason_codes"][0]
-                if result["reason_codes"]
-                else "TOOL_ROUTE_NEEDS_CONFIRMATION",
+                "question": "Please clarify the target resource or action type.",
+                "affected_field_paths": [
+                    "requested_resource_hints",
+                    "requested_effect_hints",
+                ],
+                "reason_code": "TOOL_ROUTE_NEEDS_CONFIRMATION",
                 "known_context_summary": request_intent["goal"],
                 "options": [],
             }
             origin = "semantic"
-        if origin == "scope_expansion":
-            question["question"] = (
-                f"요청한 작업을 처리하려면 {resources} 데이터 범위를 "
-                "추가로 확인해야 합니다. 진행할까요?"
-            )
-            question["options"] = [
-                {"option_id": "APPROVED", "label": "네, 확인하고 진행합니다"},
-                {"option_id": "DECLINED", "label": "아니요, 진행하지 않습니다"},
-            ]
-        else:
-            question["question"] = "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요."
         interrupt_id = self._id_factory()
-        raw_interrupt = {**build_user_interrupt_v1(question), "interrupt_id": interrupt_id}
+        raw_interrupt: dict[str, object] = {
+            **build_user_interrupt_v1(question),
+            "interrupt_id": interrupt_id,
+        }
         if origin == "scope_expansion":
-            signal = cast(ScopeExpansionRequiredV1, result["workflow_signal"])
+            typed_signal = cast(ScopeExpansionRequiredV1, signal)
             raw_interrupt["policy_confirmation"] = {
                 "confirmation_kind": "SCOPE_EXPANSION",
                 "request_intent": request_intent,
-                "required_resource_types": list(signal["required_resource_types"]),
-                "reason_codes": list(signal["reason_codes"]),
+                "required_resource_types": list(typed_signal["required_resource_types"]),
+                "reason_codes": list(typed_signal["reason_codes"]),
                 "affected_route_ids": _scope_expansion_affected_route_ids(
-                    signal["required_resource_types"]
+                    typed_signal["required_resource_types"]
                 ),
             }
+        prompt_context = dict(cast(Mapping[str, object], state.get("prompt_context", {})))
+        prompt_context.pop("confirmation_response", None)
+        prompt_context["confirmation_interrupt"] = {
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "semantic_owner_id": "TOOL_ROUTE",
+            "origin_target": "tool_route.finalize",
+            "origin": origin,
+        }
         return {
             "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
-            "user_interrupt": raw_interrupt,
-            "tr_confirmation_origin": origin,
-            "tr_current_interrupt_id": interrupt_id,
-            "trace_context": self._trace(state, node_name="prepare_confirmation"),
-        }
-
-    def _confirm_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
-        confirmation_response, early_return_patch = self._confirm_inline(state)
-        if early_return_patch is not None:
-            return cast(
-                ToolRouteStateV1,
-                {
-                    **state,
-                    **early_return_patch,
-                    "trace_context": self._trace(state, node_name="confirm"),
-                },
-            )
-        if confirmation_response is None:
-            raise ValueError("tool-routing confirmation response is required")
-        prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
-        prompt_context.pop("confirmation_interrupt", None)
-        receipts = list(state.get("policy_confirmation_receipts", []))
-        if state.get("tr_confirmation_origin") != "scope_expansion":
-            return {
-                "tr_confirmation_response": confirmation_response,
-                "user_interrupt": None,
-                "prompt_context": prompt_context,
-                "trace_context": self._trace(state, node_name="confirm"),
-            }
-        decision = (
-            "APPROVED"
-            if confirmation_response["response_kind"] == "OPTION"
-            and confirmation_response["selected_option"] == "APPROVED"
-            else "DECLINED"
-        )
-        if decision == "DECLINED":
-            return {
-                "policy_confirmation_receipts": receipts,
-                "user_interrupt": None,
-                "prompt_context": prompt_context,
-                "tr_result": {
-                    "schema_version": 1,
-                    "disposition": "BLOCKED",
-                    "tool_route_plan": None,
-                    "workflow_signal": None,
-                    "reason_codes": ["SCOPE_EXPANSION_DECLINED"],
-                },
-                "trace_context": self._trace(state, node_name="confirm"),
-            }
-        return {
-            "policy_confirmation_receipts": receipts,
-            "user_interrupt": None,
+            "user_interrupt": cast(UserInterruptV1, raw_interrupt),
             "prompt_context": prompt_context,
-            "trace_context": self._trace(state, node_name="confirm"),
         }
 
     def _validate_route_node(self, state: ToolRouteStateV1) -> ToolRouteStateV1:
         patch = validate_route_node(state, tool_catalog=self._tool_catalog)
-        result = _require_state_value(state.get("tr_result"), "tr_result")
+        plan = patch.get("tool_route_plan")
+        disposition: Literal["ROUTE_READY", "NO_TOOL_NEEDED", "BLOCKED"]
+        if plan is None:
+            disposition = "BLOCKED"
+            reason_codes = [self._blocked_reason(state)]
+        else:
+            output_plan = plan["output_plan"]
+            has_input = bool(plan["input_plan"]["input_routes"])
+            disposition = (
+                "NO_TOOL_NEEDED"
+                if output_plan["output_mode"] == "ANSWER" and not has_input
+                else "ROUTE_READY"
+            )
+            reason_codes = []
+        result: ToolRouteResultV1 = {
+            "schema_version": 1,
+            "disposition": disposition,
+            "tool_route_plan": plan,
+            "workflow_signal": cast(ScopeExpansionRequiredV1 | None, patch["workflow_signal"]),
+            "reason_codes": reason_codes,
+        }
         decision = route_supervisor(
             phase=WorkflowPhase.TOOL_ROUTING,
             state=cast(MultiAgentGraphState, {**state, **patch}),
@@ -389,25 +402,23 @@ class ToolRoutingSubgraph:
         traced_state = {
             **state,
             **patch,
-            "retry_budget": state.get("tr_retry_budget", state["retry_budget"]),
             "trace_context": self._trace(state, node_name="validate_route"),
         }
-        merged = self._merge_decision(
-            traced_state, {"workflow_phase": WorkflowPhase.TOOL_ROUTING.value}, decision
+        return cast(
+            ToolRouteStateV1,
+            self._merge_decision(
+                traced_state,
+                {"workflow_phase": WorkflowPhase.TOOL_ROUTING.value},
+                decision,
+            ),
         )
-        for key in (
-            "tr_semantic_candidate",
-            "tr_selected_tools",
-            "tr_binding",
-            "tr_result",
-            "tr_confirmation_response",
-            "tr_retry_budget",
-            "tr_confirmation_origin",
-            "tr_current_interrupt_id",
-            "tr_invocation_id",
-        ):
-            merged.pop(key, None)
-        return cast(ToolRouteStateV1, merged)
+
+    @staticmethod
+    def _blocked_reason(state: ToolRouteStateV1) -> str:
+        for receipt in reversed(state.get("policy_confirmation_receipts", [])):
+            if receipt["decision"] == "DECLINED":
+                return "SCOPE_EXPANSION_DECLINED"
+        return "TOOL_ROUTE_BLOCKED"
 
     def _trace(
         self,
@@ -417,22 +428,39 @@ class ToolRoutingSubgraph:
         llm_call_id: str | None = None,
         prompt_ref: Any = None,
         llm_call_increment: int = 0,
+        invocation_id: str | None = None,
+        agent_invocation_increment: int = 0,
     ) -> dict[str, object]:
-        invocation_id = state.get("tr_invocation_id")
-        if not isinstance(invocation_id, str) or not invocation_id:
+        resolved_invocation_id = invocation_id or self._invocation_id(state)
+        if resolved_invocation_id is None:
             raise ValueError("tool-routing invocation id is required")
         return merge_trace_context(
             state,
             graph_profile=self._graph_profile.value,
             agent_subgraph_id="tool_route",
             agent_role="tool_routing",
-            agent_invocation_id=invocation_id,
+            agent_invocation_id=resolved_invocation_id,
             subgraph_namespace="tool_routing",
             node_name=node_name,
             llm_call_id=llm_call_id,
             prompt_ref=prompt_ref,
+            agent_invocation_increment=agent_invocation_increment,
             llm_call_increment=llm_call_increment,
         )
+
+    @staticmethod
+    def _invocation_id(state: ToolRouteStateV1) -> str | None:
+        trace_context = state.get("trace_context", {})
+        raw_log = trace_context.get("agent_node_log", [])
+        if not isinstance(raw_log, list):
+            return None
+        for item in reversed(raw_log):
+            if not isinstance(item, Mapping) or item.get("agent_subgraph_id") != "tool_route":
+                continue
+            invocation_id = item.get("agent_invocation_id")
+            if isinstance(invocation_id, str) and invocation_id:
+                return invocation_id
+        return None
 
 
 def build_tool_routing_subgraph(

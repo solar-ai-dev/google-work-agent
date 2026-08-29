@@ -38,7 +38,7 @@ def finalize_route(
 ) -> ToolRouteResultV1:
     try:
         request_ref = _request_intent_ref(request_intent)
-        input_routes = [dict(route) for route in binding.input_routes]
+        input_routes = [route.copy() for route in binding.input_routes]
         output_routes = _materialize_output_routes(binding=binding, selected_tools=selected_tools)
         plan = _freeze_plan(
             request_ref=request_ref,

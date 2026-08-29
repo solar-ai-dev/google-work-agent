@@ -269,7 +269,7 @@ def test_tool_route_ambiguity_pauses_inside_own_nested_task(tmp_path: Path) -> N
     # (which would show up as snapshot.next == ("waiting_confirmation",)
     # with no nested subgraph structure at all).
     outer_task = _nested_tool_route_task(runtime)
-    assert outer_task.state.next == ("confirm",)
+    assert outer_task.state.next == ("finalize_route",)
 
     connection = connect_sqlite(database_path)
     try:
@@ -453,7 +453,7 @@ def test_tool_route_resumes_second_consecutive_confirmation_round_via_same_neste
     assert len(round1_reclassify_calls) == 1
 
     round2_task = _nested_tool_route_task(round2_runtime)
-    assert round2_task.state.next == ("confirm",)
+    assert round2_task.state.next == ("finalize_route",)
     round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
     assert second.payload["user_interrupt"]["origin_target"] == "tool_route.finalize"
     assert round2_interrupt_id != round1_interrupt_id
@@ -706,7 +706,7 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         assert interrupt["options"] == _APPROVED_OPTIONS
 
         outer_task = _nested_tool_route_task(runtime)
-        assert outer_task.state.next == ("confirm",)
+        assert outer_task.state.next == ("finalize_route",)
 
         # No output route was ever frozen -- the plan does not exist yet.
         state = runtime._graph.get_state(  # noqa: SLF001
@@ -1166,7 +1166,7 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
     assert second is not None
     assert second.outcome is WorkflowOutcome.ACCEPTED
     round2_task = _nested_tool_route_task(round2_runtime)
-    assert round2_task.state.next == ("confirm",)
+    assert round2_task.state.next == ("finalize_route",)
     round2_interrupt = second.payload["user_interrupt"]
     assert round2_interrupt["options"] == _APPROVED_OPTIONS
     round2_interrupt_id = round2_interrupt["interrupt_id"]

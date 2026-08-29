@@ -9,10 +9,12 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2 as CanonicalRequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
-    ToolRouteResultV1,
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
@@ -83,9 +85,11 @@ class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):
 class ToolRoutingInputState(AgentSubgraphInputEnvelope, total=False):
     """Parent projection for semantic Tool Route and deterministic binding."""
 
-    request_intent: RequestIntentV2 | None
+    request_intent: CanonicalRequestIntentV2
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
 class ContextRetrievalInputState(AgentSubgraphInputEnvelope, total=False):
@@ -137,13 +141,6 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
 
-class ToolRoutingLocalState(GraphState):
-    __tool_route_result__: NotRequired[ToolRouteResultV1]
-    # Routes the self-loop conditional edge back into "finalize" as a fresh
-    # task for the next confirmation round.
-    __tool_route_retry_confirmation__: NotRequired[bool]
-
-
 class AcquisitionLocalState(GraphState):
     __acquisition_agent_local__: NotRequired[AgentLocalStateV1]
     __acquisition_planning_output__: NotRequired[SourcePlanningOutputV1]
@@ -163,15 +160,14 @@ class ContextRetrievalLocalState(GraphState):
     __context_followup_operation__: NotRequired[str]
     __context_next_page_handles__: NotRequired[dict[str, str]]
     __context_detail_candidates__: NotRequired[dict[str, str]]
-    # Same purpose as ToolRoutingLocalState's retry marker: routes the
-    # self-loop conditional edge back into "finalize" as a fresh task.
+    # Routes the self-loop conditional edge back into "finalize" as a fresh task.
     __context_retrieval_retry_confirmation__: NotRequired[bool]
 
 
 class WorkAnalysisLocalState(GraphState):
     __analysis_agent_local__: NotRequired[AgentLocalStateV1]
-    # Same purpose as ContextRetrievalLocalState/ToolRoutingLocalState's retry
-    # markers: routes the self-loop back into "finalize" as a fresh task.
+    # Same purpose as ContextRetrievalLocalState's retry marker: routes the
+    # self-loop back into "finalize" as a fresh task.
     __work_analysis_retry_confirmation__: NotRequired[bool]
 
 
@@ -228,7 +224,6 @@ __all__ = [
     "ReviewLocalState",
     "SingleWorkflowLocalState",
     "ToolRoutingInputState",
-    "ToolRoutingLocalState",
     "WorkAnalysisInputState",
     "WorkAnalysisLocalState",
 ]

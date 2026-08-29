@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from typing import TypedDict, cast
+
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ToolRouteResultV1,
+    ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
 )
 
 
-def project_validate_route_input(state: ToolRouteStateV1) -> dict[str, ToolRouteResultV1]:
-    result = state.get("tr_result")
-    if result is None:
-        raise ValueError("tool-routing result is required")
-    return {"result": result}
+class ValidateRouteInput(TypedDict):
+    final_route: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | None
+
+
+def project_validate_route_input(state: ToolRouteStateV1) -> ValidateRouteInput:
+    return {
+        "final_route": state.get("final_route"),
+        "workflow_signal": cast(ScopeExpansionRequiredV1 | None, state.get("workflow_signal")),
+    }

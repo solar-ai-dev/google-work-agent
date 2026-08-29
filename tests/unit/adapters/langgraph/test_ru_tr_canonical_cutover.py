@@ -66,8 +66,7 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
 
     graph_source = _source(TR / "graph.py")
     canonical_topology = (
-        'graph.add_edge(START, "initialize")',
-        'graph.add_edge("initialize", "determine_io_resources")',
+        'graph.add_edge(START, "determine_io_resources")',
         '"bind_registry_candidates": "bind_registry_candidates"',
         'graph.add_conditional_edges(\n            "bind_registry_candidates"',
         'graph.add_conditional_edges(\n            "select_tool_if_needed"',
@@ -76,11 +75,24 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
     )
     positions = [graph_source.index(fragment) for fragment in canonical_topology]
     assert positions == sorted(positions)
+    tree = _tree(TR / "graph.py")
+    graph_nodes = [
+        call.args[0].value
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "add_node"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+    ]
+    assert graph_nodes == list(TR_OPERATIONS)
+    assert "prepare_confirmation" not in graph_source
+    assert 'add_node("confirm"' not in graph_source
 
 
 def test_binding_precedes_selection_at_router_boundary() -> None:
     route_source = _source(TR / "routing/route_after_determine_io_resources.py")
-    assert 'Literal["confirm", "bind_registry_candidates"]' in route_source
+    assert 'Literal["finalize_route", "bind_registry_candidates"]' in route_source
     assert 'return "bind_registry_candidates"' in route_source
     assert 'return "select_tool_if_needed"' not in route_source
 
@@ -90,7 +102,7 @@ def test_selection_consumes_previously_bound_candidate_set_only() -> None:
     source = _source(selection_path)
     imports = _imports(selection_path)
     assert "project_select_tool_if_needed_input" in _called_names(selection_path)
-    assert "binding.output_candidates" in source
+    assert 'projection["registry_candidates"]' in source
     assert "eligible_tool_ids=bound.eligible_tool_ids" in source
     assert not any(name.endswith("bind_registry_candidates") for name in imports)
     assert "SignedToolRegistry" not in source

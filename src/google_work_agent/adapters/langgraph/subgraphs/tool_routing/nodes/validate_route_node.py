@@ -11,8 +11,7 @@ from google_work_agent.application.tool_registry.signed_tool_registry import Sig
 def validate_route_node(
     state: ToolRouteStateV1, *, tool_catalog: SignedToolRegistry
 ) -> ToolRouteStateV1:
-    result = project_validate_route_input(state)["result"]
-    plan = result.get("tool_route_plan")
+    plan = project_validate_route_input(state)["final_route"]
     if plan is not None:
         validate_route(plan, tool_catalog=tool_catalog)
-    return {"tool_route_plan": plan, "workflow_signal": result.get("workflow_signal")}
+    return {"tool_route_plan": plan, "workflow_signal": state.get("workflow_signal")}

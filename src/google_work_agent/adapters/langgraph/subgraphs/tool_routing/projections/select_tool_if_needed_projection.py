@@ -6,10 +6,10 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 def project_select_tool_if_needed_input(
     state: ToolRouteStateV1,
 ) -> dict[str, object]:
-    binding = state.get("tr_binding")
-    if binding is None:
+    candidates = state.get("registry_candidates")
+    if candidates is None:
         raise ValueError("tool-routing Registry binding is required before selection")
     return {
-        "binding": binding,
-        "confirmation_response": state.get("tr_confirmation_response"),
+        "registry_candidates": candidates,
+        "confirmation_response": None,
     }

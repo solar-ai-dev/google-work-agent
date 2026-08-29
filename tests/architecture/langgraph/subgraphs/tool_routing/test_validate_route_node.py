@@ -2,12 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import (  # noqa: E501
-    route_after_finalize_route,
-)
-
 ROOT = Path(__file__).resolve().parents[5]
 SRC = ROOT / "src/google_work_agent"
 OWNER = SRC / "adapters/langgraph/subgraphs/tool_routing"
@@ -29,16 +23,17 @@ def test_validate_route_closes_exact_graph_state_and_legacy_negative_proof() -> 
     assert "application.orchestration.tool_route_semantic" not in production
 
 
-def test_tool_route_router_rejects_unknown_disposition() -> None:
-    with pytest.raises(ValueError, match="unexpected final route disposition"):
-        route_after_finalize_route(
-            {
-                "tr_result": {
-                    "schema_version": 1,
-                    "disposition": "UNKNOWN",
-                    "tool_route_plan": None,
-                    "workflow_signal": None,
-                    "reason_codes": [],
-                }
-            }
-        )
+def test_tool_route_state_has_exact_canonical_local_fields() -> None:
+    state = (OWNER / "state.py").read_text(encoding="utf-8")
+    for field in (
+        "request_intent",
+        "registry_snapshot_ref",
+        "io_resource_candidate",
+        "registry_candidates",
+        "bound_input_routes",
+        "bound_output_routes",
+        "final_route",
+    ):
+        assert f"    {field}:" in state
+    assert "tr_" not in state
+    assert "ToolRoutingLocalState" not in state

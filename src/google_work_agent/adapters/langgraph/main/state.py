@@ -17,7 +17,6 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
-    ToolRouteResultV1,
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
@@ -108,7 +107,6 @@ CONTEXT_DETAIL_CANDIDATES_KEY: Final = "__context_detail_candidates__"
 ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
 PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"
-TOOL_ROUTE_RESULT_KEY: Final = "__tool_route_result__"
 REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
 REVIEW_MODE_KEY: Final = "__review_mode__"
 PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"

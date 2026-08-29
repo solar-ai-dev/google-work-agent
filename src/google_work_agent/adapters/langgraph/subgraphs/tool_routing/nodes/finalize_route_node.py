@@ -25,4 +25,7 @@ def finalize_route_node(
         id_factory=id_factory,
         previous_plan=projection["previous_plan"],
     )
-    return {"tr_result": result}
+    return {
+        "final_route": result["tool_route_plan"],
+        "workflow_signal": result["workflow_signal"],
+    }

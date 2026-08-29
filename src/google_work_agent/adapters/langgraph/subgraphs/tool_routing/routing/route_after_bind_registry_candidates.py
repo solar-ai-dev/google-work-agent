@@ -7,12 +7,9 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 
 def route_after_bind_registry_candidates(
     state: ToolRouteStateV1,
-) -> Literal["confirm", "select_tool_if_needed"]:
-    result = state.get("tr_result")
-    if result is not None:
-        if result["disposition"] == "NEEDS_CONFIRMATION":
-            return "confirm"
-        raise ValueError(f"unexpected binding disposition: {result['disposition']}")
-    if state.get("tr_binding") is None:
+) -> Literal["finalize_route", "select_tool_if_needed"]:
+    if state.get("workflow_signal") is not None:
+        return "finalize_route"
+    if "registry_candidates" not in state or "bound_input_routes" not in state:
         raise ValueError("tool-routing Registry binding is required")
     return "select_tool_if_needed"

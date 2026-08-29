@@ -36,21 +36,13 @@ def determine_io_resources_node(
             prompt_ref=prompt_ref,
             confirmation_response=projection["confirmation_response"],
         )
-    except ToolRouteValidationError as error:
+    except ToolRouteValidationError:
         return {
-            "tr_result": {
-                "schema_version": 1,
-                "disposition": "NEEDS_CONFIRMATION",
-                "tool_route_plan": None,
-                "workflow_signal": None,
-                "reason_codes": [str(error)],
-            },
-            "tr_semantic_candidate": None,
-            "tr_confirmation_response": None,
+            "io_resource_candidate": None,
+            "workflow_signal": None,
         }
     return {
-        "tr_semantic_candidate": candidate,
-        "tr_retry_budget": consume_llm_provider_calls(retry_budget),
-        "tr_confirmation_response": None,
-        "tr_result": None,
+        "io_resource_candidate": candidate,
+        "retry_budget": consume_llm_provider_calls(retry_budget),
+        "workflow_signal": None,
     }
