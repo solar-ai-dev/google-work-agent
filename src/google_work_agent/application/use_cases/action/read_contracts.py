@@ -49,6 +49,7 @@ class SaveReadOnlyPlanCommand:
     expected_run_version: int
     actions: tuple[ReadActionDraft, ...]
     evidence: tuple[ReadEvidenceDraft, ...]
+    review_version: int = 1
 
 
 @dataclass(frozen=True, slots=True)

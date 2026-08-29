@@ -22,7 +22,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -78,7 +78,7 @@ class PrepareWriteRetryHandler:
                 created_at_ms=now_ms,
             )
             action = self._require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
@@ -147,7 +147,12 @@ class PrepareWriteRetryHandler:
                 )
                 return self._finish(unit_of_work, command, response, now_ms)
 
-            review_version = require_plan_review(unit_of_work, action.plan_id)
+            review_version = require_plan_review(
+                unit_of_work,
+                action.plan_id,
+                command_id=command.command_id,
+                created_at_ms=now_ms,
+            )
             response = PrepareWriteRetryResult(
                 applied=True,
                 result_code=ResultCode.TRANSITION_APPLIED.value,

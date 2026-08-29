@@ -59,10 +59,10 @@ def test_full_foreign_key_check_rejects_fk_invalid_latest_database(tmp_path: Pat
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 metadata_json, captured_at_ms
-            ) VALUES ('orphan-resource', 'missing-run', 'connector-a', 'CALENDAR',
-                      'EVENT', 'event-1', '{}', 1);
+            ) VALUES ('orphan-resource', 'missing-run', 'google_workspace',
+                      'calendar_event', 'event-1', '{}', 1);
             """
         )
         connection.commit()

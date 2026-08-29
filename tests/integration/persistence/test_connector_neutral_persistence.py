@@ -2,6 +2,8 @@ import shutil
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
@@ -67,7 +69,7 @@ def test_connector_neutral_migration_preserves_populated_execution_history(tmp_p
         connection.close()
 
 
-def test_connector_identity_allows_same_canonical_task_id_across_connectors(tmp_path: Path) -> None:
+def test_current_registry_rejects_unregistered_connector_resource_identity(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "connector-coexist.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)
@@ -89,28 +91,30 @@ def test_connector_identity_allows_same_canonical_task_id_across_connectors(tmp_
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 metadata_json, captured_at_ms
-            ) VALUES
-                ('resource-google', 'run-1', 'google_workspace', 'TASKS', 'TASK',
-                 'shared-task-id', '{}', 1),
-                ('resource-github', 'run-1', 'github', 'GITHUB', 'TASK',
-                 'shared-task-id', '{}', 1);
+            ) VALUES ('resource-google', 'run-1', 'google_workspace', 'task',
+                      'shared-task-id', '{}', 1);
             """
         )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO resource_refs (
+                       id, run_id, connector_id, resource_type, resource_id,
+                       metadata_json, captured_at_ms
+                   ) VALUES ('resource-github', 'run-1', 'github', 'task',
+                             'shared-task-id', '{}', 1);"""
+            )
 
         rows = connection.execute(
             """
-            SELECT connector_id, source, resource_type, resource_id
+            SELECT connector_id, resource_type, resource_id
             FROM resource_refs
             WHERE run_id = 'run-1' AND resource_id = 'shared-task-id'
             ORDER BY connector_id;
             """
         ).fetchall()
-        assert [tuple(row) for row in rows] == [
-            ("github", "GITHUB", "TASK", "shared-task-id"),
-            ("google_workspace", "TASKS", "TASK", "shared-task-id"),
-        ]
+        assert [tuple(row) for row in rows] == [("google_workspace", "task", "shared-task-id")]
     finally:
         connection.close()
 

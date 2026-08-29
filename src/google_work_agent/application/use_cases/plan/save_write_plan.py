@@ -135,6 +135,7 @@ class SaveWritePlanService:
                 status=PlanStatusV1.DRAFT,
                 summary_text=command.summary_text,
                 created_at_ms=now_ms,
+                review_version=command.review_version,
             )
             unit_of_work.plans.insert_revision(plan)
 

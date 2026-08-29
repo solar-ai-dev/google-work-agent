@@ -72,6 +72,10 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceType,
 )
 from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    WorkflowExecutionAdmissionV1,
+    WorkflowExecutionBindingV1,
+)
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
@@ -593,6 +597,32 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert context.status_code == 200
         assert context.json()["context"]["request_text"] == "hello"
 
+        binding = checkpoint.load_workflow_binding(run_id)
+        assert binding is not None
+        materialize(
+            WorkflowExecutionAdmissionV1(
+                1,
+                "ui-projection-admission",
+                "ui-projection-handoff",
+                1,
+                "NORMAL_HANDOFF",
+                WorkflowExecutionBindingV1(
+                    1,
+                    "START",
+                    run_id,
+                    binding.langgraph_thread_id,
+                    binding.graph_profile,
+                    binding.graph_version,
+                    binding.requested_mode,
+                    None,
+                    0,
+                    None,
+                ),
+                0,
+            ),
+            None,
+        )
+
         with connect_sqlite(database_path) as connection:
             connection.execute(
                 "UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = ?;", (run_id,)
@@ -601,9 +631,9 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 """
                 INSERT INTO plans (
                     id, run_id, revision_no, status, summary_text, created_at_ms,
-                    review_status, review_version
+                    review_status, review_version, review_disposition
                 ) VALUES ('plan-1', ?, 1, 'WAITING_APPROVAL', 'Reject plan', 1000,
-                          'PASSED', 0);
+                          'PASSED', 0, 'PASS');
                 """,
                 (run_id,),
             )

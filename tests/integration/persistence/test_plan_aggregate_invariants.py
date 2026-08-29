@@ -40,27 +40,29 @@ def aggregate_database(tmp_path: Path) -> Path:
             """
         )
         connection.execute(
-            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms) "
-            "VALUES ('plan-1', 'run-1', 1, 'DRAFT', 1);"
+            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms, "
+            "review_status, review_disposition) "
+            "VALUES ('plan-1', 'run-1', 1, 'DRAFT', 1, 'REQUIRED', NULL);"
         )
         connection.execute(
-            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms) "
-            "VALUES ('plan-2', 'run-2', 1, 'DRAFT', 1);"
-        )
-        connection.execute(
-            """
-            INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
-                metadata_json, captured_at_ms
-            ) VALUES ('resource-1', 'run-1', 'google_workspace', 'TASKS', 'TASK', 'task-1', '{}', 1);
-            """
+            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms, "
+            "review_status, review_disposition) "
+            "VALUES ('plan-2', 'run-2', 1, 'DRAFT', 1, 'REQUIRED', NULL);"
         )
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 metadata_json, captured_at_ms
-            ) VALUES ('resource-2', 'run-2', 'google_workspace', 'TASKS', 'TASK', 'task-2', '{}', 1);
+            ) VALUES ('resource-1', 'run-1', 'google_workspace', 'task', 'task-1', '{}', 1);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO resource_refs (
+                id, run_id, connector_id, resource_type, resource_id,
+                metadata_json, captured_at_ms
+            ) VALUES ('resource-2', 'run-2', 'google_workspace', 'task', 'task-2', '{}', 1);
             """
         )
         for action_id, plan_id, position in (
@@ -70,10 +72,12 @@ def aggregate_database(tmp_path: Path) -> Path:
             connection.execute(
                 """
                 INSERT INTO actions (
-                    id, plan_id, connector_id, position, tool_name, effect_type, approval_requirement,
+                    id, plan_id, connector_id, position, tool_name, effect_type,
+                    approval_requirement,
                     verification_policy, recovery_policy, status, arguments_json,
                     arguments_hash, expected_json, version, created_at_ms, updated_at_ms
-                ) VALUES (?, ?, 'google_workspace', ?, 'gmail_get_thread', 'READ', 'NONE', 'NONE', 'NONE',
+                ) VALUES (?, ?, 'google_workspace', ?, 'gmail_get_thread',
+                          'READ', 'NONE', 'NONE', 'NONE',
                           'PROPOSED', '{}', ?, '{}', 0, 1, 1);
                 """,
                 (action_id, plan_id, position, "a" * 64),

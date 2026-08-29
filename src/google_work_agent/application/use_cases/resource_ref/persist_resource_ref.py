@@ -40,8 +40,15 @@ def persist_registered_resource_ref(
 ) -> ResourceRefRecord:
     """Shared same-UoW primitive owned by the exact persistence capability."""
     authority = catalog or load_signed_tool_registry()
-    if not any(entry.connector_id == resource_ref.connector_id for entry in authority.entries):
-        raise LookupError(f"connector not registered: {resource_ref.connector_id}")
+    if not any(
+        entry.connector_id == resource_ref.connector_id
+        and entry.resource_type == resource_ref.resource_type
+        for entry in authority.entries
+    ):
+        raise LookupError(
+            "connector/resource type is not registered: "
+            f"{resource_ref.connector_id}/{resource_ref.resource_type}"
+        )
     return unit_of_work.resource_refs.upsert_bound_ref(resource_ref)
 
 

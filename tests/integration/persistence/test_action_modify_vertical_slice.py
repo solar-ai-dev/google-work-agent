@@ -58,6 +58,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 )
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import FakeClockPort
 from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write_action_mutation import ModifyWriteActionService
@@ -161,6 +162,7 @@ def _save_and_publish_task_action(
         )
     )
     assert save_response.applied is True
+    record_pass_review(database_path, plan_id, now_ms=clock.now_ms())
 
     publish_response = publish_service(
         PublishWritePlanCommand(
@@ -217,8 +219,8 @@ def test_proposed_action_modify_applies_patch_and_updates_hash(modify_database: 
     with unit_of_work_factory() as unit_of_work:
         plan = unit_of_work.plans.load_bundle("plan-1")
     assert plan is not None
-    assert plan.review_status is PlanReviewStatus.REQUIRED
-    assert plan.review_version == 1
+    assert plan.plan.review_status is PlanReviewStatus.REQUIRED
+    assert plan.plan.review_version == 2
 
 
 def test_modify_blocks_approval_until_current_review_generation_passes(
@@ -267,7 +269,7 @@ def test_modify_blocks_approval_until_current_review_generation_passes(
         assert (
             unit_of_work.plans.record_review_result(
                 "plan-1",
-                expected_review_version=1,
+                expected_review_version=2,
                 expected_review_statuses=frozenset(PlanReviewStatus),
                 values={
                     "review_status": PlanReviewStatus.PASSED,
@@ -339,8 +341,8 @@ def test_second_modify_rejects_first_generation_review_result(modify_database: P
         plan = unit_of_work.plans.load_bundle("plan-1")
     assert stale_applied is None
     assert plan is not None
-    assert plan.review_status is PlanReviewStatus.REQUIRED
-    assert plan.review_version == 2
+    assert plan.plan.review_status is PlanReviewStatus.REQUIRED
+    assert plan.plan.review_version == 3
 
 
 def test_approved_action_modify_revokes_active_approval(modify_database: Path) -> None:
@@ -997,6 +999,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
         )
     )
     assert save_response.applied is True
+    record_pass_review(modify_database, "plan-dep", now_ms=clock.now_ms())
 
     publish_response = publish_service(
         PublishWritePlanCommand(

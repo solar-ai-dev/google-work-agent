@@ -104,7 +104,7 @@ def _database(tmp_path: Path, source_status: RunStatusV1) -> Path:
                    review_status, review_version, review_disposition
                ) VALUES (
                    'plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 2,
-                   'REVISE', 3, 'REVISE'
+                   'REQUIRED', 3, 'REVISE'
                );"""
         )
         connection.execute(
@@ -129,7 +129,7 @@ def _database(tmp_path: Path, source_status: RunStatusV1) -> Path:
                    tool_schema_version, idempotency_key, recovery_fingerprint,
                    approved_at_ms, expires_at_ms, consumed_at_ms
                ) VALUES (
-                   'approval-1', 'action-1', 1, 1, 'ACTIVE', 'account-1', NULL,
+                   'approval-1', 'action-1', 1, 1, 'REVOKED', 'account-1', NULL,
                    '{}', ?, '{}', ?, 'v1', 'v1', ?, ?, 2, 1000, NULL
                );""",
             ("a" * 64, "b" * 64, "c" * 64, "d" * 64),
@@ -160,12 +160,8 @@ def _command() -> BeginPlanningCommand:
 
 def _durable_snapshot(path: Path) -> dict[str, object]:
     with connect_sqlite(path) as connection:
-        run = connection.execute(
-            "SELECT status, version FROM runs WHERE id='run-1';"
-        ).fetchone()
-        plan = connection.execute(
-            "SELECT status FROM plans WHERE id='plan-1';"
-        ).fetchone()
+        run = connection.execute("SELECT status, version FROM runs WHERE id='run-1';").fetchone()
+        plan = connection.execute("SELECT status FROM plans WHERE id='plan-1';").fetchone()
         action = connection.execute(
             "SELECT status, version FROM actions WHERE id='action-1';"
         ).fetchone()
@@ -176,11 +172,7 @@ def _durable_snapshot(path: Path) -> dict[str, object]:
             table: int(
                 connection.execute(
                     f"SELECT COUNT(*) AS count FROM {table} WHERE "
-                    + (
-                        "aggregate_id='run-1'"
-                        if table == "command_receipts"
-                        else "run_id='run-1'"
-                    )
+                    + ("aggregate_id='run-1'" if table == "command_receipts" else "run_id='run-1'")
                 ).fetchone()["count"]
             )
             for table in ("command_receipts", "audit_events", "workflow_handoffs")
@@ -230,12 +222,16 @@ def test_begin_planning__validated_run_cas_failure__rolls_back_entire_uow(
         _handler(lambda: cast(UnitOfWork, unit_of_work))(_command())
 
     assert unit_of_work.runs is not None and unit_of_work.runs.attempted
-    assert _durable_snapshot(path) == original == {
-        "run": ("WAITING_APPROVAL", 4),
-        "plan": "WAITING_APPROVAL",
-        "action": ("APPROVED", 1),
-        "approval": "ACTIVE",
-        "command_receipts": 0,
-        "audit_events": 0,
-        "workflow_handoffs": 0,
-    }
+    assert (
+        _durable_snapshot(path)
+        == original
+        == {
+            "run": ("WAITING_APPROVAL", 4),
+            "plan": "WAITING_APPROVAL",
+            "action": ("APPROVED", 1),
+            "approval": "REVOKED",
+            "command_receipts": 0,
+            "audit_events": 0,
+            "workflow_handoffs": 0,
+        }
+    )

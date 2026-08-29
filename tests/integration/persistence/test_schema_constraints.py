@@ -311,7 +311,7 @@ def test_run_and_plan_terminal_states_reject_nonterminal_children_both_direction
     migrated_connection.execute("UPDATE plans SET status = 'COMPLETED' WHERE id = 'plan-1';")
     migrated_connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'run-1';")
 
-    with pytest.raises(sqlite3.IntegrityError, match="NFR019_TERMINAL_PARENT_ACTION"):
+    with pytest.raises(sqlite3.IntegrityError, match="ISSUE128_ACTION_NOT_CURRENT_PLAN_AUTHORITY"):
         migrated_connection.execute(
             "UPDATE actions SET status = 'PROPOSED' WHERE id = 'action-terminal-parent';"
         )
@@ -359,7 +359,7 @@ def test_cancelled_run_rejects_unknown_result_both_directions(
     )
     migrated_connection.execute("UPDATE plans SET status = 'CANCELLED' WHERE id = 'plan-1';")
     migrated_connection.execute("UPDATE runs SET status = 'CANCELLED' WHERE id = 'run-1';")
-    with pytest.raises(sqlite3.IntegrityError, match="NFR019_ACTION_ATTEMPT"):
+    with pytest.raises(sqlite3.IntegrityError, match="ISSUE128_ACTION_NOT_CURRENT_PLAN_AUTHORITY"):
         migrated_connection.execute(
             "UPDATE actions SET status = 'UNKNOWN_RESULT' WHERE id = 'action-cancel-unknown';"
         )
@@ -548,8 +548,10 @@ def _insert_plan(connection: sqlite3.Connection) -> None:
     _insert_account_conversation_and_run(connection)
     connection.execute(
         """
-        INSERT OR IGNORE INTO plans (id, run_id, revision_no, status, created_at_ms)
-        VALUES ('plan-1', 'run-1', 1, 'DRAFT', 100);
+        INSERT OR IGNORE INTO plans (
+            id, run_id, revision_no, status, created_at_ms,
+            review_status, review_version, review_disposition
+        ) VALUES ('plan-1', 'run-1', 1, 'DRAFT', 100, 'PASSED', 1, 'PASS');
         """
     )
 

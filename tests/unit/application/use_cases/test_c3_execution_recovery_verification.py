@@ -57,8 +57,9 @@ _SERVICE_INSTANCE_ID = "svc-c3"
 
 
 class _ByIdRepo:
-    def __init__(self, values: dict[str, object]) -> None:
+    def __init__(self, values: dict[str, object], *, plan_bundles: bool = False) -> None:
         self.values = values
+        self.plan_bundles = plan_bundles
 
     def get_by_id(self, value_id: str) -> object | None:
         return self.values.get(value_id)
@@ -67,7 +68,12 @@ class _ByIdRepo:
         return self.values.get(value_id)
 
     def load_bundle(self, value_id: str) -> object | None:
-        return self.values.get(value_id)
+        value = self.values.get(value_id)
+        if value is None or not self.plan_bundles:
+            return value
+        return SimpleNamespace(
+            plan=value, actions=(), dependencies=(), evidence=(), action_evidence=()
+        )
 
     def get_active_for_approval(self, value_id: str) -> object | None:
         return self.values.get(value_id)
@@ -196,7 +202,7 @@ class _Uow:
         self.actions = _Actions({action.id: action}, verification_status)
         self.execution_attempts = _ByIdRepo({attempt.id: attempt})
         self.approvals = _ByIdRepo({} if approval is None else {approval.id: approval})
-        self.plans = _ByIdRepo({} if plan is None else {plan.id: plan})
+        self.plans = _ByIdRepo({} if plan is None else {plan.id: plan}, plan_bundles=True)
         self.runs = _Runs({} if run is None else {run.id: run})
         self.resource_refs = _ByIdRepo({})
         self.command_receipts = _CommandReceipts()

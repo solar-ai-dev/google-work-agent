@@ -15,8 +15,11 @@ def test_list_conversations_is_account_scoped(tmp_path: Path) -> None:
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)
         connection.execute(
-            """INSERT INTO google_accounts (id, email, connected_at_ms) VALUES
-            ('a-1', 'a@example.com', 1), ('a-2', 'b@example.com', 1)"""
+            """INSERT INTO google_accounts (
+                   id, email, connected_at_ms, disconnected_at_ms
+               ) VALUES
+               ('a-1', 'a@example.com', 1, NULL),
+               ('a-2', 'b@example.com', 1, 2)"""
         )
         connection.execute(
             """INSERT INTO conversations VALUES

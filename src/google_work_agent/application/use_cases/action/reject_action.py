@@ -33,7 +33,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -104,7 +104,7 @@ class RejectActionHandler:
                 created_at_ms=now_ms,
             )
             action = self._require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             run = unit_of_work.runs.get(plan.run_id)

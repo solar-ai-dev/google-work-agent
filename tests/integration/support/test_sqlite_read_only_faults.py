@@ -37,6 +37,7 @@ from google_work_agent.application.use_cases.plan.save_read_only_plan import (
     SaveReadOnlyPlanService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import (
     FakeGoogleGateway,
     SQLiteFaultPlan,
@@ -282,6 +283,7 @@ def _prepare_single_action_plan(database_path: Path, *, plan_id: str, action_id:
             ),
         )
     )
+    record_pass_review(database_path, plan_id)
     publish_service(
         PublishReadOnlyPlanCommand(
             command_id=f"publish-{plan_id}",

@@ -48,8 +48,10 @@ def _seed(database_path: Path, *, status: str = "PROPOSED") -> None:
             """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, review_status,
-                review_version, created_at_ms
-            ) VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 'PASSED', 1, 1);
+                review_version, review_disposition, created_at_ms
+            ) VALUES (
+                'plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 'PASSED', 1, 'PASS', 1
+            );
             """
         )
         connection.execute(

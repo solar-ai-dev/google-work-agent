@@ -29,6 +29,7 @@ from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     WriteEvidenceDraft,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import (
     FakeClockPort,
     FakeGoogleGateway,
@@ -222,6 +223,7 @@ def _prepare_claimed_write_action(database_path: Path, clock: FakeClockPort) -> 
             ),
         )
     )
+    record_pass_review(database_path, "plan-fault")
     publish_service(
         PublishWritePlanCommand(
             command_id="publish-fault",

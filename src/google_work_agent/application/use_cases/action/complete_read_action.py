@@ -109,7 +109,6 @@ class CompleteReadActionHandler:
                         id=resource_ref.id,
                         run_id=plan.run_id,
                         connector_id=action.connector_id,
-                        source=resource_ref.source,
                         resource_type=resource_ref.resource_type,
                         resource_id=resource_ref.resource_id,
                         parent_resource_id=resource_ref.parent_resource_id,

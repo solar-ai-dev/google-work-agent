@@ -32,6 +32,7 @@ from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
+from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 READ_ACTION_TERMINAL_STATUSES = frozenset(
@@ -61,7 +62,7 @@ def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
 
 
 def require_plan(unit_of_work: UnitOfWork, plan_id: str) -> PlanRecord:
-    plan = unit_of_work.plans.load_bundle(plan_id)
+    plan = load_plan_record(unit_of_work.plans, plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     return plan
@@ -217,7 +218,7 @@ def handle_existing_save_receipt(
         )
 
     run = require_run(unit_of_work, run_id)
-    plan = unit_of_work.plans.load_bundle(command.plan_id)
+    plan = load_plan_record(unit_of_work.plans, command.plan_id)
     if plan is None:
         if run.status is RunStatusV1.PLANNING and run.version == command.expected_run_version:
             return _PendingReceiptResolution(should_return=False)

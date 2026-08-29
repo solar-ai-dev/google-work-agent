@@ -5,7 +5,6 @@ from __future__ import annotations
 from json import dumps
 
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
@@ -60,21 +59,20 @@ def resource_ref_from_snapshot(
     """Build one durable minimal ResourceRef using explicit connector identity."""
     if not connector_id:
         raise ValueError("ResourceRef projection requires connector_id")
-    source_map = {
-        ResourceType.GMAIL_DRAFT: ResourceSource.GMAIL,
-        ResourceType.GMAIL_MESSAGE: ResourceSource.GMAIL,
-        ResourceType.GMAIL_THREAD: ResourceSource.GMAIL,
-        ResourceType.TASK_LIST: ResourceSource.TASKS,
-        ResourceType.TASK: ResourceSource.TASKS,
-        ResourceType.CALENDAR: ResourceSource.CALENDAR,
-        ResourceType.CALENDAR_EVENT: ResourceSource.CALENDAR,
+    durable_types = {
+        ResourceType.GMAIL_DRAFT,
+        ResourceType.GMAIL_MESSAGE,
+        ResourceType.GMAIL_THREAD,
+        ResourceType.TASK_LIST,
+        ResourceType.TASK,
+        ResourceType.CALENDAR,
+        ResourceType.CALENDAR_EVENT,
     }
-    if snapshot.resource_type not in source_map:
+    if snapshot.resource_type not in durable_types:
         raise ValueError(
             f"resource type is not durable ResourceRef material: {snapshot.resource_type.value}"
         )
-    source = source_map[snapshot.resource_type]
-    registry_resource_type = snapshot.resource_type.name
+    registry_resource_type = snapshot.resource_type.value
     title = snapshot_title(snapshot) or snapshot.resource_id
     return ResourceRefRecord(
         id=(
@@ -83,7 +81,6 @@ def resource_ref_from_snapshot(
         ),
         run_id=run_id,
         connector_id=connector_id,
-        source=source,
         resource_type=registry_resource_type,
         resource_id=snapshot.resource_id,
         parent_resource_id=snapshot.parent_id,

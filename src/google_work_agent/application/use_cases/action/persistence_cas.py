@@ -7,6 +7,7 @@ from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptStatusV1,
 )
 from google_work_agent.domain.plan.model import Plan, PlanStatusV1
+from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -50,7 +51,7 @@ def update_plan_record(
     expected_status: PlanStatusV1,
     next_status: PlanStatusV1,
 ) -> Plan | None:
-    current = unit_of_work.plans.load_bundle(plan_id)
+    current = load_plan_record(unit_of_work.plans, plan_id)
     if current is None:
         return None
     applied = unit_of_work.plans.update_if_version_and_status(
@@ -59,7 +60,7 @@ def update_plan_record(
         frozenset({expected_status}),
         {"status": next_status},
     )
-    return unit_of_work.plans.load_bundle(plan_id) if applied else None
+    return load_plan_record(unit_of_work.plans, plan_id) if applied else None
 
 
 def update_approval_status(

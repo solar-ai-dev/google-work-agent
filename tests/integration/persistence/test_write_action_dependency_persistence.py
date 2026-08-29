@@ -42,6 +42,7 @@ from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.trace_event_repository import TraceEventCursor
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import FakeClockPort
 from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write.write_result_persistence import (
@@ -282,6 +283,7 @@ def test_mark_write_action_failed_propagates_dependency_blocked_through_persiste
         )
     )
     assert save_response.applied is True
+    record_pass_review(dependency_database, "plan-blocked", now_ms=clock.now_ms())
 
     publish_response = publish_service(
         PublishWritePlanCommand(

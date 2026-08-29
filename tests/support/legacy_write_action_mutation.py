@@ -228,7 +228,8 @@ class ModifyWriteActionService:
             )
             action = _require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            bundle = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = None if bundle is None else bundle.plan
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
@@ -394,7 +395,6 @@ class ModifyWriteActionService:
             # arguments it was not issued for. Revoking is a no-op when the
             # action was PROPOSED and had no Approval yet.
             run_id = _run_id_for_action(unit_of_work, action.id)
-            review_version = require_plan_review(unit_of_work, action.plan_id)
             _revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
                 modified_action_id=action.id,
@@ -402,6 +402,7 @@ class ModifyWriteActionService:
                 command_id=command.command_id,
                 now_ms=now_ms,
             )
+            review_version = require_plan_review(unit_of_work, action.plan_id)
 
             response = _ActionMutationResponse(
                 applied=True,
@@ -796,7 +797,8 @@ class RejectWriteActionService:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            bundle = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = None if bundle is None else bundle.plan
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             run = unit_of_work.runs.get(plan.run_id)
@@ -983,7 +985,8 @@ def _mutate_write_action(
 
 def _run_id_for_action(unit_of_work: UnitOfWork, action_id: str) -> str:
     action = _require_action(unit_of_work, action_id)
-    plan = unit_of_work.plans.load_bundle(action.plan_id)
+    bundle = unit_of_work.plans.load_bundle(action.plan_id)
+    plan = None if bundle is None else bundle.plan
     if plan is None:
         raise LookupError(f"plan not found for action: {action_id}")
     return plan.run_id

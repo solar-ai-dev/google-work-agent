@@ -49,8 +49,13 @@ def _seed(database_path: Path, *, action_status: str) -> None:
         )
         connection.execute(
             """
-            INSERT INTO plans (id, run_id, revision_no, status, summary_text, created_at_ms)
-            VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 1);
+            INSERT INTO plans (
+                id, run_id, revision_no, status, summary_text, created_at_ms,
+                review_status, review_version, review_disposition
+            ) VALUES (
+                'plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 1,
+                'PASSED', 1, 'PASS'
+            );
             """
         )
         connection.execute(

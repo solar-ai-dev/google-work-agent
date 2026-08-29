@@ -42,6 +42,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
@@ -51,7 +52,7 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.events.observability_events import sanitize_event_attributes
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 WriteResponse = (
@@ -111,13 +112,42 @@ def append_approval_revoked_audits(
         )
 
 
-def require_plan_review(unit_of_work: UnitOfWork, plan_id: str) -> int:
+def require_plan_review(
+    unit_of_work: UnitOfWork,
+    plan_id: str,
+    *,
+    command_id: str | None = None,
+    created_at_ms: int | None = None,
+) -> int:
     """Invalidate the current review through a persistence-only Plan CAS."""
-    plan = unit_of_work.plans.load_bundle(plan_id)
+    plan = load_plan_record(unit_of_work.plans, plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     if plan.status not in {PlanStatusV1.WAITING_APPROVAL, PlanStatusV1.ACTIVE}:
         raise RuntimeError(f"Plan review cannot be invalidated from {plan.status.value}")
+    for approval in unit_of_work.approvals.list_active_for_plan(plan.id):
+        if not update_approval_status(
+            unit_of_work,
+            approval.id,
+            expected_status=ApprovalStatusV1.ACTIVE,
+            next_status=ApprovalStatusV1.REVOKED,
+        ):
+            raise RuntimeError(f"validated Plan review Approval revoke failed: {approval.id}")
+        if command_id is not None and created_at_ms is not None:
+            unit_of_work.audits.append(
+                audit_event(
+                    run_id=plan.run_id,
+                    action_id=approval.action_id,
+                    event_type="APPROVAL_REVOKED",
+                    outcome=ResultCode.TRANSITION_APPLIED.value,
+                    metadata={
+                        "approval_id": approval.id,
+                        "command_id": command_id,
+                        "reason": "PLAN_REVIEW_INVALIDATED",
+                    },
+                    created_at_ms=created_at_ms,
+                )
+            )
     updated = unit_of_work.plans.record_review_result(
         plan.id,
         expected_review_version=plan.review_version,
@@ -213,10 +243,21 @@ def require_run(unit_of_work: UnitOfWork, run_id: str) -> RunRecord:
 
 
 def require_plan(unit_of_work: UnitOfWork, plan_id: str) -> PlanRecord:
-    plan = unit_of_work.plans.load_bundle(plan_id)
+    plan = load_plan_record(unit_of_work.plans, plan_id)
     if plan is None:
         raise LookupError(f"plan not found: {plan_id}")
     return plan
+
+
+def has_unresolved_unknown_result(unit_of_work: UnitOfWork, plan_id: str) -> bool:
+    """Read the current Plan's durable Approval/Attempt lineage without a second repository."""
+
+    for action in unit_of_work.actions.list_for_plan(plan_id):
+        for approval in unit_of_work.approval_history.list_for_action(action.id):
+            attempt = unit_of_work.execution_attempts.get_active_for_approval(approval.id)
+            if attempt is not None and attempt.status is ExecutionAttemptStatusV1.UNKNOWN_RESULT:
+                return True
+    return False
 
 
 def require_latest_plan_for_run(unit_of_work: UnitOfWork, run_id: str) -> PlanRecord:

@@ -11,7 +11,7 @@ def test_publish_plan_closes_run_and_plan_pair() -> None:
     ) == (RunStatusV1.WAITING_APPROVAL, PlanStatusV1.WAITING_APPROVAL)
 
 
-@pytest.mark.parametrize("review", [PlanReviewStatus.REQUIRED, PlanReviewStatus.BLOCKED])
+@pytest.mark.parametrize("review", [PlanReviewStatus.REQUIRED])
 def test_publish_plan_requires_current_passed_review(review: PlanReviewStatus) -> None:
     with pytest.raises(RunTransitionRejected):
         transition_publish_plan(RunStatusV1.PLANNING, PlanStatusV1.DRAFT, review_status=review)

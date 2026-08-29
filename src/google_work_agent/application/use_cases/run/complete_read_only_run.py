@@ -14,7 +14,7 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.complete_read_only_run import (
     transition_complete_read_only_run,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -114,7 +114,7 @@ class CompleteReadOnlyRunHandler:
             created_at_ms=now_ms,
         )
         run = unit_of_work.runs.get(command.run_id)
-        plan = unit_of_work.plans.load_bundle(command.plan_id)
+        plan = load_plan_record(unit_of_work.plans, command.plan_id)
         if run is None or plan is None or plan.run_id != run.id:
             raise LookupError("CompleteReadOnlyRun aggregate not found")
         current_plans = tuple(
@@ -222,7 +222,7 @@ def _current_result(
     detail: str,
 ) -> CompleteReadOnlyRunResult:
     run = unit_of_work.runs.get(command.run_id)
-    plan = unit_of_work.plans.load_bundle(command.plan_id)
+    plan = load_plan_record(unit_of_work.plans, command.plan_id)
     if run is None or plan is None:
         raise LookupError("CompleteReadOnlyRun aggregate not found")
     return CompleteReadOnlyRunResult(

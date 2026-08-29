@@ -7,11 +7,13 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import Literal
 
+from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 ReviewDispositionV1 = Literal[
@@ -56,7 +58,7 @@ class RecordReviewResultHandler:
                 return self._replay(existing, command)
 
             now_ms = self._now_ms()
-            plan = unit_of_work.plans.load_bundle(command.plan_id)
+            plan = load_plan_record(unit_of_work.plans, command.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {command.plan_id}")
             if unit_of_work.runs.get(plan.run_id) is None:
@@ -81,6 +83,37 @@ class RecordReviewResultHandler:
                 aggregate_id=plan.id,
                 created_at_ms=now_ms,
             )
+            if command.disposition != "PASS":
+                for approval in unit_of_work.approvals.list_active_for_plan(plan.id):
+                    if not unit_of_work.approvals.update_if_status(
+                        approval.id,
+                        ApprovalStatusV1.ACTIVE,
+                        {"status": ApprovalStatusV1.REVOKED},
+                    ):
+                        raise RuntimeError(
+                            f"validated review Approval revoke CAS failed: {approval.id}"
+                        )
+                    unit_of_work.audits.append(
+                        AuditEventRecord(
+                            account_id=None,
+                            run_id=plan.run_id,
+                            action_id=approval.action_id,
+                            actor_type="SYSTEM",
+                            actor_id="plan_review",
+                            actor_display="Plan review",
+                            event_type="APPROVAL_REVOKED",
+                            outcome=ResultCode.TRANSITION_APPLIED.value,
+                            metadata_json=dumps(
+                                {
+                                    "approval_id": approval.id,
+                                    "command_id": command.command_id,
+                                    "reason": "NON_PASS_REVIEW",
+                                },
+                                sort_keys=True,
+                            ),
+                            created_at_ms=now_ms,
+                        )
+                    )
             review_status = _review_status(command.disposition)
             updated = unit_of_work.plans.record_review_result(
                 plan.id,
@@ -180,7 +213,7 @@ class RecordReviewResultHandler:
 def _freshness_conflict(
     unit_of_work: UnitOfWork, plan_id: str, command: RecordReviewResultCommandV1
 ) -> str | None:
-    plan = unit_of_work.plans.load_bundle(plan_id)
+    plan = load_plan_record(unit_of_work.plans, plan_id)
     assert plan is not None
     if plan.revision_no != command.expected_plan_version:
         return "plan version is stale"
@@ -198,14 +231,7 @@ def _freshness_conflict(
 
 
 def _review_status(disposition: ReviewDispositionV1) -> PlanReviewStatus:
-    return {
-        "PASS": PlanReviewStatus.PASSED,
-        "REVISE": PlanReviewStatus.REVISE,
-        "RETRIEVE_MORE": PlanReviewStatus.RETRIEVE_MORE,
-        "ROUTE_RECONSIDERATION": PlanReviewStatus.REQUIRED,
-        "CONFIRM": PlanReviewStatus.REQUIRED,
-        "BLOCK": PlanReviewStatus.BLOCKED,
-    }[disposition]
+    return PlanReviewStatus.PASSED if disposition == "PASS" else PlanReviewStatus.REQUIRED
 
 
 def _request_hash(command: RecordReviewResultCommandV1) -> str:

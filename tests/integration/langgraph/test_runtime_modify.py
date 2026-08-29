@@ -43,6 +43,13 @@ from google_work_agent.ports.persistence.approval_repository import active_appro
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 
 
+def _current_review_version(database_path: Path, plan_id: str) -> int:
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        bundle = unit_of_work.plans.load_bundle(plan_id)
+    assert bundle is not None
+    return bundle.plan.review_version
+
+
 def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Path) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
@@ -192,6 +199,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
             )
         )
         assert modified["applied"] is True
+        review_version = _current_review_version(database_path, plan_id)
 
         resumed = runtime.resume(
             WorkflowResumeRequest(
@@ -201,7 +209,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
                     "plan_id": plan_id,
-                    "review_version": 1,
+                    "review_version": review_version,
                 },
                 correlation=WorkflowCorrelationContext(
                     request_id=f"request-{profile.value}",
@@ -213,7 +221,8 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
 
         assert resumed.outcome is WorkflowOutcome.ACCEPTED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            plan = None if bundle is None else bundle.plan
             action = unit_of_work.actions.get(action_id)
         assert plan is not None and plan.review_status.value == "PASSED"
         assert action is not None and action.status == "MODIFIED"
@@ -268,7 +277,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                 ],
             ),
             "planning",
-            "REVISE",
+            "REQUIRED",
             "SUPERSEDED",
             "PLANNING",
         ),
@@ -300,14 +309,14 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                 },
             ),
             "context_retriever",
-            "RETRIEVE_MORE",
+            "REQUIRED",
             "SUPERSEDED",
             "PLANNING",
         ),
         (
             _review_output("BLOCK", blockers=["Modified plan is unsafe."]),
             "finalize",
-            "BLOCKED",
+            "REQUIRED",
             "WAITING_APPROVAL",
             "WAITING_APPROVAL",
         ),
@@ -367,19 +376,21 @@ def test_modify_review_branches_use_existing_supervisor_routes(
             )
         )
         assert modified["applied"] is True
+        review_version = _current_review_version(database_path, plan_id)
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1")  # noqa: SLF001
         )
         prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
             plan_id=plan_id,
-            review_version=1,
+            review_version=review_version,
         )
         reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
 
         assert reviewed["__target__"] == expected_target
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            plan = None if bundle is None else bundle.plan
             run = unit_of_work.runs.get("run-1")
             approvals = active_approval_tuple(unit_of_work.approvals, action_id)
         assert plan is not None and plan.review_status.value == expected_review_status
@@ -465,20 +476,22 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
             )
         )
         assert modified["applied"] is True
+        review_version = _current_review_version(database_path, plan_id)
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1")  # noqa: SLF001
         )
         prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
             plan_id=plan_id,
-            review_version=1,
+            review_version=review_version,
         )
         reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
 
         assert reviewed["__target__"] == "end"
         assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            plan = None if bundle is None else bundle.plan
             run = unit_of_work.runs.get("run-1")
             approvals = active_approval_tuple(unit_of_work.approvals, action_id)
         assert plan is not None and plan.review_status.value == "REQUIRED"
@@ -592,6 +605,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
             )
         )
         assert modified["applied"] is True
+        review_version = _current_review_version(database_path, plan_id)
 
         resumed = runtime.resume(
             WorkflowResumeRequest(
@@ -601,7 +615,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
                     "plan_id": plan_id,
-                    "review_version": 1,
+                    "review_version": review_version,
                 },
                 correlation=WorkflowCorrelationContext(
                     request_id=f"request-{review_status.lower()}-chain",
@@ -676,6 +690,7 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
             )
         )
         assert modified["applied"] is True
+        review_version = _current_review_version(database_path, plan_id)
 
         resumed = runtime.resume(
             WorkflowResumeRequest(
@@ -685,7 +700,7 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
                 resume_payload={
                     "resume_kind": "MODIFY_REVIEW",
                     "plan_id": plan_id,
-                    "review_version": 1,
+                    "review_version": review_version,
                 },
                 correlation=WorkflowCorrelationContext(
                     request_id="request-block-chain",
@@ -698,7 +713,8 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
         assert resumed.outcome is WorkflowOutcome.COMPLETED
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
             run = unit_of_work.runs.get("run-1")
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            plan = None if bundle is None else bundle.plan
             approvals = active_approval_tuple(unit_of_work.approvals, action_id)
             attempts = [
                 attempt
@@ -706,7 +722,8 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
                 for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             ]
         assert run is not None and run.status.value == "BLOCKED"
-        assert plan is not None and plan.review_status.value == "BLOCKED"
+        assert plan is not None and plan.review_status.value == "REQUIRED"
+        assert plan.review_disposition == "BLOCK"
         assert approvals == ()
         assert attempts == []
         assert gateway.count_calls("create_task") == 0
@@ -744,47 +761,46 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         assert runtime.start(_start_write_request()).outcome is WorkflowOutcome.ACCEPTED
         action_id = _sole_persisted_action_id(database_path)
         plan_id = _sole_persisted_plan_id(database_path)
-        assert (
-            modify_service(
-                ModifyWriteActionCommand(
-                    command_id="modify-before-review",
-                    request_hash="2" * 64,
-                    action_id=action_id,
-                    expected_version=0,
-                    arguments_patch={"title": "First review title"},
-                )
-            )["applied"]
-            is True
+        first_modified = modify_service(
+            ModifyWriteActionCommand(
+                command_id="modify-before-review",
+                request_hash="2" * 64,
+                action_id=action_id,
+                expected_version=0,
+                arguments_patch={"title": "First review title"},
+            )
         )
+        assert first_modified["applied"] is True
+        first_review_version = _current_review_version(database_path, plan_id)
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1")  # noqa: SLF001
         )
         first_generation = runtime._prepare_modify_review_state(  # noqa: SLF001
             snapshot.values,
             plan_id=plan_id,
-            review_version=1,
+            review_version=first_review_version,
         )
 
-        assert (
-            modify_service(
-                ModifyWriteActionCommand(
-                    command_id="modify-during-review",
-                    request_hash="3" * 64,
-                    action_id=action_id,
-                    expected_version=1,
-                    arguments_patch={"title": "Latest review title"},
-                )
-            )["applied"]
-            is True
+        second_modified = modify_service(
+            ModifyWriteActionCommand(
+                command_id="modify-during-review",
+                request_hash="3" * 64,
+                action_id=action_id,
+                expected_version=1,
+                arguments_patch={"title": "Latest review title"},
+            )
         )
+        assert second_modified["applied"] is True
+        second_review_version = _current_review_version(database_path, plan_id)
         stale_review = runtime._modify_review_node(first_generation)  # noqa: SLF001
         stale_domain_result = runtime._domain_validation_node(stale_review)  # noqa: SLF001
 
         assert stale_domain_result["__target__"] == "end"
         assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            plan = None if bundle is None else bundle.plan
         assert plan is not None and plan.review_status.value == "REQUIRED"
-        assert plan.review_version == 2
+        assert plan.review_version == second_review_version
     finally:
         runtime.close()

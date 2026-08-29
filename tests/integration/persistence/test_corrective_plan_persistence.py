@@ -61,8 +61,10 @@ def _seed_recovery_aggregate(database_path: Path) -> None:
             """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
-                review_status, review_version
-            ) VALUES ('old-plan', 'run-1', 1, 'ACTIVE', 'old', 2, 'PASSED', 0);
+                review_status, review_version, review_disposition
+            ) VALUES (
+                'old-plan', 'run-1', 1, 'ACTIVE', 'old', 2, 'PASSED', 0, 'PASS'
+            );
             """
         )
         connection.commit()
@@ -287,6 +289,10 @@ def _state_and_draft(
                 "evidence_refs": ["old-evidence-1", "old-evidence-2"],
             },
             "acquisition_result": {},
+            "plan_review_result": {
+                "status": "PASS",
+                "meta": {"revision": 1, "artifact_id": "review-corrective-1"},
+            },
         },
     )
     draft = cast(

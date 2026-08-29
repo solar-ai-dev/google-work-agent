@@ -38,7 +38,7 @@ from google_work_agent.application.use_cases.run.run_terminal import RunTransiti
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowInvocationResult,
     WorkflowOutcome,
@@ -160,7 +160,7 @@ class ArtifactFreshnessMixin:
 
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(request.run_id)
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            plan = load_plan_record(unit_of_work.plans, plan_id)
             plans = current_plan_tuple(unit_of_work.plans, request.run_id)
         latest_plan = max(plans, key=lambda item: item.revision_no) if plans else None
         if (
@@ -264,7 +264,7 @@ class ArtifactFreshnessMixin:
             return super()._persist_write_plan(state, plan_draft)
 
         with self._unit_of_work_factory() as unit_of_work:
-            reserved_plan = unit_of_work.plans.load_bundle(reserved_plan_id)
+            reserved_plan = load_plan_record(unit_of_work.plans, reserved_plan_id)
         if reserved_plan is None:
             raise LookupError(f"reserved corrective plan not found: {reserved_plan_id}")
 

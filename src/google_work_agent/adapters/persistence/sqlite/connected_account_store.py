@@ -32,11 +32,18 @@ class SqliteConnectedAccountStore:
         normalized_email = email.strip().lower()
         account_id = _account_id_for_email(normalized_email)
         self._connection.execute(
+            """UPDATE google_accounts
+               SET disconnected_at_ms = MAX(connected_at_ms, ?)
+               WHERE disconnected_at_ms IS NULL AND id <> ?;""",
+            (connected_at_ms, account_id),
+        )
+        self._connection.execute(
             """INSERT INTO google_accounts
                    (id, email, display_name, connected_at_ms, disconnected_at_ms)
                VALUES (?, ?, ?, ?, NULL)
                ON CONFLICT(email) DO UPDATE SET
                    display_name = excluded.display_name,
+                   connected_at_ms = excluded.connected_at_ms,
                    disconnected_at_ms = NULL;""",
             (account_id, normalized_email, display_name, connected_at_ms),
         )
@@ -44,6 +51,21 @@ class SqliteConnectedAccountStore:
         if current is None:
             raise RuntimeError("connected Google account was not persisted")
         return current
+
+    def disconnect(self, *, account_id: str, disconnected_at_ms: int) -> bool:
+        cursor = self._connection.execute(
+            """UPDATE google_accounts
+               SET disconnected_at_ms = MAX(connected_at_ms, ?)
+               WHERE id = ? AND disconnected_at_ms IS NULL;""",
+            (disconnected_at_ms, account_id),
+        )
+        if cursor.rowcount == 1:
+            return True
+        row = self._connection.execute(
+            "SELECT disconnected_at_ms FROM google_accounts WHERE id=?;",
+            (account_id,),
+        ).fetchone()
+        return row is not None and row["disconnected_at_ms"] is not None
 
 
 def _account_id_for_email(email: str) -> str:

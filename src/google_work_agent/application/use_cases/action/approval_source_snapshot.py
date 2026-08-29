@@ -9,7 +9,6 @@ from json import JSONDecodeError, loads
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import EffectType, PolicyViolationError
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceType
 
 _RESOURCE_AUTHORITY_FIELDS = frozenset(
@@ -20,7 +19,6 @@ _RESOURCE_AUTHORITY_FIELDS = frozenset(
 @dataclass(frozen=True, slots=True)
 class _UpdateSourceContract:
     resource_type: ResourceType
-    source: ResourceSource
     stored_resource_type: str
     resource_id_argument: str
     parent_id_argument: str | None
@@ -29,22 +27,19 @@ class _UpdateSourceContract:
 _UPDATE_SOURCE_CONTRACTS = {
     "gmail_update_draft": _UpdateSourceContract(
         resource_type=ResourceType.GMAIL_DRAFT,
-        source=ResourceSource.GMAIL,
-        stored_resource_type="GMAIL_DRAFT",
+        stored_resource_type=ResourceType.GMAIL_DRAFT.value,
         resource_id_argument="draft_id",
         parent_id_argument=None,
     ),
     "tasks_update_task": _UpdateSourceContract(
         resource_type=ResourceType.TASK,
-        source=ResourceSource.TASKS,
-        stored_resource_type="TASK",
+        stored_resource_type=ResourceType.TASK.value,
         resource_id_argument="task_id",
         parent_id_argument="task_list_id",
     ),
     "calendar_update_event": _UpdateSourceContract(
         resource_type=ResourceType.CALENDAR_EVENT,
-        source=ResourceSource.CALENDAR,
-        stored_resource_type="CALENDAR_EVENT",
+        stored_resource_type=ResourceType.CALENDAR_EVENT.value,
         resource_id_argument="event_id",
         parent_id_argument="calendar_id",
     ),
@@ -79,8 +74,6 @@ def build_approval_source_snapshot(
         raise PolicyViolationError("UPDATE approval resource authority belongs to another run")
     if resource_ref.connector_id != action.connector_id:
         raise PolicyViolationError("UPDATE approval resource connector binding mismatch")
-    if resource_ref.source is not contract.source:
-        raise PolicyViolationError("UPDATE approval resource source binding mismatch")
     if resource_ref.resource_type != contract.stored_resource_type:
         raise PolicyViolationError("UPDATE approval resource type binding mismatch")
     if not resource_ref.resource_id:

@@ -7,7 +7,6 @@ from google_work_agent.application.use_cases.resource_ref.persist_resource_ref i
     PersistResourceRefHandler,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
@@ -28,19 +27,18 @@ def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
         )
         connection.commit()
     record = ResourceRefRecord(
-        "ref-1",
-        "run-1",
-        "google_workspace",
-        ResourceSource.TASKS,
-        "TASK",
-        "task-1",
-        "list-1",
-        None,
-        "Task",
-        None,
-        "v1",
-        "{}",
-        1,
+        id="ref-1",
+        run_id="run-1",
+        connector_id="google_workspace",
+        resource_type="task",
+        resource_id="task-1",
+        parent_resource_id="list-1",
+        canonical_url=None,
+        title="Task",
+        event_time_ms=None,
+        version_token="v1",
+        metadata_json="{}",
+        captured_at_ms=1,
     )
 
     result = PersistResourceRefHandler(unit_of_work_factory=sqlite_unit_of_work_factory(path))(

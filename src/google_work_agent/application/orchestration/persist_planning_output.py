@@ -25,7 +25,6 @@ from google_work_agent.application.use_cases.verification.write_verification_pro
     build_expected_verification_projection,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceType
 
 
@@ -33,23 +32,18 @@ class V2PersistenceProjectionError(ValueError):
     """A V2 plan cannot be projected into the durable write boundary safely."""
 
 
-_TARGET_SPECS: dict[
-    str,
-    tuple[ResourceSource, str, str, str | None],
-] = {
-    "gmail_update_draft": (ResourceSource.GMAIL, ResourceType.GMAIL_DRAFT.name, "draft_id", None),
-    "gmail_send": (ResourceSource.GMAIL, ResourceType.GMAIL_DRAFT.name, "draft_id", None),
-    "tasks_update_task": (ResourceSource.TASKS, ResourceType.TASK.name, "task_id", "task_list_id"),
-    "tasks_delete_task": (ResourceSource.TASKS, ResourceType.TASK.name, "task_id", "task_list_id"),
+_TARGET_SPECS: dict[str, tuple[str, str, str | None]] = {
+    "gmail_update_draft": (ResourceType.GMAIL_DRAFT.value, "draft_id", None),
+    "gmail_send": (ResourceType.GMAIL_DRAFT.value, "draft_id", None),
+    "tasks_update_task": (ResourceType.TASK.value, "task_id", "task_list_id"),
+    "tasks_delete_task": (ResourceType.TASK.value, "task_id", "task_list_id"),
     "calendar_update_event": (
-        ResourceSource.CALENDAR,
-        ResourceType.CALENDAR_EVENT.name,
+        ResourceType.CALENDAR_EVENT.value,
         "event_id",
         "calendar_id",
     ),
     "calendar_delete_event": (
-        ResourceSource.CALENDAR,
-        ResourceType.CALENDAR_EVENT.name,
+        ResourceType.CALENDAR_EVENT.value,
         "event_id",
         "calendar_id",
     ),
@@ -226,7 +220,7 @@ def _target_resource_handle(
         raise V2PersistenceProjectionError(
             f"no deterministic target ResourceRef rule for {effect} tool: {tool_id}"
         )
-    source, resource_type, id_field, parent_field = spec
+    resource_type, id_field, parent_field = spec
     resource_id = _required_text(arguments.get(id_field), f"{tool_id}.{id_field}")
     parent_id = None
     if parent_field is not None:
@@ -240,7 +234,7 @@ def _target_resource_handle(
         _require_current_run_resource(run_id=run_id, handle=handle, resource=resource)
         if resource.connector_id != connector_id:
             continue
-        if resource.source is not source or resource.resource_type is not resource_type:
+        if resource.resource_type != resource_type:
             continue
         if resource.resource_id != resource_id:
             continue

@@ -49,8 +49,8 @@ def _seed_parent_graph(
         """
         INSERT INTO plans (
             id, run_id, revision_no, status, summary_text, created_at_ms,
-            review_status, review_version
-        ) VALUES ('plan-1', 'run-1', 1, ?, 'Plan', 1, 'PASSED', 1);
+            review_status, review_version, review_disposition
+        ) VALUES ('plan-1', 'run-1', 1, ?, 'Plan', 1, 'PASSED', 1, 'PASS');
         """,
         (plan_status,),
     )
@@ -112,8 +112,7 @@ def _seed_succeeded_attempt(connection: sqlite3.Connection) -> None:
         """
     )
     connection.execute(
-        "UPDATE execution_attempts SET status='SUCCEEDED', finished_at_ms=3 "
-        "WHERE id='attempt-1';"
+        "UPDATE execution_attempts SET status='SUCCEEDED', finished_at_ms=3 WHERE id='attempt-1';"
     )
     connection.execute("UPDATE actions SET status='EXECUTED' WHERE id='action-1';")
 
@@ -175,7 +174,7 @@ def test_populated_0014_upgrade_preserves_verification_and_all_defenses(
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 14 + [True]
+        assert [result.applied for result in results] == [False] * 14 + [True, True]
         assert tuple(connection.execute("SELECT id, status FROM verifications;").fetchone()) == (
             "verification-verified",
             "VERIFIED",
@@ -220,12 +219,14 @@ def test_0015_preflight_rejects_legacy_verification_without_partial_rebuild(
             apply_migrations(connection, now_ms=lambda: 2)
 
         assert (
-            connection.execute("SELECT status FROM verifications;").fetchone()[0]
-            == legacy_status
+            connection.execute("SELECT status FROM verifications;").fetchone()[0] == legacy_status
         )
-        assert connection.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version=15;"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version=15;"
+            ).fetchone()[0]
+            == 0
+        )
         assert connection.execute("PRAGMA foreign_keys;").fetchone()[0] == 1
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
@@ -370,8 +371,11 @@ def test_0015_preflight_rejects_existing_active_approval_on_legacy_active_plan(
             apply_migrations(connection, now_ms=lambda: 2)
 
         assert connection.execute("SELECT status FROM approvals;").fetchone()[0] == "ACTIVE"
-        assert connection.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version=15;"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version=15;"
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         connection.close()

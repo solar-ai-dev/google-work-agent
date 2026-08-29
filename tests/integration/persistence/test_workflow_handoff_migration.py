@@ -31,7 +31,7 @@ def test_0008_database_upgrades_through_latest_without_changing_applied_receipts
             "SELECT version, name, checksum FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert [result.applied for result in results] == [False] * 8 + [True] * 7
+        assert [result.applied for result in results] == [False] * 8 + [True] * 8
         assert [tuple(row) for row in after[:8]] == [tuple(row) for row in before]
         assert tuple(after[8])[:2] == (9, "workflow_handoff_outbox")
         assert tuple(after[9])[:2] == (10, "plan_review_disposition")

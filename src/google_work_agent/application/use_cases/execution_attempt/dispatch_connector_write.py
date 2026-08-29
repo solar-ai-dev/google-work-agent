@@ -23,7 +23,7 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
     ConnectorWriteResultV1,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -103,7 +103,7 @@ class DispatchConnectorWriteHandler:
             approval = unit_of_work.approval_history.get(approval_id)
             if attempt is None or action is None or approval is None:
                 raise PermissionError("claim persistence binding is missing")
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             run = None if plan is None else unit_of_work.runs.get(plan.run_id)
             if plan is None or run is None:
                 raise PermissionError("claim parent authority is missing")

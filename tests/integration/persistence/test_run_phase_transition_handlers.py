@@ -120,7 +120,7 @@ def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path:
                    review_status, review_version, review_disposition
                ) VALUES (
                    'plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 2,
-                   'REVISE', 3, 'REVISE'
+                   'REQUIRED', 3, 'REVISE'
                );"""
         )
         connection.execute(
@@ -145,7 +145,7 @@ def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path:
                    tool_schema_version, idempotency_key, recovery_fingerprint,
                    approved_at_ms, expires_at_ms, consumed_at_ms
                ) VALUES (
-                   'approval-1', 'action-1', 1, 1, 'ACTIVE', 'account-1', NULL,
+                   'approval-1', 'action-1', 1, 1, 'REVOKED', 'account-1', NULL,
                    '{}', ?, '{}', ?, 'v1', 'v1', ?, ?, 2, 1000, NULL
                );""",
             ("a" * 64, "b" * 64, "c" * 64, "d" * 64),
@@ -216,7 +216,7 @@ def test_published_reentry_with_inflight_action_has_zero_domain_mutation(tmp_pat
                    review_status, review_version, review_disposition
                ) VALUES (
                    'plan-1', 'run-1', 1, 'WAITING_APPROVAL', 'Plan', 2,
-                   'REVISE', 2, 'REVISE'
+                   'REQUIRED', 2, 'REVISE'
                );"""
         )
         connection.execute(

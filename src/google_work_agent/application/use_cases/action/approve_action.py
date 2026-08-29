@@ -35,6 +35,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     action_response_from_result,
     audit_event,
     finish_json_receipt,
+    has_unresolved_unknown_result,
     require_action,
     require_plan,
     resolve_existing_action_receipt,
@@ -205,7 +206,28 @@ class ApproveActionHandler:
                     unit_of_work.commit()
                     return result
 
-                if plan.review_status is not PlanReviewStatus.PASSED:
+                if has_unresolved_unknown_result(unit_of_work, plan.id):
+                    result = ApproveActionResult(
+                        applied=False,
+                        result_code=ResultCode.STATE_CONFLICT.value,
+                        action_id=action.id,
+                        action_status=action.status,
+                        action_version=action.version,
+                        next_allowed_commands=(),
+                        conflict_detail=(
+                            "unresolved UNKNOWN_RESULT forbids new approval authority"
+                        ),
+                    )
+                    finish_json_receipt(
+                        unit_of_work, command.command_id, result, action.version, now_ms
+                    )
+                    unit_of_work.commit()
+                    return result
+
+                if (
+                    plan.review_status is not PlanReviewStatus.PASSED
+                    or plan.review_disposition != "PASS"
+                ):
                     result = ApproveActionResult(
                         applied=False,
                         result_code=ResultCode.STATE_CONFLICT.value,
@@ -360,7 +382,10 @@ class ApproveActionHandler:
                     action.version,
                     command.expected_version,
                     effect_type=EffectType(action.effect_type),
-                    plan_review_passed=plan.review_status is PlanReviewStatus.PASSED,
+                    plan_review_passed=(
+                        plan.review_status is PlanReviewStatus.PASSED
+                        and plan.review_disposition == "PASS"
+                    ),
                     plan_status=plan.status,
                     plan_is_current=current_plan is not None and current_plan.id == plan.id,
                     run_status=RunStatusV1(run.status),

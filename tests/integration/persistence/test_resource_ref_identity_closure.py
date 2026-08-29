@@ -9,7 +9,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_rep
     SqliteResourceRefRepository,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
 
@@ -19,7 +18,7 @@ def test_clean_database_migrates_through_latest_with_full_integrity(tmp_path: Pa
     try:
         results = apply_migrations(connection, now_ms=lambda: 1)
 
-        assert results[-1].version == 15
+        assert results[-1].version == 16
         assert all(result.applied for result in results)
         assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
@@ -71,49 +70,49 @@ def test_0008_upgrade_preserves_plan_action_evidence_graph(tmp_path: Path) -> No
         connection.close()
 
 
-def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -> None:
+def test_same_external_id_coexists_across_registered_resource_types(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "connector-coexist.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)
         _seed_run(connection)
         repository = SqliteResourceRefRepository(connection)
 
-        repository.upsert_bound_ref(_event_ref("resource-a", "connector-a", title="A"))
-        repository.upsert_bound_ref(_event_ref("resource-b", "connector-b", title="B"))
+        repository.upsert_bound_ref(_resource_ref("resource-a", "calendar_event", title="A"))
+        repository.upsert_bound_ref(_resource_ref("resource-b", "gmail_message", title="B"))
 
         rows = connection.execute(
             """
-            SELECT connector_id, source, resource_type, resource_id, title
+            SELECT connector_id, resource_type, resource_id, title
             FROM resource_refs
             WHERE run_id = 'run-1' AND resource_id = 'external-X'
-            ORDER BY connector_id;
+            ORDER BY resource_type;
             """
         ).fetchall()
         assert [tuple(row) for row in rows] == [
-            ("connector-a", "CALENDAR", "CALENDAR_EVENT", "external-X", "A"),
-            ("connector-b", "CALENDAR", "CALENDAR_EVENT", "external-X", "B"),
+            ("google_workspace", "calendar_event", "external-X", "A"),
+            ("google_workspace", "gmail_message", "external-X", "B"),
         ]
 
-        repository.upsert_bound_ref(_event_ref("replacement-id", "connector-a", title="A2"))
+        repository.upsert_bound_ref(_resource_ref("replacement-id", "calendar_event", title="A2"))
         rows_after_upsert = connection.execute(
             """
             SELECT id, connector_id, title FROM resource_refs
             WHERE run_id = 'run-1' AND resource_id = 'external-X'
-            ORDER BY connector_id;
+            ORDER BY resource_type;
             """
         ).fetchall()
         assert [tuple(row) for row in rows_after_upsert] == [
-            ("resource-a", "connector-a", "A2"),
-            ("resource-b", "connector-b", "B"),
+            ("resource-a", "google_workspace", "A2"),
+            ("resource-b", "google_workspace", "B"),
         ]
 
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 """
                 INSERT INTO resource_refs (
-                    id, run_id, connector_id, source, resource_type, resource_id,
+                    id, run_id, connector_id, resource_type, resource_id,
                     metadata_json, captured_at_ms
-                ) VALUES ('duplicate', 'run-1', 'connector-a', 'CALENDAR', 'CALENDAR_EVENT',
+                ) VALUES ('duplicate', 'run-1', 'google_workspace', 'calendar_event',
                           'external-X', '{}', 2);
                 """
             )
@@ -121,13 +120,12 @@ def test_same_source_and_external_id_coexist_across_connectors(tmp_path: Path) -
         connection.close()
 
 
-def _event_ref(record_id: str, connector_id: str, *, title: str) -> ResourceRefRecord:
+def _resource_ref(record_id: str, resource_type: str, *, title: str) -> ResourceRefRecord:
     return ResourceRefRecord(
         id=record_id,
         run_id="run-1",
-        connector_id=connector_id,
-        source=ResourceSource.CALENDAR,
-        resource_type="CALENDAR_EVENT",
+        connector_id="google_workspace",
+        resource_type=resource_type,
         resource_id="external-X",
         parent_resource_id=None,
         canonical_url=None,

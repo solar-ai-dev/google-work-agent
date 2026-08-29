@@ -214,10 +214,10 @@ def durable_review_status_for_v2(review: PlanReviewResultV2) -> PlanReviewStatus
 
     return {
         "PASS": PlanReviewStatus.PASSED,
-        "REVISE": PlanReviewStatus.REVISE,
-        "RETRIEVE_MORE": PlanReviewStatus.RETRIEVE_MORE,
+        "REVISE": PlanReviewStatus.REQUIRED,
+        "RETRIEVE_MORE": PlanReviewStatus.REQUIRED,
         "CONFIRM": PlanReviewStatus.REQUIRED,
-        "BLOCK": PlanReviewStatus.BLOCKED,
+        "BLOCK": PlanReviewStatus.REQUIRED,
         "ROUTE_RECONSIDERATION": None,
     }[review["status"]]
 

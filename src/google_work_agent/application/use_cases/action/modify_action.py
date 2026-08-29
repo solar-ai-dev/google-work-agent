@@ -65,7 +65,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -157,7 +157,7 @@ class ModifyActionHandler:
             if existing is not None:
                 return self._resolve_existing_receipt(unit_of_work, existing, command)
             snapshot = self._require_action(unit_of_work, command.action_id)
-            snapshot_plan = unit_of_work.plans.load_bundle(snapshot.plan_id)
+            snapshot_plan = load_plan_record(unit_of_work.plans, snapshot.plan_id)
             if snapshot_plan is None:
                 raise LookupError(f"plan not found: {snapshot.plan_id}")
             plan_superseded = snapshot_plan.status is PlanStatusV1.SUPERSEDED
@@ -217,7 +217,7 @@ class ModifyActionHandler:
             )
             action = self._require_action(unit_of_work, command.action_id)
             effect_type = EffectType(action.effect_type)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current_plan = max(
@@ -370,13 +370,18 @@ class ModifyActionHandler:
                 )
 
             run_id = self._run_id_for_action(unit_of_work, action.id)
-            review_version = require_plan_review(unit_of_work, action.plan_id)
             self._revoke_stale_dependent_approvals(
                 unit_of_work=unit_of_work,
                 modified_action_id=action.id,
                 run_id=run_id,
                 command_id=command.command_id,
                 now_ms=now_ms,
+            )
+            review_version = require_plan_review(
+                unit_of_work,
+                action.plan_id,
+                command_id=command.command_id,
+                created_at_ms=now_ms,
             )
 
             response = ModifyActionResult(
@@ -589,7 +594,7 @@ class ModifyActionHandler:
     @classmethod
     def _run_id_for_action(cls, unit_of_work: UnitOfWork, action_id: str) -> str:
         action = cls._require_action(unit_of_work, action_id)
-        plan = unit_of_work.plans.load_bundle(action.plan_id)
+        plan = load_plan_record(unit_of_work.plans, action.plan_id)
         if plan is None:
             raise LookupError(f"plan not found for action: {action_id}")
         return plan.run_id

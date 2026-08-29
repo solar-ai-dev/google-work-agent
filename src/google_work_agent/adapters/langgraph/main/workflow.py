@@ -297,7 +297,7 @@ from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 from google_work_agent.ports.system.contracts.workflow_execution import (
@@ -937,7 +937,7 @@ class WorkflowRuntimeCore:
             review_status = (
                 PlanReviewStatus.PASSED
                 if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value
-                else PlanReviewStatus.BLOCKED
+                else PlanReviewStatus.REQUIRED
             )
             if not self._store_modify_review_result(
                 state,
@@ -1078,7 +1078,7 @@ class WorkflowRuntimeCore:
         review_version: int,
     ) -> GraphState:
         with self._unit_of_work_factory() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            plan = load_plan_record(unit_of_work.plans, plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {plan_id}")
             if (
@@ -1242,10 +1242,10 @@ class WorkflowRuntimeCore:
     @staticmethod
     def _review_status(review: PlanReviewResultV1) -> PlanReviewStatus:
         return {
-            ReviewResult.REVISE.value: PlanReviewStatus.REVISE,
-            ReviewResult.RETRIEVE_MORE.value: PlanReviewStatus.RETRIEVE_MORE,
+            ReviewResult.REVISE.value: PlanReviewStatus.REQUIRED,
+            ReviewResult.RETRIEVE_MORE.value: PlanReviewStatus.REQUIRED,
             ReviewResult.CONFIRM.value: PlanReviewStatus.REQUIRED,
-            ReviewResult.BLOCK.value: PlanReviewStatus.BLOCKED,
+            ReviewResult.BLOCK.value: PlanReviewStatus.REQUIRED,
         }[review["status"]]
 
     def _store_modify_review_result(
@@ -1259,7 +1259,7 @@ class WorkflowRuntimeCore:
         if plan_id is None or review_version is None:
             return False
         with self._unit_of_work_factory() as unit_of_work:
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            plan = load_plan_record(unit_of_work.plans, plan_id)
             if plan is None:
                 return False
             action_versions = {
@@ -1289,7 +1289,7 @@ class WorkflowRuntimeCore:
             return False
         with self._unit_of_work_factory() as unit_of_work:
             canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
-            plan = unit_of_work.plans.load_bundle(plan_id)
+            plan = load_plan_record(unit_of_work.plans, plan_id)
             if plan is None or plan.review_version != review_version:
                 return False
             run = canonical_uow.runs.get(plan.run_id)
@@ -1605,7 +1605,6 @@ class WorkflowRuntimeCore:
                 id=f"resource-ref-{run_id}-{resource_handle.replace(':', '-')}",
                 run_id=run_id,
                 connector_id=connector_id,
-                source=source,
                 resource_type=resource_type,
                 resource_id=str(resource["resource_id"]),
                 parent_resource_id=cast(str | None, resource.get("parent_id")),

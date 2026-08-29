@@ -105,9 +105,10 @@ def test_populated_v1_2_upgrade_preserves_action_children_and_approval(tmp_path:
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        # 0001 is already applied (False); 0002-0015 apply in order.
+        # 0001 is already applied (False); 0002-0016 apply in order.
         assert [result.applied for result in results] == [
             False,
+            True,
             True,
             True,
             True,

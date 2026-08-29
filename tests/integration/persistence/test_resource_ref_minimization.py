@@ -153,14 +153,16 @@ def _seed_write_state(
             ) VALUES ('run-1', 'conversation-1', 'AGENT_SEARCH', ?,
                       'thread-1', 'AUTO', '{}', 0, 1);
             """,
-            (run_status,),
+            ("WAITING_APPROVAL",),
         )
         connection.execute(
             """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
-                review_status, review_version
-            ) VALUES ('plan-1', 'run-1', 1, 'ACTIVE', NULL, 1, 'PASSED', 0);
+                review_status, review_version, review_disposition
+            ) VALUES (
+                'plan-1', 'run-1', 1, 'WAITING_APPROVAL', NULL, 1, 'PASSED', 0, 'PASS'
+            );
             """
         )
         connection.execute(
@@ -173,11 +175,11 @@ def _seed_write_state(
             ) VALUES (
                 'action-1', 'plan-1', 'google_workspace', 1,
                 'calendar_create_event', 'CREATE',
-                'REQUIRED', 'GET_COMPARE', 'RESOURCE_SEARCH', NULL, ?, '{}', ?,
-                '{}', '{}', ?, 1, 1
+                'REQUIRED', 'GET_COMPARE', 'RESOURCE_SEARCH', NULL, 'EXECUTING', '{}', ?,
+                '{}', '{}', 2, 1, 1
             );
             """,
-            (action_status, "c" * 64, action_version),
+            ("c" * 64,),
         )
         connection.execute(
             """
@@ -198,16 +200,24 @@ def _seed_write_state(
             INSERT INTO execution_attempts (
                 id, approval_id, attempt_no, status, version, started_at_ms, finished_at_ms,
                 error_code, error_detail_json
-            ) VALUES ('attempt-1', 'approval-1', 1, ?, ?, 2, ?, ?, ?);
+            ) VALUES ('attempt-1', 'approval-1', 1, 'EXECUTING', ?, 2, NULL, NULL, NULL);
             """,
-            (
-                attempt_status,
-                attempt_version,
-                3 if attempt_status == "UNKNOWN_RESULT" else None,
-                "TIMEOUT" if attempt_status == "UNKNOWN_RESULT" else None,
-                "{}" if attempt_status == "UNKNOWN_RESULT" else None,
-            ),
+            (0 if attempt_status == "UNKNOWN_RESULT" else attempt_version,),
         )
+        if attempt_status == "UNKNOWN_RESULT":
+            connection.execute(
+                """UPDATE execution_attempts
+                   SET status='UNKNOWN_RESULT', version=?, finished_at_ms=3,
+                       error_code='TIMEOUT', error_detail_json='{}'
+                   WHERE id='attempt-1';""",
+                (attempt_version,),
+            )
+            connection.execute(
+                "UPDATE actions SET status=?, version=? WHERE id='action-1';",
+                (action_status, action_version),
+            )
+        connection.execute("UPDATE plans SET status='ACTIVE' WHERE id='plan-1';")
+        connection.execute("UPDATE runs SET status=? WHERE id='run-1';", (run_status,))
         connection.commit()
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:

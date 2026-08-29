@@ -39,6 +39,10 @@ from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.use_cases.plan.record_review_result import (
+    RecordReviewResultCommandV1,
+    RecordReviewResultHandler,
+)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -310,6 +314,11 @@ class PlanPersistenceMixin:
                     ),
                 )
             )
+        review_artifact_id, review_version = self._review_proof_for_persistence(
+            state=state,
+            plan_id=plan_id,
+            plan_revision_no=revision_no,
+        )
         save_response = self._save_write_plan(
             SaveWritePlanCommand(
                 command_id=self._id_factory(),
@@ -321,10 +330,18 @@ class PlanPersistenceMixin:
                 expected_run_version=run_version,
                 actions=tuple(mapped_actions),
                 evidence=mapped_evidence,
+                review_version=review_version,
             )
         )
         if not save_response.applied:
             raise RuntimeError(f"save_write_plan failed: {save_response.result_code}")
+        self._persist_initial_review_pass(
+            plan_id=plan_id,
+            plan_revision_no=revision_no,
+            review_artifact_id=review_artifact_id,
+            review_version=review_version,
+            action_versions={action.action_id: 0 for action in mapped_actions},
+        )
         publish_response = self._publish_write_plan(
             PublishWritePlanCommand(
                 command_id=self._id_factory(),
@@ -378,6 +395,11 @@ class PlanPersistenceMixin:
             for action in plan_draft["actions"]
         )
         plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
+        review_artifact_id, review_version = self._review_proof_for_persistence(
+            state=state,
+            plan_id=plan_id,
+            plan_revision_no=1,
+        )
         save_response = self._save_read_plan(
             SaveReadOnlyPlanCommand(
                 command_id=self._id_factory(),
@@ -389,10 +411,18 @@ class PlanPersistenceMixin:
                 expected_run_version=run_version,
                 actions=mapped_actions,
                 evidence=mapped_evidence,
+                review_version=review_version,
             )
         )
         if not save_response.applied:
             raise RuntimeError(f"save_read_plan failed: {save_response.result_code}")
+        self._persist_initial_review_pass(
+            plan_id=plan_id,
+            plan_revision_no=1,
+            review_artifact_id=review_artifact_id,
+            review_version=review_version,
+            action_versions={action.action_id: 0 for action in mapped_actions},
+        )
         publish_response = self._publish_read_plan(
             PublishReadOnlyPlanCommand(
                 command_id=self._id_factory(),
@@ -405,6 +435,54 @@ class PlanPersistenceMixin:
         if not publish_response.applied:
             raise RuntimeError(f"publish_read_plan failed: {publish_response.result_code}")
         return plan_id
+
+    @staticmethod
+    def _review_proof_for_persistence(
+        *,
+        state: GraphState,
+        plan_id: str,
+        plan_revision_no: int,
+    ) -> tuple[str, int]:
+        review_v2 = state.get("plan_review_result")
+        if review_v2 is not None:
+            if review_v2["status"] != "PASS":
+                raise ValueError("only a PASS Review may open a persisted Plan approval gate")
+            revision = review_v2["meta"]["revision"]
+            if revision < 1:
+                raise ValueError("persisted Review revision must be positive")
+            return review_v2["meta"]["artifact_id"], revision
+
+        review_v1 = _require_state_value(state.get("plan_review"), "plan_review")
+        if review_v1["status"] != "PASS":
+            raise ValueError("only a PASS Review may open a persisted Plan approval gate")
+        return f"{plan_id}:review:{plan_revision_no}", plan_revision_no
+
+    def _persist_initial_review_pass(
+        self,
+        *,
+        plan_id: str,
+        plan_revision_no: int,
+        review_artifact_id: str,
+        review_version: int,
+        action_versions: Mapping[str, int],
+    ) -> None:
+        result = RecordReviewResultHandler(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+        )(
+            RecordReviewResultCommandV1(
+                command_id=self._id_factory(),
+                plan_id=plan_id,
+                expected_plan_version=plan_revision_no,
+                expected_review_version=review_version,
+                review_artifact_id=review_artifact_id,
+                review_version=review_version,
+                disposition="PASS",
+                based_on_action_versions=action_versions,
+            )
+        )
+        if not result.applied:
+            raise RuntimeError(f"record_review_result failed: {result.result_code}")
 
     def _resolve_target_resource_ref_for_connector(
         self,

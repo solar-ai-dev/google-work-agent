@@ -49,6 +49,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
+from tests.integration.persistence.review_support import record_pass_review
 from tests.integration.persistence.test_action_modify_vertical_slice import (
     _save_and_publish_task_action,
 )
@@ -234,7 +235,7 @@ def test_reject_allowed_statuses_record_audit_without_completing_parent_run(
         )
         audits = unit_of_work.audits.list_page(AuditEventCursor(run_id="run-1"), 100)
     assert action is not None and action.status == "REJECTED"
-    assert plan is not None and plan.status.value == "WAITING_APPROVAL"
+    assert plan is not None and plan.plan.status.value == "WAITING_APPROVAL"
     assert run is not None and run.status.value == "WAITING_APPROVAL"
     assert attempts == ()
     if approvals:
@@ -274,6 +275,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
+    record_pass_review(modify_database, "plan-independent", now_ms=clock.now_ms())
     assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-independent-reject",
@@ -301,7 +303,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
         run = unit_of_work.runs.get("run-1")
     assert action_a is not None and action_a.status == "REJECTED"
     assert action_b is not None and action_b.status == "PROPOSED"
-    assert plan is not None and plan.status.value == "WAITING_APPROVAL"
+    assert plan is not None and plan.plan.status.value == "WAITING_APPROVAL"
     assert run is not None and run.status.value == "WAITING_APPROVAL"
 
 
@@ -436,6 +438,7 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
+    record_pass_review(modify_database, "plan-proposed-dependency", now_ms=clock.now_ms())
     assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-proposed-dependency",
@@ -504,6 +507,7 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
         )
     )
     assert saved.applied is True
+    record_pass_review(modify_database, "plan-chain", now_ms=clock.now_ms())
     assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id="publish-reject-chain",
@@ -595,6 +599,7 @@ def test_reject_preserves_verified_actions(
             evidence=_evidence("action-a", "action-b"),
         )
     ).applied
+    record_pass_review(modify_database, "plan-preserve", now_ms=clock.now_ms())
     assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         PublishWritePlanCommand(
             command_id=f"publish-preserve-{rejected_action_id}",

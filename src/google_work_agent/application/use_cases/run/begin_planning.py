@@ -24,6 +24,7 @@ from google_work_agent.domain.run.model import (
     next_allowed_run_commands,
 )
 from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
+from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     ContextAdjustmentControlV1,
@@ -196,7 +197,7 @@ class BeginPlanningHandler:
     def _current_plan(unit_of_work: UnitOfWork, command: BeginPlanningCommand) -> PlanRecord | None:
         if command.plan_id is None:
             return None
-        plan = unit_of_work.plans.load_bundle(command.plan_id)
+        plan = load_plan_record(unit_of_work.plans, command.plan_id)
         return (
             plan
             if plan is not None

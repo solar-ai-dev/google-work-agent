@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from json import dumps
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -36,6 +36,13 @@ def _uow() -> MagicMock:
     unit_of_work.__exit__.return_value = None
     unit_of_work.plans.get_current.side_effect = lambda _run_id: (
         unit_of_work.plans.load_bundle.return_value
+    )
+    unit_of_work.plans.load_bundle.side_effect = lambda _plan_id: SimpleNamespace(
+        plan=unit_of_work.plans.load_bundle.return_value,
+        actions=(),
+        dependencies=(),
+        evidence=(),
+        action_evidence=(),
     )
     return unit_of_work
 
@@ -342,7 +349,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     assert result.applied is True
     assert result.action_status == ActionStatusV1.MODIFIED.value
     assert ActionCommand.APPROVE_ACTION.value not in result.next_allowed_commands
-    assert unit_of_work.approvals.method_calls == []
+    assert unit_of_work.approvals.method_calls == [call.list_active_for_plan("plan-1")]
     assert unit_of_work.execution_attempts.method_calls == []
     assert unit_of_work.verifications.method_calls == []
     unit_of_work.plans.record_review_result.assert_called_once()

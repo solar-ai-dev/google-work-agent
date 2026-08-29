@@ -362,7 +362,6 @@ class StartRunHandler:
                     id=resource_ref_id,
                     run_id=run_id,
                     connector_id=identity.connector_id,
-                    source=source,
                     resource_type=identity.resource_type,
                     resource_id=identity.resource_id,
                     parent_resource_id=identity.parent_resource_id,
@@ -376,7 +375,7 @@ class StartRunHandler:
             )
             selected.append(
                 SelectedResourceRef(
-                    source=persisted.source.value,
+                    source=source.value,
                     resource_type=persisted.resource_type,
                     resource_id=persisted.resource_id,
                     parent_resource_id=persisted.parent_resource_id,

@@ -34,6 +34,7 @@ from google_work_agent.application.use_cases.action.task_duplicates import (
 from google_work_agent.application.use_cases.action.write_action_arguments import dict_argument
 from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
+    has_unresolved_unknown_result,
     require_action,
     require_plan,
     require_run,
@@ -156,6 +157,18 @@ class ClaimExecutionHandler:
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
+
+            if has_unresolved_unknown_result(unit_of_work, plan.id):
+                return self._reject(
+                    unit_of_work=unit_of_work,
+                    command=command,
+                    action_id=action.id,
+                    status=ActionStatusV1(action.status),
+                    version=action.version,
+                    now_ms=now_ms,
+                    detail="unresolved UNKNOWN_RESULT blocks a new execution claim",
+                    approval_id=approval.id,
+                )
 
             try:
                 current_source_snapshot = self._current_source_snapshot(

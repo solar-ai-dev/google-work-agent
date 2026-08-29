@@ -5,6 +5,8 @@ from enum import StrEnum
 
 
 class ResourceSource(StrEnum):
+    """Legacy READ/UI projection only; never part of durable ResourceRef identity."""
+
     GMAIL = "GMAIL"
     TASKS = "TASKS"
     CALENDAR = "CALENDAR"
@@ -15,7 +17,6 @@ class ResourceRef:
     id: str
     run_id: str
     connector_id: str
-    source: ResourceSource
     resource_type: str
     resource_id: str
     parent_resource_id: str | None

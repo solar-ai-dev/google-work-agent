@@ -5,12 +5,11 @@ from __future__ import annotations
 import sqlite3
 
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 
 
 class SqliteResourceRefRepository:
     _SELECT = """
-        SELECT id, run_id, connector_id, source, resource_type, resource_id,
+        SELECT id, run_id, connector_id, resource_type, resource_id,
                parent_resource_id, canonical_url, title, event_time_ms,
                version_token, metadata_json, captured_at_ms
         FROM resource_refs
@@ -25,13 +24,12 @@ class SqliteResourceRefRepository:
         self._connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 parent_resource_id, canonical_url, title, event_time_ms,
                 version_token, metadata_json, captured_at_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(run_id, connector_id, resource_type, resource_id)
             DO UPDATE SET
-                source = excluded.source,
                 parent_resource_id = excluded.parent_resource_id,
                 canonical_url = excluded.canonical_url,
                 title = excluded.title,
@@ -44,7 +42,6 @@ class SqliteResourceRefRepository:
                 record.id,
                 record.run_id,
                 record.connector_id,
-                record.source.value,
                 record.resource_type,
                 record.resource_id,
                 record.parent_resource_id,
@@ -78,7 +75,7 @@ class SqliteResourceRefRepository:
             self._SELECT
             + """
               WHERE run_id = ?
-              ORDER BY connector_id, source, resource_type, resource_id LIMIT ?;
+              ORDER BY connector_id, resource_type, resource_id LIMIT ?;
               """,
             (run_id, limit),
         ).fetchall()
@@ -90,7 +87,6 @@ class SqliteResourceRefRepository:
             id=str(row["id"]),
             run_id=str(row["run_id"]),
             connector_id=str(row["connector_id"]),
-            source=ResourceSource(str(row["source"])),
             resource_type=str(row["resource_type"]),
             resource_id=str(row["resource_id"]),
             parent_resource_id=(

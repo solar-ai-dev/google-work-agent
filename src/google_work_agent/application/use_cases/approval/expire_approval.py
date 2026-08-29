@@ -14,7 +14,7 @@ from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -72,7 +72,7 @@ class ExpireApprovalHandler:
             action = unit_of_work.actions.get(approval.action_id)
             if action is None:
                 raise LookupError(f"action not found: {approval.action_id}")
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current = tuple(

@@ -18,7 +18,7 @@ from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -105,7 +105,7 @@ class RefreshExpiredActionHandler:
                 created_at_ms=now_ms,
             )
             action = _require_action(unit_of_work, command.action_id)
-            plan = unit_of_work.plans.load_bundle(action.plan_id)
+            plan = load_plan_record(unit_of_work.plans, action.plan_id)
             if plan is None:
                 raise LookupError(f"plan not found: {action.plan_id}")
             current = tuple(
@@ -149,7 +149,12 @@ class RefreshExpiredActionHandler:
                     )
                     if updated is None:
                         raise RuntimeError("validated RefreshExpiredAction CAS failed")
-                    require_plan_review(unit_of_work, plan.id)
+                    require_plan_review(
+                        unit_of_work,
+                        plan.id,
+                        command_id=command.command_id,
+                        created_at_ms=now_ms,
+                    )
                     unit_of_work.audits.append(
                         AuditEvent(
                             account_id=None,

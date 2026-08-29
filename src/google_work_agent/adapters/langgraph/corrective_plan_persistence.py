@@ -30,6 +30,10 @@ from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.use_cases.plan.record_review_result import (
+    RecordReviewResultCommandV1,
+    RecordReviewResultHandler,
+)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -44,10 +48,10 @@ from google_work_agent.domain.canonical import (
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 
 
 def persist_reserved_corrective_write_plan(
@@ -91,7 +95,7 @@ def persist_reserved_corrective_write_plan(
     # empty RunScopedEvidenceStore and without acquisition rehydration.
     with runtime._unit_of_work_factory() as unit_of_work:
         current_run = unit_of_work.runs.get(run_id)
-        current_plan = unit_of_work.plans.load_bundle(reserved_plan.id)
+        current_plan = load_plan_record(unit_of_work.plans, reserved_plan.id)
         if current_run is None or current_plan is None:
             raise LookupError("corrective Run/Plan disappeared during persistence")
         current_plans = current_plan_tuple(unit_of_work.plans, run_id)
@@ -253,6 +257,7 @@ def persist_reserved_corrective_write_plan(
             expected_run_version=runtime._current_run_version(run_id),
             actions=mapped_actions,
             evidence=mapped_evidence,
+            review_version=_corrective_review_input(state)[0],
         )
     )
     if not save_response.applied:
@@ -288,6 +293,31 @@ def _continue_durable_corrective_write_plan(
         and proof["plan_status"] is PlanStatusV1.WAITING_APPROVAL
     ):
         return reserved_plan.id
+
+    if proof["plan_review_status"] is PlanReviewStatus.REQUIRED:
+        review_version, review_artifact_id = _corrective_review_input(state)
+        result = RecordReviewResultHandler(
+            unit_of_work_factory=runtime._unit_of_work_factory,
+            now_ms=runtime._now_ms,
+        )(
+            RecordReviewResultCommandV1(
+                command_id=_corrective_command_id(kind="review", plan_id=reserved_plan.id),
+                plan_id=reserved_plan.id,
+                expected_plan_version=reserved_plan.revision_no,
+                expected_review_version=review_version,
+                review_artifact_id=review_artifact_id,
+                review_version=review_version,
+                disposition="PASS",
+                based_on_action_versions=proof["action_versions"],
+            )
+        )
+        if not result.applied:
+            raise RuntimeError(f"record corrective review failed: {result.result_code}")
+    elif (
+        proof["plan_review_status"] is not PlanReviewStatus.PASSED
+        or proof["plan_review_disposition"] != "PASS"
+    ):
+        raise ValueError("corrective Plan review snapshot is not publishable")
 
     publish_response = runtime._publish_write_plan(
         PublishWritePlanCommand(
@@ -334,7 +364,7 @@ def _build_durable_materialization_proof(
 
     with runtime._unit_of_work_factory() as unit_of_work:
         current_run = unit_of_work.runs.get(run_id)
-        current_plan = unit_of_work.plans.load_bundle(reserved_plan.id)
+        current_plan = load_plan_record(unit_of_work.plans, reserved_plan.id)
         if current_run is None or current_plan is None:
             raise LookupError("corrective Run/Plan disappeared during durable proof")
         plans = current_plan_tuple(unit_of_work.plans, run_id)
@@ -519,9 +549,25 @@ def _build_durable_materialization_proof(
             "action_ids": action_ids,
             "run_status": current_run.status,
             "plan_status": current_plan.status,
+            "plan_review_status": current_plan.review_status,
+            "plan_review_disposition": current_plan.review_disposition,
+            "action_versions": {action.id: action.version for action in persisted_actions},
             "run_version": current_run.version,
             "publish_receipt_present": publish_receipt is not None,
         }
+
+
+def _corrective_review_input(state: GraphState) -> tuple[int, str]:
+    review = _require_state_value(state.get("plan_review_result"), "plan_review_result")
+    if review["status"] != "PASS":
+        raise ValueError("corrective Plan persistence requires a PASS Review")
+    revision = review["meta"]["revision"]
+    artifact_id = review["meta"]["artifact_id"]
+    if not isinstance(revision, int) or revision < 1:
+        raise ValueError("corrective Review revision must be positive")
+    if not isinstance(artifact_id, str) or not artifact_id:
+        raise ValueError("corrective Review artifact_id is required")
+    return revision, artifact_id
 
 
 def _candidate_identity_maps(

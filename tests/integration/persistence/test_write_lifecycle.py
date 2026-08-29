@@ -19,6 +19,7 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
+from tests.integration.persistence.review_support import record_pass_review
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -188,6 +189,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
         )
     )
     assert save_response.applied is True
+    record_pass_review(write_database, "plan-write-1", now_ms=clock.now_ms())
 
     publish_response = publish_service(
         PublishWritePlanCommand(

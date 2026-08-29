@@ -82,6 +82,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceType,
     TimeRange,
 )
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import (
     FakeClockPort,
     FakeGoogleGateway,
@@ -619,6 +620,7 @@ def _prepare_calendar_feasibility_action(
             ),
         )
     )
+    record_pass_review(write_database, f"plan-{suffix}", now_ms=clock.now_ms())
     publish(
         PublishWritePlanCommand(
             command_id=f"publish-{suffix}",
@@ -726,6 +728,7 @@ def _prepare_write_plan(
             ),
         )
     )
+    record_pass_review(write_database, f"plan-{suffix}", now_ms=clock.now_ms())
     publish_service(
         PublishWritePlanCommand(
             command_id=f"publish-{suffix}",
@@ -996,6 +999,7 @@ def _prepare_effect_write_plan(
         )
     )
     assert saved.applied is True
+    record_pass_review(write_database, f"plan-{suffix}", now_ms=clock.now_ms())
     published = publish_service(
         PublishWritePlanCommand(
             command_id=f"publish-{suffix}",
@@ -1109,11 +1113,11 @@ def _insert_calendar_event_reference(write_database: Path, *, version: str = "7"
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 parent_resource_id, canonical_url, title, event_time_ms,
                 version_token, metadata_json, captured_at_ms
             ) VALUES (
-                'resource-event-focus', 'run-1', ?, 'CALENDAR', 'EVENT',
+                'resource-event-focus', 'run-1', ?, 'calendar_event',
                 'event-focus', 'calendar-primary', NULL, 'Focus block', NULL, ?, ?, 1000
             );
             """,
@@ -1135,11 +1139,11 @@ def _insert_task_delete_reference(write_database: Path, *, version: str = "4") -
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 parent_resource_id, canonical_url, title, event_time_ms,
                 version_token, metadata_json, captured_at_ms
             ) VALUES (
-                'resource-task-followup', 'run-1', ?, 'TASKS', 'TASK',
+                'resource-task-followup', 'run-1', ?, 'task',
                 'task-followup', 'task-list-default', NULL, 'Reply to project sync',
                 NULL, ?, ?, 1000
             );
@@ -1177,12 +1181,12 @@ def _prepare_update_claimed_action(
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 parent_resource_id, canonical_url, title, event_time_ms,
                 version_token, metadata_json, captured_at_ms
             )
             VALUES (
-                ?, 'run-1', ?, 'TASKS', 'TASK', 'task-followup', 'task-list-default',
+                ?, 'run-1', ?, 'task', 'task-followup', 'task-list-default',
                 NULL, 'Reply to project sync', NULL, '4', ?, 1000
             );
             """,
@@ -1257,6 +1261,7 @@ def _prepare_update_claimed_action(
             ),
         )
     )
+    record_pass_review(write_database, f"plan-{suffix}", now_ms=clock.now_ms())
     publish_service(
         PublishWritePlanCommand(
             command_id=f"publish-{suffix}",

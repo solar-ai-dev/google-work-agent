@@ -44,6 +44,7 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
+from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
@@ -152,6 +153,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
     )
     assert saved.applied is True
     assert saved.plan_status == PlanStatusV1.DRAFT.value
+    record_pass_review(read_only_database, "plan-1", now_ms=1005)
 
     published = publish_service(
         PublishReadOnlyPlanCommand(
@@ -227,7 +229,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         plan_row = connection.execute("SELECT status FROM plans WHERE id = 'plan-1';").fetchone()
         resource_rows = connection.execute(
             """
-            SELECT source, resource_type, resource_id, metadata_json
+            SELECT resource_type, resource_id, metadata_json
             FROM resource_refs
             WHERE run_id = 'run-1';
             """
@@ -261,8 +263,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         assert run_row["finished_at_ms"] == 1040
         assert plan_row["status"] == "COMPLETED"
         assert len(resource_rows) == 1
-        assert resource_rows[0]["source"] == "GMAIL"
-        assert resource_rows[0]["resource_type"] == "GMAIL_THREAD"
+        assert resource_rows[0]["resource_type"] == "gmail_thread"
         assert resource_rows[0]["resource_id"] == "thread-project"
         assert '"participant_count": 2' in resource_rows[0]["metadata_json"]
         assert len(evidence_rows) == 2
@@ -360,6 +361,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
             ),
         )
     )
+    record_pass_review(read_only_database, "plan-2", now_ms=1005)
     publish_service(
         PublishReadOnlyPlanCommand(
             command_id="publish-2",
@@ -630,6 +632,7 @@ def test_claim_read_action_rejects_stale_version_without_gateway_call(
             ),
         )
     )
+    record_pass_review(read_only_database, "plan-stale", now_ms=1005)
     publish_service(
         PublishReadOnlyPlanCommand(
             command_id="publish-stale",
@@ -719,6 +722,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
     )
     saved = save_service(save_command)
     assert saved.applied is True
+    record_pass_review(read_only_database, "plan-received", now_ms=1005)
 
     publish_command = PublishReadOnlyPlanCommand(
         command_id="publish-received",
@@ -829,7 +833,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
                 ) AS applied_receipts;
             """
         ).fetchone()
-        assert tuple(counts) == (1, 1, 1, 6)
+        assert tuple(counts) == (1, 1, 1, 7)
     finally:
         connection.close()
 
@@ -860,7 +864,7 @@ def test_received_receipts_recover_already_applied_complete_and_finalize_without
                 CompletedResourceRef(
                     id="resource-ref-run-1-gmail_thread-thread-project",
                     source=ResourceSource.GMAIL,
-                    resource_type="GMAIL_THREAD",
+                    resource_type="gmail_thread",
                     resource_id="thread-project",
                     parent_resource_id=None,
                     canonical_url=None,
@@ -933,7 +937,7 @@ def test_received_receipt_partial_complete_returns_recovery_required_without_mor
                 CompletedResourceRef(
                     id="resource-ref-run-1-gmail_thread-thread-project",
                     source=ResourceSource.GMAIL,
-                    resource_type="GMAIL_THREAD",
+                    resource_type="gmail_thread",
                     resource_id="thread-project",
                     parent_resource_id=None,
                     canonical_url=None,
@@ -1009,6 +1013,7 @@ def test_received_receipts_recover_already_applied_save_publish_and_claim(
 
     saved = save_service(save_command)
     assert saved.applied is True
+    record_pass_review(read_only_database, "plan-applied", now_ms=1005)
 
     publish_command = PublishReadOnlyPlanCommand(
         command_id="publish-applied",
@@ -1207,6 +1212,7 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
             ),
         )
     )
+    record_pass_review(database_path, "plan-partial", now_ms=1005)
     publish_service(
         PublishReadOnlyPlanCommand(
             command_id="publish-partial",
@@ -1229,13 +1235,13 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
         connection.execute(
             """
             INSERT INTO resource_refs (
-                id, run_id, connector_id, source, resource_type, resource_id,
+                id, run_id, connector_id, resource_type, resource_id,
                 parent_resource_id, canonical_url, title, event_time_ms, version_token,
                 metadata_json, captured_at_ms
             )
             VALUES (
                 'resource-ref-run-1-gmail_thread-thread-project',
-                'run-1', ?, 'GMAIL', 'GMAIL_THREAD', 'thread-project', NULL,
+                'run-1', ?, 'gmail_thread', 'thread-project', NULL,
                 NULL, 'Project sync follow-up', NULL, '3',
                 '{"participant_count":2,"subject":"Project sync follow-up"}', 1030
             );
@@ -1302,6 +1308,7 @@ def _prepare_fail_action_state(database_path: Path, *, action_id: str, plan_id: 
             ),
         )
     )
+    record_pass_review(database_path, plan_id, now_ms=1005)
     publish_service(
         PublishReadOnlyPlanCommand(
             command_id=f"publish-{plan_id}",

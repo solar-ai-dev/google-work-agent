@@ -43,6 +43,7 @@ class SaveWritePlanCommand:
     expected_run_version: int
     actions: tuple[WriteActionDraft, ...]
     evidence: tuple[WriteEvidenceDraft, ...]
+    review_version: int = 1
 
 
 @dataclass(frozen=True, slots=True)

@@ -181,20 +181,18 @@ def _require_state_value[StateValueT](
 
 
 def _resource_handle_for_ref(resource_ref: ResourceRefRecord) -> str:
-    prefixes = {
-        ("GMAIL", "gmail_thread"): "gmail_thread",
-        ("GMAIL", "gmail_message"): "gmail_message",
-        ("GMAIL", "gmail_draft"): "gmail_draft",
-        ("TASKS", "task_list"): "task_list",
-        ("TASKS", "task"): "task",
-        ("CALENDAR", "calendar"): "calendar",
-        ("CALENDAR", "calendar_event"): "calendar_event",
-        ("CALENDAR", "calendar_freebusy"): "calendar_freebusy",
-    }
-    prefix = prefixes.get((resource_ref.source.value, resource_ref.resource_type))
-    if prefix is None:
+    if resource_ref.resource_type not in {
+        "gmail_thread",
+        "gmail_message",
+        "gmail_draft",
+        "task_list",
+        "task",
+        "calendar",
+        "calendar_event",
+        "calendar_freebusy",
+    }:
         raise LookupError(f"unsupported persisted resource reference: {resource_ref.id}")
-    return f"{prefix}:{resource_ref.resource_id}"
+    return f"{resource_ref.resource_type}:{resource_ref.resource_id}"
 
 
 def _acquired_resource_by_handle(
@@ -255,15 +253,14 @@ def request_from_state(state: GraphState) -> WorkflowStartRequest:
 def _stored_resource_type_for_acquired_resource(
     *, source: ResourceSource, resource_type: str
 ) -> str:
-    mapping = {
-        (ResourceSource.GMAIL, "gmail_thread"): "GMAIL_THREAD",
-        (ResourceSource.GMAIL, "gmail_message"): "GMAIL_MESSAGE",
-        (ResourceSource.TASKS, "task_list"): "TASK_LIST",
-        (ResourceSource.TASKS, "task"): "TASK",
-        (ResourceSource.CALENDAR, "calendar"): "CALENDAR",
-        (ResourceSource.CALENDAR, "calendar_event"): "CALENDAR_EVENT",
+    valid_pairs = {
+        (ResourceSource.GMAIL, "gmail_thread"),
+        (ResourceSource.GMAIL, "gmail_message"),
+        (ResourceSource.TASKS, "task_list"),
+        (ResourceSource.TASKS, "task"),
+        (ResourceSource.CALENDAR, "calendar"),
+        (ResourceSource.CALENDAR, "calendar_event"),
     }
-    stored_type = mapping.get((source, resource_type))
-    if stored_type is None:
+    if (source, resource_type) not in valid_pairs:
         raise LookupError(f"unsupported acquired resource type: {source.value}/{resource_type}")
-    return stored_type
+    return resource_type

@@ -78,6 +78,7 @@ def _plan(
         revision_no=1,
         status=status,
         review_status=review_status,
+        review_disposition="PASS" if review_status is PlanReviewStatus.PASSED else None,
         review_version=3,
     )
 
@@ -96,7 +97,9 @@ def _unit_of_work(
     plan = plan or _plan()
     unit_of_work.command_receipts.get_by_command_id.return_value = None
     unit_of_work.actions.get.return_value = action
-    unit_of_work.plans.load_bundle.return_value = plan
+    unit_of_work.plans.load_bundle.return_value = SimpleNamespace(
+        plan=plan, actions=(), dependencies=(), evidence=(), action_evidence=()
+    )
     unit_of_work.plans.get_current.return_value = plan if current_plan is None else current_plan
     unit_of_work.runs.get.return_value = SimpleNamespace(
         id="run-1", conversation_id="conversation-1", status=run_status
@@ -213,9 +216,7 @@ def test_approve_application_matches_exact_parent_run_matrix(run_status: RunStat
 
     result = _handler(unit_of_work, id_generator)(_command())
 
-    assert result.applied is (
-        run_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
-    )
+    assert result.applied is (run_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
 
 
 @pytest.mark.parametrize("repository", ("approvals", "audits"))

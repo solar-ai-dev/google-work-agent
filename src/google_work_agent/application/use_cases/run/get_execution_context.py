@@ -57,9 +57,21 @@ class GetExecutionContextHandler:
 
 
 def _selected_resource_ref(value: object) -> SelectedResourceRef:
+    durable_type = value.resource_type  # type: ignore[attr-defined]
+    source, projected_type = {
+        "gmail_thread": ("GMAIL", "THREAD"),
+        "gmail_message": ("GMAIL", "MESSAGE"),
+        "gmail_attachment": ("GMAIL", "ATTACHMENT"),
+        "gmail_draft": ("GMAIL", "DRAFT"),
+        "task_list": ("TASKS", "TASK_LIST"),
+        "task": ("TASKS", "TASK"),
+        "calendar": ("CALENDAR", "CALENDAR"),
+        "calendar_event": ("CALENDAR", "EVENT"),
+        "calendar_freebusy": ("CALENDAR", "FREEBUSY"),
+    }[durable_type]
     return SelectedResourceRef(
-        source=value.source.value,  # type: ignore[attr-defined]
-        resource_type=value.resource_type,  # type: ignore[attr-defined]
+        source=source,
+        resource_type=projected_type,
         resource_id=value.resource_id,  # type: ignore[attr-defined]
         parent_resource_id=value.parent_resource_id,  # type: ignore[attr-defined]
     )

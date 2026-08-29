@@ -25,6 +25,10 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     StdioMCPClientAdapter,
     calculate_file_sha256,
 )
+from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    sqlite_unit_of_work_factory,
+)
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
@@ -127,8 +131,17 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         now_ms=clock.now_ms(),
     )
     session_manager = InMemoryLocalSessionManager()
+    database_path = tmp_path / "google-connection-api.db"
+    connection = connect_sqlite(database_path)
+    apply_migrations(connection, now_ms=clock.now_ms)
+    connection.execute(
+        "INSERT INTO google_accounts VALUES ('current', 'u@example.com', NULL, 1, NULL);"
+    )
+    connection.commit()
+    connection.close()
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     container = ApiContainer(
-        unit_of_work_factory=lambda: None,
+        unit_of_work_factory=unit_of_work_factory,
         create_conversation_handler=lambda command: command,
         start_run_service=lambda command: command,
         approve_action_service=lambda command: command,
@@ -183,6 +196,8 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         revoke_connection_handler=RevokeConnectionHandler(
             credentials=provider,
             replay=operational_replay,
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
         ),
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=ProcessRuntimeModeAdapter("AUTO"),

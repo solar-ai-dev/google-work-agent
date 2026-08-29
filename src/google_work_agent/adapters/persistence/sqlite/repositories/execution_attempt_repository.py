@@ -128,11 +128,20 @@ class SqliteExecutionAttemptRepository:
             SELECT ea.id AS execution_attempt_id, a.id AS action_id, p.run_id,
                    CASE
                      WHEN ea.status='EXECUTING' AND a.status='EXECUTING'
+                          AND EXISTS (
+                            SELECT 1 FROM command_receipts begin_receipt
+                            WHERE begin_receipt.command_type='BeginExecutionAttempt'
+                              AND begin_receipt.aggregate_type='ExecutionAttempt'
+                              AND begin_receipt.aggregate_id=ea.id
+                              AND begin_receipt.status='APPLIED'
+                              AND begin_receipt.result_code='TRANSITION_APPLIED'
+                          )
                        THEN 'POST_BEGIN_ORPHAN'
                      WHEN ea.status='UNKNOWN_RESULT' AND a.status='UNKNOWN_RESULT'
                           AND NOT EXISTS (
                             SELECT 1 FROM recovery_contexts rc
                             WHERE rc.run_id=p.run_id AND rc.reason='UNKNOWN_RESULT'
+                              AND rc.action_id=a.id
                               AND rc.execution_attempt_id=ea.id
                           ) THEN 'UNKNOWN_RESULT_UNRESOLVED'
                      WHEN ea.status='SUCCEEDED' AND a.status='EXECUTED'
@@ -140,14 +149,34 @@ class SqliteExecutionAttemptRepository:
                             SELECT 1 FROM verifications v
                             WHERE v.execution_attempt_id=ea.id
                           ) THEN 'EXECUTED_AWAITING_VERIFICATION'
-                     WHEN ea.status='FAILED' AND a.status='FAILED' AND (
+                     WHEN ea.status='FAILED' AND a.status='FAILED'
+                          AND EXISTS (
+                            SELECT 1 FROM command_receipts resolved
+                            WHERE resolved.command_id=(
+                                'system:execution-attempt-reconcile:' || ea.id || ':resolve-failed'
+                            )
+                              AND resolved.command_type='ResolveAsFailed'
+                              AND resolved.status='APPLIED'
+                              AND resolved.result_code='TRANSITION_APPLIED'
+                          ) AND (
                           EXISTS (
-                            SELECT 1 FROM audit_events au
-                            WHERE au.run_id=p.run_id
-                              AND au.event_type='RUN_CANCELLATION_REQUESTED'
+                            SELECT 1 FROM command_receipts cancel_receipt
+                            WHERE cancel_receipt.command_type='RequestRunCancellation'
+                              AND cancel_receipt.aggregate_type='Run'
+                              AND cancel_receipt.aggregate_id=p.run_id
+                              AND cancel_receipt.status='APPLIED'
+                              AND cancel_receipt.result_code='TRANSITION_APPLIED'
                           ) OR EXISTS (
                             SELECT 1 FROM actions sibling
                             WHERE sibling.plan_id=p.id AND sibling.status='APPROVED'
+                              AND NOT EXISTS (
+                                SELECT 1
+                                FROM action_dependencies dependency
+                                JOIN actions predecessor
+                                  ON predecessor.id=dependency.depends_on_action_id
+                                WHERE dependency.action_id=sibling.id
+                                  AND predecessor.status <> 'VERIFIED'
+                              )
                           )
                      ) THEN 'FAILED_AWAITING_CONTINUATION'
                    END AS kind

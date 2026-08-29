@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,6 +30,7 @@ from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionHandler,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 from tests.integration.persistence.test_write_actions import (
     FakeClockPort,
@@ -297,7 +299,7 @@ def test_active_attempt_guard_fails_before_mutation(
     monkeypatch.setattr(
         SqliteExecutionAttemptRepository,
         "get_active_for_approval",
-        lambda self, approval_id: object(),
+        lambda self, approval_id: SimpleNamespace(status=ExecutionAttemptStatusV1.CLAIMED),
     )
 
     result = _handler(write_database, clock)(_command(suffix))

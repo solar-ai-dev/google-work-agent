@@ -29,6 +29,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     FreeBusyCalendar,
     ResourcePage,
     ResourceSnapshot,
+    ResourceType,
     TimeRange,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -230,7 +231,7 @@ def _executed_from_freebusy(
             CompletedResourceRef(
                 id=f"resource-ref-{run_id}-{calendar_id}",
                 source=ResourceSource.CALENDAR,
-                resource_type="CALENDAR_FREEBUSY",
+                resource_type=ResourceType.CALENDAR_FREEBUSY.value,
                 resource_id=calendar_id,
                 parent_resource_id=None,
                 canonical_url=None,
@@ -296,14 +297,14 @@ def _projection_from_snapshot(
 
 def _map_snapshot_identity(snapshot: ResourceSnapshot) -> tuple[ResourceSource, str]:
     mapping = {
-        "gmail_thread": (ResourceSource.GMAIL, "GMAIL_THREAD"),
-        "gmail_message": (ResourceSource.GMAIL, "GMAIL_MESSAGE"),
-        "gmail_draft": (ResourceSource.GMAIL, "GMAIL_DRAFT"),
-        "task_list": (ResourceSource.TASKS, "TASK_LIST"),
-        "task": (ResourceSource.TASKS, "TASK"),
-        "calendar": (ResourceSource.CALENDAR, "CALENDAR"),
-        "calendar_event": (ResourceSource.CALENDAR, "CALENDAR_EVENT"),
-        "calendar_freebusy": (ResourceSource.CALENDAR, "CALENDAR_FREEBUSY"),
+        "gmail_thread": (ResourceSource.GMAIL, ResourceType.GMAIL_THREAD.value),
+        "gmail_message": (ResourceSource.GMAIL, ResourceType.GMAIL_MESSAGE.value),
+        "gmail_draft": (ResourceSource.GMAIL, ResourceType.GMAIL_DRAFT.value),
+        "task_list": (ResourceSource.TASKS, ResourceType.TASK_LIST.value),
+        "task": (ResourceSource.TASKS, ResourceType.TASK.value),
+        "calendar": (ResourceSource.CALENDAR, ResourceType.CALENDAR.value),
+        "calendar_event": (ResourceSource.CALENDAR, ResourceType.CALENDAR_EVENT.value),
+        "calendar_freebusy": (ResourceSource.CALENDAR, ResourceType.CALENDAR_FREEBUSY.value),
     }
     return mapping[snapshot.resource_type.value]
 

@@ -1106,6 +1106,8 @@ def build_container(
         revoke_connection_handler=RevokeConnectionHandler(
             credentials=google_provider,
             replay=operational_replay,
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
         ),
         resource_query_service=OpaqueConnectorResourceAccess(
             ConnectorResourceAccess(

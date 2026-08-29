@@ -77,8 +77,9 @@ def _insert_active_approval(database_path: Path) -> None:
     connection = connect_sqlite(database_path)
     try:
         connection.execute(
-            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms) "
-            "VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 1);"
+            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms, "
+            "review_status, review_version, review_disposition) "
+            "VALUES ('plan-1', 'run-1', 1, 'WAITING_APPROVAL', 1, 'PASSED', 1, 'PASS');"
         )
         connection.execute(
             """

@@ -116,6 +116,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
+from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -715,7 +716,7 @@ class WriteExecutionPhaseCoordinator:
     ) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(action_id)
-            plan = None if action is None else unit_of_work.plans.load_bundle(action.plan_id)
+            plan = None if action is None else load_plan_record(unit_of_work.plans, action.plan_id)
         if plan is None:
             raise LookupError(f"plan not found for action: {action_id}")
         del request_kind

@@ -13,7 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
 )
-from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState, ParentGraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
@@ -104,7 +104,7 @@ def _compile_corrective_persistence_graph(
     connection: sqlite3.Connection,
     runtime: _CorrectivePersistenceHarness,
 ) -> Any:
-    def persist_node(state: ParentGraphState) -> dict[str, object]:
+    def persist_node(state: GraphState) -> dict[str, object]:
         draft = state["plan_draft"]
         assert draft is not None
         _persist(
@@ -114,7 +114,7 @@ def _compile_corrective_persistence_graph(
         )
         return {"__reserved_corrective_plan_id__": state.get("__reserved_corrective_plan_id__")}
 
-    builder = StateGraph(ParentGraphState)
+    builder = StateGraph(GraphState)
     builder.add_node("persist", persist_node)
     builder.add_edge(START, "persist")
     builder.add_edge("persist", END)

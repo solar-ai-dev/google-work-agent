@@ -45,7 +45,7 @@ def _seed_plan(database_path: Path) -> None:
             """
             INSERT INTO plans (
                 id, run_id, revision_no, status, created_at_ms, review_status, review_version
-            ) VALUES ('plan-1', 'run-1', 1, 'DRAFT', 1, 'PASSED', 0);
+            ) VALUES ('plan-1', 'run-1', 1, 'ACTIVE', 1, 'REQUIRED', 0);
             """
         )
         connection.commit()
@@ -62,7 +62,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         plan_id="plan-1",
         connector_id="google_workspace",
         position=1,
-        tool_name="github_create_issue",
+        tool_name="tasks_create_task",
         effect_type="CREATE",
         approval_requirement="REQUIRED",
         verification_policy="GET_COMPARE",
@@ -81,8 +81,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         id="resource-ref-1",
         run_id="run-1",
         connector_id="google_workspace",
-        source=ResourceSource.TASKS,
-        resource_type="TASK",
+        resource_type="task",
         resource_id="issue-1",
         parent_resource_id=None,
         canonical_url=None,
@@ -160,7 +159,7 @@ def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path)
                 CompletedResourceRef(
                     id="read-resource-1",
                     source=ResourceSource.TASKS,
-                    resource_type="TASK",
+                    resource_type="task",
                     resource_id="issue-2",
                     parent_resource_id="list-1",
                     canonical_url=None,
@@ -201,8 +200,7 @@ def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path
         id="unregistered-ref",
         run_id="run-1",
         connector_id="github",
-        source=ResourceSource.TASKS,
-        resource_type="TASK",
+        resource_type="task",
         resource_id="issue-1",
         parent_resource_id=None,
         canonical_url=None,
@@ -214,6 +212,6 @@ def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path
     )
     with (
         SqliteUnitOfWork(database_path) as unit_of_work,
-        pytest.raises(LookupError, match="connector not registered"),
+        pytest.raises(LookupError, match="connector/resource type is not registered"),
     ):
         persist_registered_resource_ref(unit_of_work, resource_ref)
