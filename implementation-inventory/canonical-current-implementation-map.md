@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `4dff221eccb8d7cfbcecf5d0dc7768179373b36d`
+**Validation HEAD:** `593b8a751a3bcdca93ba3d0c725dccba5c09ad50`
 
 ## Purpose
 
@@ -296,7 +296,7 @@ Every Agent capability in `ledger.md` is listed once. Production graph wiring is
 
 | ID | Design operation | Design target | Current code / reuse | Current state | Production caller | Legacy / duplicate | Required change | Test / negative proof |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| CAP-AGT-001 | request_understanding.identify_goal | application/agents/request_understanding/identify_goal.py → identify_goal() | exact goal-only operation; current-Run request/resource projection plus bounded same-owner confirmation only | behavior=FULL; owner=FULL; target=PRESENT; activation=DRAFT | exact request.identify_goal caller is wired; Product selection fails closed until external DEV/HOLDOUT/Safety/manifest evidence exists | NO | KEEP | EXACT UNIT + ARCHITECTURE + RUNTIME CONFIRMATION TESTS; legacy/caller negative proof CLOSED; release activation deferred truthfully |
+| CAP-AGT-001 | request_understanding.identify_goal | application/agents/request_understanding/identify_goal.py → identify_goal() | exact goal-only operation with owner-local output-schema validation; current-Run request/resource projection plus bounded same-owner confirmation only; ambiguity synthesis and validate_intent call = 0 | behavior=FULL; owner=FULL; target=PRESENT; activation=DRAFT | exact request.identify_goal caller is wired; Product selection fails closed until external DEV/HOLDOUT/Safety/manifest evidence exists | NO | KEEP | EXACT UNIT + ARCHITECTURE + RUNTIME CONFIRMATION TESTS; goal-vs-ambiguity separation and legacy/caller negative proof CLOSED; release activation deferred truthfully |
 | CAP-AGT-002 | request_understanding.detect_ambiguity | application/agents/request_understanding/detect_ambiguity.py → detect_ambiguity() | independent ambiguity operation; current-Run request/goal projection plus bounded same-owner confirmation only | behavior=FULL; owner=FULL; target=PRESENT; activation=DRAFT | exact request.detect_ambiguity caller is wired; Product selection fails closed until external DEV/HOLDOUT/Safety/manifest evidence exists | NO | KEEP | EXACT UNIT + ARCHITECTURE + RUNTIME CONFIRMATION TESTS; legacy/caller negative proof CLOSED; release activation deferred truthfully |
 | CAP-AGT-003 | request_understanding.finalize_intent | application/agents/request_understanding/finalize_intent.py → finalize_intent() | exact deterministic operation | behavior=FULL; owner=FULL; target=PRESENT | exact request.finalize node | NO | KEEP | EXACT UNIT + ARCHITECTURE TESTS; legacy/caller negative proof CLOSED |
 | CAP-AGT-004 | request_understanding.validate_intent | application/agents/request_understanding/validate_intent.py → validate_intent() | exact deterministic validation invoked inside request.finalize | behavior=FULL; owner=FULL; target=PRESENT | exact request.finalize node; no separate runtime node | NO | KEEP | EXACT UNIT + ARCHITECTURE TESTS; legacy/caller negative proof CLOSED |
