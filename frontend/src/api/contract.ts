@@ -145,7 +145,6 @@ export type ConversationHistoryResponse = {
   messages: ConversationMessage[];
   runs: ConversationHistoryRun[];
   truncated: boolean;
-  api_contract_version: string;
 };
 
 export type LatestConversationRunResponse = {

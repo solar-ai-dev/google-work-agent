@@ -168,7 +168,6 @@ def get_conversation_history(
         messages=[ConversationMessageV1(**asdict(item)) for item in history.messages],
         runs=[ConversationHistoryRunV1(**asdict(item)) for item in history.runs],
         truncated=history.truncated,
-        api_contract_version=dependencies.api_contract_version,
     )
 
 

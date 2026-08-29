@@ -29,7 +29,6 @@ class ConversationHistoryResponseV1(ApiModel):
     messages: list[ConversationMessageV1]
     runs: list[ConversationHistoryRunV1]
     truncated: bool
-    api_contract_version: str
 
 
 __all__ = [

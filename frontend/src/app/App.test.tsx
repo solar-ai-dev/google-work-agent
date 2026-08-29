@@ -3549,7 +3549,6 @@ function historyPayload(
     messages: messages.map((message) => ({ schema_version: 1, ...message })),
     runs: runs.map((run) => ({ schema_version: 1, ...run })),
     truncated: false,
-    api_contract_version: "1",
   };
 }
 
