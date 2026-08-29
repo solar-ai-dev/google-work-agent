@@ -23,7 +23,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryResolution
-from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -179,9 +178,10 @@ def test_f_non_matching_recovery_context_fails_closed_without_superseding(
             expected_version=0,
             command_id="system:action-recovery:unrelated-1",
             request_hash=calculate_canonical_json_hash({"unrelated": True}),
-            reason="UNKNOWN_RESULT",
+            reason="CONTRACT_VIOLATION",
             scope="RUN",
             recovery_fingerprint="unrelated-fingerprint",
+            contract_or_checkpoint_fingerprint="unrelated-fingerprint",
         )
     )
     assert unrelated.applied
@@ -193,7 +193,7 @@ def test_f_non_matching_recovery_context_fails_closed_without_superseding(
     with factory() as unit_of_work:
         context = unit_of_work.recovery_contexts.load_current_context("r-1")
     assert context is not None
-    assert context["reason"] == "UNKNOWN_RESULT"
+    assert context["reason"] == "CONTRACT_VIOLATION"
 
 
 def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
@@ -244,8 +244,6 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
             command_id="cmd-resolve-1",
             request_hash="b" * 64,
             resolution=RecoveryResolution.RECHECK,
-            recheck_input_changed=True,
-            validated_resume_status=RunStatusV1.ANALYZING,
         )
     )
     assert resolved.applied
@@ -326,7 +324,7 @@ def _seed_pre_recovery(require_recovery: RequireRecoveryHandler, handoff: Workfl
             expected_version=0,
             command_id=f"system:handoff-binding-recovery:{handoff.handoff_id}",
             request_hash=fingerprint,
-            reason="CHECKPOINT_MISMATCH",
+            reason=("CHECKPOINT_MISMATCH" if resume_target is not None else "CONTRACT_VIOLATION"),
             scope="RUN",
             recovery_fingerprint=fingerprint,
             registered_resume_target=resume_target,

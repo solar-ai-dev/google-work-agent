@@ -200,7 +200,7 @@ class ResumeAfterReauthHandler:
                 command=command,
                 run=run,
                 resume_status=resume_status,
-                target_stage=getattr(target, "stage_id", None),
+                target=target,
                 now_ms=now_ms,
             )
         if run.version != current_version:
@@ -247,6 +247,7 @@ class ResumeAfterReauthHandler:
                 reason="CHECKPOINT_MISMATCH",
                 scope="RUN",
                 recovery_fingerprint=fingerprint,
+                registered_resume_target=target,
                 contract_or_checkpoint_fingerprint=fingerprint,
             ),
             now_ms=now_ms,
@@ -271,7 +272,7 @@ class ResumeAfterReauthHandler:
         command: _ResumePersistenceCommand,
         run: object,
         resume_status: RunStatusV1,
-        target_stage: object,
+        target: object,
         now_ms: int,
     ) -> tuple[_ResumeDecision, bool]:
         fingerprint = calculate_canonical_json_hash(
@@ -279,7 +280,7 @@ class ResumeAfterReauthHandler:
                 "command_id": command.command_id,
                 "run_id": command.run_id,
                 "resume_status": resume_status.value,
-                "target_stage": target_stage,
+                "target_stage": getattr(target, "stage_id", None),
             }
         )
         recovery = RequireRecoveryHandler.apply_in_unit_of_work(
@@ -292,6 +293,7 @@ class ResumeAfterReauthHandler:
                 reason="CHECKPOINT_MISMATCH",
                 scope="RUN",
                 recovery_fingerprint=fingerprint,
+                registered_resume_target=target,  # type: ignore[arg-type]
                 contract_or_checkpoint_fingerprint=fingerprint,
             ),
             now_ms=now_ms,

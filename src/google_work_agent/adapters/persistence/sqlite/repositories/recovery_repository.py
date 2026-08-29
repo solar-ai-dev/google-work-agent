@@ -27,7 +27,9 @@ class SqliteRecoveryRepository:
         self._connection = connection
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
 
-    def store_context(self, context: RecoveryContextV1) -> RecoveryContextV1:
+    def store_context(
+        self, context: RecoveryContextV1, *, allocate_version: bool = False
+    ) -> RecoveryContextV1:
         existing = self._connection.execute(
             "SELECT version FROM recovery_contexts WHERE run_id = ?;", (context["run_id"],)
         ).fetchone()
@@ -37,7 +39,9 @@ class SqliteRecoveryRepository:
                 (context["run_id"],),
             ).fetchone()
             expected_version = 0 if tombstone is None else int(tombstone["last_version"]) + 1
-            if context["version"] != expected_version:
+            if allocate_version:
+                context = cast(RecoveryContextV1, {**context, "version": expected_version})
+            elif context["version"] != expected_version:
                 raise RecoveryConflictError(
                     "new RecoveryContext version does not follow currentness history"
                 )

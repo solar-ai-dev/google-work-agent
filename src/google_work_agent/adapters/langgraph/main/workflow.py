@@ -594,7 +594,6 @@ class WorkflowRuntimeCore:
         self._mark_write_unknown = MarkUnknownResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            resume_target_registry=self._resume_target_registry,
         )
         self._verify_effect = VerifyEffectHandler(
             connector_read=connector_reader.connector_reader,
@@ -607,11 +606,13 @@ class WorkflowRuntimeCore:
         self._require_recovery = RequireRecoveryHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
+            resume_target_registry=self._resume_target_registry,
         )
         self._resolve_recovery = ResolveRecoveryHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
             next_id=id_factory,
+            resume_target_registry=self._resume_target_registry,
         )
         self._require_write_reauth = RequireReauthHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -2056,7 +2057,7 @@ from google_work_agent.adapters.langgraph.main.resume_checkpoint import (  # noq
 )
 
 
-class LangGraphWorkflowRuntime(
+class LangGraphWorkflowRuntime(  # type: ignore[misc]
     ResumeCheckpointMixin,
     ArtifactFreshnessMixin,
     ResponseSynthesisMixin,

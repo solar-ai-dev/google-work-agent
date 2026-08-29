@@ -823,7 +823,6 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
             command_id="recheck-cancel-recovery",
             request_hash="c0" * 32,
             resolution=RecoveryResolution.RECHECK,
-            recheck_input_changed=True,
         )
     )
     assert resumed.current_status == "VERIFYING"

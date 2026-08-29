@@ -403,6 +403,9 @@ def resume_run(
         recovery = ResolveRecoveryHandler(
             unit_of_work_factory=dependencies.unit_of_work_factory,
             now_ms=dependencies.clock.now_ms,
+            next_id=dependencies.id_generator.new_uuid,
+            resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+            schedule_run_execution=dependencies.schedule_run_execution,
         )(
             ResolveRecoveryCommandV1(
                 run_id=run_id,
@@ -413,7 +416,6 @@ def resume_run(
                     payload={"run_id": run_id, **payload.model_dump()},
                 ),
                 resolution=RecoveryResolution.RECHECK,
-                recheck_input_changed=True,
             )
         )
         response.status_code = http_status_for_result_code(recovery.result_code)
@@ -470,12 +472,12 @@ def confirm_run(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         id_factory=dependencies.id_generator.new_uuid,
-        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+        resume_target_registry=dependencies.resume_target_registry,
     )
     handler = ConfirmRunHandler(
         resolve_pending_confirmation=dependencies.resolve_pending_confirmation,
         resume_confirmation=resume_handler,
-        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+        resume_target_registry=dependencies.resume_target_registry,
         schedule_run_execution=dependencies.schedule_run_execution,
         id_factory=dependencies.id_generator.new_uuid,
     )
@@ -517,6 +519,8 @@ def resolve_recovery(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         next_id=dependencies.id_generator.new_uuid,
+        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+        schedule_run_execution=dependencies.schedule_run_execution,
     )
     result = handler(
         ResolveRecoveryCommandV1(
@@ -528,7 +532,6 @@ def resolve_recovery(
             run_id=run_id,
             expected_version=payload.expected_version,
             resolution=RecoveryResolution(payload.resolution_kind),
-            irrecoverable_confirmed=payload.resolution_kind == "FAIL",
         ),
     )
     response.status_code = (

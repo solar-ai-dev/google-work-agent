@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import Literal, cast
 
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.recovery.model import RecoveryReasonV1
+from google_work_agent.domain.recovery.model import (
+    RecoveryReasonV1,
+    validate_recovery_context_shape,
+)
 from google_work_agent.domain.recovery.transitions.require_recovery import (
     transition_require_recovery,
 )
@@ -36,7 +41,6 @@ class RequireRecoveryCommand:
     observed_external_state_fingerprint: str | None = None
     verification_input_fingerprint: str | None = None
     contract_or_checkpoint_fingerprint: str | None = None
-    last_recheck_input_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,14 +55,52 @@ class RequireRecoveryResult:
 
 class RequireRecoveryHandler:
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        resume_target_registry: ResumeTargetIssuer | None = None,
     ) -> None:
         self._f = unit_of_work_factory
         self._n = now_ms
+        self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: RequireRecoveryCommand) -> RequireRecoveryResult:
         with self._f() as u:
+            checkpoint = None
+            if (
+                command.reason == "UNKNOWN_RESULT"
+                and command.registered_resume_target is None
+                and self._resume_target_registry is not None
+            ):
+                binding = u.checkpoints.load_workflow_binding(command.run_id)
+                checkpoint = (
+                    None
+                    if binding is None
+                    else u.checkpoints.load_same_run_checkpoint(
+                        command.run_id, binding.langgraph_thread_id
+                    )
+                )
+                if binding is not None and checkpoint is not None:
+                    command = replace(
+                        command,
+                        registered_resume_target=self._resume_target_registry.issue_main_stage(
+                            binding.graph_profile, "RECOVERY", binding.graph_version
+                        ),
+                    )
             r = self.apply_in_unit_of_work(u, command, now_ms=self._n())
+            if (
+                r.applied
+                and checkpoint is not None
+                and command.registered_resume_target is not None
+            ):
+                u.checkpoints.store_same_run_checkpoint(
+                    replace(
+                        checkpoint,
+                        registered_resume_target=command.registered_resume_target,
+                        created_at_ms=self._n(),
+                    )
+                )
             u.commit()
             return r
 
@@ -101,6 +143,7 @@ class RequireRecoveryHandler:
         )
         if run is None:
             raise LookupError(f"run not found: {command.run_id}")
+        conflict_detail: str | None
         if run.version != command.expected_version:
             applied = False
             result_code = ResultCode.VERSION_CONFLICT
@@ -143,7 +186,14 @@ class RequireRecoveryHandler:
                 version=0 if current is None else current["version"] + 1,
                 now_ms=now_ms,
             )
-            unit_of_work.recovery_contexts.store_context(context)
+            context = cast(
+                RecoveryContextV1,
+                {
+                    **context,
+                    "last_recheck_input_hash": current_recheck_input_hash(unit_of_work, context),
+                },
+            )
+            unit_of_work.recovery_contexts.store_context(context, allocate_version=current is None)
             unit_of_work.audits.append(
                 build_recovery_required_audit_event(command, result.result_code, now_ms)
             )
@@ -172,6 +222,18 @@ def build_recovery_context(
     and ``ResumeAfterReauthHandler``'s dispatch-uncertain fail-safe).
     ``RecoveryRepository.store_context`` remains the sole write authority.
     """
+    validate_recovery_context_shape(
+        reason=command.reason,
+        scope=command.scope,
+        recovery_fingerprint=command.recovery_fingerprint,
+        action_id=command.action_id,
+        execution_attempt_id=command.execution_attempt_id,
+        verification_id=command.verification_id,
+        registered_resume_target_present=command.registered_resume_target is not None,
+        observed_external_state_fingerprint=command.observed_external_state_fingerprint,
+        verification_input_fingerprint=command.verification_input_fingerprint,
+        contract_or_checkpoint_fingerprint=command.contract_or_checkpoint_fingerprint,
+    )
     context: dict[str, object] = {
         "schema_version": 1,
         "run_id": command.run_id,
@@ -197,9 +259,105 @@ def build_recovery_context(
         context["verification_input_fingerprint"] = command.verification_input_fingerprint
     if command.contract_or_checkpoint_fingerprint is not None:
         context["contract_or_checkpoint_fingerprint"] = command.contract_or_checkpoint_fingerprint
-    if command.last_recheck_input_hash is not None:
-        context["last_recheck_input_hash"] = command.last_recheck_input_hash
     return cast(RecoveryContextV1, context)
+
+
+def current_recheck_input_hash(unit_of_work: UnitOfWork, context: RecoveryContextV1) -> str:
+    """Derive Recovery progress only from current durable server-owned facts."""
+    action_id = context.get("action_id")
+    attempt_id = context.get("execution_attempt_id")
+    action = None if action_id is None else unit_of_work.actions.get(action_id)
+    attempt = None if attempt_id is None else unit_of_work.execution_attempts.get(attempt_id)
+    verification = (
+        None
+        if attempt_id is None
+        else unit_of_work.verifications.get_latest_for_attempt(attempt_id)
+    )
+    binding = unit_of_work.checkpoints.load_workflow_binding(context["run_id"])
+    checkpoint = (
+        None
+        if binding is None
+        else unit_of_work.checkpoints.load_same_run_checkpoint(
+            context["run_id"], binding.langgraph_thread_id
+        )
+    )
+    dispatch_head = unit_of_work.workflow_handoffs.get_dispatch_head(context["run_id"])
+    return calculate_canonical_json_hash(
+        {
+            "reason": context["reason"],
+            "recovery_fingerprint": context["recovery_fingerprint"],
+            "observed_external_state_fingerprint": context.get(
+                "observed_external_state_fingerprint"
+            ),
+            "verification_input_fingerprint": context.get("verification_input_fingerprint"),
+            "contract_or_checkpoint_fingerprint": context.get("contract_or_checkpoint_fingerprint"),
+            "action": (
+                None
+                if action is None
+                else {
+                    "id": action.id,
+                    "status": action.status,
+                    "version": action.version,
+                    "target_resource_ref_id": action.target_resource_ref_id,
+                }
+            ),
+            "attempt": (
+                None
+                if attempt is None
+                else {
+                    "id": attempt.id,
+                    "status": attempt.status.value,
+                    "version": attempt.version,
+                    "result_resource_ref_id": attempt.result_resource_ref_id,
+                    "response_metadata_json": attempt.response_metadata_json,
+                }
+            ),
+            "verification": (
+                None
+                if verification is None
+                else {
+                    "id": verification.id,
+                    "status": verification.status.value,
+                    "normalizer_version": verification.normalizer_version,
+                    "expected_json": verification.expected_json,
+                    "actual_json": verification.actual_json,
+                    "diff_json": verification.diff_json,
+                }
+            ),
+            "binding": (
+                None
+                if binding is None
+                else {
+                    "thread_id": binding.langgraph_thread_id,
+                    "graph_profile": binding.graph_profile,
+                    "graph_version": binding.graph_version,
+                }
+            ),
+            "checkpoint": (
+                None
+                if checkpoint is None
+                else {
+                    "checkpoint_id": checkpoint.checkpoint_id,
+                    "checkpoint_generation": checkpoint.checkpoint_generation,
+                    "registered_resume_target": (
+                        None
+                        if checkpoint.registered_resume_target is None
+                        else asdict(checkpoint.registered_resume_target)
+                    ),
+                }
+            ),
+            "dispatch_head": (
+                None
+                if dispatch_head is None
+                else {
+                    "handoff_id": dispatch_head.handoff_id,
+                    "status": dispatch_head.status,
+                    "version": dispatch_head.version,
+                    "run_sequence": dispatch_head.run_sequence,
+                }
+            ),
+        }
+    )
 
 
 def build_recovery_required_audit_event(

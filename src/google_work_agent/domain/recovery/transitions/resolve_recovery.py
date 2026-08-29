@@ -93,6 +93,12 @@ def transition_resolve_recovery(
         return _applied(RunStatusV1.CANCELLED)
 
     if resolution is RecoveryResolution.FAIL:
+        if cancel_intent_active:
+            return _reject(
+                ResultCode.RESOLUTION_NOT_ALLOWED,
+                current_status,
+                "FAIL is forbidden while cancel intent is active",
+            )
         if reason == "UNKNOWN_RESULT" or not irrecoverable_confirmed:
             return _reject(
                 ResultCode.RESOLUTION_NOT_ALLOWED,

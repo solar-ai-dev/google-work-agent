@@ -71,6 +71,7 @@ from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
@@ -1041,6 +1042,64 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
             ),
         )
     )
+    assert resumed.outcome is WorkflowOutcome.ACCEPTED
+
+    # ResolveRecovery commits the verification continuation first. The live
+    # handoff reconciler performs this same post-commit dispatch in production.
+    connection = connect_sqlite(database_path)
+    try:
+        handoff_id = connection.execute(
+            "SELECT handoff_id FROM workflow_handoffs WHERE status='PENDING' "
+            "ORDER BY run_sequence DESC LIMIT 1;"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    continuation_results: list[object] = []
+    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+
+    def invoke_continuation(admission: object, handoff: object) -> None:
+        binding = admission.effective_binding  # type: ignore[attr-defined]
+        latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
+        assert latest is not None
+        with checkpoint.execution_scope(
+            admission,
+            applied_handoff_id=handoff.handoff_id,  # type: ignore[attr-defined]
+            owner_scope=latest.owner_scope,
+            resume_target=binding.resume_target,
+        ):
+            continuation_results.append(
+                runtime.resume(
+                    WorkflowResumeRequest(
+                        run_id="run-1",
+                        workflow_key="thread-1",
+                        resume_kind="CONSUMED_CONTINUATION_RECOVERY",
+                        resume_payload={},
+                        correlation=WorkflowCorrelationContext(
+                            request_id="unknown-recovery-verification-continuation",
+                            command_id=None,
+                            api_contract_version="1",
+                        ),
+                    )
+                )
+            )
+
+    executor = _executor(
+        runtime,
+        materialize=lambda admission, _handoff: _materialize_resume_target(runtime, admission),
+        invoke=invoke_continuation,
+    )
+    try:
+        schedule = ScheduleRunExecutionHandler(
+            unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            workflow_execution=executor,
+            id_factory=lambda: "admission-recovery-verification",
+        )
+        accepted = schedule(ScheduleRunExecutionCommand(handoff_id=handoff_id))
+        assert accepted.accepted
+        assert executor.await_drained(10_000)
+    finally:
+        executor.close()
+    resumed = continuation_results[0]
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
     # C. The write was never replayed -- exactly one create_task call total,

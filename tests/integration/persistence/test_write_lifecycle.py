@@ -68,7 +68,9 @@ from tests.support.resolve_recovery_adapter import (
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
 
 
-def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> None:
+def test_contract_recovery_recheck_without_new_durable_fact_makes_no_progress(
+    write_database: Path,
+) -> None:
     clock = FakeClockPort(1_000)
     required = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
@@ -79,9 +81,10 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
             expected_version=0,
             command_id="require-recovery-1",
             request_hash="r1" * 32,
-            reason="CHECKPOINT_MISMATCH",
+            reason="CONTRACT_VIOLATION",
             scope="RUN",
             recovery_fingerprint="checkpoint-mismatch-1",
+            contract_or_checkpoint_fingerprint="checkpoint-mismatch-1",
         )
     )
     resolved = ResolveRecoveryHandler(
@@ -94,20 +97,19 @@ def test_run_recovery_commands_use_domain_transitions(write_database: Path) -> N
             command_id="resolve-recovery-1",
             request_hash="r2" * 32,
             resolution=RecoveryResolution.RECHECK,
-            recheck_input_changed=True,
-            validated_resume_status=RunStatusV1.PLANNING,
         )
     )
 
     assert required.applied is True
     assert required.current_status == RunStatusV1.RECOVERY_REQUIRED.value
     assert required.next_allowed_commands == (RunCommand.REQUEST_CANCEL.value,)
-    assert resolved.applied is True
-    assert resolved.current_status == RunStatusV1.PLANNING.value
+    assert resolved.applied is False
+    assert resolved.result_code == ResultCode.NO_PROGRESS.value
+    assert resolved.current_status == RunStatusV1.RECOVERY_REQUIRED.value
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute("SELECT status, version FROM runs WHERE id = 'run-1';").fetchone()
-        assert tuple(row) == ("PLANNING", 2)
+        assert tuple(row) == ("RECOVERY_REQUIRED", 1)
     finally:
         connection.close()
 
@@ -916,7 +918,8 @@ def test_fail_recovery_creates_no_new_plan_revision(
         ]
     finally:
         connection.close()
-    assert plans_after == plans_before
+    assert [(row[0], row[1]) for row in plans_after] == [(row[0], row[1]) for row in plans_before]
+    assert [row[2] for row in plans_after] == ["CANCELLED"]
 
 
 def test_fail_recovery_creates_no_new_approval_claim_or_provider_write(

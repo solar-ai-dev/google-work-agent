@@ -71,6 +71,122 @@ def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_gu
     assert _count(database_path, "command_receipts") == 1
 
 
+def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    result = handler(
+        ResolveRecoveryCommandV1(
+            "r-1", 99, "cmd-conflict", "b" * 64, RecoveryResolution.ACCEPT_PARTIAL
+        )
+    )
+
+    assert not result.applied and result.result_code == "VERSION_CONFLICT"
+    with connect_sqlite(database_path) as connection:
+        assert (
+            connection.execute("SELECT status FROM plans WHERE id='plan-1';").fetchone()[0]
+            == "DRAFT"
+        )
+        assert (
+            connection.execute("SELECT status FROM actions WHERE id='action-1';").fetchone()[0]
+            == "MISMATCH"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
+
+
+def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    with connect_sqlite(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, status, arguments_json,
+                arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
+            ) VALUES (
+                'action-pending', 'plan-1', 2, 'tasks_create_task', 'CREATE', 'REQUIRED',
+                'GET_COMPARE', 'RESOURCE_SEARCH', 'PROPOSED', '{}', ?, '{}', '{}', 0, 1, 1
+            );
+            """,
+            ("b" * 64,),
+        )
+        connection.commit()
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+        next_id=lambda: "terminal-message-1",
+    )
+
+    result = handler(_command("cmd-fail", RecoveryResolution.FAIL))
+
+    assert result.applied and result.current_status == "FAILED"
+    with connect_sqlite(database_path) as connection:
+        assert (
+            connection.execute("SELECT status FROM plans WHERE id='plan-1';").fetchone()[0]
+            == "CANCELLED"
+        )
+        assert (
+            connection.execute("SELECT status FROM actions WHERE id='action-pending';").fetchone()[
+                0
+            ]
+            == "BLOCKED"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT role FROM messages WHERE id='terminal-message-1';"
+            ).fetchone()[0]
+            == "ASSISTANT"
+        )
+    assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
+
+
+def test_fail_rejects_executed_action_awaiting_verification(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    with connect_sqlite(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, status, arguments_json,
+                arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
+            ) VALUES (
+                'action-executed', 'plan-1', 2, 'tasks_create_task', 'CREATE', 'REQUIRED',
+                'GET_COMPARE', 'RESOURCE_SEARCH', 'EXECUTED', '{}', ?, '{}', '{}', 1, 1, 1
+            );
+            """,
+            ("b" * 64,),
+        )
+        connection.commit()
+
+    result = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )(_command("cmd-fail-unverified", RecoveryResolution.FAIL))
+
+    assert not result.applied and result.result_code == "RESOLUTION_NOT_ALLOWED"
+    with connect_sqlite(database_path) as connection:
+        assert connection.execute("SELECT status FROM runs WHERE id='r-1';").fetchone()[0] == (
+            "RECOVERY_REQUIRED"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
+
+
+def test_accept_partial_writes_required_completion_audit(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    result = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+        next_id=lambda: "terminal-message-1",
+    )(_command("cmd-partial", RecoveryResolution.ACCEPT_PARTIAL))
+
+    assert result.applied and result.current_status == "COMPLETED"
+    assert _audit_events(database_path) == ["RECOVERY_RESOLVED", "RUN_COMPLETED"]
+
+
 def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommandV1:
     return ResolveRecoveryCommandV1(
         run_id="r-1",
@@ -78,7 +194,6 @@ def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecovery
         command_id=command_id,
         request_hash="a" * 64,
         resolution=resolution,
-        recheck_input_changed=True,
     )
 
 
@@ -114,11 +229,36 @@ def _database(tmp_path: Path, *, run_status: str) -> Path:
         )
         connection.execute(
             """
+            INSERT INTO plans (
+                id, run_id, revision_no, status, summary_text, created_at_ms,
+                review_status, review_disposition
+            ) VALUES ('plan-1', 'r-1', 1, 'DRAFT', 'test', 1, 'REQUIRED', NULL);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO actions (
+                id, plan_id, position, tool_name, effect_type, approval_requirement,
+                verification_policy, recovery_policy, status, arguments_json,
+                arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
+            ) VALUES (
+                'action-1', 'plan-1', 1, 'tasks_create_task', 'CREATE', 'REQUIRED',
+                'GET_COMPARE', 'RESOURCE_SEARCH', 'MISMATCH', '{}',
+                ?, '{}', '{}', 0, 1, 1
+            );
+            """,
+            ("a" * 64,),
+        )
+        connection.execute(
+            """
             INSERT INTO recovery_contexts (
-                run_id, reason, scope, action_id, pre_recovery_status,
-                recovery_fingerprint, version, created_at_ms, updated_at_ms
-            ) VALUES ('r-1', 'VERIFICATION_MISMATCH', 'RUN', NULL, 'WAITING_APPROVAL',
-                      'test-fingerprint', 0, 1, 1);
+                run_id, reason, scope, action_id, execution_attempt_id, verification_id,
+                pre_recovery_status, recovery_fingerprint,
+                observed_external_state_fingerprint, verification_input_fingerprint,
+                version, created_at_ms, updated_at_ms
+            ) VALUES ('r-1', 'VERIFICATION_MISMATCH', 'ACTION', 'action-1', 'attempt-1',
+                      'verification-1', 'WAITING_APPROVAL', 'test-fingerprint',
+                      'observed-fingerprint', 'verification-input-fingerprint', 0, 1, 1);
             """
         )
         connection.commit()

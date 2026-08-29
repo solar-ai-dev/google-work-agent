@@ -16,6 +16,7 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
@@ -38,7 +39,7 @@ class RunRouteDependencies:
     workflow_runtime: object
     resolve_resume_authority: Callable[..., Mapping[str, object] | None]
     resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
-    resume_target_registry: object
+    resume_target_registry: ResumeTargetValidator
     clock: ClockPort
     id_generator: UUIDPort
     resolve_selection_handle: ResolveSelectionHandle
@@ -92,17 +93,22 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
 
     if container.resume_target_registry is None:
         raise RuntimeError("resume-target registry is not configured")
+    if container.schedule_run_execution is None:
+        raise RuntimeError("workflow execution scheduler is not configured")
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         unit_of_work_factory=unit_of_work_factory,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
-        schedule_run_execution=container.schedule_run_execution,
+        schedule_run_execution=cast(
+            Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
+            container.schedule_run_execution,
+        ),
         workflow_runtime=container.workflow_runtime,
         resolve_resume_authority=resolve_resume_authority,
         resolve_pending_confirmation=resolve_pending_confirmation,
-        resume_target_registry=container.resume_target_registry,
+        resume_target_registry=cast(ResumeTargetValidator, container.resume_target_registry),
         clock=container.clock,
         id_generator=container.id_generator,
         resolve_selection_handle=resolve_selection_handle,

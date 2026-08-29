@@ -29,6 +29,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.domain.run.model import (
     RunStatusV1,
     is_preempting_run_status,
@@ -181,6 +182,11 @@ class RedriveWorkflowHandoffsHandler:
             return False
 
         fingerprint = _reconciliation_fingerprint(handoff)
+        recovery_reason: RecoveryReasonV1 = (
+            "CHECKPOINT_MISMATCH"
+            if handoff.execution.resume_target is not None
+            else "CONTRACT_VIOLATION"
+        )
 
         if run.status is not RunStatusV1.RECOVERY_REQUIRED:
             require_recovery_command = RequireRecoveryCommand(
@@ -188,7 +194,7 @@ class RedriveWorkflowHandoffsHandler:
                 expected_version=run.version,
                 command_id=f"system:handoff-binding-recovery:{handoff_id}",
                 request_hash=fingerprint,
-                reason="CHECKPOINT_MISMATCH",
+                reason=recovery_reason,
                 scope="RUN",
                 recovery_fingerprint=fingerprint,
                 registered_resume_target=handoff.execution.resume_target,
@@ -198,7 +204,9 @@ class RedriveWorkflowHandoffsHandler:
             if not require_recovery_result.applied:
                 return False
 
-        return self._supersede_if_matching(handoff_id, expected_version, fingerprint)
+        return self._supersede_if_matching(
+            handoff_id, expected_version, fingerprint, recovery_reason
+        )
 
     def _supersede_if_still_blocked(
         self, handoff_id: str, expected_version: int, reason_code: str
@@ -218,7 +226,7 @@ class RedriveWorkflowHandoffsHandler:
             return True
 
     def _supersede_if_matching(
-        self, handoff_id: str, expected_version: int, fingerprint: str
+        self, handoff_id: str, expected_version: int, fingerprint: str, recovery_reason: str
     ) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
             handoff = unit_of_work.workflow_handoffs.get(handoff_id)
@@ -234,7 +242,7 @@ class RedriveWorkflowHandoffsHandler:
             context = unit_of_work.recovery_contexts.load_current_context(handoff.execution.run_id)
             if (
                 context is None
-                or context["reason"] != "CHECKPOINT_MISMATCH"
+                or context["reason"] != recovery_reason
                 or context.get("recovery_fingerprint") != fingerprint
             ):
                 # Fail closed: a different (or non-matching) current Recovery authority

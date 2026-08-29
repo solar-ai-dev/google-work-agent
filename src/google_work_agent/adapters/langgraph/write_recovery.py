@@ -15,6 +15,10 @@ from google_work_agent.application.use_cases.execution_attempt.execution_phase i
     UnknownRecoveryPhaseRequest,
     WriteExecutionPhaseCoordinator,
 )
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
+)
+from google_work_agent.application.use_cases.run.begin_verification import BeginVerificationResult
 from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -40,7 +44,7 @@ class WriteRecoveryCoordinator:
         complete_write_run_if_verified: Callable[[str, str], RunTransitionResponse | None],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
-        begin_verification: Callable[[str], CommandResult[RunStatusV1, RunCommand] | None],
+        begin_verification: Callable[[str], BeginVerificationResult | None],
         latest_attempt_id: Callable[[str], str],
     ) -> None:
         self._latest_unknown_action = latest_unknown_action
@@ -204,7 +208,7 @@ class WriteRecoveryCoordinator:
         *,
         state: GraphState,
         action_id: str,
-        response: object,
+        response: WriteActionResponse,
         outcome: str,
         verification_statuses: list[str] | None = None,
     ) -> GraphState:
@@ -240,7 +244,7 @@ class WriteRecoveryCoordinator:
         self,
         *,
         state: GraphState,
-        result: CommandResult[RunStatusV1, RunCommand],
+        result: CommandResult[RunStatusV1, RunCommand] | BeginVerificationResult,
         source: str,
         verification_statuses: list[str],
     ) -> GraphState:

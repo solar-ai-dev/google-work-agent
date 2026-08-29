@@ -8,7 +8,7 @@ from google_work_agent.application.use_cases.run.resume_confirmation import Resu
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
+from google_work_agent.domain.run.model import Run, RunCommand, RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.begin_verification import (
     transition_begin_verification,
 )
@@ -29,7 +29,7 @@ class BeginVerificationResult:
     result_code: ResultCode
     current_status: RunStatusV1
     current_version: int
-    next_allowed_commands: tuple[object, ...] = ()
+    next_allowed_commands: tuple[RunCommand, ...] = ()
     conflict_detail: str | None = None
 
 
@@ -168,7 +168,7 @@ class BeginVerificationHandler:
             return result
 
 
-def _require_run(unit_of_work: UnitOfWork, run_id: str):
+def _require_run(unit_of_work: UnitOfWork, run_id: str) -> Run:
     run = unit_of_work.runs.get(run_id)
     if run is None:
         raise LookupError(f"run not found: {run_id}")

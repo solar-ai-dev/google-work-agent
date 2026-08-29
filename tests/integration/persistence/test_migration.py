@@ -125,7 +125,7 @@ def test_documentation_mirror_matches_runtime_eighth_migration() -> None:
 def test_package_resource_discovers_initial_migration() -> None:
     migrations = discover_migrations()
 
-    assert len(migrations) == 16
+    assert len(migrations) == 17
     assert migrations[0].version == 1
     assert migrations[0].name == "initial"
     assert migrations[0].checksum == OFFICIAL_NORMALIZED_CHECKSUM
@@ -159,6 +159,8 @@ def test_package_resource_discovers_initial_migration() -> None:
     assert migrations[14].name == "canonical_final_defense"
     assert migrations[15].version == 16
     assert migrations[15].name == "persistence_final_defense"
+    assert migrations[16].version == 17
+    assert migrations[16].name == "recovery_context_reason_matrix"
 
 
 def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
@@ -171,7 +173,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(first_results) == 16
+        assert len(first_results) == 17
         assert all(result.applied for result in first_results)
         assert [(row["version"], row["name"]) for row in rows] == [
             (1, "initial"),
@@ -190,6 +192,7 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             (14, "run_terminal_result_kind"),
             (15, "canonical_final_defense"),
             (16, "persistence_final_defense"),
+            (17, "recovery_context_reason_matrix"),
         ]
         assert rows[0]["checksum"] == OFFICIAL_NORMALIZED_CHECKSUM
         assert rows[1]["checksum"] == OFFICIAL_V2_NORMALIZED_CHECKSUM
@@ -200,9 +203,9 @@ def test_apply_initial_migration_records_official_checksum_and_is_idempotent(
             "SELECT version, name, checksum, applied_at_ms FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert len(second_results) == 16
+        assert len(second_results) == 17
         assert all(not result.applied for result in second_results)
-        assert len(rows) == 16
+        assert len(rows) == 17
         assert all(row["applied_at_ms"] == 123456789 for row in rows)
     finally:
         connection.close()
@@ -268,16 +271,18 @@ def test_populated_0011_upgrade_preserves_current_recovery_context(tmp_path: Pat
             """
             INSERT INTO recovery_contexts (
                 run_id, reason, scope, action_id, pre_recovery_status,
-                recovery_fingerprint, version, created_at_ms, updated_at_ms
+                registered_resume_target_json, recovery_fingerprint,
+                contract_or_checkpoint_fingerprint, version, created_at_ms, updated_at_ms
             ) VALUES ('r-1', 'CHECKPOINT_MISMATCH', 'RUN', NULL, 'ANALYZING',
-                      'fp-1', 0, 1, 1);
+                      '{"kind":"MAIN_CONTROL","stage_id":"PREFLIGHT","graph_profile":"SINGLE_BASELINE","graph_version":"v1"}',
+                      'fp-1', 'checkpoint-fp-1', 0, 1, 1);
             """
         )
         connection.commit()
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 11 + [True] * 5
+        assert [result.applied for result in results] == [False] * 11 + [True] * 6
         row = connection.execute(
             "SELECT recovery_fingerprint, version FROM recovery_contexts WHERE run_id = 'r-1';"
         ).fetchone()
@@ -352,7 +357,7 @@ def test_populated_0013_upgrade_backfills_terminal_result_kind(tmp_path: Path) -
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 13 + [True, True, True]
+        assert [result.applied for result in results] == [False] * 13 + [True] * 4
         rows = connection.execute(
             "SELECT id, terminal_result_kind FROM runs ORDER BY id;"
         ).fetchall()
@@ -428,6 +433,7 @@ def test_v1_3_to_v1_4_preserves_rows_effect_contracts_and_foreign_keys(
         assert [result.applied for result in results] == [
             False,
             False,
+            True,
             True,
             True,
             True,
@@ -544,6 +550,59 @@ def test_checksum_mismatch_is_blocked(tmp_path: Path) -> None:
 
         with pytest.raises(MigrationChecksumMismatchError):
             apply_migrations(connection, now_ms=lambda: 2)
+    finally:
+        connection.close()
+
+
+def test_0017_rejects_preexisting_invalid_recovery_context(tmp_path: Path) -> None:
+    predecessor = tmp_path / "pre-0017"
+    predecessor.mkdir()
+    for version in range(1, 17):
+        source = next(RUNTIME_MIGRATIONS_DIR.glob(f"{version:04d}_*.sql"))
+        shutil.copyfile(source, predecessor / source.name)
+    connection = connect_sqlite(tmp_path / "invalid-recovery-upgrade.db")
+    try:
+        apply_migrations(connection, migrations_dir=predecessor, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts VALUES ('a-1', 'u@example.com', NULL, 1, NULL);"
+        )
+        connection.execute("INSERT INTO conversations VALUES ('c-1', 'a-1', 'Test', 1, 1);")
+        connection.execute(
+            """
+            INSERT INTO runs (
+                id, conversation_id, entry_mode, status, langgraph_thread_id,
+                requested_mode, budget_json, version, started_at_ms
+            ) VALUES ('r-1', 'c-1', 'AGENT_SEARCH', 'RECOVERY_REQUIRED',
+                      't-1', 'AUTO', '{}', 1, 1);
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO recovery_contexts (
+                run_id, reason, scope, pre_recovery_status, recovery_fingerprint,
+                observed_external_state_fingerprint,
+                contract_or_checkpoint_fingerprint, version, created_at_ms, updated_at_ms
+            ) VALUES ('r-1', 'CONTRACT_VIOLATION', 'RUN', 'ANALYZING', 'fp-1',
+                      'foreign-reason-fact', 'contract-fp', 0, 1, 1);
+            """
+        )
+        connection.commit()
+
+        with pytest.raises(MigrationApplyError):
+            apply_migrations(connection, now_ms=lambda: 2)
+
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version=17;"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM recovery_contexts WHERE run_id='r-1';"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 

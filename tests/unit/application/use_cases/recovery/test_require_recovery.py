@@ -9,6 +9,7 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports.system.contracts.workflow_handoff import MainControlResumeTargetV2
 
 
 def test_first_call_atomically_persists_run_transition_context_and_audit(
@@ -116,6 +117,7 @@ def test_second_independent_recovery_declaration_bumps_context_version(
             reason="CONTRACT_VIOLATION",
             scope="RUN",
             recovery_fingerprint="fp-2",
+            contract_or_checkpoint_fingerprint="fp-2",
         )
     )
 
@@ -124,6 +126,39 @@ def test_second_independent_recovery_declaration_bumps_context_version(
     assert context is not None
     assert context["version"] == 1
     assert context["reason"] == "CONTRACT_VIOLATION"
+
+
+def test_clear_then_recreate_allocates_next_tombstone_version(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="ANALYZING")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    handler = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 10)
+    handler(_command("cmd-1", "fp-1"))
+    with factory() as unit_of_work:
+        unit_of_work.recovery_contexts.clear_context("r-1", 0)
+        run = unit_of_work.runs.get("r-1")
+        assert run is not None
+        unit_of_work.runs.update_if_version_and_status(
+            "r-1", run.version, frozenset({run.status}), {"status": "ANALYZING"}
+        )
+        unit_of_work.commit()
+
+    recreated = handler(
+        RequireRecoveryCommand(
+            run_id="r-1",
+            expected_version=1,
+            command_id="cmd-2",
+            request_hash=calculate_canonical_json_hash({"command_id": "cmd-2"}),
+            reason="CONTRACT_VIOLATION",
+            scope="RUN",
+            recovery_fingerprint="fp-2",
+            contract_or_checkpoint_fingerprint="fp-2",
+        )
+    )
+
+    assert recreated.applied
+    with factory() as unit_of_work:
+        context = unit_of_work.recovery_contexts.load_current_context("r-1")
+    assert context is not None and context["version"] == 1
 
 
 def _command(command_id: str, recovery_fingerprint: str) -> RequireRecoveryCommand:
@@ -135,6 +170,10 @@ def _command(command_id: str, recovery_fingerprint: str) -> RequireRecoveryComma
         reason="CHECKPOINT_MISMATCH",
         scope="RUN",
         recovery_fingerprint=recovery_fingerprint,
+        registered_resume_target=MainControlResumeTargetV2(
+            "MAIN_CONTROL", "PREFLIGHT", "SINGLE_BASELINE", "v1"
+        ),
+        contract_or_checkpoint_fingerprint=recovery_fingerprint,
     )
 
 

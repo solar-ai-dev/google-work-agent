@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from json import dumps
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
@@ -21,13 +21,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
 )
-from google_work_agent.application.use_cases.recovery.require_recovery import (
-    RequireRecoveryCommand,
-    RequireRecoveryHandler,
-)
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.mark_unknown_result import (
     transition_mark_unknown_result,
@@ -85,11 +79,9 @@ class MarkUnknownResultHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        resume_target_registry: ResumeTargetIssuer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: MarkUnknownResultCommand) -> MarkUnknownResultResult:
         if command.delivery_certainty is DeliveryCertainty.NOT_SENT:
@@ -154,65 +146,13 @@ class MarkUnknownResultHandler:
                 is None
             ):
                 raise RuntimeError("validated MarkUnknownResult CAS failed")
-            run_before_recovery = unit_of_work.runs.get(plan.run_id)
-            if run_before_recovery is None:
+            run = unit_of_work.runs.get(plan.run_id)
+            if run is None:
                 raise LookupError(f"run not found: {plan.run_id}")
-            binding = unit_of_work.checkpoints.load_workflow_binding(plan.run_id)
-            checkpoint = (
-                None
-                if binding is None
-                else unit_of_work.checkpoints.load_same_run_checkpoint(
-                    plan.run_id, binding.langgraph_thread_id
-                )
-            )
-            if binding is None or checkpoint is None:
-                raise RuntimeError("MarkUnknownResult requires a current workflow checkpoint")
-            recovery_target = self._resume_target_registry.issue_main_stage(
-                binding.graph_profile,
-                "RECOVERY",
-                binding.graph_version,
-            )
-            fingerprint = calculate_canonical_json_hash(
-                {
-                    "action_id": action.id,
-                    "execution_attempt_id": attempt.id,
-                    "delivery_certainty": command.delivery_certainty.value,
-                }
-            )
-            recovery = RequireRecoveryHandler.apply_in_unit_of_work(
-                unit_of_work,
-                RequireRecoveryCommand(
-                    run_id=plan.run_id,
-                    expected_version=run_before_recovery.version,
-                    command_id=f"{command.command_id}:require-recovery",
-                    request_hash=calculate_canonical_json_hash(
-                        {
-                            "command_id": f"{command.command_id}:require-recovery",
-                            "fingerprint": fingerprint,
-                        }
-                    ),
-                    reason="UNKNOWN_RESULT",
-                    scope="ACTION",
-                    recovery_fingerprint=fingerprint,
-                    action_id=action.id,
-                    execution_attempt_id=attempt.id,
-                    registered_resume_target=recovery_target,
-                ),
-                now_ms=now_ms,
-            )
-            if not recovery.applied:
-                raise RuntimeError("unknown-result recovery transition was not applied")
-            unit_of_work.checkpoints.store_same_run_checkpoint(
-                replace(
-                    checkpoint,
-                    registered_resume_target=recovery_target,
-                    created_at_ms=now_ms,
-                )
-            )
             trace_payload: dict[str, object] = {
                 "attempt_id": attempt.id,
                 "error_code": command.error_code,
-                "run_status": recovery.current_status,
+                "run_status": run.status.value,
                 "delivery_certainty": command.delivery_certainty.value,
             }
             audit_metadata: dict[str, object] = {

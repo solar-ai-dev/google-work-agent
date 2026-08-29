@@ -7,13 +7,13 @@ from google_work_agent.application.use_cases.run.cancel_intent import has_durabl
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
-    ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.model import Run, RunStatusV1
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
@@ -55,7 +55,7 @@ class ResumeSafeCheckpointHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         resume_target_registry: ResumeTargetValidator,
-        schedule_run_execution: ScheduleRunExecutionHandler,
+        schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         id_factory: Callable[[], str],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory

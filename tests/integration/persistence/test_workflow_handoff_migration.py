@@ -31,7 +31,7 @@ def test_0008_database_upgrades_through_latest_without_changing_applied_receipts
             "SELECT version, name, checksum FROM schema_migrations ORDER BY version;"
         ).fetchall()
 
-        assert [result.applied for result in results] == [False] * 8 + [True] * 8
+        assert [result.applied for result in results] == [False] * 8 + [True] * 9
         assert [tuple(row) for row in after[:8]] == [tuple(row) for row in before]
         assert tuple(after[8])[:2] == (9, "workflow_handoff_outbox")
         assert tuple(after[9])[:2] == (10, "plan_review_disposition")
@@ -39,6 +39,9 @@ def test_0008_database_upgrades_through_latest_without_changing_applied_receipts
         assert tuple(after[11])[:2] == (12, "recovery_context_currentness")
         assert tuple(after[12])[:2] == (13, "resource_ref_registry_type")
         assert tuple(after[13])[:2] == (14, "run_terminal_result_kind")
+        assert tuple(after[14])[:2] == (15, "canonical_final_defense")
+        assert tuple(after[15])[:2] == (16, "persistence_final_defense")
+        assert tuple(after[16])[:2] == (17, "recovery_context_reason_matrix")
     finally:
         connection.close()
 

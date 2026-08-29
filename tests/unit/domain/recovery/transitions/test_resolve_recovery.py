@@ -106,3 +106,17 @@ def test_recheck_target_does_not_reapply() -> None:
 
     assert decision.applied is False
     assert decision.result_code is ResultCode.STATE_CONFLICT
+
+
+def test_fail_is_rejected_while_durable_cancel_intent_is_active() -> None:
+    decision = transition_resolve_recovery(
+        RunStatusV1.RECOVERY_REQUIRED,
+        resolution=RecoveryResolution.FAIL,
+        reason="VERIFICATION_MISMATCH",
+        pre_recovery_status=RunStatusV1.VERIFYING,
+        cancel_intent_active=True,
+        irrecoverable_confirmed=True,
+    )
+
+    assert decision.applied is False
+    assert decision.result_code is ResultCode.RESOLUTION_NOT_ALLOWED

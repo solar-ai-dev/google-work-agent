@@ -60,6 +60,10 @@ class ResolveMismatchRecoveryService:
                         "pre_recovery_status": "VERIFYING",
                         "recovery_fingerprint": f"test:{command.action_id}",
                         "action_id": command.action_id,
+                        "execution_attempt_id": f"test-attempt:{command.action_id}",
+                        "verification_id": f"test-verification:{command.action_id}",
+                        "observed_external_state_fingerprint": "test-observed",
+                        "verification_input_fingerprint": "test-input",
                         "version": 0,
                         "created_at_ms": self._now_ms(),
                         "updated_at_ms": self._now_ms(),
@@ -70,7 +74,9 @@ class ResolveMismatchRecoveryService:
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
             next_id=(
-                None if command.corrective_plan_id is None else lambda: command.corrective_plan_id
+                (lambda: f"message:{command.command_id}")
+                if command.corrective_plan_id is None
+                else lambda: command.corrective_plan_id
             ),
         )(
             ResolveRecoveryCommandV1(
@@ -79,7 +85,6 @@ class ResolveMismatchRecoveryService:
                 command_id=command.command_id,
                 request_hash=command.request_hash,
                 resolution=command.resolution_kind,
-                irrecoverable_confirmed=command.resolution_kind is RecoveryResolution.FAIL,
             )
         )
         return SimpleNamespace(

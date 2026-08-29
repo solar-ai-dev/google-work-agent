@@ -198,6 +198,7 @@ def build_production_runtime(
     require_recovery = RequireRecoveryHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
+        resume_target_registry=resume_target_registry,
     )
     retrieval_cache = InMemoryRunRetrievalCache()
     reconcile_retrieval_cache_restart = ReconcileRetrievalCacheRestartHandler(
@@ -213,7 +214,6 @@ def build_production_runtime(
         mark_unknown_result=MarkUnknownResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-            resume_target_registry=resume_target_registry,
         ),
         require_recovery=require_recovery,
         lookup_unknown_result=lookup_unknown_result,

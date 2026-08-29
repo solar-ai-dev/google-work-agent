@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,16 @@ def test_store_context_accepts_version_bump(tmp_path: Path) -> None:
 
     assert updated["version"] == 1
     assert updated["recovery_fingerprint"] == "fp-2"
+
+
+def test_database_rejects_foreign_reason_fingerprint(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    invalid = _context()
+    invalid["observed_external_state_fingerprint"] = "mismatch-only"
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+
+    with factory() as unit_of_work, pytest.raises(sqlite3.IntegrityError):
+        unit_of_work.recovery_contexts.store_context(invalid)
 
 
 def test_clear_context_removes_current_context(tmp_path: Path) -> None:

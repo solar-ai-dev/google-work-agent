@@ -50,10 +50,12 @@ from google_work_agent.application.use_cases.execution_attempt.connector_write_p
 from google_work_agent.application.use_cases.execution_attempt.mark_failed import (
     MarkFailedCommand,
     MarkFailedHandler,
+    MarkFailedResult,
 )
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultCommand,
     MarkUnknownResultHandler,
+    MarkUnknownResultResult,
 )
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultCommand,
@@ -68,6 +70,7 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
 from google_work_agent.application.use_cases.execution_attempt.store_success import (
     StoreSuccessCommand,
     StoreSuccessHandler,
+    StoreSuccessResult,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
@@ -86,6 +89,7 @@ from google_work_agent.application.use_cases.recovery.lookup_unknown_result impo
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
+    RequireRecoveryResult,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
@@ -113,6 +117,7 @@ from google_work_agent.domain.action.model import ActionStatusV1, PolicyViolatio
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 from google_work_agent.ports.connector.contracts.google_workspace import (
     DeliveryCertainty,
@@ -566,6 +571,7 @@ class WriteExecutionPhaseCoordinator:
         except GoogleWorkspaceGatewayError as error:
             if not self._is_auth_error(error):
                 raise
+            self._ensure_unknown_recovery(request, approval.recovery_fingerprint)
             self._require_reauth(request=request, error=error, kind="recover_unknown_reauth")
             return WriteActionResponse(
                 applied=False,
@@ -606,11 +612,12 @@ class WriteExecutionPhaseCoordinator:
             )
             if not recovered.applied:
                 return self._as_write_response(recovered)
-            if not self._resolve_unknown_recovery(
+            resolved, continuation_staged = self._resolve_unknown_recovery(
                 request=request,
                 recovered_status=ActionStatusV1.EXECUTED,
                 lookup=lookup,
-            ):
+            )
+            if not resolved or continuation_staged:
                 return self._as_write_response(recovered)
             return self.verify_executed(
                 action_id=request.action_id,
@@ -646,6 +653,18 @@ class WriteExecutionPhaseCoordinator:
                     lookup=lookup,
                 )
             return self._as_write_response(failed)
+        recovery = self._ensure_unknown_recovery(request, approval.recovery_fingerprint)
+        if recovery is not None and not recovery.applied:
+            return WriteActionResponse(
+                applied=False,
+                result_code=recovery.result_code,
+                action_id=request.action_id,
+                action_status=ActionStatusV1.UNKNOWN_RESULT.value,
+                action_version=request.action_version,
+                next_allowed_commands=(),
+                attempt_id=request.attempt_id,
+                conflict_detail=recovery.conflict_detail,
+            )
         return WriteActionResponse(
             applied=False,
             result_code=ResultCode.RECOVERY_REQUIRED.value,
@@ -686,12 +705,25 @@ class WriteExecutionPhaseCoordinator:
         request: UnknownRecoveryPhaseRequest,
         recovered_status: ActionStatusV1,
         lookup: UnknownResultLookupResultV1,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(request.run_id)
             context = unit_of_work.recovery_contexts.load_current_context(request.run_id)
-        if run is None or context is None:
-            raise LookupError("unknown-result RecoveryContext binding is missing")
+        if run is None:
+            raise LookupError("unknown-result Run binding is missing")
+        if context is None:
+            if recovered_status is ActionStatusV1.FAILED:
+                return True, False
+            begin = self._begin_verification(
+                BeginVerificationCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "begin_recovered_verification", "run_id": request.run_id}
+                    ),
+                    run_id=request.run_id,
+                )
+            )
+            return begin is None or bool(begin.applied), False
         evidence_fingerprint = calculate_canonical_json_hash(
             {
                 "disposition": lookup.disposition,
@@ -714,14 +746,39 @@ class WriteExecutionPhaseCoordinator:
                     }
                 ),
                 resolution=RecoveryResolution.RECHECK,
-                recheck_input_changed=(
-                    context.get("last_recheck_input_hash") != evidence_fingerprint
-                ),
-                recovered_action_status=recovered_status,
-                unresolved_external_effect_count=0,
             )
         )
-        return bool(result.applied)
+        return bool(result.applied), bool(result.handoff_id)
+
+    def _ensure_unknown_recovery(
+        self, request: UnknownRecoveryPhaseRequest, recovery_fingerprint: str
+    ) -> RequireRecoveryResult | None:
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(request.run_id)
+        if run is None:
+            raise LookupError(f"run not found: {request.run_id}")
+        if run.status is RunStatusV1.RECOVERY_REQUIRED:
+            return None
+        command_id = self._id_factory()
+        return self._require_recovery(
+            RequireRecoveryCommand(
+                run_id=request.run_id,
+                expected_version=run.version,
+                command_id=command_id,
+                request_hash=calculate_canonical_json_hash(
+                    {
+                        "command_id": command_id,
+                        "reason": "UNKNOWN_RESULT",
+                        "recovery_fingerprint": recovery_fingerprint,
+                    }
+                ),
+                reason="UNKNOWN_RESULT",
+                scope="ACTION",
+                recovery_fingerprint=recovery_fingerprint,
+                action_id=request.action_id,
+                execution_attempt_id=request.attempt_id,
+            )
+        )
 
     @staticmethod
     def _as_write_response(
@@ -955,17 +1012,29 @@ class WriteExecutionPhaseCoordinator:
         if not unknown.applied:
             return self._reconcile_action_response(unknown)
         if is_auth_error:
-            reauth = self._require_reauth(request=request, error=error, kind="reauth_unknown")
-            if not reauth.applied:
-                return self._reconcile_run_response(reauth)
+            with self._unit_of_work_factory() as unit_of_work:
+                attempt = unit_of_work.execution_attempts.get(attempt_id)
+                action = unit_of_work.actions.get(request.action_id)
+            if attempt is None or action is None:
+                raise LookupError("unknown-result Action/Attempt binding is missing")
+            recovered = self.recover_unknown(
+                UnknownRecoveryPhaseRequest(
+                    run_id=request.run_id,
+                    action_id=request.action_id,
+                    effect_type=action.effect_type,
+                    action_version=unknown.action_version,
+                    attempt_id=attempt_id,
+                    attempt_version=attempt.version,
+                )
+            )
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.REAUTH_REQUIRED,
-                action_status=unknown.action_status,
-                result_code=unknown.result_code,
+                action_status=recovered.action_status,
+                result_code=recovered.result_code,
                 safe_error_code=error.code.value,
-                current_status=unknown.action_status,
-                current_version=unknown.action_version,
-                next_allowed_commands=unknown.next_allowed_commands,
+                current_status=recovered.action_status,
+                current_version=recovered.action_version,
+                next_allowed_commands=recovered.next_allowed_commands,
             )
         return WriteExecutionPhaseResult(
             disposition=WriteExecutionDisposition.UNKNOWN_RESULT,
@@ -1060,7 +1129,12 @@ class WriteExecutionPhaseCoordinator:
         )
 
     @staticmethod
-    def _reconcile_action_response(response: WriteActionResponse) -> WriteExecutionPhaseResult:
+    def _reconcile_action_response(
+        response: WriteActionResponse
+        | StoreSuccessResult
+        | MarkFailedResult
+        | MarkUnknownResultResult,
+    ) -> WriteExecutionPhaseResult:
         return WriteExecutionPhaseResult(
             disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
             action_status=response.action_status,
@@ -1068,7 +1142,7 @@ class WriteExecutionPhaseCoordinator:
             current_status=response.action_status,
             current_version=response.action_version,
             next_allowed_commands=response.next_allowed_commands,
-            safe_error_code=response.safe_error_code,
+            safe_error_code=getattr(response, "safe_error_code", None),
         )
 
     @staticmethod

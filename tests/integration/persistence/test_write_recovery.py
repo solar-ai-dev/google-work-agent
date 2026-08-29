@@ -472,7 +472,6 @@ def test_unknown_result_create_recovery_and_retry_flow(
             command_id="recheck-recover-create",
             request_hash="u3" * 32,
             resolution=RecoveryResolution.RECHECK,
-            recheck_input_changed=True,
         )
     )
     assert resumed.current_status == "VERIFYING"

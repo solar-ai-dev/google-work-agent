@@ -167,7 +167,7 @@ def test_0016_populated_upgrade_normalizes_durable_identity_and_accounts(
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 15 + [True]
+        assert [result.applied for result in results] == [False] * 15 + [True, True]
         assert tuple(
             connection.execute(
                 "SELECT review_status, review_disposition FROM plans WHERE id='plan-upgrade';"
