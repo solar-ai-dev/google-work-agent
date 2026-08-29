@@ -1,21 +1,42 @@
-"""Owner-local LangGraph state for Work Analysis."""
+"""Canonical owner-local state for Work Analysis."""
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import TypedDict
+
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
+    CurrentSourceRelationV1,
+    WorkRelationCandidateV1,
+)
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAmbiguityV1,
+    WorkFactV1,
+    WorkRelationV1,
+)
+from google_work_agent.application.orchestration.handoff_contracts import (
+    EvidenceDraftV1,
+    RequestIntentV2,
+)
 
 
-class WorkAnalysisState(TypedDict):
-    """Invocation-local state. Only analysis_result/workflow_signal are parent-facing patches."""
+class WorkAnalysisStateV2(TypedDict, total=False):
+    """The exact #115-owned semantic channels; parent/runtime envelope stays external."""
 
-    operation_inputs: dict[str, dict[str, object]]
-    work_facts: NotRequired[object]
-    entity_relations: NotRequired[object]
-    temporal_relations: NotRequired[object]
-    duplicate_conflict_candidates: NotRequired[object]
-    validated_relations: NotRequired[object]
-    information_gaps: NotRequired[object]
-    operational_risks: NotRequired[object]
-    assembled_analysis: NotRequired[object]
-    analysis_result: NotRequired[object]
-    workflow_signal: NotRequired[object]
+    user_request: str
+    request_intent: RequestIntentV2
+    evidence: list[EvidenceDraftV1]
+    evidence_refs: list[str]
+    availability_results: list[dict[str, object]]
+    confirmation_response: dict[str, object]
+    current_source_relations: list[CurrentSourceRelationV1]
+    fact_candidates: list[WorkFactV1]
+    entity_relation_candidates: list[WorkRelationCandidateV1]
+    temporal_dependency_candidates: list[WorkRelationCandidateV1]
+    duplicate_conflict_candidates: list[WorkRelationCandidateV1]
+    validated_relations: list[WorkRelationV1]
+    relation_validation_ambiguities: list[WorkAmbiguityV1]
+
+
+WorkAnalysisState = WorkAnalysisStateV2
+
+__all__ = ["WorkAnalysisState", "WorkAnalysisStateV2"]

@@ -286,7 +286,7 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         runtime.close()
 
 
-def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
+def test_six_role_full_path_records_six_agent_invocations_and_atomic_llm_calls(
     tmp_path: Path,
 ) -> None:
     """SIX_ROLE_BASELINE's active agent set is request_understanding,
@@ -333,7 +333,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_seven_llm_calls(
         assert result.outcome is WorkflowOutcome.ACCEPTED
         trace_context = values["trace_context"]
         assert trace_context["agent_invocation_count"] == 6
-        assert trace_context["llm_call_count"] == 8
+        assert trace_context["llm_call_count"] == 11
         invocation_log: list[str] = []
         seen_invocation_ids: set[str] = set()
         for item in trace_context["agent_node_log"]:

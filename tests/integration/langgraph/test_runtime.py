@@ -118,7 +118,10 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "retrieval.select_evidence",
     "retrieval.select_evidence.revise",
     "retrieval.assess_sufficiency",
-    "work_analysis.analyze",
+    "work_analysis.extract_work_facts",
+    "work_analysis.resolve_entity_relations",
+    "work_analysis.resolve_temporal_dependencies",
+    "work_analysis.detect_duplicate_conflict_candidates",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
@@ -168,6 +171,132 @@ class _PendingPlanActionsState:
 
     def __init__(self) -> None:
         self.pending: list[dict[str, object]] | None = None
+
+
+class _PendingLegacyAnalysisState:
+    """Carry one legacy whole-analysis fixture across four atomic calls."""
+
+    def __init__(self) -> None:
+        self.payload: Mapping[str, object] | None = None
+        self.facts: list[dict[str, object]] = []
+
+
+def _synthesize_atomic_work_analysis(
+    *,
+    prompt_id: str | None,
+    prompt_input: Mapping[str, object],
+    queued: "deque[StructuredLLMResult]",
+    state: _PendingLegacyAnalysisState,
+) -> StructuredLLMResult | None:
+    """Adapt pre-migration integration fixtures to the four exact prompts."""
+
+    if prompt_id == "work_analysis.extract_work_facts":
+        if not queued:
+            raise RuntimeError("no queued Work Analysis fixture")
+        payload = queued.popleft().structured_output
+        if not isinstance(payload, Mapping) or "status" not in payload:
+            raise RuntimeError("atomic Work Analysis requires a queued legacy analysis fixture")
+        state.payload = payload
+        evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
+        available_refs = [
+            str(item["evidence_id"])
+            for item in evidence
+            if isinstance(item.get("evidence_id"), str)
+        ]
+        findings = [
+            item
+            for item in cast(list[object], payload.get("findings", []))
+            if isinstance(item, Mapping)
+        ]
+        facts: list[dict[str, object]] = []
+        for index, finding in enumerate(findings, start=1):
+            statement = str(finding.get("statement", payload.get("summary", "work analysis")))
+            facts.append(
+                {
+                    "fact_id": str(finding.get("finding_id", f"analysis-fact-{index}")),
+                    "kind": "TEXT_CLAIM",
+                    "subject": statement,
+                    "value": statement,
+                    "derivation": "EXPLICIT",
+                    "evidence_refs": available_refs,
+                }
+            )
+            for resource_index, handle in enumerate(
+                cast(list[str], finding.get("related_resource_handles", [])), start=1
+            ):
+                facts.append(
+                    {
+                        "fact_id": f"{facts[-1]['fact_id']}-resource-{resource_index}",
+                        "kind": "RESOURCE",
+                        "subject": handle,
+                        "value": handle,
+                        "derivation": "EXPLICIT",
+                        "evidence_refs": available_refs,
+                    }
+                )
+        if not facts:
+            facts.append(
+                {
+                    "fact_id": "analysis-fact-1",
+                    "kind": "TEXT_CLAIM",
+                    "subject": "work analysis",
+                    "value": str(payload.get("summary", "work analysis")),
+                    "derivation": "EXPLICIT",
+                    "evidence_refs": available_refs,
+                }
+            )
+        if payload.get("status") == "NEEDS_CONFIRMATION" and len(facts) < 2:
+            facts.append(
+                {
+                    "fact_id": "analysis-fact-2",
+                    "kind": "OTHER",
+                    "subject": "unconfirmed relation target",
+                    "value": "requires confirmation",
+                    "derivation": "DERIVED",
+                    "evidence_refs": list(cast(list[str], facts[0]["evidence_refs"])),
+                }
+            )
+        state.facts = facts
+        return _llm_result({"fact_candidates": facts})
+
+    if prompt_id == "work_analysis.resolve_entity_relations":
+        relations: list[dict[str, object]] = []
+        for index in range(len(state.facts) - 1):
+            source = state.facts[index]
+            target = state.facts[index + 1]
+            if target["kind"] != "RESOURCE":
+                continue
+            relations.append(
+                {
+                    "relation_id": f"analysis-entity-relation-{index + 1}",
+                    "kind": "RELATED_TO",
+                    "source_fact_id": source["fact_id"],
+                    "target_fact_id": target["fact_id"],
+                    "evidence_refs": list(cast(list[str], source["evidence_refs"])),
+                }
+            )
+        return _llm_result({"relation_candidates": relations})
+
+    if prompt_id == "work_analysis.resolve_temporal_dependencies":
+        return _llm_result({"relation_candidates": []})
+
+    if prompt_id == "work_analysis.detect_duplicate_conflict_candidates":
+        candidates: list[dict[str, object]] = []
+        if state.payload is not None and state.payload.get("status") == "NEEDS_CONFIRMATION":
+            candidates.append(
+                {
+                    "relation_id": "analysis-guarded-relation-1",
+                    "kind": "DUPLICATES",
+                    "source_fact_id": state.facts[0]["fact_id"],
+                    "target_fact_id": state.facts[1]["fact_id"],
+                    "evidence_refs": list(cast(list[str], state.facts[0]["evidence_refs"])),
+                }
+            )
+        state.payload = None
+        state.facts = []
+        return _llm_result({"relation_candidates": candidates})
+
+    return None
 
 
 def _synthesize_action_argument_candidate(
@@ -236,6 +365,7 @@ class _QueuedLLMRuntime:
         self._pending_plan_actions_state = _PendingPlanActionsState()
         self._pending_request_intent: Mapping[str, object] | None = None
         self._segment_id_aliases: dict[str, str] = {}
+        self._pending_legacy_analysis_state = _PendingLegacyAnalysisState()
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
@@ -331,6 +461,14 @@ class _QueuedLLMRuntime:
             ):
                 self._queued.popleft()
                 return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
+        atomic_analysis = _synthesize_atomic_work_analysis(
+            prompt_id=getattr(prompt_ref, "prompt_id", None),
+            prompt_input=cast(Mapping[str, object], kwargs["prompt_input"]),
+            queued=self._queued,
+            state=self._pending_legacy_analysis_state,
+        )
+        if atomic_analysis is not None:
+            return atomic_analysis
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             output_route = cast(Mapping[str, object], prompt_input["output_route"])
@@ -1295,7 +1433,10 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "retrieval.select_evidence",
     "retrieval.select_evidence.revise",
     "retrieval.assess_sufficiency",
-    "work_analysis.analyze",
+    "work_analysis.extract_work_facts",
+    "work_analysis.resolve_entity_relations",
+    "work_analysis.resolve_temporal_dependencies",
+    "work_analysis.detect_duplicate_conflict_candidates",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",

@@ -1,50 +1,55 @@
-from __future__ import annotations
-
 import pytest
 
 from google_work_agent.application.agents.work_analysis.validate_relations import validate_relations
 
-
-def test_guarded_relation_requires_deterministic_validator_code() -> None:
-    facts = [
-        {"fact_id": "a", "fact_type": "TASK", "value": "x", "evidence_refs": ["e1"]},
-        {"fact_id": "b", "fact_type": "TASK", "value": "x", "evidence_refs": ["e2"]},
-    ]
-    with pytest.raises(ValueError, match="guarded relation"):
-        validate_relations(
-            [
-                {
-                    "relation_type": "DUPLICATES",
-                    "left_ref": "a",
-                    "right_ref": "b",
-                    "evidence_refs": ["e1", "e2"],
-                }
-            ],
-            work_facts=facts,
-            validator=lambda _relation, _left, _right: {"accepted": True, "validator_codes": []},
-        )
+from .conftest import fact
 
 
-def test_validated_duplicate_can_mark_action_not_required() -> None:
-    facts = [
-        {"fact_id": "a", "fact_type": "TASK", "value": "x", "evidence_refs": ["e1"]},
-        {"fact_id": "b", "fact_type": "TASK", "value": "x", "evidence_refs": ["e2"]},
-    ]
+def _candidate(kind: str = "DUPLICATES") -> dict[str, object]:
+    return {
+        "relation_id": "r1",
+        "kind": kind,
+        "source_fact_id": "f1",
+        "target_fact_id": "f2",
+        "evidence_refs": ["ev-1"],
+    }
+
+
+def test_guarded_candidate_without_current_source_truth_is_not_final() -> None:
     result = validate_relations(
-        [
-            {
-                "relation_type": "DUPLICATES",
-                "left_ref": "a",
-                "right_ref": "b",
-                "evidence_refs": ["e1", "e2"],
-            }
-        ],
-        work_facts=facts,
-        validator=lambda _relation, _left, _right: {
-            "accepted": True,
-            "validator_codes": ["EXACT_TASK_DUPLICATE"],
-            "action_necessity": "NOT_REQUIRED",
-        },
+        work_facts=[fact("f1"), fact("f2")],
+        entity_relation_candidates=[],
+        temporal_dependency_candidates=[],
+        duplicate_conflict_candidates=[_candidate()],
+        current_source_relations=[],
+        allowed_evidence_refs={"ev-1"},
     )
-    assert result["action_necessity"] == "NOT_REQUIRED"
-    assert result["validated_relations"][0]["validator_codes"] == ["EXACT_TASK_DUPLICATE"]
+    assert result["validated_relations"] == []
+    assert result["relation_validation_ambiguities"][0]["requires_confirmation"] is True
+
+
+def test_current_source_truth_promotes_exact_guarded_relation() -> None:
+    candidate = _candidate()
+    current_source_truth = {**candidate, "relation_id": "source-relation-7"}
+    result = validate_relations(
+        work_facts=[fact("f1"), fact("f2")],
+        entity_relation_candidates=[],
+        temporal_dependency_candidates=[],
+        duplicate_conflict_candidates=[candidate],
+        current_source_relations=[current_source_truth],
+        allowed_evidence_refs={"ev-1"},
+    )
+    assert result["validated_relations"] == [candidate]
+    assert result["relation_validation_ambiguities"] == []
+
+
+def test_unknown_or_free_text_relation_kind_fails_closed() -> None:
+    with pytest.raises(ValueError, match="unknown WorkRelationV1"):
+        validate_relations(
+            work_facts=[fact("f1"), fact("f2")],
+            entity_relation_candidates=[_candidate("OWNS")],
+            temporal_dependency_candidates=[],
+            duplicate_conflict_candidates=[],
+            current_source_relations=[],
+            allowed_evidence_refs={"ev-1"},
+        )

@@ -14,7 +14,6 @@ legacy paths back to the existing production subgraphs.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
@@ -23,7 +22,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     merge_trace_context,
 )
 from google_work_agent.adapters.langgraph.main.state import (
-    ANALYSIS_AGENT_LOCAL_KEY,
     PLANNING_AGENT_LOCAL_KEY,
     PLANNING_MODE_KEY,
     _require_state_value,
@@ -31,7 +29,6 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.subgraph_state import (
     PlanningLocalState,
-    WorkAnalysisLocalState,
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     _frozen_output_routes,
@@ -42,7 +39,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
 from google_work_agent.adapters.langgraph.subgraphs.planning.runtime_active_graph import (
     RuntimeActivePlanningSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import (
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
     WorkAnalysisSubgraph,
 )
 from google_work_agent.application.orchestration.contracts import (
@@ -56,11 +53,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     AnswerDraftV1,
     EvidenceDraftV1,
     ReviewIssueV1,
-    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.optional_agent_inputs import (
     CanonicalOptionalInputPlanningAgent,
-    CanonicalOptionalInputWorkAnalysisAgent,
     assemble_plan_with_optional_analysis,
     validate_answer_with_optional_analysis,
     validate_plan_with_optional_analysis,
@@ -78,66 +73,7 @@ from google_work_agent.ports.llm import StructuredLLMResult
 class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
     """Work Analysis that accepts the Canonical no-Retrieval entry path."""
 
-    def _init_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
-        request = request_from_state(state)
-        self._transition_run(request.run_id, "begin_planning")
-        invocation_id = self._id_factory()
-        request_intent = _require_state_value(state["request_intent"], "request_intent")
-        local_state = build_agent_local_state(
-            agent_role="work_analysis",
-            invocation_id=invocation_id,
-            node_state="INITIALIZED",
-            input_projection={
-                "request_intent": request_intent,
-                "retrieval_result": state.get("retrieval_result"),
-            },
-            prompt_ref=self._agent.analyze_prompt_ref,
-        )
-        return {
-            **state,
-            ANALYSIS_AGENT_LOCAL_KEY: local_state,
-            "trace_context": merge_trace_context(
-                state,
-                graph_profile=self._graph_profile.value,
-                agent_subgraph_id="work_analysis",
-                agent_role="work_analysis",
-                agent_invocation_id=invocation_id,
-                subgraph_namespace="analysis",
-                node_name="init",
-                prompt_ref=self._agent.analyze_prompt_ref,
-                agent_invocation_increment=1,
-            ),
-        }
-
-    def _run_analyze_attempt(
-        self,
-        state: WorkAnalysisLocalState,
-        *,
-        confirmation_response: ConfirmationResponseProjectionV1 | None,
-    ) -> tuple[WorkAnalysisResultV1, StructuredLLMResult]:
-        retrieval_result = state.get("retrieval_result")
-        if retrieval_result is not None:
-            return super()._run_analyze_attempt(state, confirmation_response=confirmation_response)
-        if not isinstance(self._agent, CanonicalOptionalInputWorkAnalysisAgent):
-            raise TypeError("optional Work Analysis requires canonical optional-input agent")
-
-        receipt_refs: list[str] = []
-        for receipt in state.get("policy_confirmation_receipts", []):
-            if not isinstance(receipt, Mapping):
-                continue
-            meta = receipt.get("meta")
-            receipt_id = meta.get("artifact_id") if isinstance(meta, Mapping) else None
-            if isinstance(receipt_id, str) and receipt_id:
-                receipt_refs.append(receipt_id)
-
-        ensure_llm_call_budget(state)
-        llm_result = self._agent.invoke_without_retrieval(
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            request=request_from_state(state),
-            policy_confirmation_receipt_refs=receipt_refs,
-            confirmation_response=confirmation_response,
-        )
-        return self._agent.build_without_retrieval(llm_result), llm_result
+    pass
 
 
 class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):

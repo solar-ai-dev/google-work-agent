@@ -4,36 +4,51 @@ from __future__ import annotations
 
 from typing import Literal, Required, TypedDict
 
-
-class StateArtifactRefV1(TypedDict):
-    artifact_id: str
-    revision: int
-
-
-class StateArtifactMetaV1(TypedDict):
-    artifact_id: str
-    revision: int
-    based_on: list[StateArtifactRefV1]
+from google_work_agent.application.orchestration.handoff_contracts import (
+    StateArtifactMetaV1,
+    StateArtifactRefV1,
+)
 
 
 class WorkFactV1(TypedDict):
     fact_id: str
-    fact_type: str
-    value: str | list[str]
+    kind: Literal[
+        "TASK",
+        "EVENT",
+        "PERSON",
+        "DATE",
+        "TIME",
+        "DEADLINE",
+        "STATUS",
+        "RESOURCE",
+        "TEXT_CLAIM",
+        "OTHER",
+    ]
+    subject: str
+    value: str
+    derivation: Literal["EXPLICIT", "DERIVED"]
     evidence_refs: list[str]
 
 
 class WorkRelationV1(TypedDict):
-    relation_type: str
-    left_ref: str
-    right_ref: str
+    relation_id: str
+    kind: Literal[
+        "DEPENDS_ON",
+        "ASSIGNED_TO",
+        "DUE_AT",
+        "DUPLICATES",
+        "CONFLICTS_WITH",
+        "RELATED_TO",
+    ]
+    source_fact_id: str
+    target_fact_id: str
     evidence_refs: list[str]
-    validator_codes: list[str]
 
 
 class WorkAmbiguityV1(TypedDict):
     code: str
     description: str
+    requires_confirmation: bool
     evidence_refs: list[str]
 
 

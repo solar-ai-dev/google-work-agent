@@ -15,12 +15,6 @@ from pathlib import Path
 from google_work_agent.application.orchestration.assemble_planning_answer import (
     ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA,
 )
-from google_work_agent.application.orchestration.assemble_work_analysis_output import (
-    WORK_ANALYSIS_FACTS_OUTPUT_SCHEMA,
-    WORK_ANALYSIS_GAPS_OUTPUT_SCHEMA,
-    WORK_ANALYSIS_RELATIONS_OUTPUT_SCHEMA,
-    WorkAnalysisSemanticInputV1,
-)
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -29,12 +23,7 @@ from google_work_agent.application.orchestration.inspect_plan_output import (
     PLAN_REVIEW_CANDIDATE_OUTPUT_SCHEMA,
 )
 from google_work_agent.application.orchestration.post_retrieval_envelopes import PlanningResultV2
-from google_work_agent.application.orchestration.state_artifacts import (
-    WorkAmbiguityV1,
-    WorkAnalysisResultV2,
-    WorkFactV1,
-    WorkRelationV1,
-)
+from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
@@ -42,81 +31,6 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
-
-
-class ProductionWorkAnalysisV2CandidateProvider:
-    """Three bounded semantic calls over the approved Work Analysis V2 roots."""
-
-    def __init__(
-        self,
-        *,
-        llm_runtime: StructuredLLMRuntime,
-        request: WorkflowStartRequest,
-        prompt_ref: PromptReference | None = None,
-        manifest_path: Path | None = None,
-    ) -> None:
-        self._llm_runtime = llm_runtime
-        self._request = request
-        self._prompt_ref = prompt_ref or load_prompt_reference(
-            "work_analysis.analyze", manifest_path
-        )
-
-    def extract_work_facts(self, *, semantic_input: WorkAnalysisSemanticInputV1) -> object:
-        result = self._llm_runtime.invoke_structured(
-            prompt_ref=self._prompt_ref,
-            prompt_input=semantic_input,
-            output_schema=WORK_ANALYSIS_FACTS_OUTPUT_SCHEMA,
-            trace_context=self._trace("extract_work_facts"),
-        )
-        return result.structured_output
-
-    def resolve_relations(
-        self,
-        *,
-        semantic_input: WorkAnalysisSemanticInputV1,
-        work_facts: Sequence[WorkFactV1],
-    ) -> object:
-        result = self._llm_runtime.invoke_structured(
-            prompt_ref=self._prompt_ref,
-            prompt_input={**semantic_input, "work_facts": [dict(item) for item in work_facts]},
-            output_schema=WORK_ANALYSIS_RELATIONS_OUTPUT_SCHEMA,
-            trace_context=self._trace("resolve_relations"),
-        )
-        return result.structured_output
-
-    def assess_analysis_gaps(
-        self,
-        *,
-        semantic_input: WorkAnalysisSemanticInputV1,
-        work_facts: Sequence[WorkFactV1],
-        validated_relations: Sequence[WorkRelationV1],
-        relation_validation_ambiguities: Sequence[WorkAmbiguityV1],
-    ) -> object:
-        result = self._llm_runtime.invoke_structured(
-            prompt_ref=self._prompt_ref,
-            prompt_input={
-                **semantic_input,
-                "work_facts": [dict(item) for item in work_facts],
-                "validated_relations": [dict(item) for item in validated_relations],
-                "relation_validation_ambiguities": [
-                    dict(item) for item in relation_validation_ambiguities
-                ],
-            },
-            output_schema=WORK_ANALYSIS_GAPS_OUTPUT_SCHEMA,
-            trace_context=self._trace("assess_analysis_gaps"),
-        )
-        return result.structured_output
-
-    def _trace(self, node: str) -> ObservabilityContext:
-        request = self._request
-        return ObservabilityContext(
-            request_id=request.correlation.request_id,
-            command_id=request.correlation.command_id,
-            conversation_id=request.conversation_id,
-            run_id=request.run_id,
-            langgraph_thread_id=request.workflow_key,
-            llm_call_id=f"{request.run_id}:work_analysis.{node}.v2",
-        )
 
 
 class ProductionPlanningAnswerV2CandidateProvider:
@@ -211,5 +125,4 @@ class ProductionReviewV2CandidateProvider:
 __all__ = [
     "ProductionPlanningAnswerV2CandidateProvider",
     "ProductionReviewV2CandidateProvider",
-    "ProductionWorkAnalysisV2CandidateProvider",
 ]

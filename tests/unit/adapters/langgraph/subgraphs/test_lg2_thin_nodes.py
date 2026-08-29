@@ -14,8 +14,8 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.select
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.validate_relations_node import (
     validate_relations_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.work_analysis_operation_projection import (
-    project_work_analysis_operation_input,
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.validate_relations_projection import (
+    project_validate_relations_input,
 )
 
 
@@ -46,17 +46,19 @@ def test_retrieval_projection_is_operation_allowlisted():
 
 def test_work_analysis_projection_is_operation_allowlisted():
     state = {
-        "operation_inputs": {
-            "validate_relations": {"relation_candidates": []},
-            "planning": {"x": 1},
-        }
+        "fact_candidates": [],
+        "entity_relation_candidates": [],
+        "temporal_dependency_candidates": [],
+        "duplicate_conflict_candidates": [],
+        "current_source_relations": [],
+        "evidence_refs": [],
+        "planning": {"x": 1},
     }
-    assert project_work_analysis_operation_input(state, "validate_relations") == {
-        "relation_candidates": []
+    assert project_validate_relations_input(state) == {
+        "work_facts": [],
+        "entity_relation_candidates": [],
+        "temporal_dependency_candidates": [],
+        "duplicate_conflict_candidates": [],
+        "current_source_relations": [],
+        "allowed_evidence_refs": set(),
     }
-    try:
-        project_work_analysis_operation_input(state, "planning")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("foreign owner input must not project")

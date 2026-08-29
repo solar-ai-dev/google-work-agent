@@ -39,58 +39,12 @@ from google_work_agent.application.orchestration.solution_planning import (
     ANSWER_DRAFT_OUTPUT_SCHEMA,
     SolutionPlanningAgent,
 )
-from google_work_agent.application.orchestration.work_analysis import (
-    WORK_ANALYSIS_OUTPUT_SCHEMA,
-    WorkAnalysisAgent,
-)
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
 from google_work_agent.ports.llm import StructuredLLMResult
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
-
-
-class CanonicalOptionalInputWorkAnalysisAgent(WorkAnalysisAgent):
-    """Work Analysis entry point when no Retrieval invocation occurred."""
-
-    def invoke_without_retrieval(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        request: WorkflowStartRequest,
-        policy_confirmation_receipt_refs: list[str],
-        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
-    ) -> StructuredLLMResult:
-        prompt_input: dict[str, object] = {
-            "user_request": request.request_text,
-            "request_intent": request_intent,
-            "evidence": [],
-            "availability_results": [],
-            "policy_confirmation_receipt_refs": list(policy_confirmation_receipt_refs),
-        }
-        if confirmation_response is not None:
-            prompt_input["confirmation_response"] = dict(confirmation_response)
-        return self._llm_runtime.invoke_structured(
-            prompt_ref=self.analyze_prompt_ref,
-            prompt_input=prompt_input,
-            output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:analysis.analyze",
-            ),
-            semantic_validate=validate_work_analysis_without_retrieval,
-        )
-
-    @staticmethod
-    def build_without_retrieval(llm_result: StructuredLLMResult) -> WorkAnalysisResultV1:
-        result = validate_work_analysis_without_retrieval(llm_result.structured_output)
-        result["llm_provider_result"] = _analysis._provider_summary(llm_result)
-        return result
 
 
 class CanonicalOptionalInputPlanningAgent(SolutionPlanningAgent):
@@ -448,7 +402,6 @@ def _stable_unique(values: Iterable[object]) -> list[str]:
 
 __all__ = [
     "CanonicalOptionalInputPlanningAgent",
-    "CanonicalOptionalInputWorkAnalysisAgent",
     "assemble_plan_with_optional_analysis",
     "planning_evidence_projection",
     "validate_answer_with_optional_analysis",

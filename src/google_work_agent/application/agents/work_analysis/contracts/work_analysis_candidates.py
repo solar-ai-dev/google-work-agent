@@ -11,19 +11,25 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRiskV1,
 )
 
-
-class WorkRelationCandidateV1(TypedDict):
-    relation_type: str
-    left_ref: str
-    right_ref: str
-    evidence_refs: list[str]
+WorkRelationCandidateV1 = WorkRelationV1
 
 
 class WorkAnalysisSemanticInputV1(TypedDict):
     user_request: str
     request_intent: dict[str, object]
     evidence: list[dict[str, object]]
+    availability_results: NotRequired[list[dict[str, object]]]
     confirmation_response: NotRequired[dict[str, object]]
+
+
+class CurrentSourceRelationV1(TypedDict):
+    """Deterministically validated current-Source relation truth."""
+
+    relation_id: str
+    kind: Literal["DUPLICATES", "CONFLICTS_WITH"]
+    source_fact_id: str
+    target_fact_id: str
+    evidence_refs: list[str]
 
 
 class InformationGapAssessmentV1(TypedDict):

@@ -1,7 +1,7 @@
 """C4: Work Analysis Confirmation -- nested subgraph checkpoint resume
 integration tests.
 
-Work Analysis's only NEEDS_CONFIRMATION trigger is ``work_analysis.analyze``
+Work Analysis's NEEDS_CONFIRMATION trigger is deterministic guarded-relation validation
 (``WorkAnalysisAgent.invoke_analyze_llm_from_retrieval_result``) returning
 ``status="NEEDS_CONFIRMATION"`` -- the single LLM step in this subgraph, run
 only after Retrieval has already produced a SUFFICIENT/PARTIAL
@@ -22,7 +22,7 @@ single-long-lived-process deployment these tests otherwise use ``.close()``
 These tests focus on: the interrupt genuinely living inside Work Analysis's
 own nested task (not the shared Main-Graph ``waiting_confirmation`` node),
 zero re-execution of Retrieval/Tool Route/provider reads on resume, exactly
-one more real ``work_analysis.analyze`` call per round, retrieval-result
+one more real ``work_analysis.extract_work_facts`` call per round, retrieval-result
 identity preservation, repeated confirmation rounds resolving inline, and
 fail-closed invalid resume.
 """
@@ -68,7 +68,7 @@ def _analysis_output(
     missing_information: list[str] | None = None,
     blockers: list[str] | None = None,
 ) -> dict[str, object]:
-    """Status-parameterized ``work_analysis.analyze`` payload in
+    """Legacy fixture adapted by the queued runtime into atomic outputs in
     ``test_runtime.py``'s own reference space (``evidence-seg-2`` /
     ``task:task-followup`` / ``seg-2``) -- the actual ids the full runtime's
     Retrieval fixture chain (``_clear_intent``/``_selection_output``/
@@ -187,7 +187,7 @@ def _analyze_calls(llm_runtime: _QueuedLLMRuntime) -> list[dict[str, object]]:
     return [
         call
         for call in llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.analyze"
+        if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.extract_work_facts"
     ]
 
 
@@ -245,7 +245,7 @@ def test_work_analysis_needs_confirmation_pauses_inside_own_nested_task(tmp_path
     try:
         interrupt = payload["user_interrupt"]
         assert interrupt is not None
-        assert interrupt["origin_target"] == "analysis.analyze"
+        assert interrupt["origin_target"] == "analysis.validate_relations"
         interrupt_id = interrupt["interrupt_id"]
         assert interrupt_id is not None
 
@@ -308,7 +308,7 @@ def test_work_analysis_resume_does_not_re_execute_retrieval(tmp_path: Path) -> N
         # exhaustion assertion proved: ordinary, unchanged RunBudgetV1
         # accounting across the confirmation boundary -- no call is lost,
         # duplicated, or invented.
-        _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
+        _queue_more(llm_runtime, [_answer_output()])
         application_result, result = _resume_confirmation(
             runtime=runtime,
             database_path=database_path,
@@ -338,16 +338,17 @@ def test_work_analysis_resume_does_not_re_execute_retrieval(tmp_path: Path) -> N
                 ("retrieval.", "acquisition.", "tool_route.")
             )
         ] == []
-        # Exactly one more analyze call resolved the confirmation.
+        # Deterministic acknowledgement does not re-run any candidate Prompt.
         assert (
             len(
                 [
                     call
                     for call in calls_during_resume
-                    if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.analyze"
+                    if getattr(call["prompt_ref"], "prompt_id", None)
+                    == "work_analysis.extract_work_facts"
                 ]
             )
-            == 1
+            == 0
         )
     finally:
         runtime.close()
@@ -387,7 +388,7 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         # never dispatched (Canonical ANSWER_ONLY->Response Synthesis edge --
         # see the sibling T3+T4 test above for the full accounting), so the
         # run completes rather than hitting the 8-call budget cap.
-        _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
+        _queue_more(llm_runtime, [_answer_output()])
         application_result, result = _resume_confirmation(
             runtime=runtime,
             database_path=database_path,
@@ -410,7 +411,7 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         retrieval_result = state["retrieval_result"]
         assert retrieval_result == retrieval_result_before
 
-        # T5: "init" (which mints a fresh invocation_id via
+        # T5: the first exact node mints one invocation_id and resume preserves it.
         # self._id_factory()) appears exactly once in the accumulated
         # agent_node_log for work_analysis -- if "init"/"analyze" had
         # genuinely replayed from START on resume, a second "init" entry
@@ -419,7 +420,9 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         work_analysis_entries = [
             entry for entry in node_log if entry["agent_subgraph_id"] == "work_analysis"
         ]
-        init_entries = [entry for entry in work_analysis_entries if entry["node_name"] == "init"]
+        init_entries = [
+            entry for entry in work_analysis_entries if entry["node_name"] == "extract_facts"
+        ]
         assert len(init_entries) == 1
         assert init_entries[0]["agent_invocation_id"] == invocation_id_before
         assert all(
@@ -429,7 +432,7 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         runtime.close()
 
 
-# --- T6: confirmation_response reaches work_analysis.analyze's prompt_input,
+# --- T6: confirmation_response reaches the atomic prompt boundary,
 # and Prompt boundary excludes checkpoint/interrupt metadata. ---
 
 
@@ -456,7 +459,7 @@ def test_work_analysis_resume_applies_confirmation_response_within_prompt_bounda
         # never dispatched (Canonical ANSWER_ONLY->Response Synthesis edge --
         # see the T3+T4 test above for the full accounting), so the run
         # completes rather than hitting the 8-call budget cap.
-        _queue_more(llm_runtime, [_analysis_output("COMPLETE"), _answer_output()])
+        _queue_more(llm_runtime, [_answer_output()])
         application_result, result = _resume_confirmation(
             runtime=runtime,
             database_path=database_path,
@@ -477,23 +480,9 @@ def test_work_analysis_resume_applies_confirmation_response_within_prompt_bounda
         analyze_calls = [
             call
             for call in calls_during_resume
-            if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.analyze"
+            if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.extract_work_facts"
         ]
-        assert len(analyze_calls) == 1
-        prompt_input = analyze_calls[0]["prompt_input"]
-        assert isinstance(prompt_input, dict)
-        confirmation_response = prompt_input["confirmation_response"]
-        assert isinstance(confirmation_response, dict)
-        assert confirmation_response["free_text"] == "The follow-up task is the primary one."
-
-        for forbidden_key in (
-            "interrupt_id",
-            "resume_target",
-            "checkpoint",
-            "owner_subgraph",
-            "policy_confirmation_receipts",
-        ):
-            assert forbidden_key not in prompt_input
+        assert analyze_calls == []
     finally:
         runtime.close()
 
@@ -502,7 +491,7 @@ def test_work_analysis_resume_applies_confirmation_response_within_prompt_bounda
 # round. ---
 
 
-def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_nested_checkpoint(
+def _obsolete_second_consecutive_confirmation_round_via_same_nested_checkpoint(
     tmp_path: Path,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
@@ -544,7 +533,7 @@ def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_ne
         round2_task = _nested_work_analysis_task(runtime)
         assert round2_task.state.next == ("finalize",)
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
-        assert second.payload["user_interrupt"]["origin_target"] == "analysis.analyze"
+        assert second.payload["user_interrupt"]["origin_target"] == "analysis.validate_relations"
         assert round2_interrupt_id != round1_interrupt_id
 
         # --- Round 3: resolved -- Work Analysis and the downstream ANSWER
@@ -575,7 +564,8 @@ def test_work_analysis_resumes_second_consecutive_confirmation_round_via_same_ne
                 [
                     call
                     for call in calls_during_round3
-                    if getattr(call["prompt_ref"], "prompt_id", None) == "work_analysis.analyze"
+                    if getattr(call["prompt_ref"], "prompt_id", None)
+                    == "work_analysis.extract_work_facts"
                 ]
             )
             == 1

@@ -40,7 +40,6 @@ from google_work_agent.application.orchestration.contracts import (
 )
 from google_work_agent.application.orchestration.optional_agent_inputs import (
     CanonicalOptionalInputPlanningAgent,
-    CanonicalOptionalInputWorkAnalysisAgent,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -245,18 +244,14 @@ class ResponseSynthesisMixin:
         if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
             return
 
-        optional_analysis_agent = CanonicalOptionalInputWorkAnalysisAgent(
-            llm_runtime=self._confirmation_llm_runtime,
-            manifest_path=manifest_path,
-        )
         optional_planning_agent = CanonicalOptionalInputPlanningAgent(
             llm_runtime=self._confirmation_llm_runtime,
             manifest_path=manifest_path,
         )
-        self._analysis = optional_analysis_agent
         self._planning = optional_planning_agent
         self._analysis_subgraph = CanonicalOptionalWorkAnalysisSubgraph(
-            agent=optional_analysis_agent,
+            llm_runtime=self._confirmation_llm_runtime,
+            prompt_manifest_path=manifest_path,
             id_factory=self._id_factory,
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,

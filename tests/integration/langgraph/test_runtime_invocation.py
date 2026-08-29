@@ -75,6 +75,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
+from google_work_agent.ports.llm import LLMInvocationError
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -237,7 +238,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     assert resumed is not None
     result = cast(Any, resumed)
     assert result.outcome is WorkflowOutcome.COMPLETED
-    assert len(resumed_llm_runtime.calls) == 8
+    assert len(resumed_llm_runtime.calls) == 11
 
     # The same-owner checkpoint reruns exactly the two independent Request
     # Understanding responsibilities before continuing downstream.
@@ -413,7 +414,7 @@ def _materialize_resume_target(runtime: LangGraphWorkflowRuntime, admission: obj
     return materialized
 
 
-def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_same_nested_checkpoint(
+def test_langgraph_runtime_fails_closed_when_consecutive_confirmation_exhausts_normal_budget(
     tmp_path: Path,
 ) -> None:
     """I1 follow-up: a resolved-but-still-ambiguous confirmation answer must
@@ -526,24 +527,34 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         default_tasklist_id="task-list-default",
         id_prefix="round3",
     )
-    # Canonical NORMAL=14 accounts for both independent responsibilities in
-    # every round without forcing them back into one broad prompt.
-    _, completed = _resume_through_application(
-        runtime=round3_runtime,
-        database_path=database_path,
-        resume_payload={
-            "schema_version": 1,
-            "interrupt_id": round2_interrupt_id,
-            "response_kind": "FREE_TEXT",
-            "selected_option": None,
-            "free_text": "round-2 answer, resolves it.",
-        },
-        resume_kind="CONFIRMATION",
-        command_id="command-3",
+    # The two prior Request Understanding rounds consumed four calls. The
+    # resolved round reaches all four exact Work Analysis prompts at the
+    # NORMAL=14 ceiling, then Planning must fail closed instead of exceeding
+    # the profile budget.
+    with pytest.raises(LLMInvocationError, match="PROFILE_LLM_LIMIT_EXHAUSTED"):
+        _resume_through_application(
+            runtime=round3_runtime,
+            database_path=database_path,
+            resume_payload={
+                "schema_version": 1,
+                "interrupt_id": round2_interrupt_id,
+                "response_kind": "FREE_TEXT",
+                "selected_option": None,
+                "free_text": "round-2 answer, resolves it.",
+            },
+            resume_kind="CONFIRMATION",
+            command_id="command-3",
+        )
+    assert (
+        len(
+            [
+                call
+                for call in round3_llm_runtime.calls
+                if getattr(call["prompt_ref"], "prompt_id", "").startswith("work_analysis.")
+            ]
+        )
+        == 4
     )
-    assert completed is not None
-    assert completed.outcome is WorkflowOutcome.COMPLETED
-    assert len(round3_llm_runtime.calls) == 8
 
     round2_reclassify_input = cast(dict[str, object], round3_llm_runtime.calls[0]["prompt_input"])
     round2_reclassify_response = cast(
@@ -556,7 +567,7 @@ def test_langgraph_runtime_resumes_second_consecutive_confirmation_round_via_sam
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert run_row[0] == "COMPLETED"
+        assert run_row[0] == "PLANNING"
         assert run_row[1] == "thread-1"
     finally:
         connection.close()

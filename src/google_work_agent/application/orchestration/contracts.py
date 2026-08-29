@@ -479,7 +479,7 @@ CONFIRMATION_ORIGIN_TARGETS = frozenset(
         "tool_route.finalize",
         "acquisition.plan_sources",
         "retrieval.assess_sufficiency",
-        "analysis.analyze",
+        "analysis.validate_relations",
         "planning.answer_only",
         "planning.draft_plan",
         "review.inspect",

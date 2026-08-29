@@ -1,14 +1,33 @@
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.work_analysis_operation_projection import (
-    project_work_analysis_operation_input,
+# ruff: noqa: E501
+
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.resolve_temporal_dependencies_projection import (
+    project_resolve_temporal_dependencies_input,
 )
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
 from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import (
     resolve_temporal_dependencies,
 )
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 
-def resolve_temporal_dependencies_node(state: dict[str, object]) -> dict[str, object]:
+def resolve_temporal_dependencies_node(
+    state: WorkAnalysisStateV2,
+    *,
+    llm_runtime: StructuredLLMRuntime,
+    prompt_ref: PromptReference,
+    trace_context: ObservabilityContext,
+    confirmation_response: dict[str, object] | None = None,
+) -> WorkAnalysisStateV2:
     return {
-        "temporal_relations": resolve_temporal_dependencies(
-            **project_work_analysis_operation_input(state, "resolve_temporal_dependencies")
+        "temporal_dependency_candidates": resolve_temporal_dependencies(
+            **project_resolve_temporal_dependencies_input(state),
+            llm_runtime=llm_runtime,
+            prompt_ref=prompt_ref,
+            trace_context=trace_context,
+            confirmation_response=confirmation_response,
         )
     }

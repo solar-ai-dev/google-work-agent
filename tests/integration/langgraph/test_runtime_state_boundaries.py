@@ -359,7 +359,7 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
 
     try:
         result = start_with_admission(runtime, database_path, _start_request())
-        assert result.payload["user_interrupt"]["origin_target"] == "analysis.analyze"
+        assert result.payload["user_interrupt"]["origin_target"] == "analysis.validate_relations"
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1"),  # noqa: SLF001
             subgraphs=True,

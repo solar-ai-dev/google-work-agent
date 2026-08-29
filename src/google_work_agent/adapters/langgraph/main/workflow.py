@@ -54,7 +54,7 @@ from google_work_agent.adapters.langgraph.subgraphs.three_stage import (
     ThreeStageReviewSubgraph,
     ThreeStageTwoSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis_workflow import (
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
     WorkAnalysisSubgraph,
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
@@ -127,7 +127,6 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
-from google_work_agent.application.orchestration.work_analysis import WorkAnalysisAgent
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
@@ -419,10 +418,6 @@ class WorkflowRuntimeCore:
             timezone_provider=timezone_provider or (lambda: "Asia/Seoul"),
         )
         self._evidence_store = RunScopedEvidenceStore()
-        self._analysis = WorkAnalysisAgent(
-            llm_runtime=llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
         self._planning = SolutionPlanningAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
@@ -712,7 +707,8 @@ class WorkflowRuntimeCore:
         self._acquisition_subgraph = entry_subgraphs.acquisition
         self._context_subgraph = entry_subgraphs.context_retrieval
         self._analysis_subgraph = WorkAnalysisSubgraph(
-            agent=self._analysis,
+            llm_runtime=self._llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,

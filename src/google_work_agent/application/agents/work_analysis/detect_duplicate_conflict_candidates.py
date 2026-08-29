@@ -1,53 +1,120 @@
-"""Canonical Work Analysis semantic operation: detect_duplicate_conflict_candidates."""
+"""Canonical Work Analysis candidate operation: duplicate/conflict detection."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import cast
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
-    WorkAnalysisSemanticInputV1,
     WorkRelationCandidateV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
 )
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    StructuredLLMRuntime,
+)
+from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
-_GUARDED_TYPES = frozenset({"DUPLICATES", "CONFLICTS_WITH"})
+_GUARDED_KINDS = ("DUPLICATES", "CONFLICTS_WITH")
+DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA = OutputSchemaDefinition(
+    schema_version="duplicate-conflict-candidates-v1",
+    json_schema={
+        "type": "object",
+        "required": ["relation_candidates"],
+        "additionalProperties": False,
+        "properties": {
+            "relation_candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": [
+                        "relation_id",
+                        "kind",
+                        "source_fact_id",
+                        "target_fact_id",
+                        "evidence_refs",
+                    ],
+                    "additionalProperties": False,
+                    "properties": {
+                        "relation_id": {"type": "string", "minLength": 1},
+                        "kind": {"enum": list(_GUARDED_KINDS)},
+                        "source_fact_id": {"type": "string", "minLength": 1},
+                        "target_fact_id": {"type": "string", "minLength": 1},
+                        "evidence_refs": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 1},
+                        },
+                    },
+                },
+            }
+        },
+    },
+)
 
 
 def detect_duplicate_conflict_candidates(
     *,
-    semantic_input: WorkAnalysisSemanticInputV1,
     work_facts: Sequence[WorkFactV1],
-    produce: Callable[[WorkAnalysisSemanticInputV1, Sequence[WorkFactV1]], object],
+    entity_relations: Sequence[WorkRelationCandidateV1],
+    evidence: list[dict[str, object]],
+    source_state: Mapping[str, object],
+    llm_runtime: StructuredLLMRuntime,
+    prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
+    trace_context: ObservabilityContext,
+    confirmation_response: dict[str, object] | None = None,
 ) -> list[WorkRelationCandidateV1]:
-    """Produce guarded duplicate/conflict candidates; deterministic validation owns promotion."""
-    raw = produce(semantic_input, work_facts)
-    if (
-        not isinstance(raw, Mapping)
-        or set(raw) != {"relation_candidates"}
-        or not isinstance(raw["relation_candidates"], Sequence)
-    ):
-        raise ValueError(
-            "detect_duplicate_conflict_candidates requires exactly relation_candidates"
-        )
+    """Produce guarded candidates only; deterministic validation owns promotion."""
+    prompt_input: dict[str, object] = {
+        "work_facts": [dict(fact) for fact in work_facts],
+        "entity_relations": [dict(item) for item in entity_relations],
+        "evidence": list(evidence),
+        "source_state": dict(source_state),
+    }
+    if confirmation_response is not None:
+        prompt_input["confirmation_response"] = dict(confirmation_response)
     fact_ids = {fact["fact_id"] for fact in work_facts}
-    result: list[WorkRelationCandidateV1] = []
-    for item in raw["relation_candidates"]:
-        if not isinstance(item, Mapping) or item.get("relation_type") not in _GUARDED_TYPES:
-            continue
-        left, right, refs = item.get("left_ref"), item.get("right_ref"), item.get("evidence_refs")
-        if left not in fact_ids or right not in fact_ids or left == right:
-            raise ValueError("guarded relation operands are invalid")
-        if not isinstance(refs, list) or any(ref not in allowed_evidence_refs for ref in refs):
-            raise ValueError("guarded relation evidence is outside current retrieval evidence")
-        result.append(
-            {
-                "relation_type": str(item["relation_type"]),
-                "left_ref": str(left),
-                "right_ref": str(right),
-                "evidence_refs": list(refs),
-            }
+
+    def validate(value: object) -> object:
+        errors = validate_output_schema(
+            value, DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA.json_schema
         )
-    return result
+        if errors:
+            raise ValueError(f"invalid duplicate/conflict candidate schema: {'; '.join(errors)}")
+        seen: set[str] = set()
+        root = cast(Mapping[str, object], value)
+        for item in cast(list[Mapping[str, object]], root["relation_candidates"]):
+            relation_id = cast(str, item["relation_id"])
+            source = cast(str, item["source_fact_id"])
+            target = cast(str, item["target_fact_id"])
+            refs = cast(list[str], item["evidence_refs"])
+            if (
+                relation_id in seen
+                or source == target
+                or source not in fact_ids
+                or target not in fact_ids
+            ):
+                raise ValueError("guarded relation identity or operands are invalid")
+            if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_evidence_refs):
+                raise ValueError("guarded relation evidence is outside current RetrievalResultV1")
+            seen.add(relation_id)
+        return value
+
+    result = llm_runtime.invoke_structured(
+        prompt_ref=prompt_ref,
+        prompt_input=prompt_input,
+        output_schema=DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA,
+        trace_context=trace_context,
+        semantic_validate=validate,
+    )
+    root = cast(dict[str, object], validate(result.structured_output))
+    return [
+        cast(WorkRelationCandidateV1, dict(item))
+        for item in cast(list[dict[str, object]], root["relation_candidates"])
+    ]
+
+
+__all__ = ["DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA", "detect_duplicate_conflict_candidates"]

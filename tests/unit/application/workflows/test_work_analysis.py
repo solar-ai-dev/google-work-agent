@@ -391,7 +391,7 @@ def test_needs_confirmation_stays_inside_analysis_result_without_user_interrupt(
     assert result["status"] == AnalysisResult.NEEDS_CONFIRMATION.value
     assert result["confirmation"] is not None
     assert "user_interrupt" not in state_update
-    assert clarification["origin_target"] == "analysis.analyze"
+    assert clarification["origin_target"] == "analysis.validate_relations"
     assert clarification["question"] == cast(dict[str, object], result["confirmation"])["question"]
 
 

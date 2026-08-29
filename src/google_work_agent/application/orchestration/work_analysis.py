@@ -519,7 +519,7 @@ def build_work_analysis_clarification_question(
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     return build_clarification_question_v1(
-        origin_target="analysis.analyze",
+        origin_target="analysis.validate_relations",
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
         known_context_summary=request_intent["goal"],

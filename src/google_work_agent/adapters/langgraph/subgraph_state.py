@@ -22,6 +22,15 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
 )
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
+    CurrentSourceRelationV1,
+    WorkRelationCandidateV1,
+)
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAmbiguityV1,
+    WorkFactV1,
+    WorkRelationV1,
+)
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
@@ -193,6 +202,18 @@ class ContextRetrievalLocalState(GraphState):
 
 
 class WorkAnalysisLocalState(GraphState):
+    user_request: NotRequired[str]
+    evidence: NotRequired[list[EvidenceDraftV1]]
+    evidence_refs: NotRequired[list[str]]
+    availability_results: NotRequired[list[dict[str, object]]]
+    confirmation_response: NotRequired[dict[str, object]]
+    current_source_relations: NotRequired[list[CurrentSourceRelationV1]]
+    fact_candidates: NotRequired[list[WorkFactV1]]
+    entity_relation_candidates: NotRequired[list[WorkRelationCandidateV1]]
+    temporal_dependency_candidates: NotRequired[list[WorkRelationCandidateV1]]
+    duplicate_conflict_candidates: NotRequired[list[WorkRelationCandidateV1]]
+    validated_relations: NotRequired[list[WorkRelationV1]]
+    relation_validation_ambiguities: NotRequired[list[WorkAmbiguityV1]]
     __analysis_agent_local__: NotRequired[AgentLocalStateV1]
     # Same purpose as ContextRetrievalLocalState's retry marker: routes the
     # self-loop back into "finalize" as a fresh task.

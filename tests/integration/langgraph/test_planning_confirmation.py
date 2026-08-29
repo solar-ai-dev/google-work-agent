@@ -504,7 +504,7 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
 
         round2_task = _nested_planning_task(runtime)
         assert round2_task.state.next == ("finalize",)
-        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 9
+        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 12
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
         assert second.payload["user_interrupt"]["origin_target"] == "planning.answer_only"
         assert round2_interrupt_id != round1_interrupt_id

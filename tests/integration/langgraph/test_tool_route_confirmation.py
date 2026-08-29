@@ -43,6 +43,7 @@ from tests.integration.langgraph.test_runtime import (
     _llm_result,
     _make_runtime,
     _make_runtime_with_llm,
+    _PendingLegacyAnalysisState,
     _PendingPlanActionsState,
     _replace_result_aliases,
     _review_output,
@@ -53,6 +54,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_write_request,
     _sufficiency_output,
     _synthesize_action_argument_candidate,
+    _synthesize_atomic_work_analysis,
     _synthesize_retrieval_query_plan,
     _write_plan_output,
     connect_sqlite,
@@ -87,6 +89,7 @@ class _ToolRouteQueuedLLMRuntime:
         self.calls: list[dict[str, object]] = []
         self._classify_intent = classify_intent
         self._pending_plan_actions_state = _PendingPlanActionsState()
+        self._pending_legacy_analysis_state = _PendingLegacyAnalysisState()
         self._segment_id_aliases: dict[str, str] = {}
 
     def invoke_structured(self, **kwargs: object) -> Any:
@@ -131,6 +134,14 @@ class _ToolRouteQueuedLLMRuntime:
             )
             if is_v2_initial:
                 return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
+        atomic_analysis = _synthesize_atomic_work_analysis(
+            prompt_id=prompt_id,
+            prompt_input=cast(dict[str, object], kwargs["prompt_input"]),
+            queued=self._queued,
+            state=self._pending_legacy_analysis_state,
+        )
+        if atomic_analysis is not None:
+            return atomic_analysis
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_route = cast(dict[str, object], prompt_input["output_route"])

@@ -1,4 +1,4 @@
-"""Allowlisted projection of one Work Analysis operation input."""
+"""Temporary allowlisted projection for the #116-owned successor operations."""
 
 from __future__ import annotations
 
@@ -6,11 +6,6 @@ from collections.abc import Mapping
 
 _ALLOWED = frozenset(
     {
-        "extract_work_facts",
-        "resolve_entity_relations",
-        "resolve_temporal_dependencies",
-        "detect_duplicate_conflict_candidates",
-        "validate_relations",
         "assess_information_gaps",
         "assess_operational_risks",
         "assemble_work_analysis",
