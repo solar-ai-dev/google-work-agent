@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestGoalCandidateV1,
@@ -17,6 +18,7 @@ from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
@@ -122,36 +124,7 @@ def identify_goal(
 
 
 def _validate_goal_candidate(value: object) -> RequestGoalCandidateV1:
-    if not isinstance(value, dict):
-        raise ValueError("request goal candidate must be an object")
-    expected = {
-        "goal",
-        "completion_conditions",
-        "constraints",
-        "requested_effect_hints",
-        "requested_resource_hints",
-        "analysis_requirement",
-    }
-    if set(value) != expected:
-        raise ValueError("request goal candidate fields are invalid")
-    candidate = {**value, "schema_version": 2, "ambiguity": _EMPTY_AMBIGUITY}
-    from google_work_agent.application.agents.request_understanding.validate_intent import (
-        validate_intent,
-    )
-
-    validated = validate_intent(candidate)
-    return {
-        "goal": validated["goal"],
-        "completion_conditions": validated["completion_conditions"],
-        "constraints": validated["constraints"],
-        "requested_effect_hints": validated["requested_effect_hints"],
-        "requested_resource_hints": validated["requested_resource_hints"],
-        "analysis_requirement": validated["analysis_requirement"],
-    }
-
-
-_EMPTY_AMBIGUITY = {
-    "requires_confirmation": False,
-    "reason_codes": [],
-    "missing_fields": [],
-}
+    errors = validate_output_schema(value, IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema)
+    if errors:
+        raise ValueError(f"request goal candidate is invalid: {'; '.join(errors)}")
+    return cast(RequestGoalCandidateV1, value)

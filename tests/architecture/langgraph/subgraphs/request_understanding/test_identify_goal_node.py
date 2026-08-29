@@ -39,6 +39,15 @@ def test_identify_goal_prompt_boundary_is_current_run_only() -> None:
         assert forbidden not in source
 
 
+def test_identify_goal_owns_goal_only_and_does_not_prevalidate_final_intent() -> None:
+    operation = SRC / "application/agents/request_understanding/identify_goal.py"
+    source = operation.read_text(encoding="utf-8")
+
+    assert "validate_intent" not in _calls(operation)
+    assert "_EMPTY_AMBIGUITY" not in source
+    assert '"ambiguity"' not in source
+
+
 def test_request_understanding_broad_production_authority_is_absent() -> None:
     assert not (SRC / "application/orchestration/request_understanding.py").exists()
     production = "\n".join(path.read_text(encoding="utf-8") for path in SRC.rglob("*.py"))
