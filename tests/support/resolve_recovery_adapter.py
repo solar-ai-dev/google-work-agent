@@ -84,7 +84,10 @@ class ResolveMismatchRecoveryService:
                 expected_version=command.expected_run_version,
                 command_id=command.command_id,
                 request_hash=command.request_hash,
+                recovery_context_version=0 if context is None else int(context["version"]),
                 resolution=command.resolution_kind,
+                target_kind="ACTION",
+                target_action_id=command.action_id,
             )
         )
         return SimpleNamespace(

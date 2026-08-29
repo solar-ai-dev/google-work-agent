@@ -96,7 +96,9 @@ def test_contract_recovery_recheck_without_new_durable_fact_makes_no_progress(
             expected_version=1,
             command_id="resolve-recovery-1",
             request_hash="r2" * 32,
+            recovery_context_version=0,
             resolution=RecoveryResolution.RECHECK,
+            target_kind="RUN",
         )
     )
 

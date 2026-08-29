@@ -36,6 +36,7 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.recovery.transitions.resolve_recovery import (
+    allowed_recovery_resolutions,
     transition_resolve_recovery,
 )
 from google_work_agent.domain.results import CommandResult, ResultCode
@@ -57,8 +58,9 @@ class ResolveRecoveryCommandV1:
     expected_version: int
     command_id: str
     request_hash: str
+    recovery_context_version: int
     resolution: RecoveryResolution
-    target_kind: Literal["RUN", "ACTION"] | None = None
+    target_kind: Literal["RUN", "ACTION"]
     target_action_id: str | None = None
 
 
@@ -73,6 +75,88 @@ class ResolveRecoveryResult:
     result_kind: str | None = None
     plan_id: str | None = None
     handoff_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryEligibilityFacts:
+    recovered_action_status: ActionStatusV1 | None
+    cancel_intent_active: bool
+    unresolved_external_effect_count: int
+    irrecoverable_confirmed: bool
+
+
+def derive_recovery_eligibility(
+    unit_of_work: UnitOfWork, context: RecoveryContextV1
+) -> RecoveryEligibilityFacts:
+    """Derive resolution safety only from current durable server-owned facts."""
+    action_id = context.get("action_id")
+    action = None if action_id is None else unit_of_work.actions.get(str(action_id))
+    recovered_action_status = None if action is None else ActionStatusV1(action.status)
+    unresolved_external_effect_count = sum(
+        candidate.status
+        in {
+            ActionStatusV1.EXECUTING.value,
+            ActionStatusV1.UNKNOWN_RESULT.value,
+            ActionStatusV1.EXECUTED.value,
+        }
+        for plan in current_plan_tuple(unit_of_work.plans, context["run_id"])
+        for candidate in unit_of_work.actions.list_for_plan(plan.id)
+    )
+    cancel_intent_active = has_durable_cancel_intent(unit_of_work.cancel_intents, context["run_id"])
+    return RecoveryEligibilityFacts(
+        recovered_action_status=recovered_action_status,
+        cancel_intent_active=cancel_intent_active,
+        unresolved_external_effect_count=unresolved_external_effect_count,
+        irrecoverable_confirmed=(
+            context["reason"] != "UNKNOWN_RESULT" and unresolved_external_effect_count == 0
+        ),
+    )
+
+
+def project_allowed_recovery_resolutions(
+    unit_of_work: UnitOfWork, context: RecoveryContextV1
+) -> tuple[RecoveryResolution, ...]:
+    """Project the Domain eligibility authority from the current durable snapshot."""
+    facts = derive_recovery_eligibility(unit_of_work, context)
+    return allowed_recovery_resolutions(
+        reason=context["reason"],
+        recovered_action_status=facts.recovered_action_status,
+        cancel_intent_active=facts.cancel_intent_active,
+        unresolved_external_effect_count=facts.unresolved_external_effect_count,
+        irrecoverable_confirmed=facts.irrecoverable_confirmed,
+    )
+
+
+def materialize_current_resolve_recovery_command(
+    unit_of_work_factory: Callable[[], UnitOfWork],
+    *,
+    run_id: str,
+    expected_version: int,
+    command_id: str,
+    request_hash: str,
+    resolution: RecoveryResolution,
+    requested_target_kind: Literal["RUN", "ACTION"] | None = None,
+    requested_target_action_id: str | None = None,
+) -> ResolveRecoveryCommandV1:
+    """Bind an external request to the current durable RecoveryContext version."""
+    with unit_of_work_factory() as unit_of_work:
+        context = unit_of_work.recovery_contexts.load_current_context(run_id)
+    if context is None:
+        raise RuntimeError("ResolveRecovery requires a durable RecoveryContextV1")
+    target_kind = context["scope"] if requested_target_kind is None else requested_target_kind
+    target_action_id = (
+        context.get("action_id") if requested_target_kind is None else requested_target_action_id
+    )
+    return ResolveRecoveryCommandV1(
+        run_id=run_id,
+        expected_version=expected_version,
+        command_id=command_id,
+        request_hash=request_hash,
+        recovery_context_version=int(context["version"]),
+        resolution=resolution,
+        target_kind=target_kind,
+        target_action_id=None if target_action_id is None else str(target_action_id),
+    )
 
 
 class ResolveRecoveryHandler:
@@ -126,6 +210,18 @@ class ResolveRecoveryHandler:
                 self._finish_result(unit_of_work, command, result, now_ms)
                 unit_of_work.commit()
                 return result
+            if int(context["version"]) != command.recovery_context_version:
+                result = ResolveRecoveryResult(
+                    False,
+                    ResultCode.VERSION_CONFLICT.value,
+                    run.status.value,
+                    run.version,
+                    tuple(item.value for item in next_allowed_run_commands(run.status)),
+                    "recovery_context_version does not match current context version",
+                )
+                self._finish_result(unit_of_work, command, result, now_ms)
+                unit_of_work.commit()
+                return result
             if not self._target_matches_context(command, context):
                 result = ResolveRecoveryResult(
                     False,
@@ -139,13 +235,7 @@ class ResolveRecoveryHandler:
                 unit_of_work.commit()
                 return result
 
-            recovered_action_status = self._recovered_action_status(unit_of_work, context)
-            unresolved_external_effect_count = self._unresolved_external_effect_count(
-                unit_of_work, command.run_id
-            )
-            cancel_intent_active = has_durable_cancel_intent(
-                unit_of_work.cancel_intents, command.run_id
-            )
+            eligibility = derive_recovery_eligibility(unit_of_work, context)
             recheck_input_hash = current_recheck_input_hash(unit_of_work, context)
             recheck_input_changed = recheck_input_hash != context.get("last_recheck_input_hash")
             decision = transition_resolve_recovery(
@@ -154,15 +244,13 @@ class ResolveRecoveryHandler:
                 reason=context["reason"],
                 pre_recovery_status=RunStatusV1(context["pre_recovery_status"]),
                 recheck_input_changed=recheck_input_changed,
-                recovered_action_status=recovered_action_status,
+                recovered_action_status=eligibility.recovered_action_status,
                 validated_resume_status=self._validated_resume_status(
                     unit_of_work, context, recheck_input_changed
                 ),
-                cancel_intent_active=cancel_intent_active,
-                unresolved_external_effect_count=unresolved_external_effect_count,
-                irrecoverable_confirmed=(
-                    context["reason"] != "UNKNOWN_RESULT" and unresolved_external_effect_count == 0
-                ),
+                cancel_intent_active=eligibility.cancel_intent_active,
+                unresolved_external_effect_count=eligibility.unresolved_external_effect_count,
+                irrecoverable_confirmed=eligibility.irrecoverable_confirmed,
             )
             if not decision.applied:
                 if command.resolution is RecoveryResolution.RECHECK and recheck_input_changed:
@@ -290,8 +378,6 @@ class ResolveRecoveryHandler:
     def _target_matches_context(
         command: ResolveRecoveryCommandV1, context: RecoveryContextV1
     ) -> bool:
-        if command.target_kind is None:
-            return command.target_action_id is None
         if command.target_kind != context["scope"]:
             return False
         expected_action_id = context.get("action_id")
@@ -300,17 +386,6 @@ class ResolveRecoveryHandler:
             if command.target_kind == "RUN"
             else command.target_action_id == expected_action_id
         )
-
-    @staticmethod
-    def _recovered_action_status(
-        unit_of_work: UnitOfWork,
-        context: RecoveryContextV1,
-    ) -> ActionStatusV1 | None:
-        action_id = context.get("action_id")
-        if action_id is None:
-            return None
-        action = unit_of_work.actions.get(str(action_id))
-        return None if action is None else ActionStatusV1(action.status)
 
     def _validated_resume_status(
         self,
@@ -441,19 +516,6 @@ class ResolveRecoveryHandler:
         )
         unit_of_work.plans.insert_revision(corrective)
         return corrective, "CORRECTIVE_PLAN_REQUIRED"
-
-    @staticmethod
-    def _unresolved_external_effect_count(unit_of_work: UnitOfWork, run_id: str) -> int:
-        return sum(
-            action.status
-            in {
-                ActionStatusV1.EXECUTING.value,
-                ActionStatusV1.UNKNOWN_RESULT.value,
-                ActionStatusV1.EXECUTED.value,
-            }
-            for plan in current_plan_tuple(unit_of_work.plans, run_id)
-            for action in unit_of_work.actions.list_for_plan(plan.id)
-        )
 
     @staticmethod
     def _settle_terminal_children(

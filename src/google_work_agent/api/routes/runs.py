@@ -34,8 +34,8 @@ from google_work_agent.application.use_cases.recovery.project_recovery_options i
     ProjectRecoveryOptionsHandler,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
+    materialize_current_resolve_recovery_command,
 )
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
@@ -414,7 +414,8 @@ def resume_run(
             resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
             schedule_run_execution=dependencies.schedule_run_execution,
         )(
-            ResolveRecoveryCommandV1(
+            materialize_current_resolve_recovery_command(
+                dependencies.unit_of_work_factory,
                 run_id=run_id,
                 expected_version=payload.expected_version,
                 command_id=payload.command_id,
@@ -530,7 +531,8 @@ def resolve_recovery(
         schedule_run_execution=dependencies.schedule_run_execution,
     )
     result = handler(
-        ResolveRecoveryCommandV1(
+        materialize_current_resolve_recovery_command(
+            dependencies.unit_of_work_factory,
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ResolveRecoveryRequestV1",
@@ -539,8 +541,8 @@ def resolve_recovery(
             run_id=run_id,
             expected_version=payload.expected_version,
             resolution=RecoveryResolution(payload.resolution_kind),
-            target_kind=payload.target.target_kind,
-            target_action_id=getattr(payload.target, "action_id", None),
+            requested_target_kind=payload.target.target_kind,
+            requested_target_action_id=getattr(payload.target, "action_id", None),
         ),
     )
     response.status_code = (

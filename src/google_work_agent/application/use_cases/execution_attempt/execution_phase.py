@@ -750,7 +750,12 @@ class WriteExecutionPhaseCoordinator:
                         "evidence_fingerprint": evidence_fingerprint,
                     }
                 ),
+                recovery_context_version=int(context["version"]),
                 resolution=RecoveryResolution.RECHECK,
+                target_kind=context["scope"],
+                target_action_id=(
+                    None if context.get("action_id") is None else str(context["action_id"])
+                ),
             )
         )
         return bool(result.applied), bool(result.handoff_id)

@@ -6,7 +6,11 @@ from dataclasses import dataclass
 
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.recovery.guards.resolve_recovery import guard_resolve_recovery
-from google_work_agent.domain.recovery.model import RecoveryReasonV1, RecoveryResolution
+from google_work_agent.domain.recovery.model import (
+    RECOVERY_RESOLUTION_MATRIX,
+    RecoveryReasonV1,
+    RecoveryResolution,
+)
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 
@@ -17,6 +21,46 @@ class RecoveryResolutionDecision:
     result_code: ResultCode
     current_status: RunStatusV1
     conflict_detail: str | None = None
+
+
+def allowed_recovery_resolutions(
+    *,
+    reason: RecoveryReasonV1,
+    recovered_action_status: ActionStatusV1 | None = None,
+    cancel_intent_active: bool = False,
+    unresolved_external_effect_count: int = 0,
+    irrecoverable_confirmed: bool = False,
+) -> tuple[RecoveryResolution, ...]:
+    """Return the single Domain-owned resolution eligibility projection."""
+    return tuple(
+        resolution
+        for resolution in RECOVERY_RESOLUTION_MATRIX[reason]
+        if not (
+            resolution
+            in {RecoveryResolution.ACCEPT_PARTIAL, RecoveryResolution.CREATE_CORRECTIVE_PLAN}
+            and cancel_intent_active
+        )
+        if not (
+            resolution is RecoveryResolution.CANCEL
+            and (
+                not cancel_intent_active
+                or unresolved_external_effect_count != 0
+                or (
+                    reason == "UNKNOWN_RESULT"
+                    and recovered_action_status
+                    not in {ActionStatusV1.EXECUTED, ActionStatusV1.FAILED}
+                )
+            )
+        )
+        if not (
+            resolution is RecoveryResolution.FAIL
+            and (
+                cancel_intent_active
+                or unresolved_external_effect_count != 0
+                or not irrecoverable_confirmed
+            )
+        )
+    )
 
 
 def transition_resolve_recovery(
@@ -43,6 +87,19 @@ def transition_resolve_recovery(
     except RunTransitionRejected as error:
         return _reject(ResultCode.STATE_CONFLICT, current_status, str(error))
 
+    if resolution not in allowed_recovery_resolutions(
+        reason=reason,
+        recovered_action_status=recovered_action_status,
+        cancel_intent_active=cancel_intent_active,
+        unresolved_external_effect_count=unresolved_external_effect_count,
+        irrecoverable_confirmed=irrecoverable_confirmed,
+    ):
+        return _reject(
+            ResultCode.RESOLUTION_NOT_ALLOWED,
+            current_status,
+            f"{resolution.value} is not eligible for the current durable Recovery facts",
+        )
+
     if resolution is RecoveryResolution.RECHECK:
         return _resolve_recheck(
             reason=reason,
@@ -56,18 +113,6 @@ def transition_resolve_recovery(
         RecoveryResolution.ACCEPT_PARTIAL,
         RecoveryResolution.CREATE_CORRECTIVE_PLAN,
     }:
-        if reason != "VERIFICATION_MISMATCH":
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                f"{resolution.value} is only allowed for VERIFICATION_MISMATCH",
-            )
-        if cancel_intent_active:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                f"{resolution.value} is forbidden while cancel intent is active",
-            )
         return _applied(
             RunStatusV1.COMPLETED
             if resolution is RecoveryResolution.ACCEPT_PARTIAL
@@ -75,42 +120,9 @@ def transition_resolve_recovery(
         )
 
     if resolution is RecoveryResolution.CANCEL:
-        if not cancel_intent_active or unresolved_external_effect_count:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                "CANCEL requires durable cancel intent and no unresolved external effect",
-            )
-        if reason == "UNKNOWN_RESULT" and recovered_action_status not in {
-            ActionStatusV1.EXECUTED,
-            ActionStatusV1.FAILED,
-        }:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                "UNKNOWN_RESULT must be settled before CANCEL",
-            )
         return _applied(RunStatusV1.CANCELLED)
 
     if resolution is RecoveryResolution.FAIL:
-        if cancel_intent_active:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                "FAIL is forbidden while cancel intent is active",
-            )
-        if reason == "UNKNOWN_RESULT" or not irrecoverable_confirmed:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                "FAIL requires an allowed reason and confirmed irrecoverability",
-            )
-        if unresolved_external_effect_count:
-            return _reject(
-                ResultCode.RESOLUTION_NOT_ALLOWED,
-                current_status,
-                "FAIL requires resolved external delivery uncertainty",
-            )
         return _applied(RunStatusV1.FAILED)
 
     return _reject(ResultCode.RESOLUTION_NOT_ALLOWED, current_status, "unknown recovery resolution")

@@ -243,7 +243,9 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
             expected_version=run.version,
             command_id="cmd-resolve-1",
             request_hash="b" * 64,
+            recovery_context_version=0,
             resolution=RecoveryResolution.RECHECK,
+            target_kind="RUN",
         )
     )
     assert resolved.applied

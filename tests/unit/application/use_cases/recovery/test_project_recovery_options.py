@@ -35,6 +35,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
     reason: str, expected: tuple[str, ...]
 ) -> None:
     context = {
+        "run_id": "run-1",
         "reason": reason,
         "action_id": "action-1" if reason in {"UNKNOWN_RESULT", "VERIFICATION_MISMATCH"} else None,
     }
@@ -45,7 +46,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
             cancel_intents=SimpleNamespace(has_durable_intent=lambda _run_id: False),
             plans=SimpleNamespace(get_current=lambda _run_id: None),
-            actions=SimpleNamespace(list_for_plan=lambda _plan_id: ()),
+            actions=SimpleNamespace(get=lambda _action_id: None, list_for_plan=lambda _plan_id: ()),
         )
 
     result = ProjectRecoveryOptionsHandler(factory)(ProjectRecoveryOptionsQueryV1("run-1"))
@@ -59,7 +60,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
 
 
 def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
-    context = {"reason": "CHECKPOINT_MISMATCH", "action_id": None}
+    context = {"run_id": "run-1", "reason": "CHECKPOINT_MISMATCH", "action_id": None}
     plan = SimpleNamespace(id="plan-1")
     executed = SimpleNamespace(id="action-1", status="EXECUTED")
 
@@ -69,7 +70,9 @@ def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
             cancel_intents=SimpleNamespace(has_durable_intent=lambda _run_id: True),
             plans=SimpleNamespace(get_current=lambda _run_id: plan),
-            actions=SimpleNamespace(list_for_plan=lambda _plan_id: (executed,)),
+            actions=SimpleNamespace(
+                get=lambda _action_id: None, list_for_plan=lambda _plan_id: (executed,)
+            ),
         )
 
     result = ProjectRecoveryOptionsHandler(factory)(ProjectRecoveryOptionsQueryV1("run-1"))

@@ -813,6 +813,15 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
         )
     )
     assert recovered.action_status == "EXECUTED"
+    connection = connect_sqlite(write_database)
+    try:
+        recovery_context_version = int(
+            connection.execute(
+                "SELECT version FROM recovery_contexts WHERE run_id = 'run-1';"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
     resumed = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
@@ -822,7 +831,10 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
             expected_version=_run_version(write_database),
             command_id="recheck-cancel-recovery",
             request_hash="c0" * 32,
+            recovery_context_version=recovery_context_version,
             resolution=RecoveryResolution.RECHECK,
+            target_kind="ACTION",
+            target_action_id="action-cancel-recovery",
         )
     )
     assert resumed.current_status == "VERIFYING"

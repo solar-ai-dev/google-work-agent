@@ -3,10 +3,9 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.recovery.model import RECOVERY_RESOLUTION_MATRIX
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    project_allowed_recovery_resolutions,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -29,54 +28,14 @@ class ProjectRecoveryOptionsHandler:
     def __call__(self, query: ProjectRecoveryOptionsQueryV1) -> ProjectRecoveryOptionsResultV1:
         with self._unit_of_work_factory() as unit_of_work:
             context = unit_of_work.recovery_contexts.load_current_context(query.run_id)
-            cancel_intent_active = has_durable_cancel_intent(
-                unit_of_work.cancel_intents, query.run_id
+            if context is None:
+                raise LookupError("durable RecoveryContextV1 is unavailable")
+            options = tuple(
+                resolution.value
+                for resolution in project_allowed_recovery_resolutions(unit_of_work, context)
             )
-            actions = tuple(
-                action
-                for plan in current_plan_tuple(unit_of_work.plans, query.run_id)
-                for action in unit_of_work.actions.list_for_plan(plan.id)
-            )
-        if context is None:
-            raise LookupError("durable RecoveryContextV1 is unavailable")
-        reason = context["reason"]
-        if reason not in RECOVERY_RESOLUTION_MATRIX:
-            raise ValueError("unsupported recovery reason")
-        action_id = None if context.get("action_id") is None else str(context["action_id"])
-        unresolved = any(
-            action.status
-            in {
-                ActionStatusV1.EXECUTING.value,
-                ActionStatusV1.UNKNOWN_RESULT.value,
-                ActionStatusV1.EXECUTED.value,
-            }
-            for action in actions
-        )
-        options = tuple(
-            resolution.value
-            for resolution in RECOVERY_RESOLUTION_MATRIX[reason]
-            if not (
-                cancel_intent_active
-                and resolution.value in {"ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN", "FAIL"}
-            )
-            if not (
-                resolution.value == "CANCEL"
-                and (
-                    not cancel_intent_active
-                    or unresolved
-                    or (
-                        reason == "UNKNOWN_RESULT"
-                        and not any(
-                            action.id == action_id
-                            and action.status
-                            in {ActionStatusV1.EXECUTED.value, ActionStatusV1.FAILED.value}
-                            for action in actions
-                        )
-                    )
-                )
-            )
-            if not (resolution.value == "FAIL" and unresolved)
-        )
+            reason = context["reason"]
+            action_id = None if context.get("action_id") is None else str(context["action_id"])
         return ProjectRecoveryOptionsResultV1(
             reason,
             (

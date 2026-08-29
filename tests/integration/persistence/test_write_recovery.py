@@ -471,7 +471,10 @@ def test_unknown_result_create_recovery_and_retry_flow(
             expected_version=2,
             command_id="recheck-recover-create",
             request_hash="u3" * 32,
+            recovery_context_version=0,
             resolution=RecoveryResolution.RECHECK,
+            target_kind="ACTION",
+            target_action_id="action-recover-create",
         )
     )
     assert resumed.current_status == "VERIFYING"

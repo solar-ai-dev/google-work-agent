@@ -7,6 +7,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_un
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
+    materialize_current_resolve_recovery_command,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
 
@@ -80,7 +81,14 @@ def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) 
 
     result = handler(
         ResolveRecoveryCommandV1(
-            "r-1", 99, "cmd-conflict", "b" * 64, RecoveryResolution.ACCEPT_PARTIAL
+            "r-1",
+            99,
+            "cmd-conflict",
+            "b" * 64,
+            0,
+            RecoveryResolution.ACCEPT_PARTIAL,
+            "ACTION",
+            "action-1",
         )
     )
 
@@ -97,6 +105,61 @@ def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) 
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
+def test_context_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    handler = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+    )
+
+    result = handler(
+        ResolveRecoveryCommandV1(
+            run_id="r-1",
+            expected_version=0,
+            command_id="cmd-context-conflict",
+            request_hash="d" * 64,
+            recovery_context_version=99,
+            resolution=RecoveryResolution.ACCEPT_PARTIAL,
+            target_kind="ACTION",
+            target_action_id="action-1",
+        )
+    )
+
+    assert not result.applied and result.result_code == "VERSION_CONFLICT"
+    with connect_sqlite(database_path) as connection:
+        assert connection.execute("SELECT status FROM plans WHERE id='plan-1';").fetchone()[0] == (
+            "DRAFT"
+        )
+        assert (
+            connection.execute("SELECT status FROM actions WHERE id='action-1';").fetchone()[0]
+            == "MISMATCH"
+        )
+        assert (
+            connection.execute(
+                "SELECT version FROM recovery_contexts WHERE run_id='r-1';"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_external_request_materializes_exact_current_context_binding(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+
+    command = materialize_current_resolve_recovery_command(
+        factory,
+        run_id="r-1",
+        expected_version=0,
+        command_id="cmd-materialized",
+        request_hash="e" * 64,
+        resolution=RecoveryResolution.RECHECK,
+    )
+
+    assert command.recovery_context_version == 0
+    assert command.target_kind == "ACTION"
+    assert command.target_action_id == "action-1"
+
+
 def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     handler = ResolveRecoveryHandler(
@@ -110,6 +173,7 @@ def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_pat
             expected_version=0,
             command_id="cmd-target-conflict",
             request_hash="c" * 64,
+            recovery_context_version=0,
             resolution=RecoveryResolution.ACCEPT_PARTIAL,
             target_kind="RUN",
         )
@@ -223,7 +287,10 @@ def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecovery
         expected_version=0,
         command_id=command_id,
         request_hash="a" * 64,
+        recovery_context_version=0,
         resolution=resolution,
+        target_kind="ACTION",
+        target_action_id="action-1",
     )
 
 
