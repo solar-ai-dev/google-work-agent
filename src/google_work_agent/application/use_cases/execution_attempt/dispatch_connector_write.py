@@ -129,7 +129,15 @@ class DispatchConnectorWriteHandler:
             or plan.status is not PlanStatusV1.WAITING_APPROVAL
             or current_plan is None
             or current_plan.id != plan.id
-            or run.status not in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
+            # CANCEL_REQUESTED is allowed: a RequestCancel applied after this
+            # Attempt's BeginExecutionAttempt commit does not retroactively
+            # invalidate an already-authorized in-flight dispatch.
+            or run.status
+            not in {
+                RunStatusV1.WAITING_APPROVAL,
+                RunStatusV1.VERIFYING,
+                RunStatusV1.CANCEL_REQUESTED,
+            }
         ):
             raise PermissionError("connector write authority is no longer current")
         if (

@@ -13,7 +13,6 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    propagate_dependency_blocked,
     require_action,
     require_attempt,
     require_plan,
@@ -130,7 +129,9 @@ class MarkFailedHandler:
                 error_code=command.error_code,
                 error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
                 result_resource_ref_id=None,
-                response_metadata_json=None,
+                response_metadata_json=dumps(
+                    {"delivery_certainty": command.delivery_certainty.value}, sort_keys=True
+                ),
                 finished_at_ms=now_ms,
             )
             if (
@@ -145,12 +146,6 @@ class MarkFailedHandler:
                 is None
             ):
                 raise RuntimeError("validated MarkFailed CAS failed")
-            propagate_dependency_blocked(
-                unit_of_work=unit_of_work,
-                action_id=action.id,
-                run_id=plan.run_id,
-                updated_at_ms=now_ms,
-            )
             unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,

@@ -676,6 +676,191 @@ def test_claim_read_action_rejects_stale_version_without_gateway_call(
         connection.close()
 
 
+def test_claim_read_action_rejects_before_plan_is_current(
+    read_only_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    """Issue #131 / 002-02: ClaimReadAction must prove the current owning
+    Plan/Run before creating READ execution authority, not merely that the
+    Action row itself is PROPOSED. A DRAFT Plan / PLANNING Run is stale
+    lineage and must fail closed before any provider call.
+    """
+    save_service = SaveReadOnlyPlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
+        now_ms=lambda: 1000,
+    )
+    claim_service = ClaimReadActionHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
+        now_ms=lambda: 1020,
+    )
+
+    save_service(
+        SaveReadOnlyPlanCommand(
+            command_id="save-unpublished",
+            request_hash="9" * 64,
+            plan_id="plan-unpublished",
+            run_id="run-1",
+            revision_no=1,
+            summary_text="Unpublished",
+            expected_run_version=0,
+            actions=(
+                ReadActionDraft(
+                    action_id="action-unpublished",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
+                    position=1,
+                    tool_name="gmail_get_thread",
+                    arguments={"thread_id": "thread-project"},
+                    expected={"resource_type": "gmail_thread"},
+                    evidence_ids=("evidence-unpublished",),
+                ),
+            ),
+            evidence=(
+                ReadEvidenceDraft(
+                    evidence_id="evidence-unpublished",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt="not yet published",
+                ),
+            ),
+        )
+    )
+
+    response = claim_service(
+        ClaimReadActionCommand(
+            command_id="claim-unpublished",
+            request_hash="b2" * 32,
+            action_id="action-unpublished",
+            expected_version=0,
+        )
+    )
+
+    assert response.applied is False
+    assert response.result_code == ResultCode.STATE_CONFLICT.value
+    assert fixture_gateway.call_log == []
+
+    connection = connect_sqlite(read_only_database)
+    try:
+        action_row = connection.execute(
+            "SELECT status, version FROM actions WHERE id = 'action-unpublished';"
+        ).fetchone()
+        plan_row = connection.execute(
+            "SELECT status FROM plans WHERE id = 'plan-unpublished';"
+        ).fetchone()
+        assert action_row["status"] == "PROPOSED"
+        assert action_row["version"] == 0
+        assert plan_row["status"] == "DRAFT"
+    finally:
+        connection.close()
+
+
+def test_claim_read_action_rejects_durable_cancel_intent_before_gateway_call(
+    read_only_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    """Issue #131 / 002-02: a durable cancel intent must block ClaimReadAction
+    before any provider call, even though the Plan/Run are otherwise current.
+    """
+    save_service = SaveReadOnlyPlanService(
+        unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
+        now_ms=lambda: 1000,
+    )
+    publish_service = PublishReadOnlyPlanHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
+        now_ms=lambda: 1010,
+    )
+    claim_service = ClaimReadActionHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
+        now_ms=lambda: 1020,
+    )
+
+    save_service(
+        SaveReadOnlyPlanCommand(
+            command_id="save-cancel-intent",
+            request_hash="9" * 64,
+            plan_id="plan-cancel-intent",
+            run_id="run-1",
+            revision_no=1,
+            summary_text="Cancel intent",
+            expected_run_version=0,
+            actions=(
+                ReadActionDraft(
+                    action_id="action-cancel-intent",
+                    connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
+                    position=1,
+                    tool_name="gmail_get_thread",
+                    arguments={"thread_id": "thread-project"},
+                    expected={"resource_type": "gmail_thread"},
+                    evidence_ids=("evidence-cancel-intent",),
+                ),
+            ),
+            evidence=(
+                ReadEvidenceDraft(
+                    evidence_id="evidence-cancel-intent",
+                    origin_type=EvidenceOriginType.DERIVED,
+                    kind="USER_REQUEST",
+                    excerpt="cancel before claim",
+                ),
+            ),
+        )
+    )
+    record_pass_review(read_only_database, "plan-cancel-intent", now_ms=1005)
+    publish_service(
+        PublishReadOnlyPlanCommand(
+            command_id="publish-cancel-intent",
+            request_hash="a1" * 32,
+            plan_id="plan-cancel-intent",
+            run_id="run-1",
+            expected_run_version=0,
+        )
+    )
+
+    # Simulate the durable fact an APPLIED RequestRunCancellation receipt
+    # establishes, without pulling in the full cancel-resolution/workflow
+    # scheduling dependency graph of RequestCancelHandler.
+    connection = connect_sqlite(read_only_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO command_receipts (
+                command_id, command_type, request_hash, aggregate_type,
+                aggregate_id, status, result_code, result_version,
+                response_json, created_at_ms, completed_at_ms
+            ) VALUES (
+                'cancel-run-1', 'RequestRunCancellation', ?, 'Run',
+                'run-1', 'APPLIED', 'TRANSITION_APPLIED', 1,
+                '{}', 1015, 1015
+            );
+            """,
+            ("c" * 64,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    response = claim_service(
+        ClaimReadActionCommand(
+            command_id="claim-cancel-intent",
+            request_hash="b3" * 32,
+            action_id="action-cancel-intent",
+            expected_version=0,
+        )
+    )
+
+    assert response.applied is False
+    assert response.result_code == ResultCode.STATE_CONFLICT.value
+    assert fixture_gateway.call_log == []
+
+    connection = connect_sqlite(read_only_database)
+    try:
+        action_row = connection.execute(
+            "SELECT status, version FROM actions WHERE id = 'action-cancel-intent';"
+        ).fetchone()
+        assert action_row["status"] == "PROPOSED"
+        assert action_row["version"] == 0
+    finally:
+        connection.close()
+
+
 def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_finalize(
     read_only_database: Path,
     fixture_gateway: FakeGoogleGateway,

@@ -12,7 +12,6 @@ from google_work_agent.application.use_cases.action.cancel_pending_action import
     CancelPendingActionHandler,
 )
 from google_work_agent.application.use_cases.action.persistence_cas import (
-    update_action_record,
     update_approval_status,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
@@ -581,66 +580,6 @@ def resolve_existing_action_receipt(
             receipt=receipt, request_hash=request_hash, response_type=WriteActionResponse
         ),
     )
-
-
-def propagate_dependency_blocked(
-    *,
-    unit_of_work: UnitOfWork,
-    action_id: str,
-    run_id: str,
-    updated_at_ms: int,
-) -> None:
-    blocked_action_ids: list[str] = []
-    pending = list(unit_of_work.actions.list_dependents(action_id))
-    visited: set[str] = set()
-    while pending:
-        dependent_action_id = pending.pop(0)
-        if dependent_action_id in visited:
-            continue
-        visited.add(dependent_action_id)
-        dependent = unit_of_work.actions.get(dependent_action_id)
-        if dependent is not None and dependent.status in {
-            ActionStatusV1.PROPOSED.value,
-            ActionStatusV1.MODIFIED.value,
-            ActionStatusV1.APPROVED.value,
-        }:
-            revoke_active_approvals(unit_of_work, dependent_action_id)
-            if (
-                update_action_record(
-                    unit_of_work,
-                    dependent_action_id,
-                    expected_version=dependent.version,
-                    expected_status=ActionStatusV1(dependent.status),
-                    next_status=ActionStatusV1.DEPENDENCY_BLOCKED,
-                    updated_at_ms=updated_at_ms,
-                )
-                is None
-            ):
-                raise RuntimeError(f"dependency block transition failed: {dependent_action_id}")
-            blocked_action_ids.append(dependent_action_id)
-            pending.extend(unit_of_work.actions.list_dependents(dependent_action_id))
-    for blocked_action_id in blocked_action_ids:
-        unit_of_work.traces.append(
-            TraceEventRecord(
-                run_id=run_id,
-                action_id=blocked_action_id,
-                event_type="WRITE_DEPENDENCY_BLOCKED",
-                status=ActionStatusV1.DEPENDENCY_BLOCKED.value,
-                duration_ms=None,
-                payload_json=dumps({"blocked_by_action_id": action_id}, sort_keys=True),
-                created_at_ms=updated_at_ms,
-            )
-        )
-        unit_of_work.audits.append(
-            audit_event(
-                run_id=run_id,
-                action_id=blocked_action_id,
-                event_type="WRITE_DEPENDENCY_BLOCKED",
-                outcome=ResultCode.TRANSITION_APPLIED.value,
-                metadata={"blocked_by_action_id": action_id},
-                created_at_ms=updated_at_ms,
-            )
-        )
 
 
 def next_allowed_write_commands_for_record(action: ActionRecord) -> tuple[ActionCommand, ...]:

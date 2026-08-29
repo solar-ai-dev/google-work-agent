@@ -19,13 +19,18 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     handle_existing_claim_receipt,
     require_action,
     require_plan,
+    require_run,
 )
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.claim_read_action import (
     transition_claim_read_action,
 )
+from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -91,6 +96,30 @@ class ClaimReadActionHandler:
                 unit_of_work.commit()
                 return response
 
+            plan = require_plan(unit_of_work, action.plan_id)
+            run = require_run(unit_of_work, plan.run_id)
+            plans = current_plan_tuple(unit_of_work.plans, run.id)
+            current_plan = max(plans, key=lambda candidate: candidate.revision_no, default=None)
+            if (
+                plan.status is not PlanStatusV1.ACTIVE
+                or run.status is not RunStatusV1.EXECUTING
+                or current_plan is None
+                or current_plan.id != plan.id
+                or has_durable_cancel_intent(unit_of_work.cancel_intents, run.id)
+            ):
+                response = action_conflict_response(
+                    action=action,
+                    result_code=ResultCode.STATE_CONFLICT,
+                    conflict_detail=(
+                        "claim requires the current owning Plan/Run and no durable cancel intent"
+                    ),
+                )
+                finish_json_receipt(
+                    unit_of_work, command.command_id, response, action.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
+
             result = transition_claim_read_action(
                 ActionStatusV1(action.status),
                 action.version,
@@ -113,7 +142,7 @@ class ClaimReadActionHandler:
             response = action_result_response(command.action_id, result)
             unit_of_work.traces.append(
                 TraceEventRecord(
-                    run_id=require_plan(unit_of_work, action.plan_id).run_id,
+                    run_id=plan.run_id,
                     action_id=command.action_id,
                     event_type="READ_ACTION_CLAIMED",
                     status=response.action_status,
@@ -124,7 +153,7 @@ class ClaimReadActionHandler:
             )
             unit_of_work.audits.append(
                 audit_event(
-                    run_id=require_plan(unit_of_work, action.plan_id).run_id,
+                    run_id=plan.run_id,
                     action_id=command.action_id,
                     event_type=("ACTION_READ_CLAIMED" if response.applied else "COMMAND_REJECTED"),
                     outcome=response.result_code,

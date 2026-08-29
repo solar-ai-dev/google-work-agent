@@ -77,6 +77,27 @@ class BeginExecutionAttemptHandler:
         run = require_run(unit_of_work, plan.run_id)
         approval = require_approval(unit_of_work, str(payload["approval_id"]))
         attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
+
+        if calculate_canonical_json_hash(payload) != command.request_hash:
+            raise PermissionError("BeginExecutionAttempt request_hash mismatch")
+
+        # Receipt adjudication precedes mutable-state guards (04-A SS10.0): a
+        # replay of an already-APPLIED command_id/hash must keep returning the
+        # stored result even if Run/Plan/Action/Approval state advanced since
+        # the first success. Only a genuinely new command_id proceeds to the
+        # guards below.
+        existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
+        if existing is not None:
+            if existing.request_hash != command.request_hash:
+                raise PermissionError("BeginExecutionAttempt command_id hash conflict")
+            if (
+                existing.status is not CommandReceiptStatus.APPLIED
+                or existing.response_json is None
+                or attempt.status is not ExecutionAttemptStatusV1.EXECUTING
+            ):
+                raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
+            return BeginExecutionAttemptResult(action, approval, attempt)
+
         plans = current_plan_tuple(unit_of_work.plans, run.id)
         if not plans:
             raise PermissionError("claim owner Run has no published Plan")
@@ -96,20 +117,6 @@ class BeginExecutionAttemptHandler:
             raise PermissionError("claim token arguments binding mismatch")
         if approval.action_id != action.id or attempt.approval_id != approval.id:
             raise PermissionError("claim token persistence binding mismatch")
-
-        if calculate_canonical_json_hash(payload) != command.request_hash:
-            raise PermissionError("BeginExecutionAttempt request_hash mismatch")
-        existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
-        if existing is not None:
-            if existing.request_hash != command.request_hash:
-                raise PermissionError("BeginExecutionAttempt command_id hash conflict")
-            if (
-                existing.status is not CommandReceiptStatus.APPLIED
-                or existing.response_json is None
-                or attempt.status is not ExecutionAttemptStatusV1.EXECUTING
-            ):
-                raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
-            return BeginExecutionAttemptResult(action, approval, attempt)
 
         decision = transition_begin_execution_attempt(
             attempt.status,

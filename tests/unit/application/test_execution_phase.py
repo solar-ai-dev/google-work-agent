@@ -221,6 +221,34 @@ def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
     assert "store" not in calls
 
 
+def test_classify_dispatch_result_decision_is_authoritative_over_local_rederivation() -> None:
+    """Issue #131 / 020-02-W: classify_dispatch_result is the sole write-
+    dispatch persistence-decision authority. The coordinator must not
+    independently re-derive MARK_FAILED vs MARK_UNKNOWN_RESULT from the raw
+    connector result; it must obey the already-computed decision, even when
+    that decision disagrees with what a naive delivery-certainty re-check on
+    the raw result would otherwise conclude.
+    """
+    calls: list[str] = []
+
+    def classify_forces_failed(_query: object) -> object:
+        calls.append("classify")
+        # The connector result here is MAY_HAVE_BEEN_SENT (a real dispatch was
+        # attempted), which a re-derivation from the raw result alone would
+        # route to mark_unknown. classify_dispatch_result's decision must win.
+        return SimpleNamespace(decision="MARK_FAILED")
+
+    result = _coordinator(
+        calls=calls,
+        execute_error=_gateway_error(GoogleWorkspaceErrorCode.TIMEOUT, delivered=True),
+        classify_dispatch_result=classify_forces_failed,
+    ).execute(_request())
+
+    assert result.disposition is WriteExecutionDisposition.FAILED
+    assert calls[-1] == "mark_failed"
+    assert "mark_unknown" not in calls
+
+
 def test_not_sent_failure_does_not_begin_verification() -> None:
     calls: list[str] = []
     result = _coordinator(
@@ -379,6 +407,7 @@ def _coordinator(
     begin_verification_result: object | None = None,
     preflight_result: object | None = None,
     claim_call: _RecordedCall | None = None,
+    classify_dispatch_result: object | None = None,
 ) -> WriteExecutionPhaseCoordinator:
     snapshot = ResourceSnapshot(
         fixture_snapshot_id="snapshot-1",
@@ -444,7 +473,7 @@ def _coordinator(
             ConnectorWriteProjection,
             _ConnectorExecution(calls=calls, snapshot=snapshot, execute_error=execute_error),
         ),
-        classify_dispatch_result=cast(Any, _Classify(calls)),
+        classify_dispatch_result=cast(Any, classify_dispatch_result or _Classify(calls)),
         store_write_success=cast(Any, _RecordedCall(name="store", calls=calls, result=stored)),
         begin_verification=cast(
             Any,

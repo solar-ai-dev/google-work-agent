@@ -33,6 +33,10 @@ from google_work_agent.application.use_cases.execution_attempt.begin_execution_a
     BeginExecutionAttemptCommand,
     BeginExecutionAttemptHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.mark_failed import (
+    MarkFailedCommand,
+    MarkFailedHandler,
+)
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
@@ -944,6 +948,140 @@ def test_attachment_claim_fails_closed_without_staging_verifier(
 
     assert blocked.applied is False
     assert blocked.conflict_detail == "ATTACHMENT_VERIFIER_UNAVAILABLE"
+
+
+def test_begin_execution_attempt_replay_survives_state_change_and_rejects_hash_conflict(
+    write_database: Path,
+) -> None:
+    """Issue #131 / 011-U2, E4: Receipt adjudication precedes mutable-state
+    guards. A same-command_id/same-hash replay of an already-APPLIED
+    BeginExecutionAttempt must keep returning the stored result even after
+    the owning Run has since moved to CANCEL_REQUESTED, and a same-command_id
+    with a different hash must still be rejected as a conflict.
+    """
+    clock = FakeClockPort(1000)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="begin-replay",
+        tool_name="tasks_create_task",
+        arguments={"task_list_id": "task-list-default", "payload": {"title": "Task"}},
+        expected={"resource_type": "task", "resource_id": None, "payload": {"title": "Task"}},
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix="begin-replay")
+    claimed = _claim_effect_action(
+        write_database=write_database, clock=clock, suffix="begin-replay", expected_version=1
+    )
+    assert claimed.applied is True
+
+    payload = read_claim_token(claimed.claim_token or "", signing_secret="phase-e-secret")
+    payload["execution_attempt_id"] = payload["attempt_id"]
+    payload["approval_arguments_hash"] = payload["arguments_hash"]
+    command = BeginExecutionAttemptCommand(
+        command_id=f"begin-execution-attempt:{payload['attempt_id']}",
+        request_hash=calculate_canonical_json_hash(payload),
+        action_id=claimed.action_id,
+        claim_payload=payload,
+    )
+    handler = BeginExecutionAttemptHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )
+    first = handler(command)
+    assert first.attempt.status.value == "EXECUTING"
+
+    # Simulate a concurrent RequestCancel committing after the first success.
+    connection = connect_sqlite(write_database)
+    try:
+        connection.execute("UPDATE runs SET status = 'CANCEL_REQUESTED' WHERE id = 'run-1';")
+        connection.commit()
+    finally:
+        connection.close()
+
+    replayed = handler(command)
+    assert replayed.attempt.status.value == "EXECUTING"
+    assert replayed.attempt.id == first.attempt.id
+
+    conflicting_payload = dict(payload)
+    conflicting_payload["tool_name"] = "different-tool"
+    conflicting_command = BeginExecutionAttemptCommand(
+        command_id=command.command_id,
+        request_hash=calculate_canonical_json_hash(conflicting_payload),
+        action_id=claimed.action_id,
+        claim_payload=conflicting_payload,
+    )
+    with pytest.raises(PermissionError, match="hash conflict"):
+        handler(conflicting_command)
+
+
+def test_mark_failed_persists_delivery_certainty_durably_across_restart(
+    write_database: Path,
+) -> None:
+    """Issue #131 / 003-02: delivery_certainty must be durably persisted in
+    execution_attempts.response_metadata_json (not only Trace/Audit/logs) so
+    restart/reconciliation never has to infer it from process memory. Reading
+    it back through a brand-new connection stands in for a process restart.
+    """
+    clock = FakeClockPort(1000)
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix="delivery-failed",
+        tool_name="tasks_create_task",
+        arguments={"task_list_id": "task-list-default", "payload": {"title": "Task"}},
+        expected={"resource_type": "task", "resource_id": None, "payload": {"title": "Task"}},
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix="delivery-failed")
+    claimed = _claim_effect_action(
+        write_database=write_database, clock=clock, suffix="delivery-failed", expected_version=1
+    )
+    assert claimed.applied is True
+
+    payload = read_claim_token(claimed.claim_token or "", signing_secret="phase-e-secret")
+    payload["execution_attempt_id"] = payload["attempt_id"]
+    payload["approval_arguments_hash"] = payload["arguments_hash"]
+    begun = BeginExecutionAttemptHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        BeginExecutionAttemptCommand(
+            command_id=f"begin-execution-attempt:{payload['attempt_id']}",
+            request_hash=calculate_canonical_json_hash(payload),
+            action_id=claimed.action_id,
+            claim_payload=payload,
+        )
+    )
+
+    failed = MarkFailedHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkFailedCommand(
+            command_id="mark-failed-delivery",
+            request_hash="f0" * 32,
+            action_id=begun.action.id,
+            attempt_id=begun.attempt.id,
+            expected_action_version=begun.action.version,
+            expected_attempt_version=begun.attempt.version,
+            delivery_certainty=DeliveryCertainty.NOT_SENT,
+            error_code="CONNECTION_CLOSED",
+            error_detail="preflight rejected before dispatch",
+        )
+    )
+    assert failed.applied is True
+
+    # A fresh connection stands in for a restarted process reading durable state.
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT response_metadata_json FROM execution_attempts WHERE id = ?;",
+            (begun.attempt.id,),
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert row is not None
+    assert loads(row["response_metadata_json"]) == {"delivery_certainty": "NOT_SENT"}
 
 
 def _prepare_effect_write_plan(

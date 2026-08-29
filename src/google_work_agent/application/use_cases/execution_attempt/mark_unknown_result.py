@@ -137,7 +137,9 @@ class MarkUnknownResultHandler:
                 error_code=command.error_code,
                 error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
                 result_resource_ref_id=None,
-                response_metadata_json=None,
+                response_metadata_json=dumps(
+                    {"delivery_certainty": command.delivery_certainty.value}, sort_keys=True
+                ),
                 finished_at_ms=now_ms,
             )
             if (

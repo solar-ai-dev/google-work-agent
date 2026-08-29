@@ -33,9 +33,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
-    propagate_dependency_blocked as _propagate_dependency_blocked,
-)
-from google_work_agent.application.use_cases.action.write_persistence import (
     require_action as _require_action,
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
@@ -541,12 +538,6 @@ class ResolveUnknownWriteAsFailedService:
                 is None
             ):
                 raise RuntimeError("validated ResolveAsFailed CAS failed")
-            _propagate_dependency_blocked(
-                unit_of_work=unit_of_work,
-                action_id=action.id,
-                run_id=plan.run_id,
-                updated_at_ms=now_ms,
-            )
             unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,

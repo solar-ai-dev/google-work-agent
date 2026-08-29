@@ -1,12 +1,14 @@
 """GAP-F3 prerequisite: WRITE Action Dependency Persistence.
 
 Covers the fix for the gap tracked in `start_run.py`'s
-`_revoke_stale_dependent_approvals` and `write_actions.py`'s
-`_propagate_dependency_blocked` docstrings: `SaveWritePlanService` now
+`_revoke_stale_dependent_approvals` docstring: `SaveWritePlanService` now
 persists `depends_on_action_ids` into `action_dependencies` for WRITE
-plans (previously only READ-only plans did), so those two pre-existing
-safety nets become reachable through the real production path instead of
-only through a directly-seeded dependency row.
+plans (previously only READ-only plans did), so that pre-existing safety
+net becomes reachable through the real production path instead of only
+through a directly-seeded dependency row. It also proves
+`is_dependency_ready` blocks a dependent's Claim while its predecessor is
+FAILED, without permanently terminalizing the dependent as
+`DEPENDENCY_BLOCKED` (that authority belongs solely to `RejectAction`).
 """
 
 from pathlib import Path
@@ -235,14 +237,18 @@ def test_save_write_plan_without_dependencies_persists_no_rows(dependency_databa
     assert y_dependents == ()
 
 
-def test_mark_write_action_failed_propagates_dependency_blocked_through_persisted_graph(
+def test_mark_write_action_failed_blocks_claim_without_terminalizing_dependent(
     dependency_database: Path,
 ) -> None:
-    """08-sequence-design.md section 12 requires a rejected/failed action's
-    dependents to become DEPENDENCY_BLOCKED. `_propagate_dependency_blocked`
-    already implements this, but was unreachable for WRITE actions because
-    `action_dependencies` was never populated. This proves the real save ->
-    publish -> approve -> claim -> fail path now reaches it end to end.
+    """08-sequence-design.md section 12 / Domain State Transition Contract:
+
+    FAILED is a retry/cancel decision state, not a terminal fact. Only
+    `RejectAction` owns creating `DEPENDENCY_BLOCKED`. A FAILED predecessor
+    must block the dependent's Claim (via `is_dependency_ready`) without
+    permanently terminalizing the dependent, so a later `PrepareWriteRetry`
+    on the predecessor can still make the dependent claimable again. This
+    proves the real save -> publish -> approve -> claim -> fail path leaves
+    the dependent's own status untouched and its Claim blocked.
     """
 
     clock = FakeClockPort(initial_ms=1_000)
@@ -343,15 +349,17 @@ def test_mark_write_action_failed_propagates_dependency_blocked_through_persiste
 
     with unit_of_work_factory() as unit_of_work:
         dependent_action = unit_of_work.actions.get("action-dependent")
+        dependency_ready = unit_of_work.actions.is_dependency_ready("action-dependent")
         dependent_trace_events = unit_of_work.traces.list_page(
             TraceEventCursor(run_id="run-1"), 100
         )
 
     assert dependent_action is not None
-    assert dependent_action.status == "DEPENDENCY_BLOCKED"
+    assert dependent_action.status == "PROPOSED"
+    assert dependency_ready is False
     blocked_events = [
         event
         for event in dependent_trace_events
         if event.action_id == "action-dependent" and event.event_type == "WRITE_DEPENDENCY_BLOCKED"
     ]
-    assert len(blocked_events) == 1
+    assert len(blocked_events) == 0

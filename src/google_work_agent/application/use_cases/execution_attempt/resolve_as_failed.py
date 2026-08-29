@@ -13,7 +13,6 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    propagate_dependency_blocked,
     require_action,
     require_attempt,
     require_plan,
@@ -161,12 +160,6 @@ class ResolveAsFailedHandler:
                 is None
             ):
                 raise RuntimeError("validated ResolveAsFailed CAS failed")
-            propagate_dependency_blocked(
-                unit_of_work=unit_of_work,
-                action_id=action.id,
-                run_id=plan.run_id,
-                updated_at_ms=now_ms,
-            )
             unit_of_work.traces.append(
                 TraceEventRecord(
                     run_id=plan.run_id,

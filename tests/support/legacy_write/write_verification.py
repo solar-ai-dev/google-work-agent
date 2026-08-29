@@ -23,9 +23,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     finish_json_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
-    propagate_dependency_blocked as _propagate_dependency_blocked,
-)
-from google_work_agent.application.use_cases.action.write_persistence import (
     require_action as _require_action,
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
@@ -353,12 +350,6 @@ class VerifyWriteActionService:
                 raise RuntimeError("validated StoreVerification CAS failed")
             result = preview
             if verification_status is VerificationStatus.MISMATCH:
-                _propagate_dependency_blocked(
-                    unit_of_work=unit_of_work,
-                    action_id=action.id,
-                    run_id=plan.run_id,
-                    updated_at_ms=now_ms,
-                )
                 # A persisted mismatch is an immutable external fact; only an explicit
                 # recovery decision may choose the next run transition.
                 current_run = unit_of_work.runs.get(plan.run_id)

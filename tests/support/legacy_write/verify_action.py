@@ -15,7 +15,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     action_response_from_result,
     audit_event,
     finish_json_receipt,
-    propagate_dependency_blocked,
     require_action,
     require_approval,
     require_attempt,
@@ -313,12 +312,6 @@ class VerifyActionHandler:
             transition = preview
 
             if verification_status is VerificationStatus.MISMATCH:
-                propagate_dependency_blocked(
-                    unit_of_work=unit_of_work,
-                    action_id=action.id,
-                    run_id=plan.run_id,
-                    updated_at_ms=now_ms,
-                )
                 current_run = unit_of_work.runs.get(plan.run_id)
                 if current_run is None:
                     raise LookupError(f"run not found: {plan.run_id}")

@@ -424,6 +424,9 @@ class WriteExecutionPhaseCoordinator:
                 ClassifyDispatchResultQueryV1(connector_result)
             )
         except PermissionError as error:
+            # No connector call was made (eligibility rejected before dispatch),
+            # so no classify_dispatch_result decision exists here; NOT_SENT is
+            # the only legal certainty for a call that never happened.
             connector_error = GoogleWorkspaceGatewayError(
                 code=GoogleWorkspaceErrorCode.CONNECTION_CLOSED,
                 message=str(error),
@@ -435,14 +438,19 @@ class WriteExecutionPhaseCoordinator:
                 attempt_id=attempt_id,
                 claimed_action_version=claimed.current_version,
                 error=connector_error,
+                mark_as_failed=True,
             )
         if decision.decision != "STORE_SUCCESS":
+            # `classify_dispatch_result` is the sole write-dispatch persistence
+            # decision authority; reuse its decision instead of re-deriving a
+            # competing MARK_FAILED/MARK_UNKNOWN_RESULT choice here.
             connector_error = self._dispatch_error(connector_result)
             return self._handle_execution_error(
                 request=request,
                 attempt_id=attempt_id,
                 claimed_action_version=claimed.current_version,
                 error=connector_error,
+                mark_as_failed=decision.decision == "MARK_FAILED",
             )
         executed = ExecutedWriteActionResult(
             snapshot=self._connector_execution.materialize_success(dispatch, connector_result),
@@ -884,9 +892,10 @@ class WriteExecutionPhaseCoordinator:
         attempt_id: str,
         claimed_action_version: int,
         error: GoogleWorkspaceGatewayError,
+        mark_as_failed: bool,
     ) -> WriteExecutionPhaseResult:
         is_auth_error = self._is_auth_error(error)
-        if error.delivery_certainty is DeliveryCertainty.NOT_SENT:
+        if mark_as_failed:
             failed = self._mark_write_failed(
                 MarkFailedCommand(
                     command_id=self._id_factory(),
