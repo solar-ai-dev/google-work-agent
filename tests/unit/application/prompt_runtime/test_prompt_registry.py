@@ -42,14 +42,15 @@ def test_prompt_registry_rejects_draft_product_selection() -> None:
         registry.lookup_by_id("planning.compose_answer")
 
 
-def test_request_understanding_prompts_are_gate_complete_and_runtime_active() -> None:
+def test_request_understanding_prompts_remain_draft_without_release_evidence() -> None:
     registry = PromptRegistry()
 
     for prompt_id in (
         "request_understanding.identify_goal",
         "request_understanding.detect_ambiguity",
     ):
-        assert registry.lookup_by_id(prompt_id).prompt_id == prompt_id
+        with pytest.raises(InactivePromptArtifactError, match="DRAFT"):
+            registry.lookup_by_id(prompt_id)
 
     manifest = cast(
         dict[str, object],
@@ -61,9 +62,9 @@ def test_request_understanding_prompts_are_gate_complete_and_runtime_active() ->
     ]
     assert len(request_slots) == 2
     for slot in request_slots:
-        assert slot["activation_status"] == "RUNTIME_ACTIVE"
+        assert slot["activation_status"] == "DRAFT"
         assert all(
-            slot[field] is True
+            slot[field] is False
             for field in (
                 "node_dev_pass",
                 "node_holdout_pass",
