@@ -115,3 +115,13 @@ def test_exhausted_continuation_does_not_restart_provider_read() -> None:
     assert result.status == "EXHAUSTED"
     assert not result.provider_called
     assert reader.calls == []
+
+
+def test_compatibility_delegate_cannot_mix_canonical_inputs() -> None:
+    assert execute_read(compatibility_execution=lambda: "delegated") == "delegated"
+
+    with pytest.raises(TypeError, match="cannot mix"):
+        execute_read(
+            compatibility_execution=lambda: "delegated",
+            plan=_plan(),
+        )

@@ -38,6 +38,7 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.execute_read import execute_read
 from google_work_agent.application.agents.retrieval.resolve_availability import (
     AvailableIntervalV1,
     BusyIntervalV1,
@@ -695,14 +696,17 @@ class ContextRetrieverSubgraph:
     def _execute_read_node(
         self, state: ContextRetrievalLocalState
     ) -> ContextRetrievalLocalState:
-        operation = state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)
-        if operation == "NEXT_PAGE":
-            return self._execute_next_page_node(state)
-        if operation == "DETAIL_FETCH":
-            return self._execute_detail_node(state)
-        if state.get("acquisition_result") is not None:
-            return self._execute_followup_search_node(state)
-        return self._execute_initial_read_node(state)
+        def compatibility_execution() -> ContextRetrievalLocalState:
+            operation = state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)
+            if operation == "NEXT_PAGE":
+                return self._execute_next_page_node(state)
+            if operation == "DETAIL_FETCH":
+                return self._execute_detail_node(state)
+            if state.get("acquisition_result") is not None:
+                return self._execute_followup_search_node(state)
+            return self._execute_initial_read_node(state)
+
+        return execute_read(compatibility_execution=compatibility_execution)
 
     def _execute_initial_read_node(
         self, state: ContextRetrievalLocalState
