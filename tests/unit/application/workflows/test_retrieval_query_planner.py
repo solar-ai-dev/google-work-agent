@@ -20,7 +20,6 @@ from google_work_agent.application.orchestration.retrieval_query_planner import 
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalV2ValidationError,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -28,6 +27,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 _PROMPT_REF = PromptReference(
     prompt_bundle_version="test",

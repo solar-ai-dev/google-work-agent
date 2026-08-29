@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import cast
 
 from fastapi.testclient import TestClient
+from tests.support.external_llm_scope import build_external_scope_gate
 from tests.support.fakes import (
     DeterministicUUID,
     FakeClockPort,
@@ -80,6 +81,10 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
     kwargs.pop("hardware_probe", None)
     kwargs.pop("api_provider_name", None)
     kwargs.pop("credential_service", None)
+    checkpoint, projector = build_external_scope_gate()
+    router_kwargs["checkpoint"] = checkpoint
+    kwargs.setdefault("project_external_scope", projector)
+    kwargs.setdefault("now_ms", lambda: 1)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
         **kwargs,

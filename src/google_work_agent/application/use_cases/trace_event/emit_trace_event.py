@@ -4,12 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from google_work_agent.application.use_cases.trace_event.observability import emit_trace_event
-from google_work_agent.ports.events.observability_events import (
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
     Severity,
 )
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)

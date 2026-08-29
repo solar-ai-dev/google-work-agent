@@ -247,9 +247,33 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
 
             runtime = client.get("/api/v1/runtime", headers=headers)
             assert runtime.status_code == 200
-            summary = runtime.json()["summary"]
-            assert summary["connector"]["connection_status"] == "DISCONNECTED"
-            assert summary["requested_mode"] == "AUTO"
+            summary = runtime.json()
+            assert summary["connectors"][0]["connection_status"] == "DISCONNECTED"
+            assert summary["runtime_mode"]["requested_mode"] == "AUTO"
+            assert set(summary) == {
+                "schema_version",
+                "service_instance_id",
+                "connectors",
+                "llm_providers",
+                "component_circuits",
+                "active_run_budget",
+                "recovery_required",
+                "release_version",
+                "frontend_build_version",
+                "api_contract_version",
+                "deployment_profile",
+                "runtime_mode",
+                "database_status",
+                "migration_status",
+                "sse_status",
+                "recent_sanitized_error_code",
+                "launcher_status",
+                "manifest_status",
+                "session_status",
+                "safe_mode",
+                "last_backup_status",
+                "last_migration_status",
+            }
 
             disconnected = client.post(
                 "/api/v1/connections/google/disconnect", headers=headers, json={}

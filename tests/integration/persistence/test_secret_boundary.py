@@ -8,7 +8,7 @@ from google_work_agent.adapters.persistence import apply_migrations, connect_sql
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import SqliteUnitOfWork
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.events.observability_events import SanitizationError
+from google_work_agent.ports.system.contracts.observability import SanitizationError
 
 
 def _secret(prefix: str) -> str:

@@ -50,12 +50,12 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
     StructuredLLMRuntime,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 JsonObject = dict[str, object]
 ControlledProfileId = Literal[

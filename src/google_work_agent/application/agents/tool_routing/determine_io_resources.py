@@ -38,11 +38,11 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
     StructuredLLMRuntime,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(

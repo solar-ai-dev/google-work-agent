@@ -9,11 +9,11 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
-from google_work_agent.ports.events.observability_events import (
-    ObservabilityContext,
-    Severity,
+from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
+    ProjectExternalLlmTransferScopeHandler,
+    ProjectExternalLlmTransferScopeQueryV1,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -38,6 +38,13 @@ from google_work_agent.ports.llm import (
 )
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
+from google_work_agent.ports.system.contracts.observability import (
+    ObservabilityContext,
+    Severity,
+)
 from google_work_agent.ports.system.contracts.runtime import AppSettings
 
 
@@ -136,6 +143,8 @@ class LLMRuntimeService:
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
     tool_call_schema_repairer: ToolCallSchemaRepairer | None = None
+    project_external_scope: ProjectExternalLlmTransferScopeHandler | None = None
+    now_ms: Callable[[], int] = lambda: int(time.time() * 1000)
 
     def __post_init__(self) -> None:
         self._semaphore = threading.Semaphore(1)
@@ -238,13 +247,18 @@ class LLMRuntimeService:
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None,
     ) -> StructuredLLMResult:
-        del trace_context
         requested_mode = RequestedRuntimeMode(self.settings_service().requested_runtime_mode)
+        external_scope = self._publish_external_scope(
+            requested_mode=requested_mode,
+            prompt_input=prompt_input,
+            trace_context=trace_context,
+        )
         result = self.structured_inference.infer(
             requested_mode.value,
             prompt_ref,
             prompt_input,
             output_schema,
+            external_scope,
         )
         if semantic_validate is not None:
             semantic_validate(result.structured_output)
@@ -263,6 +277,29 @@ class LLMRuntimeService:
             structured_output_attempts=1,
             provider_request_id=None,
             safe_error_code=None,
+        )
+
+    def _publish_external_scope(
+        self,
+        *,
+        requested_mode: RequestedRuntimeMode,
+        prompt_input: Mapping[str, object],
+        trace_context: ObservabilityContext,
+    ) -> ExternalLlmTransferScopeV1 | None:
+        if requested_mode is RequestedRuntimeMode.LOCAL_GPU:
+            return None
+        if trace_context.run_id is None or self.project_external_scope is None:
+            return None
+        source_kinds = tuple(sorted(str(key) for key in prompt_input)) or ("PROMPT_INPUT",)
+        data_classes = _external_data_classes(source_kinds)
+        return self.project_external_scope(
+            ProjectExternalLlmTransferScopeQueryV1(
+                schema_version=1,
+                run_id=trace_context.run_id,
+                source_kinds=source_kinds,
+                data_classes=data_classes,
+                occurred_at_ms=self.now_ms(),
+            )
         )
 
     def _invoke_tool_call_locked(
@@ -567,7 +604,7 @@ class LLMRuntimeService:
         shape-invalid should be reported/repaired for its shape violations,
         not a confusing mix of both validators' output.
         """
-        shape_errors = validate_output_schema(candidate, output_schema.json_schema)
+        shape_errors = cast(list[str], validate_output_schema(candidate, output_schema.json_schema))
         if shape_errors or semantic_validate is None:
             return shape_errors
         try:
@@ -781,6 +818,38 @@ class TestLLMConnectionService:
 
     def __call__(self) -> dict[str, object]:
         return self.runtime_service.test_connection()
+
+
+def _external_data_classes(
+    source_kinds: tuple[str, ...],
+) -> tuple[
+    Literal["USER_REQUEST", "RESOURCE_METADATA", "EVIDENCE_EXCERPT", "PLAN_CONTEXT"],
+    ...,
+]:
+    """Classify only bounded source names; raw prompt values never enter disclosure."""
+
+    lowered = tuple(item.lower() for item in source_kinds)
+    classes: set[
+        Literal["USER_REQUEST", "RESOURCE_METADATA", "EVIDENCE_EXCERPT", "PLAN_CONTEXT"]
+    ] = set()
+    if any(any(marker in item for marker in ("user", "request", "query")) for item in lowered):
+        classes.add("USER_REQUEST")
+    if any(
+        any(marker in item for marker in ("resource", "calendar", "gmail", "task", "tool"))
+        for item in lowered
+    ):
+        classes.add("RESOURCE_METADATA")
+    if any(any(marker in item for marker in ("evidence", "excerpt", "source")) for item in lowered):
+        classes.add("EVIDENCE_EXCERPT")
+    if (
+        any(
+            any(marker in item for marker in ("plan", "context", "analysis", "route", "goal"))
+            for item in lowered
+        )
+        or not classes
+    ):
+        classes.add("PLAN_CONTEXT")
+    return tuple(sorted(classes))
 
 
 def _parse_payload(payload: object) -> object:

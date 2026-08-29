@@ -3,9 +3,6 @@ from __future__ import annotations
 import pytest
 from tests.support.legacy_write.write_claim import ClaimWriteActionService
 
-from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as server,
-)
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     DEFAULT_APPROVAL_TTL_MS,
 )
@@ -34,7 +31,7 @@ def test_application_default_claim_ttl_is_canonical_30_seconds() -> None:
     service = _claim_service()
 
     assert service._claim_ttl_ms == CLAIM_CONTEXT_DEFAULT_TTL_MS == 30_000
-    assert server.CLAIM_CONTEXT_MAX_TTL_MS == CLAIM_CONTEXT_MAX_TTL_MS
+    assert CLAIM_CONTEXT_MAX_TTL_MS == 60_000
 
 
 def test_application_claim_over_60_seconds_fails_closed_before_issue() -> None:

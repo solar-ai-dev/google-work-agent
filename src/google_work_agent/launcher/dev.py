@@ -622,12 +622,6 @@ def build_container(
     )
     check_component_circuit = CheckComponentCircuitHandler(component_circuits)
     record_component_call_result = RecordComponentCallResultHandler(component_circuits)
-    llm_runtime.structured_inference = CircuitProtectedStructuredInferencePort(
-        delegate=llm_runtime.structured_inference,
-        check=check_component_circuit,
-        record=record_component_call_result,
-        now_ms=clock.now_ms,
-    )
     backup_adapter = FilesystemBackupAdapter(
         database_path=database_path,
         backups_dir=root / "backups",
@@ -689,6 +683,16 @@ def build_container(
         checkpoint_port=checkpoint,
         native_saver=checkpoint,
     )
+    structured_inference_router = cast(
+        StructuredInferenceRuntimeRouter, llm_runtime.structured_inference
+    )
+    structured_inference_router.checkpoint = checkpoint
+    llm_runtime.structured_inference = CircuitProtectedStructuredInferencePort(
+        delegate=structured_inference_router,
+        check=check_component_circuit,
+        record=record_component_call_result,
+        now_ms=clock.now_ms,
+    )
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
@@ -728,6 +732,11 @@ def build_container(
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
     event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
+    project_external_llm_transfer_scope = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,
+        ProjectRunEventHandler(event_publisher),
+    )
+    llm_runtime.project_external_scope = project_external_llm_transfer_scope
     outcome_handler = RunOutcomeHandler(
         unit_of_work_factory=unit_of_work_factory,
         project_run_event=ProjectRunEventHandler(event_publisher),
@@ -1168,12 +1177,7 @@ def build_container(
         ),
         project_recovery_options_handler=ProjectRecoveryOptionsHandler(unit_of_work_factory),
         project_error_actions_handler=ProjectErrorActionsHandler(),
-        project_external_llm_transfer_scope_handler=(
-            ProjectExternalLlmTransferScopeHandler(
-                checkpoint,
-                ProjectRunEventHandler(event_publisher),
-            )
-        ),
+        project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
         get_llm_credential_status_handler=GetLlmCredentialStatusHandler(credential_service),
         get_settings_handler=GetSettingsHandler(settings_service),
         update_settings_handler=UpdateSettingsHandler(
@@ -1212,6 +1216,19 @@ def build_container(
             oauth=google_provider,
             llm_status=llm_status_service,
             circuits=component_circuits,
+            service_instance_id=service_instance_id,
+            release_version=RELEASE_VERSION,
+            frontend_build_version=RELEASE_VERSION,
+            api_contract_version=API_CONTRACT_VERSION,
+            deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+            recovery_required=lambda: safe_mode_controller.snapshot().enabled,
+            database_status=lambda: "READY",
+            migration_status=lambda: "READY",
+            sse_status=lambda: "READY",
+            launcher_status=lambda: "READY",
+            manifest_status=lambda: "VALID" if prompt_active else "INVALID",
+            safe_mode=lambda: safe_mode_controller.snapshot().enabled,
+            last_migration_status=lambda: "READY",
         ),
         update_runtime_mode_handler=UpdateRuntimeModeHandler(
             runtime_mode=runtime_mode,
@@ -1324,7 +1341,9 @@ def _build_llm_runtime(
         settings_service=runtime_settings,
         status_service=status_service,
         credential_service=credential_service,
-        hardware_probe=WindowsHardwareProbeAdapter(),
+        hardware_probe=WindowsHardwareProbeAdapter(
+            ollama_endpoint=lambda: runtime_settings().ollama_endpoint,
+        ),
         api_provider_name="gemini",
         api_provider=GeminiStructuredInferenceAdapter(
             provider_name="gemini",
@@ -1360,6 +1379,7 @@ def _build_llm_runtime(
             release_version=RELEASE_VERSION,
             now_ms=now_ms,
         ),
+        now_ms=now_ms,
     )
     return llm_runtime, settings_service, credential_service, status_service
 

@@ -10,7 +10,6 @@ from typing import Literal, Protocol, cast
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
-from google_work_agent.ports.events.observability_events import ObservabilityContext, Severity
 from google_work_agent.ports.llm import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -33,6 +32,11 @@ from google_work_agent.ports.llm import (
 )
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext, Severity
 from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
 
@@ -72,6 +76,7 @@ class StructuredInferenceRuntimeRouter:
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
     prompt_manifest_path: Path | None = None
+    checkpoint: CheckpointPort | None = None
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
@@ -115,6 +120,7 @@ class StructuredInferenceRuntimeRouter:
         prompt_ref: PromptReference,
         input_projection: Mapping[str, object],
         output_schema_ref: OutputSchemaDefinition,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredInferenceResultV1:
         settings = self.settings_service()
         requested = RequestedRuntimeMode(requested_mode)
@@ -197,6 +203,7 @@ class StructuredInferenceRuntimeRouter:
                 trace_context=trace_context,
                 fallback_reason=None,
                 semantic_validate=None,
+                external_transfer_scope=external_transfer_scope,
             )
             return _canonical_result(result)
         except LLMInvocationError as error:
@@ -227,6 +234,7 @@ class StructuredInferenceRuntimeRouter:
                 trace_context=trace_context,
                 fallback_reason=error.code.value,
                 semantic_validate=None,
+                external_transfer_scope=external_transfer_scope,
             )
             self.event_recorder.record(
                 event_name="LLM_FALLBACK_COMPLETED",
@@ -316,7 +324,10 @@ class StructuredInferenceRuntimeRouter:
         trace_context: ObservabilityContext,
         fallback_reason: str | None,
         semantic_validate: Callable[[object], object] | None,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredLLMResult:
+        if provider.runtime is ActualRuntime.API_LLM:
+            self._require_external_call(external_transfer_scope)
         started = time.perf_counter()
         self.event_recorder.record(
             event_name="LLM_CALL_STARTED",
@@ -356,6 +367,7 @@ class StructuredInferenceRuntimeRouter:
                 api_key=api_key,
                 trace_context=trace_context,
                 semantic_validate=semantic_validate,
+                external_transfer_scope=external_transfer_scope,
             )
         except ValueError as error:
             raise LLMInvocationError(LLMErrorCode.INVALID_PROVIDER_RESPONSE, str(error)) from error
@@ -417,6 +429,7 @@ class StructuredInferenceRuntimeRouter:
         api_key: str | None,
         trace_context: ObservabilityContext,
         semantic_validate: Callable[[object], object] | None,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> tuple[object, int]:
         candidate = _parse_payload(payload)
         errors = _collect_validation_errors(candidate, output_schema, semantic_validate)
@@ -426,6 +439,8 @@ class StructuredInferenceRuntimeRouter:
             raise LLMInvocationError(
                 LLMErrorCode.OUTPUT_SCHEMA_INVALID, "structured output did not satisfy schema"
             )
+        if provider.runtime is ActualRuntime.API_LLM:
+            self._require_external_call(external_transfer_scope)
         repaired = self.schema_repairer.repair(
             provider=provider,
             prompt_ref=prompt_ref,
@@ -444,6 +459,23 @@ class StructuredInferenceRuntimeRouter:
                 LLMErrorCode.OUTPUT_SCHEMA_INVALID, "schema repair did not produce a valid payload"
             )
         return repaired, 2
+
+    def _require_external_call(self, scope: ExternalLlmTransferScopeV1 | None) -> None:
+        if not self.settings_service().external_llm_consent:
+            raise LLMInvocationError(
+                LLMErrorCode.CONSENT_REQUIRED, "external LLM consent is disabled"
+            )
+        if scope is None or self.checkpoint is None:
+            raise LLMInvocationError(
+                LLMErrorCode.CONSENT_REQUIRED,
+                "external LLM transfer scope is not published",
+            )
+        published = self.checkpoint.load_external_llm_scope(scope.run_id)
+        if published != scope:
+            raise LLMInvocationError(
+                LLMErrorCode.CONSENT_REQUIRED,
+                "external LLM transfer scope checkpoint is stale",
+            )
 
     def _should_fallback(
         self,
@@ -537,7 +569,7 @@ def _local_runtime_reason(request: RouteDecisionInput) -> str | None:
     if request.approved_model is None:
         return "APPROVED_MODEL_UNAVAILABLE"
     if request.ollama_probe.safe_error_code is not None:
-        return request.ollama_probe.safe_error_code
+        return cast(str, request.ollama_probe.safe_error_code)
     if request.ollama_probe.availability is not AvailabilityState.AVAILABLE:
         return "OLLAMA_UNAVAILABLE"
     return None
@@ -580,7 +612,7 @@ def _collect_validation_errors(
     output_schema: OutputSchemaDefinition,
     semantic_validate: Callable[[object], object] | None,
 ) -> list[str]:
-    shape_errors = validate_output_schema(candidate, output_schema.json_schema)
+    shape_errors = cast(list[str], validate_output_schema(candidate, output_schema.json_schema))
     if shape_errors or semantic_validate is None:
         return shape_errors
     try:

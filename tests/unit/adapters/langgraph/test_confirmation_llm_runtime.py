@@ -7,8 +7,8 @@ from typing import Any
 from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
     ConfirmationAwareLLMRuntime,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 
 @dataclass

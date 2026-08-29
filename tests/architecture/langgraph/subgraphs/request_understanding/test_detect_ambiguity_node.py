@@ -13,8 +13,7 @@ def _calls(path: Path) -> set[str]:
     return {
         node.func.id if isinstance(node.func, ast.Name) else node.func.attr
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, (ast.Name, ast.Attribute))
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Name, ast.Attribute))
     }
 
 

@@ -6,17 +6,17 @@ from json import loads
 from typing import cast
 
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
-from google_work_agent.ports.events.observability_events import (
+from google_work_agent.ports.persistence.audit_event_repository import (
+    AuditEventCursor,
+    PersistedAuditEventRecord,
+)
+from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
     Severity,
     create_event_envelope,
     sanitize_persistent_event_json,
     serialize_event_envelope,
-)
-from google_work_agent.ports.persistence.audit_event_repository import (
-    AuditEventCursor,
-    PersistedAuditEventRecord,
 )
 
 

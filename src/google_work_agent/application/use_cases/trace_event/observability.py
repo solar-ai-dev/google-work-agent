@@ -8,23 +8,21 @@ from pathlib import Path
 
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.events.observability import (
-    MaintenanceWindow,
-    OperationalLogRecord,
-    OperationalLogSink,
-)
-from google_work_agent.ports.events.observability_events import (
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.backup_port import MaintenanceWindow
+from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     EventEnvelope,
     EventValidationError,
     ObservabilityContext,
     ObservabilityError,
+    OperationalLogRecord,
+    OperationalLogSink,
     Severity,
     create_event_envelope,
     sanitize_persistent_event_json,
     serialize_event_envelope,
 )
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 OPERATIONAL_LOG_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
 MAX_LOG_FILE_BYTES = 10 * 1024 * 1024

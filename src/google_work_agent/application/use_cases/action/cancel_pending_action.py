@@ -19,10 +19,10 @@ from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.events.observability_events import sanitize_event_attributes
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.observability import sanitize_event_attributes
 
 
 @dataclass(frozen=True, slots=True)

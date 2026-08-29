@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
+from tests.support.external_llm_scope import build_external_scope_gate
 from tests.support.fakes import (
     FakeAPIProviderTransport,
     FakeOllamaTransport,
@@ -31,7 +32,6 @@ from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     LLMRuntimeService as _LLMRuntimeService,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
@@ -41,6 +41,7 @@ from google_work_agent.ports.llm import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(
@@ -150,6 +151,10 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
     kwargs.pop("hardware_probe", None)
     kwargs.pop("api_provider")
     kwargs.pop("credential_service", None)
+    checkpoint, projector = build_external_scope_gate()
+    router_kwargs["checkpoint"] = checkpoint
+    kwargs.setdefault("project_external_scope", projector)
+    kwargs.setdefault("now_ms", lambda: 1)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(
             api_provider_name="generic", **router_kwargs

@@ -8,17 +8,17 @@ import sys
 from typing import cast
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    internal_capabilities,
+    project_registry,
 )
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_contracts import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_registry import (
     google_workspace_tool_contract,
 )
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 
 build_google_workspace_internal_capabilities = (
-    internal_capabilities.build_google_workspace_internal_capabilities
+    project_registry.build_google_workspace_internal_capabilities
 )
-INTERNAL_CAPABILITY_REGISTRY_VERSION = internal_capabilities.INTERNAL_CAPABILITY_REGISTRY_VERSION
+INTERNAL_CAPABILITY_REGISTRY_VERSION = project_registry.INTERNAL_CAPABILITY_REGISTRY_VERSION
 
 
 def main() -> None:
@@ -75,7 +75,7 @@ def main() -> None:
 
 
 def _control_payload(method: str) -> dict[str, object]:
-    if method == "mcp.list_internal_capabilities":
+    if method == "mcp.list_project_registry":
         return {
             "internal_capability_registry_version": INTERNAL_CAPABILITY_REGISTRY_VERSION,
             "internal_capability_names": sorted(

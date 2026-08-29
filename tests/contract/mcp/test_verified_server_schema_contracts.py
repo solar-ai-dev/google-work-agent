@@ -5,10 +5,10 @@ from typing import cast
 import pytest
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    server_runtime as verified_server,
+    credential_provider as workspace_tools,
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as workspace_tools,
+    entrypoint as verified_server,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
@@ -17,15 +17,16 @@ def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.M
     calls: list[str] = []
 
     def forbidden_handler(
-        state: workspace_tools._WorkspaceState,
+        state: workspace_tools.GoogleWorkspaceCredentialProvider,
+        tool_name: str,
         arguments: dict[str, object],
     ) -> dict[str, object]:
-        del state, arguments
+        del state, tool_name, arguments
         calls.append("handler")
         return {}
 
-    monkeypatch.setattr(workspace_tools, "_gmail_get_thread", forbidden_handler)
-    state = cast(workspace_tools._WorkspaceState, object())
+    monkeypatch.setattr(verified_server, "dispatch_tool", forbidden_handler)
+    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001
@@ -43,14 +44,15 @@ def test_read_output_contract_failure_is_uncertain_read_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def malformed_read(
-        state: workspace_tools._WorkspaceState,
+        state: workspace_tools.GoogleWorkspaceCredentialProvider,
+        tool_name: str,
         arguments: dict[str, object],
     ) -> dict[str, object]:
-        del state, arguments
+        del state, tool_name, arguments
         return {"item": {"resource_id": "thread-1"}}
 
-    monkeypatch.setattr(workspace_tools, "_gmail_get_thread", malformed_read)
-    state = cast(workspace_tools._WorkspaceState, object())
+    monkeypatch.setattr(verified_server, "dispatch_tool", malformed_read)
+    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001
@@ -69,15 +71,16 @@ def test_write_output_contract_failure_is_sent_response_lost(
     calls: list[str] = []
 
     def malformed_write(
-        state: workspace_tools._WorkspaceState,
+        state: workspace_tools.GoogleWorkspaceCredentialProvider,
+        tool_name: str,
         arguments: dict[str, object],
     ) -> dict[str, object]:
-        del state, arguments
+        del state, tool_name, arguments
         calls.append("provider_write_returned")
         return {"item": {"resource_id": "task-1"}}
 
-    monkeypatch.setattr(workspace_tools, "_tasks_create_task", malformed_write)
-    state = cast(workspace_tools._WorkspaceState, object())
+    monkeypatch.setattr(verified_server, "dispatch_tool", malformed_write)
+    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
     with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001

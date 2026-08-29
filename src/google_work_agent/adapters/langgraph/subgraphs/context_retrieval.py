@@ -111,7 +111,7 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[

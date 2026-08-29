@@ -146,7 +146,7 @@ REMOVED_AUTHORITIES = (
     DOMAIN / "policy.py",
     DOMAIN / "tool_registry.py",
     DOMAIN / "google_workspace_tool_registry.py",
-    DOMAIN / "google_workspace_tool_contracts.py",
+    DOMAIN / "google_workspace_project_registry.py",
     DOMAIN / "claim_contract.py",
     SRC / "application" / "answer_only.py",
     SRC / "application" / "read_lifecycle.py",

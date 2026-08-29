@@ -10,11 +10,11 @@ from google_work_agent.application.use_cases.trace_event.observability import (
     SanitizedJsonlLogSink,
     StaticMaintenanceGate,
 )
-from google_work_agent.ports.events.observability import OperationalLogRecord
-from google_work_agent.ports.events.observability_events import (
+from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     EventValidationError,
     ObservabilityContext,
+    OperationalLogRecord,
     SanitizationError,
     Severity,
     create_event_envelope,

@@ -56,7 +56,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceType,
     TimeRange,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     LLMErrorCode,
@@ -66,6 +65,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowCorrelationContext,

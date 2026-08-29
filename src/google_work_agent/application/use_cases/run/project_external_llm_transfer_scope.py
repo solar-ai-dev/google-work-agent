@@ -71,10 +71,8 @@ class ProjectExternalLlmTransferScopeHandler:
             scope_revision=1 if current is None else current.scope_revision + 1,
             scope_hash=scope_hash,
             source_kinds=source_kinds,
-            data_classes=data_classes,  # type: ignore[arg-type]
+            data_classes=data_classes,
         )
-        self._checkpoint.store_external_llm_scope(scope)
-        self._checkpoint.flush()
         if self._project_run_event is not None:
             assert query.occurred_at_ms is not None
             self._project_run_event(
@@ -90,6 +88,8 @@ class ProjectExternalLlmTransferScopeHandler:
                     },
                 )
             )
+        self._checkpoint.store_external_llm_scope(scope)
+        self._checkpoint.flush()
         return scope
 
 

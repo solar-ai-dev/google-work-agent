@@ -98,10 +98,7 @@ def normalize_attachment_staging_failure(
 def normalize_mcp_transport_failure(error: MCPClientPortError) -> ConnectorOperationFailure:
     if error.code is MCPClientPortErrorCode.CONFIGURATION_ERROR:
         detail = str(error)
-        if detail not in {
-            "GOOGLE_OAUTH_CLIENT_ID_MISSING",
-            "GOOGLE_OAUTH_CLIENT_SECRET_MISSING",
-        }:
+        if detail != "GOOGLE_OAUTH_CLIENT_ID_MISSING":
             detail = "CONNECTOR_CONFIGURATION_INVALID"
         return ConnectorOperationFailure(
             code=ConnectorFailureCode.CONFIGURATION_ERROR,

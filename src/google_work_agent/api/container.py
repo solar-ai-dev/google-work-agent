@@ -15,9 +15,9 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.ports.events.observability import OperationalLogSink
 from google_work_agent.ports.system.api_access_port import ApiAccessGuard
 from google_work_agent.ports.system.clock_port import ClockPort
+from google_work_agent.ports.system.contracts.observability import OperationalLogSink
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeVerifier
 from google_work_agent.ports.system.readiness_port import ReadinessAggregator
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort

@@ -1,4 +1,4 @@
-"""Event-owner-local observability contracts and sanitization policy."""
+"""System-boundary observability contracts and sanitization policy."""
 
 from __future__ import annotations
 
@@ -8,13 +8,28 @@ import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from enum import Enum, StrEnum
-from typing import cast
+from typing import Protocol, cast
 
 SCHEMA_VERSION = 1
 MAX_ATTRIBUTE_BYTES = 16 * 1024
 MAX_STRING_BYTES = 2048
 MAX_COLLECTION_ITEMS = 50
 MAX_DEPTH = 4
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalLogRecord:
+    """One sanitized operational log line."""
+
+    event_json: str
+    occurred_at_ms: int
+
+
+class OperationalLogSink(Protocol):
+    """Append-only sink for already-sanitized operational events."""
+
+    def append(self, record: OperationalLogRecord) -> None: ...
+
 
 FORBIDDEN_KEY_FRAGMENTS = {
     "access_token",
@@ -277,7 +292,7 @@ def sanitize_event_attributes(
             "byte_size": len(payload_bytes),
             "sha256": hashlib.sha256(payload_bytes).hexdigest(),
             "truncated": True,
-            "omitted_fields": sorted(removed_fields | set(sanitized)),
+            "omitted_fields": cast(list[JsonValue], sorted(removed_fields | set(sanitized))),
         }
         payload_bytes = json.dumps(sanitized, sort_keys=True, ensure_ascii=False).encode()
         truncated = True

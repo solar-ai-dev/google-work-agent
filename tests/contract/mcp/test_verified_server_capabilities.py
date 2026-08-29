@@ -9,13 +9,13 @@ from google_work_agent.adapters.connectors.google.workspace.composition import (
     build_google_workspace_connector_descriptor,
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    internal_capabilities,
+    credential_provider as workspace_tools,
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    server_runtime as verified_server,
+    entrypoint as verified_server,
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as workspace_tools,
+    project_registry,
 )
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPArtifactConfig
 from google_work_agent.application.tool_registry import (
@@ -23,7 +23,7 @@ from google_work_agent.application.tool_registry import (
 )
 
 build_google_workspace_internal_capabilities = (
-    internal_capabilities.build_google_workspace_internal_capabilities
+    project_registry.build_google_workspace_internal_capabilities
 )
 
 
@@ -39,13 +39,15 @@ def test_verified_server_declared_surface_maps_to_handlers() -> None:
         "gmail_get_ui_thread_detail",
         "search_by_recovery_fingerprint",
     }
-    for name in public_names | internal_names:
-        assert callable(verified_server._handler_for(name))  # noqa: SLF001
+    for name in public_names:
+        assert verified_server.has_operation(name)
+    for name in internal_names:
+        assert verified_server.has_internal_operation(name)
 
 
 def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
     assert callable(workspace_tools._gmail_thread_list_metadata)  # noqa: SLF001
-    state = cast(workspace_tools._WorkspaceState, object())  # noqa: SLF001
+    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())  # noqa: SLF001
 
     with pytest.raises(workspace_tools._WorkspaceToolError) as captured:  # noqa: SLF001
         verified_server._tool_call(  # noqa: SLF001

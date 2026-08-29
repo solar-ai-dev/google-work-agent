@@ -22,7 +22,6 @@ from google_work_agent.application.orchestration.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -30,6 +29,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 FIXTURE_DIR = (
     Path(__file__).resolve().parents[4]

@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
     detect_ambiguity,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -14,6 +13,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,

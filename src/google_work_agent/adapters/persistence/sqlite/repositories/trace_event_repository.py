@@ -6,17 +6,17 @@ from json import loads
 from typing import cast
 
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.events.observability_events import (
+from google_work_agent.ports.persistence.trace_event_repository import (
+    PersistedTraceEventRecord,
+    TraceEventCursor,
+)
+from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
     Severity,
     create_event_envelope,
     sanitize_persistent_event_json,
     serialize_event_envelope,
-)
-from google_work_agent.ports.persistence.trace_event_repository import (
-    PersistedTraceEventRecord,
-    TraceEventCursor,
 )
 
 

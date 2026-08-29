@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+import pytest
+
 from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
     ProjectExternalLlmTransferScopeHandler,
     ProjectExternalLlmTransferScopeQueryV1,
@@ -24,6 +26,18 @@ class _Checkpoint:
 
     def flush(self) -> None:
         self.calls.append("flush")
+
+
+@dataclass
+class _Events:
+    calls: list[str]
+    fail: bool = False
+
+    def __call__(self, command: object) -> None:
+        del command
+        self.calls.append("event")
+        if self.fail:
+            raise RuntimeError("SSE_UNAVAILABLE")
 
 
 def test_project_external_llm_transfer_scope_publishes_bounded_metadata_and_replays() -> None:
@@ -62,3 +76,45 @@ def test_project_external_llm_transfer_scope_changes_hash_and_revision() -> None
     assert first is not None and second is not None
     assert second.scope_revision == 2
     assert second.scope_hash != first.scope_hash
+
+
+def test_scope_checkpoint_is_not_published_before_sse_append_succeeds() -> None:
+    checkpoint = _Checkpoint()
+    handler = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,  # type: ignore[arg-type]
+        _Events(checkpoint.calls, fail=True),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeError, match="SSE_UNAVAILABLE"):
+        handler(
+            ProjectExternalLlmTransferScopeQueryV1(
+                1,
+                "run-1",
+                ("USER_REQUEST",),
+                ("USER_REQUEST",),
+                occurred_at_ms=1,
+            )
+        )
+
+    assert checkpoint.calls == ["event"]
+    assert checkpoint.scope is None
+
+
+def test_scope_checkpoint_is_flushed_only_after_sse_append() -> None:
+    checkpoint = _Checkpoint()
+    handler = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,  # type: ignore[arg-type]
+        _Events(checkpoint.calls),  # type: ignore[arg-type]
+    )
+
+    handler(
+        ProjectExternalLlmTransferScopeQueryV1(
+            1,
+            "run-1",
+            ("USER_REQUEST",),
+            ("USER_REQUEST",),
+            occurred_at_ms=1,
+        )
+    )
+
+    assert checkpoint.calls == ["event", "store", "flush"]

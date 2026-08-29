@@ -6,9 +6,9 @@ from dataclasses import replace
 import pytest
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    internal_capabilities,
+    project_registry,
 )
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_contracts import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_registry import (
     ToolContractViolation,
     google_workspace_tool_contract,
     list_google_workspace_tool_contracts,
@@ -18,7 +18,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.tool_cont
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 
 build_google_workspace_internal_capabilities = (
-    internal_capabilities.build_google_workspace_internal_capabilities
+    project_registry.build_google_workspace_internal_capabilities
 )
 
 

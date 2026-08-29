@@ -46,8 +46,8 @@ from google_work_agent.application.orchestration.work_analysis import (
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import StructuredLLMResult
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 

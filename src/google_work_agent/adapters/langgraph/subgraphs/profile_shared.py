@@ -61,7 +61,7 @@ from google_work_agent.application.orchestration.solution_planning import (
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.events.observability_events import ObservabilityContext
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
@@ -99,9 +99,7 @@ def build_profile_tool_route_plan(
             for item in materialized.get("requested_resource_hints", [])
         )
     )
-    effects = tuple(
-        EffectType(item) for item in materialized.get("requested_effect_hints", [])
-    )
+    effects = tuple(EffectType(item) for item in materialized.get("requested_effect_hints", []))
     write_effects = tuple(effect for effect in effects if effect is not EffectType.READ)
     if write_effects and not resource_hints:
         raise ProfileToolRouteError("ACTION route requires resource and effect hints")

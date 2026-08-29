@@ -7,7 +7,6 @@ from google_work_agent.application.agents.tool_routing.select_tool_if_needed imp
     select_tool_if_needed,
 )
 from google_work_agent.application.orchestration.contracts import build_default_run_budget
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -15,6 +14,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,

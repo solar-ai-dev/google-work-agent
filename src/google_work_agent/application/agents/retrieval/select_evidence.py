@@ -25,11 +25,11 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="evidence-selection-v2",

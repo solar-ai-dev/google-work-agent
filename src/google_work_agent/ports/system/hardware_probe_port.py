@@ -16,6 +16,14 @@ class HardwareProfileV1:
     ollama_version: str | None
     local_runtime_eligible: bool
 
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or self.cpu_logical_cores < 1 or self.ram_total_bytes <= 0:
+            raise ValueError("invalid hardware profile")
+        if not self.gpu_present and (
+            self.gpu_name is not None or self.vram_total_bytes is not None
+        ):
+            raise ValueError("GPU metadata requires an observed GPU")
+
 
 class HardwareProbePort(Protocol):
     def probe(self) -> HardwareProfileV1: ...

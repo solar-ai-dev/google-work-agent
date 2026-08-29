@@ -70,9 +70,7 @@ def test_approve_action_exact_parent_run_status_matrix(run_status: RunStatusV1) 
         run_status=run_status,
     )
 
-    assert result.applied is (
-        run_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}
-    )
+    assert result.applied is (run_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING})
 
 
 @pytest.mark.parametrize(

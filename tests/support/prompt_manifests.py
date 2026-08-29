@@ -141,9 +141,7 @@ def write_manifest_with_legacy_profile_slots(
             activated.add(str(slot["slot_id"]))
     missing_active = active - activated
     if missing_active:
-        current_manifest = json.loads(
-            default_prompt_manifest_path().read_text(encoding="utf-8")
-        )
+        current_manifest = json.loads(default_prompt_manifest_path().read_text(encoding="utf-8"))
         current_slots = current_manifest.get("slots")
         if not isinstance(current_slots, list):
             raise ValueError("current prompt manifest must contain slots")

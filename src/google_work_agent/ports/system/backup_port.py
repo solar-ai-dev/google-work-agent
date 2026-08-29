@@ -25,6 +25,19 @@ class RestoreResultV1:
     detail_code: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class MaintenanceWindow:
+    has_active_write: bool
+    migration_running: bool
+    restore_running: bool
+
+
+class MaintenanceGate(Protocol):
+    """Dependency-only backup/restore admission snapshot."""
+
+    def snapshot(self) -> MaintenanceWindow: ...
+
+
 class BackupPort(Protocol):
     def create_backup(self, operation_ref: str) -> BackupMetadataV1: ...
 
@@ -39,4 +52,10 @@ class BackupPort(Protocol):
     def list_backups(self) -> list[BackupMetadataV1]: ...
 
 
-__all__ = ["BackupMetadataV1", "BackupPort", "RestoreResultV1"]
+__all__ = [
+    "BackupMetadataV1",
+    "BackupPort",
+    "MaintenanceGate",
+    "MaintenanceWindow",
+    "RestoreResultV1",
+]

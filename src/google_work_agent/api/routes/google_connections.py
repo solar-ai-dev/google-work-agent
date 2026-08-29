@@ -174,9 +174,7 @@ def disconnect_google(
 
 def _raise_google_failure(error: ConnectorOperationFailure, *, request_id: str) -> None:
     if error.code is ConnectorFailureCode.CONFIGURATION_ERROR:
-        if error.detail_code == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING":
-            user_message = "Google OAuth client secret is not configured."
-        elif error.detail_code == "GOOGLE_OAUTH_CLIENT_ID_MISSING":
+        if error.detail_code == "GOOGLE_OAUTH_CLIENT_ID_MISSING":
             user_message = "Google OAuth client ID is not configured."
         else:
             user_message = "Google connector configuration is invalid."

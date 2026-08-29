@@ -12,8 +12,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.ports.events.observability import MaintenanceGate
-from google_work_agent.ports.system.backup_port import BackupMetadataV1, RestoreResultV1
+from google_work_agent.ports.system.backup_port import (
+    BackupMetadataV1,
+    MaintenanceGate,
+    RestoreResultV1,
+)
 from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,

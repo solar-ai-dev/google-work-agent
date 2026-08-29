@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as server,
+    credential_provider as server,
 )
 from google_work_agent.application.orchestration.task_write_semantics import (
     normalize_task_write_arguments,

@@ -12,17 +12,17 @@ from google_work_agent.api.security.fetch_metadata import (
 )
 from google_work_agent.api.security.origin import is_exact_origin_match
 from google_work_agent.application.use_cases.trace_event.observability import append_operational_log
-from google_work_agent.ports.events.observability import OperationalLogSink
-from google_work_agent.ports.events.observability_events import (
-    EventCategory,
-    ObservabilityContext,
-    Severity,
-    create_event_envelope,
-)
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
     EndpointPolicy,
+)
+from google_work_agent.ports.system.contracts.observability import (
+    EventCategory,
+    ObservabilityContext,
+    OperationalLogSink,
+    Severity,
+    create_event_envelope,
 )
 
 from .sessions import LocalSessionManager

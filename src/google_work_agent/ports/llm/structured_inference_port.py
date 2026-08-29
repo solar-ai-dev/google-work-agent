@@ -8,6 +8,9 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,7 @@ class StructuredInferencePort(Protocol):
         prompt_ref: PromptReference,
         input_projection: Mapping[str, object],
         output_schema_ref: OutputSchemaDefinition,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredInferenceResultV1: ...
 
 

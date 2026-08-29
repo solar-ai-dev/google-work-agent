@@ -38,6 +38,9 @@ from google_work_agent.ports.system.component_circuit_state_port import (
     ComponentCircuitKeyV1,
     ComponentCircuitStatePort,
 )
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +190,7 @@ class CircuitProtectedStructuredInferencePort(StructuredInferencePort):
         prompt_ref: PromptReference,
         input_projection: Mapping[str, object],
         output_schema_ref: OutputSchemaDefinition,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredInferenceResultV1:
         attempted_runtime: Literal["LOCAL_GPU", "API_LLM"] = (
             "API_LLM" if requested_mode == "API_LLM" else "LOCAL_GPU"
@@ -208,6 +212,7 @@ class CircuitProtectedStructuredInferencePort(StructuredInferencePort):
                 prompt_ref,
                 input_projection,
                 output_schema_ref,
+                external_transfer_scope,
             )
         except LLMInvocationError as error:
             self._record(

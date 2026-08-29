@@ -3,20 +3,17 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, build_opener
 
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.credential_provider import (
     GoogleOAuthSettings,
-)
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.workspace_runtime import (
+    GoogleWorkspaceCredentialProvider,
     _control_call,
-    _WorkspaceState,
 )
 
 
 def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:
-    state = _WorkspaceState(keyring=_FakeSecretStorePort())
+    state = GoogleWorkspaceCredentialProvider(keyring=_FakeSecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="test-desktop-client-id",
-        google_oauth_client_secret="compatibility-client-secret",
     )
     started = _control_call(
         state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}

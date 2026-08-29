@@ -42,7 +42,7 @@ def test_core_failure_keeps_health_and_blocks_commands(safe_code: str) -> None:
 
         runtime = client.get("/api/v1/runtime", headers=headers)
         assert runtime.status_code == 200
-        assert runtime.json()["summary"]["safe_mode"] is True
+        assert runtime.json()["safe_mode"] is True
 
         command = client.post(
             "/api/v1/conversations",

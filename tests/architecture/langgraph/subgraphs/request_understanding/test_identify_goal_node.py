@@ -13,8 +13,7 @@ def _calls(path: Path) -> set[str]:
     return {
         node.func.id if isinstance(node.func, ast.Name) else node.func.attr
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, (ast.Name, ast.Attribute))
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Name, ast.Attribute))
     }
 
 
@@ -42,9 +41,7 @@ def test_identify_goal_prompt_boundary_is_current_run_only() -> None:
 
 def test_request_understanding_broad_production_authority_is_absent() -> None:
     assert not (SRC / "application/orchestration/request_understanding.py").exists()
-    production = "\n".join(
-        path.read_text(encoding="utf-8") for path in SRC.rglob("*.py")
-    )
+    production = "\n".join(path.read_text(encoding="utf-8") for path in SRC.rglob("*.py"))
     assert "RequestUnderstandingAgent" not in production
     assert "application.orchestration.request_understanding" not in production
     assert "request_understanding.classify" not in production

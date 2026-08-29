@@ -145,9 +145,12 @@ def test_cleared_context_tombstone_does_not_block_terminal_run_retention(
 
         assert result.runs == 1
         assert connection.execute("SELECT COUNT(*) FROM runs WHERE id='r-1';").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM recovery_context_tombstones WHERE run_id='r-1';"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM recovery_context_tombstones WHERE run_id='r-1';"
+            ).fetchone()[0]
+            == 0
+        )
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
     finally:
         connection.close()
@@ -181,9 +184,12 @@ def test_active_recovery_context_still_protects_terminal_run_from_retention(
 
         assert result.runs == 0
         assert connection.execute("SELECT COUNT(*) FROM runs WHERE id='r-1';").fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM recovery_contexts WHERE run_id='r-1';"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM recovery_contexts WHERE run_id='r-1';"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 

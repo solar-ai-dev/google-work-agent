@@ -81,8 +81,7 @@ class ToolRouteDisposition(StrEnum):
 
 def allowed_input_sources(plan: ToolRoutePlanV2) -> frozenset[str]:
     return frozenset(
-        _resource_source(route["resource_type"])
-        for route in plan["input_plan"]["input_routes"]
+        _resource_source(route["resource_type"]) for route in plan["input_plan"]["input_routes"]
     )
 
 

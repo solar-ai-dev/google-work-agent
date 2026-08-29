@@ -5,10 +5,25 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as server,
+from google_work_agent.adapters.connectors.google.calendar.events.list_events import (
+    ListEventsOperation,
 )
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+from google_work_agent.adapters.connectors.google.calendar.freebusy.query_freebusy import (
+    QueryFreebusyOperation,
+)
+from google_work_agent.adapters.connectors.google.gmail.messages.get_message import (
+    GetMessageOperation,
+)
+from google_work_agent.adapters.connectors.google.gmail.threads.get_thread import (
+    GetThreadOperation,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    credential_provider as server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
+    entrypoint as verified_server,
+)
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.credential_provider import (
     GoogleOAuthSettings,
 )
 
@@ -17,7 +32,9 @@ def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None: 
     calls: list[tuple[str, dict[str, str | list[str]] | None]] = []
 
     def google_api(
-        _state: server._WorkspaceState, url: str, params: dict[str, str | list[str]] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        url: str,
+        params: dict[str, str | list[str]] | None = None,
     ) -> dict[str, object]:
         calls.append((url, params))
         if url.endswith("/threads/thread-1"):
@@ -45,7 +62,7 @@ def test_gmail_list_enriches_current_page_thread_metadata(monkeypatch) -> None: 
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    payload = server._tool_call(
+    payload = verified_server._tool_call(
         _state(),
         tool_name="gmail_search_threads",
         arguments={"query": "label:inbox", "page_size": 20, "page_token": None},
@@ -92,7 +109,9 @@ def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_orde
     thread_ids = [f"thread-{index}" for index in range(20)]
 
     def google_api(
-        _state: server._WorkspaceState, _url: str, _params: dict[str, str | list[str]] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        _params: dict[str, str | list[str]] | None = None,
     ) -> dict[str, object]:
         return {
             "threads": [
@@ -102,7 +121,7 @@ def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_orde
         }
 
     def metadata(
-        *, state: server._WorkspaceState, thread_id: str, list_snippet: str | None
+        *, state: server.GoogleWorkspaceCredentialProvider, thread_id: str, list_snippet: str | None
     ) -> dict[str, object]:
         del state, list_snippet
         return {"subject": f"Subject {thread_id}"}
@@ -110,7 +129,7 @@ def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_orde
     monkeypatch.setattr(server, "_google_api", google_api)
     monkeypatch.setattr(server, "_gmail_thread_list_metadata", metadata)
 
-    payload = server._tool_call(
+    payload = verified_server._tool_call(
         _state(),
         tool_name="gmail_search_threads",
         arguments={"query": "label:inbox", "page_size": 20, "page_token": None},
@@ -126,12 +145,14 @@ def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_orde
 
 def test_gmail_metadata_hydration_failure_fails_the_whole_page(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     def google_api(
-        _state: server._WorkspaceState, _url: str, _params: dict[str, str | list[str]] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        _params: dict[str, str | list[str]] | None = None,
     ) -> dict[str, object]:
         return {"threads": [{"id": "thread-1"}, {"id": "thread-2"}]}
 
     def metadata(
-        *, state: server._WorkspaceState, thread_id: str, list_snippet: str | None
+        *, state: server.GoogleWorkspaceCredentialProvider, thread_id: str, list_snippet: str | None
     ) -> dict[str, object]:
         del state, list_snippet
         if thread_id == "thread-2":
@@ -142,7 +163,7 @@ def test_gmail_metadata_hydration_failure_fails_the_whole_page(monkeypatch) -> N
     monkeypatch.setattr(server, "_gmail_thread_list_metadata", metadata)
 
     with pytest.raises(server._WorkspaceToolError, match="TIMEOUT"):
-        server._tool_call(
+        verified_server._tool_call(
             _state(),
             tool_name="gmail_search_threads",
             arguments={"query": "label:inbox", "page_size": 20, "page_token": None},
@@ -151,7 +172,9 @@ def test_gmail_metadata_hydration_failure_fails_the_whole_page(monkeypatch) -> N
 
 def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     def google_api(
-        _state: server._WorkspaceState, url: str, _params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        url: str,
+        _params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         if url.endswith("/threads/thread-1"):
             return {"messages": [{"id": "message-1", "payload": {"headers": []}}]}
@@ -159,7 +182,7 @@ def test_gmail_list_does_not_use_thread_id_as_subject_fallback(monkeypatch) -> N
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    payload = server._tool_call(
+    payload = verified_server._tool_call(
         _state(),
         tool_name="gmail_search_threads",
         arguments={"query": "", "page_size": 20, "page_token": None},
@@ -174,14 +197,16 @@ def test_gmail_count_traversal_skips_per_thread_metadata_hydration(monkeypatch) 
     calls: list[tuple[str, dict[str, str] | None]] = []
 
     def google_api(
-        _state: server._WorkspaceState, url: str, _params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        url: str,
+        _params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         calls.append((url, _params))
         return {"threads": [{"id": "thread-1", "historyId": "7", "snippet": "Preview"}]}
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    payload = server._tool_call(
+    payload = verified_server._tool_call(
         _state(),
         tool_name="gmail_search_threads",
         arguments={
@@ -207,7 +232,9 @@ def test_gmail_count_traversal_skips_per_thread_metadata_hydration(monkeypatch) 
 
 def test_gmail_thread_detail_tool_contract_is_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     def google_api(
-        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         assert params == {"format": "metadata"}
         return {
@@ -229,7 +256,7 @@ def test_gmail_thread_detail_tool_contract_is_unchanged(monkeypatch) -> None:  #
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    thread = server._gmail_get_thread(_state(), {"thread_id": "thread-1"})
+    thread = GetThreadOperation().execute(_state(), {"thread_id": "thread-1"})
 
     assert cast(dict[str, object], cast(dict[str, object], thread["item"])["payload"]) == {
         "subject": "Project sync",
@@ -245,7 +272,9 @@ def test_gmail_message_detail_fetches_full_format_and_includes_body(monkeypatch)
     -- the same extraction the Sidebar UI detail endpoint already used."""
 
     def google_api(
-        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         assert params == {"format": "full"}
         message = _gmail_message(
@@ -267,7 +296,7 @@ def test_gmail_message_detail_fetches_full_format_and_includes_body(monkeypatch)
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    message = server._gmail_get_message(_state(), {"message_id": "message-1"})
+    message = GetMessageOperation().execute(_state(), {"message_id": "message-1"})
 
     assert cast(dict[str, object], cast(dict[str, object], message["item"])["payload"]) == {
         "subject": "Project update",
@@ -291,7 +320,9 @@ def test_gmail_message_detail_fetches_full_format_and_includes_body(monkeypatch)
 
 def test_gmail_message_detail_omits_body_and_attachments_when_absent(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     def google_api(
-        _state: server._WorkspaceState, _url: str, _params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        _params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         return {
             "id": "message-1",
@@ -310,7 +341,7 @@ def test_gmail_message_detail_omits_body_and_attachments_when_absent(monkeypatch
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    message = server._gmail_get_message(_state(), {"message_id": "message-1"})
+    message = GetMessageOperation().execute(_state(), {"message_id": "message-1"})
 
     assert cast(dict[str, object], cast(dict[str, object], message["item"])["payload"]) == {
         "subject": "Project sync",
@@ -324,7 +355,9 @@ def test_gmail_message_detail_omits_body_and_attachments_when_absent(monkeypatch
 
 def test_gmail_ui_detail_uses_latest_message_and_plain_body(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     def google_api(
-        _state: server._WorkspaceState, _url: str, params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         assert params == {"format": "full"}
         return {
@@ -348,7 +381,7 @@ def test_gmail_ui_detail_uses_latest_message_and_plain_body(monkeypatch) -> None
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    detail = server._tool_call(
+    detail = verified_server._tool_call(
         _state(),
         tool_name="gmail_get_ui_thread_detail",
         arguments={"thread_id": "thread-1"},
@@ -401,7 +434,11 @@ def test_gmail_ui_detail_converts_nested_html_when_plain_is_missing(monkeypatch)
 
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
 
-    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+    detail = verified_server._tool_call(
+        _state(),
+        tool_name="gmail_get_ui_thread_detail",
+        arguments={"thread_id": "thread-1"},
+    )
 
     assert detail["body"] == "Hello team.\nNext line"
     assert "hidden" not in str(detail["body"])
@@ -413,7 +450,11 @@ def test_gmail_ui_detail_allows_missing_or_malformed_body(monkeypatch) -> None: 
     cast(dict[str, object], message["payload"])["body"] = {"data": "%%%"}
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
 
-    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+    detail = verified_server._tool_call(
+        _state(),
+        tool_name="gmail_get_ui_thread_detail",
+        arguments={"thread_id": "thread-1"},
+    )
 
     assert "body" not in detail or detail["body"] is None
 
@@ -426,7 +467,11 @@ def test_gmail_ui_detail_omits_rfc822_message_id_when_header_is_absent(monkeypat
     ]
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {"messages": [message]})
 
-    detail = server._gmail_get_ui_thread_detail(_state(), {"thread_id": "thread-1"})
+    detail = verified_server._tool_call(
+        _state(),
+        tool_name="gmail_get_ui_thread_detail",
+        arguments={"thread_id": "thread-1"},
+    )
 
     assert detail["rfc822_message_id"] is None
 
@@ -481,19 +526,21 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
     ]
 
     def google_api(
-        _state: server._WorkspaceState, _url: str, _params: dict[str, str] | None = None
+        _state: server.GoogleWorkspaceCredentialProvider,
+        _url: str,
+        _params: dict[str, str] | None = None,
     ) -> dict[str, object]:
         return cast(dict[str, object], responses.pop(0))
 
     monkeypatch.setattr(server, "_google_api", google_api)
     state = _state()
 
-    task = server._tool_call(
+    task = verified_server._tool_call(
         state,
         tool_name="tasks_get_task",
         arguments={"task_list_id": "list-1", "task_id": "task-1"},
     )
-    event = server._tool_call(
+    event = verified_server._tool_call(
         state,
         tool_name="calendar_get_event",
         arguments={"calendar_id": "primary", "event_id": "event-1"},
@@ -515,7 +562,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
     captured: dict[str, object] = {}
 
     def google_api(
-        _state: server._WorkspaceState,
+        _state: server.GoogleWorkspaceCredentialProvider,
         url: str,
         params: dict[str, str] | None = None,
     ) -> dict[str, object]:
@@ -550,7 +597,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
 
     monkeypatch.setattr(server, "_google_api", google_api)
 
-    result = server._calendar_list_events(
+    result = ListEventsOperation().execute(
         _state(),
         {
             "calendar_id": "work@example.com",
@@ -605,7 +652,7 @@ def test_read_tool_input_rejects_invalid_page_token(monkeypatch) -> None:  # typ
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {})
 
     try:
-        server._tool_call(
+        verified_server._tool_call(
             _state(),
             tool_name="gmail_search_threads",
             arguments={"query": "", "page_size": 20, "page_token": "bad\nvalue"},
@@ -620,7 +667,7 @@ def test_freebusy_maps_explicit_range_to_google_request(monkeypatch) -> None:  #
     captured: dict[str, object] = {}
 
     def google_api_post(
-        _state: server._WorkspaceState, url: str, body: dict[str, object]
+        _state: server.GoogleWorkspaceCredentialProvider, url: str, body: dict[str, object]
     ) -> dict[str, object]:
         captured["url"] = url
         captured["body"] = body
@@ -639,7 +686,7 @@ def test_freebusy_maps_explicit_range_to_google_request(monkeypatch) -> None:  #
 
     monkeypatch.setattr(server, "_google_api_post", google_api_post)
 
-    payload = server._calendar_query_freebusy(
+    payload = QueryFreebusyOperation().execute(
         _state(),
         {
             "calendar_ids": ["primary"],
@@ -669,7 +716,7 @@ def test_freebusy_rejects_invalid_range_without_google_request(monkeypatch) -> N
     )
 
     with pytest.raises(server._WorkspaceToolError, match="INVALID_ARGUMENT"):
-        server._calendar_query_freebusy(
+        QueryFreebusyOperation().execute(
             _state(),
             {
                 "calendar_ids": ["primary"],
@@ -679,11 +726,10 @@ def test_freebusy_rejects_invalid_range_without_google_request(monkeypatch) -> N
         )
 
 
-def _state() -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=_MemorySecretStorePort())
+def _state() -> server.GoogleWorkspaceCredentialProvider:
+    state = server.GoogleWorkspaceCredentialProvider(keyring=_MemorySecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
-        google_oauth_client_secret="compatibility-client-secret",
     )
     return state
 

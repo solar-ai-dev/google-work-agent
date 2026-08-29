@@ -29,7 +29,6 @@ from google_work_agent.application.orchestration.work_analysis import (
     validate_work_analysis_result_v1_from_retrieval_result,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -37,6 +36,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,

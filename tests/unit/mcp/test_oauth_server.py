@@ -11,9 +11,9 @@ from urllib.request import Request, urlopen
 import pytest
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
-    workspace_runtime as server,
+    credential_provider as server,
 )
-from google_work_agent.adapters.connectors.google.workspace.mcp_server.oauth_settings import (
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.credential_provider import (
     GoogleOAuthSettings,
 )
 
@@ -92,7 +92,6 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
         server._exchange_authorization_code(
             flow,
             "authorization-code",
-            "compatibility-client-secret",
         )
 
     assert captured is not None
@@ -105,7 +104,6 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
     assert b"&" in request_body
     assert {field.partition(b"=")[0] for field in request_body.split(b"&")} == {
         b"client_id",
-        b"client_secret",
         b"code",
         b"code_verifier",
         b"grant_type",
@@ -114,7 +112,6 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
     request_fields = parse_qs(request_body.decode("ascii"))
     assert set(request_fields) == {
         "client_id",
-        "client_secret",
         "code",
         "code_verifier",
         "grant_type",
@@ -149,13 +146,11 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
     def exchange(
         bound_flow: server._OAuthFlow,
         code: str,
-        client_secret: str | None,
     ) -> tuple[str, str, str | None]:
         nonlocal exchanges
         exchanges += 1
         assert bound_flow.callback_url == flow.callback_url
         assert code
-        assert client_secret == "compatibility-client-secret"
         exchange_started.set()
         assert release_exchange.wait(timeout=2)
         return "refresh-value", "access-value", None
@@ -197,9 +192,8 @@ def test_callback_exposes_only_redacted_token_exchange_diagnostic(
     def reject(
         bound_flow: server._OAuthFlow,
         code: str,
-        client_secret: str | None,
     ) -> tuple[str, str]:
-        del bound_flow, code, client_secret
+        del bound_flow, code
         raise server._OAuthExchangeError(
             "TOKEN_EXCHANGE_INVALID_GRANT",
             "Google rejected the authorization code or its PKCE/redirect binding.",
@@ -229,12 +223,10 @@ def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
 ) -> None:
     store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
-    calls: list[tuple[str, str | None, str | None]] = []
+    calls: list[tuple[str, str | None]] = []
 
-    def refresh(
-        value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None, str | None]:
-        calls.append((value, client_id, client_secret))
+    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
+        calls.append((value, client_id))
         return "access-value", server._now_ms() + 10_000, "rotated-value", None
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
@@ -242,7 +234,6 @@ def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
 
     assert len(calls) == 1
     assert calls[0][1] == "desktop-client"
-    assert calls[0][2] == "compatibility-client-secret"
     assert state.access_token == "access-value"
     assert store.values["refresh"] == "rotated-value"
     assert "access-value" not in repr(state.connection_payload())
@@ -260,10 +251,8 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
     state = _state(store)
     assert state.account_email is None
 
-    def refresh(
-        value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None, str | None]:
-        del value, client_id, client_secret
+    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
+        del value, client_id
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
@@ -616,7 +605,7 @@ def test_refresh_access_token_decodes_email_from_id_token(monkeypatch: pytest.Mo
     monkeypatch.setattr(server, "urlopen", lambda request, *, timeout: _HTTPResponse(body))
 
     access_token, _, rotated_refresh_token, email = server._refresh_access_token(
-        "stored-refresh-token", "desktop-client", "compatibility-client-secret"
+        "stored-refresh-token", "desktop-client"
     )
 
     assert access_token == "access-value"
@@ -643,7 +632,7 @@ def test_exchange_authorization_code_decodes_email_from_id_token(
     monkeypatch.setattr(server, "urlopen", lambda request, *, timeout: _HTTPResponse(body))
 
     refresh_token, access_token, email = server._exchange_authorization_code(
-        flow, "authorization-code", "compatibility-client-secret"
+        flow, "authorization-code"
     )
 
     assert refresh_token == "refresh-value"
@@ -667,7 +656,6 @@ def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
     access_token, _, rotated_refresh_token, _ = server._refresh_access_token(
         "stored-refresh-token",
         "desktop-client",
-        "compatibility-client-secret",
     )
 
     assert access_token == "access-value"
@@ -681,24 +669,21 @@ def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
     assert b"{" not in request_body
     assert {field.partition(b"=")[0] for field in request_body.split(b"&")} == {
         b"client_id",
-        b"client_secret",
         b"refresh_token",
         b"grant_type",
     }
     assert parse_qs(request_body.decode("ascii"))["grant_type"] == ["refresh_token"]
 
 
-def test_missing_client_secret_blocks_oauth_before_any_authorization_flow() -> None:
-    state = server._WorkspaceState(keyring=_MemorySecretStorePort({}))
+def test_desktop_oauth_starts_with_public_client_id_only() -> None:
+    state = server.GoogleWorkspaceCredentialProvider(keyring=_MemorySecretStorePort({}))
     state.oauth_settings = GoogleOAuthSettings(google_oauth_client_id="desktop-client")
 
-    with pytest.raises(server._OAuthConfigurationError) as error_info:
-        server._control_call(
-            state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
-        )
-
-    assert error_info.value.safe_code == "GOOGLE_OAUTH_CLIENT_SECRET_MISSING"
-    assert state.active_flow is None
+    result = server._control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
+    assert result["flow_id"]
+    assert state.active_flow is not None
 
 
 def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -708,11 +693,9 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
     calls = 0
     call_lock = threading.Lock()
 
-    def refresh(
-        value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None, str | None]:
+    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
         nonlocal calls
-        del value, client_id, client_secret
+        del value, client_id
         with call_lock:
             calls += 1
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
@@ -735,10 +718,8 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
 def test_invalid_grant_requires_reauthentication(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
 
-    def invalid(
-        value: str, client_id: str | None, client_secret: str | None
-    ) -> tuple[str, int, str | None]:
-        del value, client_id, client_secret
+    def invalid(value: str, client_id: str | None) -> tuple[str, int, str | None]:
+        del value, client_id
         raise server._OAuthReauthenticationRequired
 
     monkeypatch.setattr(server, "_refresh_access_token", invalid)
@@ -768,11 +749,10 @@ def test_disconnect_always_cleans_local_credential_and_memory(
     assert store.values == {}
 
 
-def _state(store: _MemorySecretStorePort) -> server._WorkspaceState:
-    state = server._WorkspaceState(keyring=store)
+def _state(store: _MemorySecretStorePort) -> server.GoogleWorkspaceCredentialProvider:
+    state = server.GoogleWorkspaceCredentialProvider(keyring=store)
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
-        google_oauth_client_secret="compatibility-client-secret",
     )
     return state
 

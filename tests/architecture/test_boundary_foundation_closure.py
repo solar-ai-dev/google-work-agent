@@ -109,6 +109,10 @@ def test_google_mcp_dispatch_has_exact_signed_registry_operation_set() -> None:
     assert set(dispatch_tool._OPERATIONS) == {  # noqa: SLF001
         entry.tool_id for entry in registry.entries
     }
+    assert set(dispatch_tool._INTERNAL_OPERATIONS) == {  # noqa: SLF001
+        "gmail_get_ui_thread_detail",
+        "search_by_recovery_fingerprint",
+    }
 
 
 def test_removed_boundary_authorities_and_compatibility_paths_are_absent() -> None:
@@ -149,17 +153,42 @@ def test_boundary_adapter_packages_do_not_reexport_concrete_owners() -> None:
         assert not [node for node in module.body if isinstance(node, (ast.Import, ast.ImportFrom))]
 
 
-def test_workspace_runtime_routes_public_tools_through_canonical_dispatch() -> None:
-    runtime = SRC / "adapters/connectors/google/workspace/mcp_server/workspace_runtime.py"
-    source = runtime.read_text(encoding="utf-8")
-
-    assert (
-        "from google_work_agent.adapters.connectors.google.workspace.mcp_server."
-        "dispatch_tool import (" in source
+def test_entrypoint_routes_public_tools_through_operation_per_file_dispatch() -> None:
+    from google_work_agent.adapters.connectors.google.workspace.mcp_server.dispatch_tool import (
+        _OPERATIONS,
     )
-    assert "dispatch_tool(" in source
+
+    entrypoint = (SRC / "adapters/connectors/google/workspace/mcp_server/entrypoint.py").read_text(
+        encoding="utf-8"
+    )
+    credential = (
+        SRC / "adapters/connectors/google/workspace/mcp_server/credential_provider.py"
+    ).read_text(encoding="utf-8")
+
+    assert "dispatch_tool(" in entrypoint
+    assert "dispatch_internal_tool(" in entrypoint
+    assert "getattr(workspace_tools" not in entrypoint
+    assert set(_OPERATIONS) == {entry.tool_id for entry in load_signed_tool_registry().entries}
     for entry in load_signed_tool_registry().entries:
-        assert f'"{entry.tool_id}":' not in source
+        operation = _OPERATIONS[entry.tool_id]
+        operation_path = SRC / (
+            operation.__class__.__module__.replace(".", "/") + ".py"
+        ).removeprefix("google_work_agent/")
+        operation_source = operation_path.read_text(encoding="utf-8")
+        assert f"def _{entry.tool_id}(" in operation_source
+        assert f"def _{entry.tool_id}(" not in credential
+    assert "def _gmail_get_ui_thread_detail(" not in credential
+    assert "def _search_by_recovery_fingerprint(" not in credential
+
+    for removed in (
+        "workspace_runtime.py",
+        "server_runtime.py",
+        "provider_operation_runtime.py",
+        "oauth_settings.py",
+        "tool_contracts.py",
+        "internal_capabilities.py",
+    ):
+        assert not (SRC / f"adapters/connectors/google/workspace/mcp_server/{removed}").exists()
 
 
 def test_connector_write_has_one_production_dispatch_caller() -> None:

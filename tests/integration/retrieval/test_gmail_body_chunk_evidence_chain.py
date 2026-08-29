@@ -29,7 +29,6 @@ from google_work_agent.application.orchestration.handoff_contracts import Reques
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.ports.events.observability_events import ObservabilityContext
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -37,6 +36,7 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowCorrelationContext,

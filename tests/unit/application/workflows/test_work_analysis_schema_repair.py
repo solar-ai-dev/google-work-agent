@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.support.external_llm_scope import build_external_scope_gate
 from tests.support.fakes import FakeAPIProviderTransport
 from tests.support.prompt_manifests import (
     write_manifest_with_overrides,
@@ -97,6 +98,10 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
     kwargs.pop("hardware_probe")
     kwargs.pop("api_provider_name")
     kwargs.pop("credential_service", None)
+    checkpoint, projector = build_external_scope_gate()
+    router_kwargs["checkpoint"] = checkpoint
+    kwargs.setdefault("project_external_scope", projector)
+    kwargs.setdefault("now_ms", lambda: 1)
     return _LLMRuntimeService(
         structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
         **kwargs,
