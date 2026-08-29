@@ -1,12 +1,10 @@
 """SQLite command-receipt repository including durable cancel intent."""
 
 import sqlite3
-from json import loads
 
-from google_work_agent.domain.command_receipt.model import AnswerOnlyResponse, CommandReceiptStatus
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 
 _REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
 _RUN_AGGREGATE_TYPE = "Run"
@@ -26,18 +24,6 @@ class SqliteCommandReceiptRepository:
         ).fetchone()
         if r is None:
             return None
-        response = None
-        if r["response_json"] is not None and str(r["command_type"]) == "CompleteAnswerOnlyRun":
-            p = loads(str(r["response_json"]))
-            response = AnswerOnlyResponse(
-                applied=bool(p["applied"]),
-                result_code=ResultCode(str(p["result_code"])),
-                current_status=RunStatusV1(str(p["current_status"])),
-                current_version=int(p["current_version"]),
-                next_allowed_commands=tuple(RunCommand(str(v)) for v in p["next_allowed_commands"]),
-                conflict_detail=p["conflict_detail"],
-                assistant_message_id=p["assistant_message_id"],
-            )
         return CommandReceiptRecord(
             command_id=str(r["command_id"]),
             command_type=str(r["command_type"]),
@@ -47,7 +33,7 @@ class SqliteCommandReceiptRepository:
             status=CommandReceiptStatus(str(r["status"])),
             result_code=None if r["result_code"] is None else ResultCode(str(r["result_code"])),
             result_version=None if r["result_version"] is None else int(r["result_version"]),
-            response=response,
+            response=None,
             response_json=None if r["response_json"] is None else str(r["response_json"]),
             created_at_ms=int(r["created_at_ms"]),
             completed_at_ms=None if r["completed_at_ms"] is None else int(r["completed_at_ms"]),

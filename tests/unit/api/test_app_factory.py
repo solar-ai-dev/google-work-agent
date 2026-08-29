@@ -52,6 +52,29 @@ from google_work_agent.ports.system.readiness_port import (
 )
 
 
+class _RecoveryContextRepositoryStub:
+    def load_current_context(self, run_id: str) -> dict[str, object] | None:
+        if run_id != "run-1":
+            return None
+        return {
+            "run_id": run_id,
+            "scope": "ACTION",
+            "action_id": "action-1",
+            "version": 4,
+        }
+
+
+class _RecoveryMaterializationUnitOfWork:
+    def __init__(self) -> None:
+        self.recovery_contexts = _RecoveryContextRepositoryStub()
+
+    def __enter__(self) -> "_RecoveryMaterializationUnitOfWork":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
 class _CoordinatorStub:
     def __init__(self) -> None:
         self.started = 0
@@ -217,6 +240,10 @@ def test_health_routes_and_runtime_respect_guard() -> None:
 
 def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> None:
     container, coordinator = _build_container(_AllowGuard())
+    container = replace(
+        container,
+        unit_of_work_factory=lambda: _RecoveryMaterializationUnitOfWork(),
+    )
     captured: dict[str, object] = {}
 
     def resume_service(command: object) -> ResumeRunResponse:

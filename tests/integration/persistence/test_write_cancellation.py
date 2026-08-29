@@ -78,16 +78,11 @@ def test_production_request_cancel_stops_at_cancel_requested_and_stages_resoluti
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
-        resume_target_registry=ResumeTargetRegistry(
-            NodeRegistry(graph_version="v1"), "v1"
-        ),
+        resume_target_registry=ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
         schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id)
-            or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
         ),
-    )(
-        RequestCancelCommand("run-1", 1, "cmd-prod-cancel", "d" * 64)
-    )
+    )(RequestCancelCommand("run-1", 1, "cmd-prod-cancel", "d" * 64))
 
     assert result.applied
     assert result.current_status == "CANCEL_REQUESTED"
@@ -185,6 +180,12 @@ def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
         assert audit["action_id"] == "action-cancel"
         assert audit["outcome"] == ResultCode.TRANSITION_APPLIED.value
         assert loads(audit["metadata_json"])["attributes"]["previous_status"] == "APPROVED"
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 

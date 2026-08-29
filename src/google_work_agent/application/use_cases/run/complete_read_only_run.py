@@ -3,12 +3,19 @@
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
+from typing import Literal
+from uuid import uuid4
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.message.model import Message
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.complete_read_only_run import (
@@ -42,14 +49,27 @@ class CompleteReadOnlyRunResult:
 
 class CompleteReadOnlyRunHandler:
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        message_id_factory: Callable[[], str] | None = None,
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._message_id_factory = message_id_factory or (lambda: str(uuid4()))
+        self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: CompleteReadOnlyRunCommand) -> CompleteReadOnlyRunResult:
         with self._unit_of_work_factory() as unit_of_work:
-            result = self.apply_in_unit_of_work(unit_of_work, command, self._now_ms())
+            result = self.apply_in_unit_of_work(
+                unit_of_work,
+                command,
+                self._now_ms(),
+                message_id_factory=self._message_id_factory,
+                build_terminal_message=self._build_terminal_message,
+            )
             unit_of_work.commit()
             return result
 
@@ -61,6 +81,8 @@ class CompleteReadOnlyRunHandler:
         run_id: str,
         plan_id: str,
         now_ms: int,
+        message_id_factory: Callable[[], str] | None = None,
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> CompleteReadOnlyRunResult | None:
         statuses = tuple(
             ActionStatusV1(action.status) for action in unit_of_work.actions.list_for_plan(plan_id)
@@ -81,6 +103,8 @@ class CompleteReadOnlyRunHandler:
                 expected_version=run.version,
             ),
             now_ms,
+            message_id_factory=message_id_factory,
+            build_terminal_message=build_terminal_message,
         )
 
     @staticmethod
@@ -88,6 +112,9 @@ class CompleteReadOnlyRunHandler:
         unit_of_work: UnitOfWork,
         command: CompleteReadOnlyRunCommand,
         now_ms: int,
+        *,
+        message_id_factory: Callable[[], str] | None = None,
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> CompleteReadOnlyRunResult:
         receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
         if receipt is not None:
@@ -147,7 +174,9 @@ class CompleteReadOnlyRunHandler:
                 is None
             ):
                 raise RuntimeError("validated CompleteReadOnlyRun Plan CAS failed")
-            result_kind = "PARTIAL" if ActionStatusV1.FAILED in statuses else "SUCCESS"
+            result_kind: Literal["SUCCESS", "PARTIAL"] = (
+                "PARTIAL" if ActionStatusV1.FAILED in statuses else "SUCCESS"
+            )
             if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
                 run.version,
@@ -188,6 +217,27 @@ class CompleteReadOnlyRunHandler:
                         },
                         sort_keys=True,
                     ),
+                    created_at_ms=now_ms,
+                )
+            )
+            terminal_message = (build_terminal_message or BuildTerminalMessageHandler())(
+                BuildTerminalMessageQueryV1(
+                    schema_version=1,
+                    run_id=run.id,
+                    expected_run_version=command.expected_version,
+                    source_kind="WRITE_VERIFICATION_SUMMARY",
+                    result_kind=result_kind,
+                    answer_text=None,
+                    reason_codes=["READ_ACTION_FAILED"] if result_kind == "PARTIAL" else [],
+                )
+            )
+            unit_of_work.messages.append_terminal_assistant_message(
+                Message(
+                    id=(message_id_factory or (lambda: str(uuid4())))(),
+                    conversation_id=run.conversation_id,
+                    run_id=run.id,
+                    role="ASSISTANT",
+                    content=terminal_message.content,
                     created_at_ms=now_ms,
                 )
             )

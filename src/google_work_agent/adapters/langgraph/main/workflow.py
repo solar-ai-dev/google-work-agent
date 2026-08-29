@@ -8,7 +8,7 @@ from hashlib import sha256
 from json import dumps, loads
 from pathlib import Path
 from threading import Lock
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langgraph.types import interrupt
 
@@ -1328,14 +1328,26 @@ class WorkflowRuntimeCore:
         run_id = cast(str, state["run_id"])
         if finalize_intent["intent"] == "COMPLETED" and state.get("answer_draft") is not None:
             draft = cast(dict[str, object], state["answer_draft"])
+            answer_text = self._required_string(draft.get("answer"), "answer")
+            answer_result_kind: Literal["SUCCESS", "PARTIAL"] = (
+                "PARTIAL" if finalize_intent.get("result_kind") == "PARTIAL" else "SUCCESS"
+            )
             self._complete_answer_only(
                 CompleteAnswerOnlyRunCommand(
                     command_id=self._id_factory(),
                     conversation_id=cast(str, state["conversation_id"]),
                     run_id=run_id,
-                    assistant_message=self._required_string(draft.get("answer"), "answer"),
+                    assistant_message=answer_text,
                     expected_version=self._current_run_version(run_id),
-                    request_hash=self._request_hash({"kind": "answer_only", "run_id": run_id}),
+                    request_hash=self._request_hash(
+                        {
+                            "kind": "answer_only",
+                            "run_id": run_id,
+                            "result_kind": answer_result_kind,
+                            "answer_text": answer_text,
+                        }
+                    ),
+                    result_kind=answer_result_kind,
                 )
             )
         elif finalize_intent["intent"] == "BLOCKED":

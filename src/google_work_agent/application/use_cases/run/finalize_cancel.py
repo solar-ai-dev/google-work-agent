@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
+from typing import Literal, cast
+from uuid import uuid4
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.write_persistence import (
@@ -21,9 +23,14 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
 )
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+)
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.plan.model import Plan, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
@@ -49,12 +56,37 @@ class FinalizeCancelHandler:
     """Finalize durable cancel intent after all child facts are settled."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        message_id_factory: Callable[[], str] | None = None,
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._message_id_factory = message_id_factory or (lambda: str(uuid4()))
+        self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: FinalizeCancelCommand) -> FinalizeCancelResult:
+        terminal_result_kinds: tuple[Literal["PARTIAL", "CANCELLED"], ...] = (
+            "PARTIAL",
+            "CANCELLED",
+        )
+        terminal_messages = {
+            result_kind: self._build_terminal_message(
+                BuildTerminalMessageQueryV1(
+                    schema_version=1,
+                    run_id=command.run_id,
+                    expected_run_version=command.expected_run_version,
+                    source_kind="CANCEL_RESULT",
+                    result_kind=result_kind,
+                    answer_text=None,
+                    reason_codes=[],
+                )
+            )
+            for result_kind in terminal_result_kinds
+        }
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -281,6 +313,22 @@ class FinalizeCancelHandler:
                     result_kind=terminal_result_kind,
                 )
             if response.applied and response.run_status == RunStatusV1.CANCELLED.value:
+                if response.result_kind not in {"PARTIAL", "CANCELLED"}:
+                    raise RuntimeError("cancel terminal result kind is invalid")
+                terminal_message = terminal_messages[
+                    cast(Literal["PARTIAL", "CANCELLED"], response.result_kind)
+                ]
+                message_id = self._message_id_factory()
+                unit_of_work.messages.append_terminal_assistant_message(
+                    MessageRecord(
+                        id=message_id,
+                        conversation_id=run.conversation_id,
+                        run_id=run.id,
+                        role="ASSISTANT",
+                        content=terminal_message.content,
+                        created_at_ms=now_ms,
+                    )
+                )
                 unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
@@ -288,7 +336,10 @@ class FinalizeCancelHandler:
                         event_type="RUN_CANCELLED",
                         status=response.run_status,
                         duration_ms=None,
-                        payload_json=dumps({"result_kind": response.result_kind}, sort_keys=True),
+                        payload_json=dumps(
+                            {"message_id": message_id, "result_kind": response.result_kind},
+                            sort_keys=True,
+                        ),
                         created_at_ms=now_ms,
                     )
                 )
@@ -298,7 +349,10 @@ class FinalizeCancelHandler:
                         action_id=None,
                         event_type="RUN_CANCELLED",
                         outcome=response.result_code,
-                        metadata={"result_kind": response.result_kind},
+                        metadata={
+                            "message_id": message_id,
+                            "result_kind": response.result_kind,
+                        },
                         created_at_ms=now_ms,
                     )
                 )

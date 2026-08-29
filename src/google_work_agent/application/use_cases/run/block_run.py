@@ -6,16 +6,22 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
+from uuid import uuid4
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_plan_record,
 )
 from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
@@ -40,6 +46,7 @@ class BlockRunCommand:
     run_id: str
     expected_version: int
     reason_code: str
+    policy_origin: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +66,30 @@ class BlockRunHandler:
     """Validate child facts and atomically settle the blocked aggregate."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        message_id_factory: Callable[[], str] | None = None,
+        build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._message_id_factory = message_id_factory or (lambda: str(uuid4()))
+        self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: BlockRunCommand) -> BlockRunResult:
+        terminal_message = self._build_terminal_message(
+            BuildTerminalMessageQueryV1(
+                schema_version=1,
+                run_id=command.run_id,
+                expected_run_version=command.expected_version,
+                source_kind="POLICY_BLOCK" if command.policy_origin else "INVALID_REQUEST",
+                result_kind="BLOCKED",
+                answer_text=None,
+                reason_codes=[command.reason_code],
+            )
+        )
         with self._unit_of_work_factory() as unit_of_work:
             completed_at_ms = self._now_ms()
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -116,6 +141,17 @@ class BlockRunHandler:
                     )
             response = self._response(command, result)
             if result.applied:
+                message_id = self._message_id_factory()
+                unit_of_work.messages.append_terminal_assistant_message(
+                    MessageRecord(
+                        id=message_id,
+                        conversation_id=conversation.id,
+                        run_id=command.run_id,
+                        role="ASSISTANT",
+                        content=terminal_message.content,
+                        created_at_ms=completed_at_ms,
+                    )
+                )
                 unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=command.run_id,
@@ -128,6 +164,7 @@ class BlockRunHandler:
                                 "command_id": command.command_id,
                                 "command_type": "BlockRun",
                                 "reason_code": command.reason_code,
+                                "message_id": message_id,
                             },
                             sort_keys=True,
                         ),
@@ -148,12 +185,34 @@ class BlockRunHandler:
                             {
                                 "command_id": command.command_id,
                                 "reason_code": command.reason_code,
+                                "message_id": message_id,
                             },
                             sort_keys=True,
                         ),
                         created_at_ms=completed_at_ms,
                     )
                 )
+                if command.policy_origin:
+                    unit_of_work.audits.append(
+                        AuditEventRecord(
+                            account_id=conversation.account_id,
+                            run_id=command.run_id,
+                            action_id=None,
+                            actor_type="SYSTEM",
+                            actor_id="block_run",
+                            actor_display="BlockRun",
+                            event_type="POLICY_BLOCKED",
+                            outcome=result.result_code.value,
+                            metadata_json=dumps(
+                                {
+                                    "command_id": command.command_id,
+                                    "reason_code": command.reason_code,
+                                },
+                                sort_keys=True,
+                            ),
+                            created_at_ms=completed_at_ms,
+                        )
+                    )
             self._finish_receipt(unit_of_work, command.command_id, response, completed_at_ms)
             unit_of_work.commit()
             return response

@@ -586,6 +586,7 @@ class PreflightWriteActionService:
             "expected_version": run.version,
             "reason_code": reason_code,
             "action_id": action_id,
+            "policy_origin": True,
         }
         result = self._block_run(
             BlockRunCommand(
@@ -594,6 +595,7 @@ class PreflightWriteActionService:
                 run_id=run_id,
                 expected_version=run.version,
                 reason_code=reason_code,
+                policy_origin=True,
             )
         )
         if not result.applied:

@@ -2,13 +2,10 @@ from json import dumps, loads
 from pathlib import Path
 from secrets import token_urlsafe
 
-import pytest
-
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import SqliteUnitOfWork
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.system.contracts.observability import SanitizationError
 
 
 def _secret(prefix: str) -> str:
@@ -170,11 +167,13 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
         assert "code-verifier" not in provider["oauth"]
 
 
-def test_production_trace_boundary_rejects_invalid_json_fail_closed(tmp_path: Path) -> None:
+def test_production_trace_boundary_drops_invalid_postcommit_json_fail_closed(
+    tmp_path: Path,
+) -> None:
     database_path = tmp_path / "secret-boundary-invalid.db"
     _seed_run(database_path)
 
-    with SqliteUnitOfWork(database_path) as unit_of_work, pytest.raises(SanitizationError):
+    with SqliteUnitOfWork(database_path) as unit_of_work:
         unit_of_work.traces.append(
             TraceEventRecord(
                 run_id="run-1",
@@ -186,6 +185,7 @@ def test_production_trace_boundary_rejects_invalid_json_fail_closed(tmp_path: Pa
                 created_at_ms=2,
             )
         )
+        unit_of_work.commit()
 
     connection = connect_sqlite(database_path)
     try:

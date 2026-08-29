@@ -1,23 +1,23 @@
 """Answer-only product core application flow."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from json import dumps
+from dataclasses import dataclass, replace
+from json import dumps, loads
+from typing import Literal, cast
 
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
 )
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
+from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import (
-    AnswerOnlyResponse,
     CommandReceiptStatus,
     DuplicateCommandError,
 )
-from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
+from google_work_agent.domain.run.model import RunCommand, RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.run.transitions.complete_answer_only_run import (
     transition_complete_answer_only_run,
 )
@@ -36,6 +36,19 @@ class CompleteAnswerOnlyRunCommand:
     assistant_message: str
     expected_version: int
     request_hash: str
+    result_kind: Literal["SUCCESS", "PARTIAL"] = "SUCCESS"
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteAnswerOnlyRunResult:
+    applied: bool
+    result_code: ResultCode
+    current_status: RunStatusV1
+    current_version: int
+    next_allowed_commands: tuple[RunCommand, ...]
+    conflict_detail: str | None = None
+    assistant_message_id: str | None = None
+    result_kind: Literal["SUCCESS", "PARTIAL"] | None = None
 
 
 class CompleteAnswerOnlyRunHandler:
@@ -54,13 +67,17 @@ class CompleteAnswerOnlyRunHandler:
         self._message_id_factory = message_id_factory
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
-    def __call__(self, command: CompleteAnswerOnlyRunCommand) -> AnswerOnlyResponse:
+    def __call__(self, command: CompleteAnswerOnlyRunCommand) -> CompleteAnswerOnlyRunResult:
         """Complete the run or return the previously stored idempotent response."""
         terminal_message = self._build_terminal_message(
             BuildTerminalMessageQueryV1(
+                schema_version=1,
                 run_id=command.run_id,
-                result_kind="ANSWER",
-                content=command.assistant_message,
+                expected_run_version=command.expected_version,
+                source_kind="ANSWER_DRAFT",
+                result_kind=command.result_kind,
+                answer_text=command.assistant_message,
+                reason_codes=[],
             )
         )
         with self._unit_of_work_factory() as unit_of_work:
@@ -93,7 +110,7 @@ class CompleteAnswerOnlyRunHandler:
                 )
 
             if run.version != command.expected_version:
-                response = AnswerOnlyResponse(
+                response = CompleteAnswerOnlyRunResult(
                     False,
                     ResultCode.VERSION_CONFLICT,
                     run.status,
@@ -120,13 +137,18 @@ class CompleteAnswerOnlyRunHandler:
                         "status": next_status.value,
                         "version": run.version + 1,
                         "finished_at_ms": now_ms,
-                        "terminal_result_kind": "SUCCESS",
+                        "terminal_result_kind": command.result_kind,
                     },
                 )
                 if not applied:
                     raise RuntimeError("validated CompleteAnswerOnlyRun CAS failed")
-                response = AnswerOnlyResponse(
-                    True, ResultCode.TRANSITION_APPLIED, next_status, run.version + 1, ()
+                response = CompleteAnswerOnlyRunResult(
+                    True,
+                    ResultCode.TRANSITION_APPLIED,
+                    next_status,
+                    run.version + 1,
+                    (),
+                    result_kind=command.result_kind,
                 )
 
             if response.applied:
@@ -183,7 +205,7 @@ class CompleteAnswerOnlyRunHandler:
                         created_at_ms=now_ms,
                     )
                 )
-                response = AnswerOnlyResponse(
+                response = CompleteAnswerOnlyRunResult(
                     applied=True,
                     result_code=response.result_code,
                     current_status=response.current_status,
@@ -191,6 +213,7 @@ class CompleteAnswerOnlyRunHandler:
                     next_allowed_commands=response.next_allowed_commands,
                     conflict_detail=response.conflict_detail,
                     assistant_message_id=assistant_message_id,
+                    result_kind=response.result_kind,
                 )
 
             unit_of_work.command_receipts.store_result(
@@ -209,12 +232,12 @@ class CompleteAnswerOnlyRunHandler:
         unit_of_work: UnitOfWork,
         command: CompleteAnswerOnlyRunCommand,
         existing_receipt: CommandReceiptRecord,
-    ) -> AnswerOnlyResponse:
+    ) -> CompleteAnswerOnlyRunResult:
         if existing_receipt.request_hash != command.request_hash:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise DuplicateCommandError(command.command_id)
-            return AnswerOnlyResponse(
+            return CompleteAnswerOnlyRunResult(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND,
                 current_status=run.status,
@@ -224,10 +247,25 @@ class CompleteAnswerOnlyRunHandler:
             )
 
         if (
-            existing_receipt.response is not None
+            existing_receipt.response_json is not None
             and existing_receipt.status is not CommandReceiptStatus.RECEIVED
         ):
-            return existing_receipt.response
+            response = _response_from_json(existing_receipt.response_json)
+            if not response.applied or response.result_kind is not None:
+                return response
+            run = unit_of_work.runs.get(command.run_id)
+            if run is None or run.terminal_result_kind is None:
+                raise RuntimeError("legacy terminal receipt has no durable result classification")
+            if run.terminal_result_kind.value not in {"SUCCESS", "PARTIAL"}:
+                raise RuntimeError(
+                    "legacy answer receipt has incompatible terminal result classification"
+                )
+            return replace(
+                response,
+                result_kind=cast(
+                    Literal["SUCCESS", "PARTIAL"], run.terminal_result_kind.value
+                ),
+            )
 
         return self._recover_pending_receipt(unit_of_work, command)
 
@@ -235,7 +273,7 @@ class CompleteAnswerOnlyRunHandler:
         self,
         unit_of_work: UnitOfWork,
         command: CompleteAnswerOnlyRunCommand,
-    ) -> AnswerOnlyResponse:
+    ) -> CompleteAnswerOnlyRunResult:
         run = unit_of_work.runs.get(command.run_id)
         if run is None:
             raise LookupError(f"run not found during receipt recovery: {command.run_id}")
@@ -243,9 +281,13 @@ class CompleteAnswerOnlyRunHandler:
         if run.status is RunStatusV1.COMPLETED:
             expected_content = self._build_terminal_message(
                 BuildTerminalMessageQueryV1(
+                    schema_version=1,
                     run_id=command.run_id,
-                    result_kind="ANSWER",
-                    content=command.assistant_message,
+                    expected_run_version=command.expected_version,
+                    source_kind="ANSWER_DRAFT",
+                    result_kind=command.result_kind,
+                    answer_text=command.assistant_message,
+                    reason_codes=[],
                 )
             ).content
             messages, _ = unit_of_work.messages.list_by_conversation_keyset(
@@ -264,13 +306,14 @@ class CompleteAnswerOnlyRunHandler:
                 None,
             )
             if message is not None:
-                response = AnswerOnlyResponse(
+                response = CompleteAnswerOnlyRunResult(
                     applied=True,
                     result_code=ResultCode.TRANSITION_APPLIED,
                     current_status=run.status,
                     current_version=run.version,
                     next_allowed_commands=next_allowed_run_commands(run.status),
                     assistant_message_id=message.id,
+                    result_kind=command.result_kind,
                 )
                 unit_of_work.command_receipts.store_result(
                     command_id=command.command_id,
@@ -283,7 +326,7 @@ class CompleteAnswerOnlyRunHandler:
                 unit_of_work.commit()
                 return response
 
-        response = AnswerOnlyResponse(
+        response = CompleteAnswerOnlyRunResult(
             applied=False,
             result_code=ResultCode.STATE_CONFLICT,
             current_status=run.status,
@@ -303,10 +346,7 @@ class CompleteAnswerOnlyRunHandler:
         return response
 
 
-CompleteAnswerOnlyRunResult = AnswerOnlyResponse
-
-
-def _response_json(response: AnswerOnlyResponse) -> str:
+def _response_json(response: CompleteAnswerOnlyRunResult) -> str:
     return dumps(
         {
             "applied": response.applied,
@@ -316,8 +356,25 @@ def _response_json(response: AnswerOnlyResponse) -> str:
             "next_allowed_commands": [item.value for item in response.next_allowed_commands],
             "conflict_detail": response.conflict_detail,
             "assistant_message_id": response.assistant_message_id,
+            "result_kind": response.result_kind,
         },
         sort_keys=True,
+    )
+
+
+def _response_from_json(raw: str) -> CompleteAnswerOnlyRunResult:
+    payload = loads(raw)
+    return CompleteAnswerOnlyRunResult(
+        applied=bool(payload["applied"]),
+        result_code=ResultCode(str(payload["result_code"])),
+        current_status=RunStatusV1(str(payload["current_status"])),
+        current_version=int(payload["current_version"]),
+        next_allowed_commands=tuple(
+            RunCommand(str(value)) for value in payload["next_allowed_commands"]
+        ),
+        conflict_detail=cast(str | None, payload.get("conflict_detail")),
+        assistant_message_id=cast(str | None, payload.get("assistant_message_id")),
+        result_kind=cast(Literal["SUCCESS", "PARTIAL"] | None, payload.get("result_kind")),
     )
 
 

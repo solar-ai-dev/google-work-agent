@@ -88,14 +88,24 @@ class CompleteWriteRunHandler:
         terminal_messages = {
             "SUCCESS": self._build_terminal_message(
                 BuildTerminalMessageQueryV1(
+                    schema_version=1,
                     run_id=command.run_id,
+                    expected_run_version=command.expected_version,
+                    source_kind="WRITE_VERIFICATION_SUMMARY",
                     result_kind="SUCCESS",
+                    answer_text=None,
+                    reason_codes=["WRITE_VERIFIED"],
                 )
             ),
             "PARTIAL": self._build_terminal_message(
                 BuildTerminalMessageQueryV1(
+                    schema_version=1,
                     run_id=command.run_id,
+                    expected_run_version=command.expected_version,
+                    source_kind="WRITE_VERIFICATION_SUMMARY",
                     result_kind="PARTIAL",
+                    answer_text=None,
+                    reason_codes=["WRITE_CLOSED"],
                 )
             ),
         }
@@ -223,7 +233,7 @@ class CompleteWriteRunHandler:
                         id=message_id,
                         conversation_id=conversation.id,
                         run_id=run.id,
-                        role=terminal_message.role,
+                        role="ASSISTANT",
                         content=terminal_message.content,
                         created_at_ms=completed_at_ms,
                     )

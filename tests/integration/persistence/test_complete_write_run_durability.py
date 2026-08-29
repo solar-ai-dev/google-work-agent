@@ -211,6 +211,13 @@ class _FailingAuditUow(SqliteUnitOfWork):
         return entered
 
 
+class _FailingPostCommitTraceUow(SqliteUnitOfWork):
+    def __enter__(self) -> SqliteUnitOfWork:
+        entered = super().__enter__()
+        entered.traces._repository = _FailingAppend()  # type: ignore[attr-defined]
+        return entered
+
+
 @pytest.mark.parametrize("uow_type", (_FailingMessageUow, _FailingAuditUow))
 def test_complete_write_run_required_effect_failure_rolls_back_everything(
     tmp_path: Path, uow_type: type[SqliteUnitOfWork]
@@ -235,5 +242,32 @@ def test_complete_write_run_required_effect_failure_rolls_back_everything(
             """
         ).fetchone()
         assert tuple(facts) == ("VERIFYING", None, "WAITING_APPROVAL", 0, 0, 0)
+    finally:
+        connection.close()
+
+
+def test_post_commit_trace_failure_does_not_roll_back_terminal_truth(tmp_path: Path) -> None:
+    database_path = tmp_path / "post-commit-trace-failure.db"
+    _seed(database_path, action_status="VERIFIED")
+
+    result = _complete(
+        database_path,
+        unit_of_work_factory=lambda: _FailingPostCommitTraceUow(database_path),
+    )
+
+    assert result.applied is True
+    connection = connect_sqlite(database_path)
+    try:
+        facts = connection.execute(
+            """
+            SELECT
+                (SELECT status FROM runs WHERE id='run-1'),
+                (SELECT terminal_result_kind FROM runs WHERE id='run-1'),
+                (SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT'),
+                (SELECT COUNT(*) FROM audit_events WHERE event_type='RUN_COMPLETED'),
+                (SELECT COUNT(*) FROM trace_events WHERE run_id='run-1');
+            """
+        ).fetchone()
+        assert tuple(facts) == ("COMPLETED", "SUCCESS", 1, 1, 0)
     finally:
         connection.close()

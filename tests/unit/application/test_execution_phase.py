@@ -100,7 +100,11 @@ class _UnitOfWork:
         self.execution_attempts = _Repository({"attempt-1": attempt})
         self.resource_refs = _Repository({})
         self.runs = _Repository(
-            {"run-1": SimpleNamespace(id="run-1", status=RunStatusV1.RECOVERY_REQUIRED)}
+            {
+                "run-1": SimpleNamespace(
+                    id="run-1", status=RunStatusV1.RECOVERY_REQUIRED, version=4
+                )
+            }
         )
 
     def __enter__(self) -> _UnitOfWork:

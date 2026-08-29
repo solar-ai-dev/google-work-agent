@@ -257,6 +257,10 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
                 (SELECT COUNT(*) FROM verifications) AS verification_count;
             """
         ).fetchone()
+        terminal_messages = connection.execute(
+            """SELECT role, content FROM messages
+               WHERE run_id='run-1' AND role='ASSISTANT';"""
+        ).fetchall()
 
         assert run_row["status"] == "COMPLETED"
         assert run_row["version"] == 2
@@ -271,6 +275,8 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         assert evidence_rows[1]["origin_type"] == "GOOGLE_RESOURCE"
         assert all(row["status"] == "APPLIED" for row in receipt_rows)
         assert tuple(aggregate_counts) == (0, 0, 0)
+        assert len(terminal_messages) == 1
+        assert terminal_messages[0]["content"]
     finally:
         connection.close()
 

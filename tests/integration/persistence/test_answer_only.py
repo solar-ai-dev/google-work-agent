@@ -1,4 +1,4 @@
-import sqlite3
+from json import dumps, loads
 from pathlib import Path
 
 import pytest
@@ -78,7 +78,8 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
     connection = connect_sqlite(answer_only_database)
     try:
         run = connection.execute(
-            "SELECT status, version, finished_at_ms FROM runs WHERE id = 'run-1';"
+            """SELECT status, version, finished_at_ms, terminal_result_kind
+               FROM runs WHERE id = 'run-1';"""
         ).fetchone()
         message = connection.execute(
             """
@@ -122,6 +123,7 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
         assert run["status"] == "COMPLETED"
         assert run["version"] == 1
         assert run["finished_at_ms"] == 1000
+        assert run["terminal_result_kind"] == "SUCCESS"
         assert [(row["id"], row["role"], row["content"]) for row in message] == [
             ("message-1", "ASSISTANT", "done")
         ]
@@ -174,6 +176,89 @@ def test_same_command_id_and_hash_returns_stored_result(answer_only_database: Pa
             "SELECT COUNT(*) FROM messages WHERE run_id = 'run-1';"
         ).fetchone()[0]
         assert message_count == 1
+    finally:
+        connection.close()
+
+
+def test_bounded_answer_only_completion_persists_and_replays_partial(
+    answer_only_database: Path,
+) -> None:
+    service = CompleteAnswerOnlyRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
+        now_ms=lambda: 1000,
+        message_id_factory=lambda: "message-partial",
+    )
+    command = CompleteAnswerOnlyRunCommand(
+        command_id="command-partial",
+        conversation_id="conversation-1",
+        run_id="run-1",
+        assistant_message="Only part of the request could be answered.",
+        expected_version=0,
+        request_hash="p" * 64,
+        result_kind="PARTIAL",
+    )
+
+    first = service(command)
+    replay = service(command)
+
+    assert first.result_kind == "PARTIAL"
+    assert replay == first
+    connection = connect_sqlite(answer_only_database)
+    try:
+        run = connection.execute(
+            "SELECT terminal_result_kind FROM runs WHERE id='run-1';"
+        ).fetchone()
+        assert run["terminal_result_kind"] == "PARTIAL"
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+            ).fetchone()[0]
+            == 1
+        )
+    finally:
+        connection.close()
+
+
+def test_legacy_receipt_replay_restores_durable_terminal_result_kind(
+    answer_only_database: Path,
+) -> None:
+    service = CompleteAnswerOnlyRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
+        now_ms=lambda: 1000,
+        message_id_factory=lambda: "message-legacy",
+    )
+    command = CompleteAnswerOnlyRunCommand(
+        command_id="command-legacy",
+        conversation_id="conversation-1",
+        run_id="run-1",
+        assistant_message="done",
+        expected_version=0,
+        request_hash="l" * 64,
+    )
+    first = service(command)
+
+    connection = connect_sqlite(answer_only_database)
+    try:
+        row = connection.execute(
+            "SELECT response_json FROM command_receipts WHERE command_id='command-legacy';"
+        ).fetchone()
+        payload = loads(row["response_json"])
+        payload.pop("result_kind")
+        connection.execute(
+            "UPDATE command_receipts SET response_json=? WHERE command_id='command-legacy';",
+            (dumps(payload, sort_keys=True),),
+        )
+    finally:
+        connection.close()
+
+    replay = service(command)
+
+    assert first.result_kind == replay.result_kind == "SUCCESS"
+    connection = connect_sqlite(answer_only_database)
+    try:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+        ).fetchone()[0] == 1
     finally:
         connection.close()
 
@@ -259,7 +344,7 @@ def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> N
         connection.close()
 
 
-def test_answer_only_failure_rolls_back_receipt_message_run_trace_and_audit(
+def test_answer_only_rejects_oversized_terminal_input_before_uow(
     answer_only_database: Path,
 ) -> None:
     service = CompleteAnswerOnlyRunHandler(
@@ -268,7 +353,7 @@ def test_answer_only_failure_rolls_back_receipt_message_run_trace_and_audit(
         message_id_factory=lambda: "message-1",
     )
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(ValueError, match="1..65536 UTF-8 bytes"):
         service(
             CompleteAnswerOnlyRunCommand(
                 command_id="command-fail",

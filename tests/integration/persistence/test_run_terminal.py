@@ -240,6 +240,7 @@ def test_block_run_revokes_active_approval_before_terminal_transition(
             run_id="run-1",
             expected_version=0,
             reason_code="POLICY_BLOCKED",
+            policy_origin=True,
         )
     )
 
@@ -252,6 +253,18 @@ def test_block_run_revokes_active_approval_before_terminal_transition(
             ]
             == "REVOKED"
         )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+            ).fetchone()[0]
+            == 1
+        )
+        assert [
+            row[0]
+            for row in connection.execute(
+                "SELECT event_type FROM audit_events WHERE run_id='run-1' ORDER BY id;"
+            ).fetchall()
+        ] == ["RUN_BLOCKED", "POLICY_BLOCKED"]
     finally:
         connection.close()
 

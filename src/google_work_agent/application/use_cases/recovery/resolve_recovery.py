@@ -299,7 +299,12 @@ class ResolveRecoveryHandler:
             unit_of_work.recovery_contexts.clear_context(command.run_id, int(context["version"]))
             if target in {RunStatusV1.COMPLETED, RunStatusV1.CANCELLED, RunStatusV1.FAILED}:
                 self._append_terminal_message(
-                    unit_of_work, run.conversation_id, command.run_id, result_kind, now_ms
+                    unit_of_work,
+                    run.conversation_id,
+                    command.run_id,
+                    command.expected_version,
+                    result_kind,
+                    now_ms,
                 )
                 unit_of_work.workflow_handoffs.supersede_unconsumed_for_run(
                     command.run_id, "RECOVERY_TERMINAL"
@@ -612,6 +617,7 @@ class ResolveRecoveryHandler:
         unit_of_work: UnitOfWork,
         conversation_id: str,
         run_id: str,
+        expected_run_version: int,
         result_kind: str | None,
         now_ms: int,
     ) -> None:
@@ -619,8 +625,13 @@ class ResolveRecoveryHandler:
             raise RuntimeError("terminal recovery requires message identity and result kind")
         message = self._build_terminal_message(
             BuildTerminalMessageQueryV1(
+                schema_version=1,
                 run_id=run_id,
+                expected_run_version=expected_run_version,
+                source_kind="RECOVERY_RESULT",
                 result_kind=result_kind,  # type: ignore[arg-type]
+                answer_text=None,
+                reason_codes=[],
             )
         )
         unit_of_work.messages.append_terminal_assistant_message(
@@ -628,7 +639,7 @@ class ResolveRecoveryHandler:
                 id=self._next_id(),
                 conversation_id=conversation_id,
                 run_id=run_id,
-                role=message.role,
+                role="ASSISTANT",
                 content=message.content,
                 created_at_ms=now_ms,
             )

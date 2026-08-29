@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -42,8 +43,24 @@ class _Call:
         return self._result if self._result is not None else object()
 
 
-def _unexpected_uow() -> UnitOfWork:
-    raise AssertionError("preflight auth handling must not query action state")
+class _RunRepository:
+    def get(self, run_id: str) -> object | None:
+        return SimpleNamespace(version=7) if run_id == "run-1" else None
+
+
+class _RunVersionUnitOfWork:
+    def __init__(self) -> None:
+        self.runs = _RunRepository()
+
+    def __enter__(self) -> "_RunVersionUnitOfWork":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+def _run_version_uow() -> UnitOfWork:
+    return cast(UnitOfWork, _RunVersionUnitOfWork())
 
 
 @pytest.mark.parametrize(
@@ -85,7 +102,7 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
     unused = _Call("unexpected", calls)
 
     coordinator = WriteExecutionPhaseCoordinator(
-        unit_of_work_factory=cast(Callable[[], UnitOfWork], _unexpected_uow),
+        unit_of_work_factory=cast(Callable[[], UnitOfWork], _run_version_uow),
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,

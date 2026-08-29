@@ -312,12 +312,14 @@ def _execution_fixture(
         arguments_hash=arguments_hash,
         status=ActionStatusV1.EXECUTING.value,
         version=1,
+        updated_at_ms=1_000,
     )
     approval = SimpleNamespace(
         id="approval-1",
         action_id="action-1",
         status=ApprovalStatusV1.CONSUMED,
         recovery_fingerprint="fp-1",
+        consumed_at_ms=1_000,
     )
     attempt = SimpleNamespace(
         id="attempt-1", approval_id="approval-1", status=attempt_status, version=1
