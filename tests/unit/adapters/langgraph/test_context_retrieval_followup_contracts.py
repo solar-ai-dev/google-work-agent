@@ -305,7 +305,9 @@ def test_changed_search_executes_typed_delta(
     )
     state = _changed_state()
 
-    planned = subgraph._plan_followup_node(state)  # noqa: SLF001
+    planned = subgraph._build_query_node(  # noqa: SLF001
+        subgraph._plan_query_node(state)  # noqa: SLF001
+    )
     assert planned[CONTEXT_FOLLOWUP_OPERATION_KEY] == "SEARCH"
     result = subgraph._execute_followup_search_node(planned)  # noqa: SLF001
 
@@ -343,7 +345,9 @@ def test_changed_search_invalid_or_unchanged_plan_publishes_nothing(
     )
     state = _changed_state()
 
-    result = subgraph._plan_followup_node(state)  # noqa: SLF001
+    result = subgraph._build_query_node(  # noqa: SLF001
+        subgraph._plan_query_node(state)  # noqa: SLF001
+    )
 
     assert result[CONTEXT_FOLLOWUP_OPERATION_KEY] == "FINALIZE"
     assert acquisition.calls == 0

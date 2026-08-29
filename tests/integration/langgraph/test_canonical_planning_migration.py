@@ -30,6 +30,7 @@ from tests.integration.langgraph.test_runtime import (
     _llm_result,
     _make_runtime_with_llm,
     _QueuedLLMRuntime,
+    _replace_result_aliases,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -88,13 +89,16 @@ class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_route = cast(dict[str, object], prompt_input["output_route"])
             tool_id = cast(str, output_route["selected_tool_id"])
-            return _llm_result(
-                {
-                    "schema_version": 1,
-                    "route_id": output_route["route_id"],
-                    "arguments": self._arguments_by_tool[tool_id],
-                    "evidence_refs": list(self._evidence_refs),
-                }
+            return _replace_result_aliases(
+                _llm_result(
+                    {
+                        "schema_version": 1,
+                        "route_id": output_route["route_id"],
+                        "arguments": self._arguments_by_tool[tool_id],
+                        "evidence_refs": list(self._evidence_refs),
+                    }
+                ),
+                self._segment_id_aliases,
             )
         if prompt_id == "planning.compose_arguments.revise":
             self.calls.append(dict(kwargs))
@@ -103,13 +107,16 @@ class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
             output_route = cast(dict[str, object], base_projection["output_route"])
             tool_id = cast(str, output_route["selected_tool_id"])
             candidate_output = cast(dict[str, object], prompt_input["candidate_output"])
-            return _llm_result(
-                {
-                    "schema_version": 1,
-                    "route_id": candidate_output["route_id"],
-                    "arguments": self._arguments_by_tool[tool_id],
-                    "evidence_refs": list(self._evidence_refs),
-                }
+            return _replace_result_aliases(
+                _llm_result(
+                    {
+                        "schema_version": 1,
+                        "route_id": candidate_output["route_id"],
+                        "arguments": self._arguments_by_tool[tool_id],
+                        "evidence_refs": list(self._evidence_refs),
+                    }
+                ),
+                self._segment_id_aliases,
             )
         return super()._invoke(**kwargs)
 
@@ -341,7 +348,7 @@ def test_single_action_route_uses_canonical_writer_exactly_once(tmp_path: Path) 
             ).fetchone()
         locator = loads(evidence["locator_json"])
         assert locator["retrieval_artifact_id"] == state["retrieval_result"]["meta"]["artifact_id"]
-        assert locator["segment_id"] == "seg-2"
+        assert str(locator["segment_id"]).startswith("seg_")
         assert locator["role"] == "SUPPORTS"
         assert tuple(resource) == ("task", "task-followup")
     finally:

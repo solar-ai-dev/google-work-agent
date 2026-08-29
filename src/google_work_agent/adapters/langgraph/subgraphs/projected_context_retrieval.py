@@ -43,51 +43,37 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
             output_schema=ParentGraphState,
         )
         graph.add_node("init", self._init_node)
-        graph.add_node("plan_query", self._plan_initial_query_node)
-        graph.add_node("execute_initial_read", self._execute_initial_read_node)
+        graph.add_node("plan_query", self._plan_query_node)
+        graph.add_node("build_query", self._build_query_node)
+        graph.add_node("execute_read", self._execute_read_node)
+        graph.add_node("normalize_segments", self._normalize_segments_node)
+        graph.add_node("rag_retrieve", self._rag_retrieve_node)
         graph.add_node("select_evidence", self._select_evidence_node)
         graph.add_node("selection_validate", self._selection_validate_node)
         graph.add_node("assess_sufficiency", self._assess_sufficiency_node)
-        graph.add_node("plan_followup", self._plan_followup_node)
-        graph.add_node("execute_next_page", self._execute_next_page_node)
-        graph.add_node("execute_followup_search", self._execute_followup_search_node)
-        graph.add_node("execute_detail", self._execute_detail_node)
         graph.add_node("finalize", self._finalize_node)
         graph.add_edge(START, "init")
         graph.add_conditional_edges(
             "init",
             self._route_after_init,
-            {"plan_query": "plan_query", "select_evidence": "select_evidence"},
+            {"plan_query": "plan_query", "normalize_segments": "normalize_segments"},
         )
+        graph.add_edge("plan_query", "build_query")
         graph.add_conditional_edges(
-            "plan_query",
-            self._route_after_plan_query,
-            {
-                "execute_initial_read": "execute_initial_read",
-                "execute_followup_search": "execute_followup_search",
-            },
+            "build_query",
+            self._route_after_build_query,
+            {"execute_read": "execute_read", "finalize": "finalize"},
         )
-        graph.add_edge("execute_initial_read", "select_evidence")
+        graph.add_edge("execute_read", "normalize_segments")
+        graph.add_edge("normalize_segments", "rag_retrieve")
+        graph.add_edge("rag_retrieve", "select_evidence")
         graph.add_edge("select_evidence", "selection_validate")
         graph.add_edge("selection_validate", "assess_sufficiency")
         graph.add_conditional_edges(
             "assess_sufficiency",
             self._route_after_sufficiency,
-            {"plan_followup": "plan_followup", "finalize": "finalize"},
+            {"plan_query": "plan_query", "finalize": "finalize"},
         )
-        graph.add_conditional_edges(
-            "plan_followup",
-            self._route_after_followup_plan,
-            {
-                "execute_next_page": "execute_next_page",
-                "execute_followup_search": "execute_followup_search",
-                "execute_detail": "execute_detail",
-                "finalize": "finalize",
-            },
-        )
-        graph.add_edge("execute_next_page", "select_evidence")
-        graph.add_edge("execute_followup_search", "select_evidence")
-        graph.add_edge("execute_detail", "select_evidence")
         graph.add_conditional_edges(
             "finalize",
             self._route_after_finalize,
@@ -95,7 +81,7 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
         )
         return graph.compile(name="context_retriever_subgraph")
 
-    def _select_evidence_node(
+    def _normalize_segments_node(
         self, state: ContextRetrievalLocalState
     ) -> ContextRetrievalLocalState:
         acquisition = state.get("acquisition_result")
@@ -104,7 +90,34 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
             if acquisition is None
             else sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
         )
-        result = super()._select_evidence_node(self._ephemeral_raw_state(state))
+        result = super()._normalize_segments_node(self._ephemeral_raw_state(state))
+        return cast(
+            ContextRetrievalLocalState,
+            {**result, "acquisition_result": safe_acquisition},
+        )
+
+    def _rag_retrieve_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        return self._with_ephemeral_acquisition(state, super()._rag_retrieve_node)
+
+    def _select_evidence_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        return self._with_ephemeral_acquisition(state, super()._select_evidence_node)
+
+    def _with_ephemeral_acquisition(
+        self,
+        state: ContextRetrievalLocalState,
+        operation: Any,
+    ) -> ContextRetrievalLocalState:
+        acquisition = state.get("acquisition_result")
+        safe_acquisition = (
+            None
+            if acquisition is None
+            else sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
+        )
+        result = operation(self._ephemeral_raw_state(state))
         return cast(
             ContextRetrievalLocalState,
             {**result, "acquisition_result": safe_acquisition},
@@ -145,9 +158,11 @@ class ProjectedContextRetrieverSubgraph(ContextRetrieverSubgraph):
         else:
             # Compatibility-only standalone AcquisitionSubgraph direct calls
             # have no canonical read-result handle. They are not a production
-            # topology authority; consume their legacy result transiently and
-            # sanitize it before this node returns.
-            hydrated = cast(AcquisitionResultV1, acquisition)
+            # topology authority, so every node consumes the same bounded
+            # projection. Mixing the first node's raw payload with later
+            # checkpoint-safe projections would make SourceSegmentIdentityV1
+            # unstable for one resource within a single retrieval run.
+            hydrated = safe
         return cast(ContextRetrievalLocalState, {**state, "acquisition_result": hydrated})
 
 

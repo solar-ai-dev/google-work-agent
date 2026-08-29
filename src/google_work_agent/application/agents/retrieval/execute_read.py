@@ -2,115 +2,111 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 
-from google_work_agent.application.orchestration.connector_read_models import (
-    NormalizedConnectorRead,
-    PlannedConnectorRead,
+from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.system.run_retrieval_cache_port import (
+    RunRetrievalCacheEntryV1,
+    RunRetrievalCachePort,
 )
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
-from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
-from google_work_agent.application.orchestration.retrieval_read_cache import (
-    DetailTargetCacheEntry,
-    RunScopedReadResultCache,
-)
-from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
+
+
+class RetrievalReadBindingError(ValueError):
+    """A read or continuation is outside its frozen route/query binding."""
 
 
 @dataclass(frozen=True, slots=True)
-class RetrievalReadContext:
-    remaining_budget: dict[str, int]
-    now_ms: int
-    timezone: str
-    allowed_read_tool_ids: frozenset[str]
-
-
-def build_read_context(
-    *,
-    remaining_budget: dict[str, int],
-    allowed_read_tool_ids: frozenset[str],
-    now_ms: Callable[[], int],
-    timezone_provider: Callable[[], str],
-) -> RetrievalReadContext:
-    return RetrievalReadContext(
-        remaining_budget=remaining_budget,
-        now_ms=now_ms(),
-        timezone=timezone_provider(),
-        allowed_read_tool_ids=allowed_read_tool_ids,
-    )
+class RetrievalReadExecutionV1:
+    schema_version: Literal[1]
+    status: Literal["COMPLETE", "EXHAUSTED"]
+    read_result_handle: str
+    tool_id: str
+    total_count: int | None
+    provider_called: bool
 
 
 def execute_read(
     *,
     plan: SourceFetchPlanV1,
-    context: RetrievalReadContext,
-    connector_reader: ConnectorReadProjection,
-    read_result_cache: RunScopedReadResultCache | None = None,
-    run_id: str | None = None,
-    prior_query_hash: str | None = None,
-    detail_target: DetailTargetCacheEntry | None = None,
-) -> NormalizedConnectorRead:
-    """Execute one validated read through ConnectorReadPort; never a Provider API."""
-    operation = plan["operation_kind"]
-    page_token: str | None = None
-    selected_resources: tuple[SelectedResourceRef, ...] = ()
-    prefer_selected = False
+    run_id: str,
+    binding: ValidatedConnectorToolBindingV1,
+    tool_arguments: dict[str, JsonValue],
+    connector_reader: ConnectorReadPort,
+    read_result_cache: RunRetrievalCachePort,
+    read_result_handle: str,
+) -> RetrievalReadExecutionV1:
+    """Execute one registry-validated READ and keep its opaque continuation cache-local."""
+    _validate_binding(plan, binding)
+    arguments = dict(tool_arguments)
+    if "page_token" in arguments or "next_page_token" in arguments:
+        raise RetrievalReadBindingError("raw continuation must come only from Run Retrieval Cache")
 
-    if operation == "NEXT_PAGE":
-        handle = plan["prior_read_result_handle"]
-        if (
-            read_result_cache is None
-            or run_id is None
-            or handle is None
-            or prior_query_hash is None
-        ):
-            raise ValueError(
-                "NEXT_PAGE requires run-scoped cache, run_id, prior handle, and prior query hash"
+    if plan["operation_kind"] == "NEXT_PAGE":
+        prior_handle = plan["prior_read_result_handle"]
+        if prior_handle is None:
+            raise RetrievalReadBindingError("NEXT_PAGE requires a prior read-result handle")
+        resolution = read_result_cache.resolve_read_result(
+            prior_handle,
+            run_id,
+            plan["route_id"],
+            plan["query_identity_hash"],
+        )
+        if resolution.status == "EXHAUSTED":
+            entry = resolution.entry
+            if entry is None:
+                raise RetrievalReadBindingError("EXHAUSTED cache result requires an entry")
+            return RetrievalReadExecutionV1(
+                schema_version=1,
+                status="EXHAUSTED",
+                read_result_handle=entry.read_result_handle,
+                tool_id=entry.read_result.tool_id,
+                total_count=entry.read_result.total_count,
+                provider_called=False,
             )
-        page_token = read_result_cache.resolve_next_page(
-            run_id=run_id,
-            handle=handle,
-            route_id=plan["route_id"],
-            query_hash=prior_query_hash,
-        )
-    elif operation == "DETAIL_FETCH":
-        if detail_target is None:
-            raise ValueError("DETAIL_FETCH requires a cache-resolved detail target")
-        if detail_target.detail_tool_id not in context.allowed_read_tool_ids:
-            raise PermissionError("detail tool is outside the frozen input route")
-        selected_resources = (
-            SelectedResourceRef(
-                source=detail_target.source,
-                resource_type=_connector_resource_type(detail_target.resource_type),
-                resource_id=detail_target.resource_id,
-                parent_resource_id=detail_target.parent_resource_id,
-            ),
-        )
-        prefer_selected = True
-    elif operation not in {"SEARCH", "FREEBUSY"}:
-        raise ValueError(f"unsupported retrieval operation: {operation}")
+        if resolution.status != "FOUND" or resolution.entry is None:
+            raise RetrievalReadBindingError(
+                f"invalid retrieval continuation binding: {resolution.status}"
+            )
+        continuation = resolution.entry.read_result.next_page_token
+        if continuation is None:
+            raise RetrievalReadBindingError("FOUND continuation entry has no page token")
+        arguments["page_token"] = continuation
 
-    return connector_reader.read(
-        PlannedConnectorRead(
-            plan=plan,
-            selected_resources=selected_resources,
-            prefer_selected_resources=prefer_selected,
-            remaining_budget=context.remaining_budget,
-            now_ms=context.now_ms,
-            timezone=context.timezone,
-            allowed_read_tool_ids=context.allowed_read_tool_ids,
-            page_token=page_token,
+    result = connector_reader.execute_read(binding, arguments)
+    read_result_cache.put_read_result(
+        RunRetrievalCacheEntryV1(
+            schema_version=1,
+            read_result_handle=read_result_handle,
+            run_id=run_id,
+            route_id=plan["route_id"],
+            query_identity_hash=plan["query_identity_hash"],
+            read_result=result,
+            continuation_exhausted=result.next_page_token is None,
         )
+    )
+    return RetrievalReadExecutionV1(
+        schema_version=1,
+        status="COMPLETE",
+        read_result_handle=read_result_handle,
+        tool_id=result.tool_id,
+        total_count=result.total_count,
+        provider_called=True,
     )
 
 
-def _connector_resource_type(resource_type: str) -> str:
-    return {
-        "GMAIL_THREAD": "THREAD",
-        "GMAIL_MESSAGE": "MESSAGE",
-        "TASK": "TASK",
-        "CALENDAR_EVENT": "EVENT",
-    }[resource_type]
+def _validate_binding(
+    plan: SourceFetchPlanV1,
+    binding: ValidatedConnectorToolBindingV1,
+) -> None:
+    if binding.effect != "READ":
+        raise RetrievalReadBindingError("retrieval can execute READ bindings only")
+    if binding.connector_id != plan["connector_id"]:
+        raise RetrievalReadBindingError("connector binding differs from frozen route")
+    if binding.resource_type != plan["resource_type"]:
+        raise RetrievalReadBindingError("resource binding differs from frozen route")
+
+
+__all__ = ["RetrievalReadBindingError", "RetrievalReadExecutionV1", "execute_read"]

@@ -37,6 +37,7 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
@@ -69,7 +70,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SufficiencyResultV2,
 )
 from google_work_agent.application.orchestration.retrieval_attempts import (
-    QueryAttempt,
     build_query_attempt,
     followup_planner_projection,
 )
@@ -222,51 +222,37 @@ class ContextRetrieverSubgraph:
             output_schema=ParentGraphState,
         )
         graph.add_node("init", self._init_node)
-        graph.add_node("plan_query", self._plan_initial_query_node)
-        graph.add_node("execute_initial_read", self._execute_initial_read_node)
+        graph.add_node("plan_query", self._plan_query_node)
+        graph.add_node("build_query", self._build_query_node)
+        graph.add_node("execute_read", self._execute_read_node)
+        graph.add_node("normalize_segments", self._normalize_segments_node)
+        graph.add_node("rag_retrieve", self._rag_retrieve_node)
         graph.add_node("select_evidence", self._select_evidence_node)
         graph.add_node("selection_validate", self._selection_validate_node)
         graph.add_node("assess_sufficiency", self._assess_sufficiency_node)
-        graph.add_node("plan_followup", self._plan_followup_node)
-        graph.add_node("execute_next_page", self._execute_next_page_node)
-        graph.add_node("execute_followup_search", self._execute_followup_search_node)
-        graph.add_node("execute_detail", self._execute_detail_node)
         graph.add_node("finalize", self._finalize_node)
         graph.add_edge(START, "init")
         graph.add_conditional_edges(
             "init",
             self._route_after_init,
-            {"plan_query": "plan_query", "select_evidence": "select_evidence"},
+            {"plan_query": "plan_query", "normalize_segments": "normalize_segments"},
         )
+        graph.add_edge("plan_query", "build_query")
         graph.add_conditional_edges(
-            "plan_query",
-            self._route_after_plan_query,
-            {
-                "execute_initial_read": "execute_initial_read",
-                "execute_followup_search": "execute_followup_search",
-            },
+            "build_query",
+            self._route_after_build_query,
+            {"execute_read": "execute_read", "finalize": "finalize"},
         )
-        graph.add_edge("execute_initial_read", "select_evidence")
+        graph.add_edge("execute_read", "normalize_segments")
+        graph.add_edge("normalize_segments", "rag_retrieve")
+        graph.add_edge("rag_retrieve", "select_evidence")
         graph.add_edge("select_evidence", "selection_validate")
         graph.add_edge("selection_validate", "assess_sufficiency")
         graph.add_conditional_edges(
             "assess_sufficiency",
             self._route_after_sufficiency,
-            {"plan_followup": "plan_followup", "finalize": "finalize"},
+            {"plan_query": "plan_query", "finalize": "finalize"},
         )
-        graph.add_conditional_edges(
-            "plan_followup",
-            self._route_after_followup_plan,
-            {
-                "execute_next_page": "execute_next_page",
-                "execute_followup_search": "execute_followup_search",
-                "execute_detail": "execute_detail",
-                "finalize": "finalize",
-            },
-        )
-        graph.add_edge("execute_next_page", "select_evidence")
-        graph.add_edge("execute_followup_search", "select_evidence")
-        graph.add_edge("execute_detail", "select_evidence")
         graph.add_conditional_edges(
             "finalize",
             self._route_after_finalize,
@@ -349,11 +335,10 @@ class ContextRetrieverSubgraph:
     ) -> ContextRetrievalLocalState:
         request = request_from_state(state)
         local_state = cast(AgentLocalStateV1, state[CONTEXT_AGENT_LOCAL_KEY])
-        acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
         request_intent = _require_state_value(state["request_intent"], "request_intent")
-        segments = self._agent.build_segments_from_acquisition(acquisition_result)
-        rag_candidates = self._agent.rag_retrieve(
-            cast(list[Any], segments), request_intent=request_intent
+        segments = self._normalized_segments(state)
+        rag_candidates = _require_state_value(
+            state.get(CONTEXT_RAG_CANDIDATES_KEY), "rag candidates"
         )
         ensure_llm_call_budget(state)
         selection, revised_retry_budget = self._agent.select_evidence(
@@ -386,6 +371,44 @@ class ContextRetrieverSubgraph:
                 prompt_ref=self._agent.select_prompt_ref,
                 llm_call_increment=1,
             ),
+        }
+
+    def _normalize_segments_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        acquisition_result = _require_state_value(
+            state["acquisition_result"], "acquisition_result"
+        )
+        segments = cast(
+            list[Any], self._agent.build_segments_from_acquisition(acquisition_result)
+        )
+        return {**state, "segments": [segment.segment_id for segment in segments]}
+
+    def _normalized_segments(self, state: ContextRetrievalLocalState) -> list[Any]:
+        acquisition_result = _require_state_value(
+            state["acquisition_result"], "acquisition_result"
+        )
+        segments = cast(
+            list[Any], self._agent.build_segments_from_acquisition(acquisition_result)
+        )
+        expected_ids = state.get("segments")
+        actual_ids = [segment.segment_id for segment in segments]
+        if expected_ids is not None and actual_ids != expected_ids:
+            raise ValueError("stable segment identity changed within one retrieval round")
+        return segments
+
+    def _rag_retrieve_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        request_intent = _require_state_value(state["request_intent"], "request_intent")
+        segments = self._normalized_segments(state)
+        candidates = self._agent.rag_retrieve(
+            cast(list[Any], segments), request_intent=request_intent
+        )
+        return {
+            **state,
+            "ranked_segments": candidates,
+            CONTEXT_RAG_CANDIDATES_KEY: candidates,
         }
 
     def _selection_validate_node(
@@ -513,13 +536,18 @@ class ContextRetrieverSubgraph:
         # plan_followup.
         if state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY) is not None:
             return "plan_query"
-        return "select_evidence" if state.get("acquisition_result") is not None else "plan_query"
-
-    def _route_after_plan_query(self, state: ContextRetrievalLocalState) -> str:
         return (
-            "execute_followup_search"
+            "normalize_segments"
             if state.get("acquisition_result") is not None
-            else "execute_initial_read"
+            else "plan_query"
+        )
+
+    @staticmethod
+    def _route_after_build_query(state: ContextRetrievalLocalState) -> str:
+        return (
+            "finalize"
+            if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) == "FINALIZE"
+            else "execute_read"
         )
 
     def _validated_task_container_refs(
@@ -545,7 +573,7 @@ class ContextRetrieverSubgraph:
             if coarse_resource_category(route["resource_type"]) == "TASK"
         }
 
-    def _plan_initial_query_node(
+    def _plan_query_node(
         self, state: ContextRetrievalLocalState
     ) -> ContextRetrievalLocalState:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
@@ -577,26 +605,27 @@ class ContextRetrieverSubgraph:
             route_policies=route_policies,
             retry_budget=cast(RunBudgetV1, state["retry_budget"]),
             validated_container_refs=validated_container_refs,
-        )
-        canonical_plans = self._source_fetch_plan_builder.build(
-            query_plan,
-            frozen_routes=frozen_routes,
-            route_policies=route_policies,
-            validated_container_refs=validated_container_refs,
             detail_candidate_refs=state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
         )
         return {
             **state,
-            CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
-            "source_fetch_plans": project_for_legacy_read_executor(
-                canonical_plans,
-                frozen_routes=frozen_routes,
-                retrieval_budget=self._acquisition_agent.retrieval_budget,
-            ),
+            "query_plan": query_plan,
             "retry_budget": consume_llm_call_budget(
                 {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
             ),
         }
+
+    def _execute_read_node(
+        self, state: ContextRetrievalLocalState
+    ) -> ContextRetrievalLocalState:
+        operation = state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)
+        if operation == "NEXT_PAGE":
+            return self._execute_next_page_node(state)
+        if operation == "DETAIL_FETCH":
+            return self._execute_detail_node(state)
+        if state.get("acquisition_result") is not None:
+            return self._execute_followup_search_node(state)
+        return self._execute_initial_read_node(state)
 
     def _execute_initial_read_node(
         self, state: ContextRetrievalLocalState
@@ -694,45 +723,37 @@ class ContextRetrieverSubgraph:
                 run_id=state["run_id"], route_id=route_id, query_hash=retrieval_query_hash(plan)
             )
             if handle is not None:
-                return "plan_followup"
+                return "plan_query"
         return "finalize"
 
-    def _plan_followup_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
+    def _build_query_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
         route_policies = _runtime_route_constraint_policies(frozen_routes)
         validated_container_refs = self._validated_task_container_refs(frozen_routes)
-        followup = _require_state_value(
-            state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY), "follow-up planner input"
-        )
+        query_plan = _require_state_value(state.get("query_plan"), "query plan")
         detail_candidate_refs = state.get(CONTEXT_SEGMENT_HANDLES_KEY, [])
-        ensure_llm_call_budget(state)
-        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
-            prompt_input=followup_retrieval_planner_input(
-                request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                input_routes=frozen_routes,
-                retrieval_budget=self._acquisition_agent.retrieval_budget,
-                followup=followup,
-                validated_container_refs=validated_container_refs,
-            ),
-            trace_context=_planner_trace_context(state),
-            frozen_routes=frozen_routes,
-            route_policies=route_policies,
-            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
-            validated_container_refs=validated_container_refs,
-            detail_candidate_refs=detail_candidate_refs,
-        )
-        # Reassigned onto state (not a one-off return key) so every exit
-        # branch below -- each spreads **state -- carries the consumed
-        # budget without repeating this call at every return site.
-        state = {
-            **state,
-            "retry_budget": consume_llm_call_budget(
-                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
-            ),
-        }
         prior_canonical = state.get(CONTEXT_CANONICAL_PLANS_KEY, {})
         prior_legacy = cast(list[Any], state.get("source_fetch_plans", []))
+        if not prior_canonical:
+            canonical_plans = self._source_fetch_plan_builder.build(
+                query_plan,
+                frozen_routes=frozen_routes,
+                route_policies=route_policies,
+                validated_container_refs=validated_container_refs,
+                detail_candidate_refs=detail_candidate_refs,
+            )
+            return {
+                **state,
+                "source_fetch_plans": project_for_legacy_read_executor(
+                    canonical_plans,
+                    frozen_routes=frozen_routes,
+                    retrieval_budget=self._acquisition_agent.retrieval_budget,
+                ),
+                CONTEXT_CANONICAL_PLANS_KEY: {
+                    plan["route_id"]: plan for plan in canonical_plans
+                },
+            }
         handles = {
             _route_id_for_plan(state, plan): handle
             for plan in prior_legacy
@@ -1183,6 +1204,9 @@ class ContextRetrieverSubgraph:
         merged.pop(CONTEXT_FOLLOWUP_OPERATION_KEY, None)
         merged.pop(CONTEXT_NEXT_PAGE_HANDLES_KEY, None)
         merged.pop(CONTEXT_DETAIL_CANDIDATES_KEY, None)
+        merged.pop("query_plan", None)
+        merged.pop("segments", None)
+        merged.pop("ranked_segments", None)
         merged.pop("evidence_drafts", None)
         merged.pop("llm_provider_result", None)
         return cast(ContextRetrievalLocalState, merged)
@@ -1195,8 +1219,8 @@ class ContextRetrieverSubgraph:
         plans: list[Any],
         operation_kind: str,
         previous_query_hash: str | None,
-    ) -> list[QueryAttempt]:
-        attempts = cast(list[QueryAttempt], list(state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])))
+    ) -> list[QueryAttemptV1]:
+        attempts = cast(list[QueryAttemptV1], list(state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])))
         summaries = result["source_summaries"]
         for plan, summary in zip(plans, summaries, strict=False):
             route_id = _route_id_for_plan(state, plan)

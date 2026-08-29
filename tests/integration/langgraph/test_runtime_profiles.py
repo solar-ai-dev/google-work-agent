@@ -516,16 +516,25 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
 
         runtime._analysis_subgraph.invoke = original_analysis_invoke  # noqa: SLF001
         runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # noqa: SLF001
-        # The context_retriever stage above already materialized
-        # evidence-seg-2 into this run's RunScopedEvidenceStore -- no
+        # The context_retriever stage above already materialized its stable
+        # evidence reference into this run's RunScopedEvidenceStore -- no
         # second ``put`` needed (and a conflicting duplicate ``put`` would
         # fail-closed by design).
         review_state = runtime._initial_state(_start_request())  # noqa: SLF001
         review_state["request_intent"] = _clear_intent()
-        review_state["context_result"] = _context_result()
-        review_state["retrieval_result"] = _retrieval_result()
-        review_state["analysis_result"] = _validated_analysis_result()
-        review_state["answer_draft"] = _answer_output()
+        review_state["context_result"] = context["context_result"]
+        review_state["retrieval_result"] = context["retrieval_result"]
+        evidence_ref = context["retrieval_result"]["evidence_refs"][0]
+        segment_ref = context["retrieval_result"]["selected_segment_ids"][0]
+        analysis_result = _validated_analysis_result()
+        analysis_result["evidence_refs"] = [evidence_ref]
+        analysis_result["segment_refs"][0]["segment_id"] = segment_ref
+        analysis_result["findings"][0]["evidence_refs"] = [evidence_ref]
+        analysis_result["findings"][0]["segment_refs"] = [segment_ref]
+        answer_draft = _answer_output()
+        answer_draft["evidence_refs"] = [evidence_ref]
+        review_state["analysis_result"] = analysis_result
+        review_state["answer_draft"] = answer_draft
         review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
         assert review_result["__target__"] == "planning"
 

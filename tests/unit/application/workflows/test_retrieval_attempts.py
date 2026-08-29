@@ -33,6 +33,6 @@ def test_query_attempt_uses_bounded_query_and_page_identities() -> None:
 
     assert attempt["operation_kind"] == "SEARCH"
     assert attempt["round_no"] == 0
-    assert attempt["query_spec"]["query_hash"] == "query-hash"
+    assert attempt["query_spec"]["canonical_arguments"]["query_identity_hash"] == "query-hash"
     assert "page_token" not in attempt
     assert "next_page_token" not in attempt

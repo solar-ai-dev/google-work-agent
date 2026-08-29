@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from math import ceil
+from typing import Literal, cast
 
+from google_work_agent.application.agents.retrieval.contracts.segment_identity import (
+    SourceSegmentIdentityV1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
 
 
@@ -22,6 +28,7 @@ class ContextBudget:
 
 
 DEFAULT_CONTEXT_BUDGET = ContextBudget()
+CHUNK_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +80,23 @@ def normalize_segments(
             seen.add((handle, text))
             chunks = _chunk_text(text, context_budget)
             for index, chunk in enumerate(chunks):
+                normalized_chunk = _truncate(chunk, context_budget.max_segment_chars)
+                identity: SourceSegmentIdentityV1 = {
+                    "schema_version": 1,
+                    "connector_id": _connector_id(raw, summary),
+                    "source_kind": _source_kind(source),
+                    "resource_type": resource_type,
+                    "resource_id": str(raw.get("resource_id", "")),
+                    "source_version_ref": _optional_string(raw.get("version")),
+                    "chunk_schema_version": CHUNK_SCHEMA_VERSION,
+                    "chunk_ordinal": index,
+                    "normalized_content_sha256": hashlib.sha256(
+                        normalized_chunk.encode("utf-8")
+                    ).hexdigest(),
+                }
                 segments.append(
                     SourceSegment(
-                        segment_id=f"seg-{len(segments) + 1}",
+                        segment_id=_segment_id(identity),
                         resource_handle=handle,
                         source=source,
                         resource_type=resource_type,
@@ -88,7 +109,7 @@ def normalize_segments(
                             "chunk_index": index,
                             "chunk_count": len(chunks),
                         },
-                        text=_truncate(chunk, context_budget.max_segment_chars),
+                        text=normalized_chunk,
                     )
                 )
                 if len(segments) >= context_budget.max_segments:
@@ -133,11 +154,11 @@ def _estimate_tokens(text: str) -> int:
     return 0 if not stripped else max(1, ceil(len(stripped.encode("utf-8"))))
 
 
-def _chunk_text(text: str, budget: ContextBudget) -> list[str]:
+def _chunk_text(text: str, context_budget: ContextBudget) -> list[str]:
     words = text.split()
     if not words:
         return []
-    if _estimate_tokens(text) <= budget.chunk_max_tokens:
+    if _estimate_tokens(text) <= context_budget.chunk_max_tokens:
         return [text]
     chunks: list[str] = []
     start = 0
@@ -146,18 +167,18 @@ def _chunk_text(text: str, budget: ContextBudget) -> list[str]:
         end = start
         while end < len(words):
             word_tokens = _estimate_tokens(words[end]) + (1 if end > start else 0)
-            if count + word_tokens > budget.chunk_max_tokens and end > start:
+            if count + word_tokens > context_budget.chunk_max_tokens and end > start:
                 break
             count += word_tokens
             end += 1
-            if count >= budget.chunk_target_tokens:
+            if count >= context_budget.chunk_target_tokens:
                 break
         chunks.append(" ".join(words[start:end]))
         if end >= len(words):
             break
         overlap_start = end
         overlap = 0
-        while overlap_start > start and overlap < budget.chunk_overlap_tokens:
+        while overlap_start > start and overlap < context_budget.chunk_overlap_tokens:
             overlap_start -= 1
             overlap += _estimate_tokens(words[overlap_start])
         start = max(overlap_start, start + 1)
@@ -170,3 +191,28 @@ def _optional_string(value: object) -> str | None:
 
 def _truncate(value: str, max_chars: int) -> str:
     return value if len(value) <= max_chars else value[:max_chars]
+
+
+def _connector_id(resource: dict[str, object], summary: dict[str, object]) -> str:
+    value = resource.get("connector_id", summary.get("connector_id", "google_workspace"))
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("connector_id must be a non-empty string")
+    return value
+
+
+def _source_kind(source: str) -> LiteralSourceKind:
+    try:
+        return cast(
+            LiteralSourceKind,
+            {"GMAIL": "gmail", "TASKS": "tasks", "CALENDAR": "calendar"}[source.upper()],
+        )
+    except KeyError as error:
+        raise ValueError(f"unsupported retrieval source kind: {source}") from error
+
+
+def _segment_id(identity: SourceSegmentIdentityV1) -> str:
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "seg_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+LiteralSourceKind = Literal["gmail", "tasks", "calendar"]

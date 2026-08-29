@@ -235,6 +235,7 @@ class _QueuedLLMRuntime:
         self._before_invoke = before_invoke
         self._pending_plan_actions_state = _PendingPlanActionsState()
         self._pending_request_intent: Mapping[str, object] | None = None
+        self._segment_id_aliases: dict[str, str] = {}
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
@@ -333,32 +334,98 @@ class _QueuedLLMRuntime:
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             output_route = cast(Mapping[str, object], prompt_input["output_route"])
-            return _llm_result(
-                _synthesize_action_argument_candidate(
-                    self._queued,
-                    self._pending_plan_actions_state,
-                    route_id=cast(str, output_route["route_id"]),
-                    tool_id=cast(str, output_route["selected_tool_id"]),
-                    effect=cast(str, output_route["effect"]),
-                )
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, output_route["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
             )
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments.revise":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             base_projection = cast(Mapping[str, object], prompt_input["base_projection"])
             output_route = cast(Mapping[str, object], base_projection["output_route"])
             candidate_output = cast(Mapping[str, object], prompt_input["candidate_output"])
-            return _llm_result(
-                _synthesize_action_argument_candidate(
-                    self._queued,
-                    self._pending_plan_actions_state,
-                    route_id=cast(str, candidate_output["route_id"]),
-                    tool_id=cast(str, output_route["selected_tool_id"]),
-                    effect=cast(str, output_route["effect"]),
-                )
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, candidate_output["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
             )
         if not self._queued:
             raise RuntimeError("no queued llm result")
-        return self._queued.popleft()
+        result = self._queued.popleft()
+        if getattr(prompt_ref, "prompt_id", None) in {
+            "retrieval.select_evidence",
+            "retrieval.select_evidence.revise",
+        }:
+            aliases = _legacy_selection_aliases(kwargs["prompt_input"])
+            self._segment_id_aliases.update(aliases)
+            self._segment_id_aliases.update(
+                {f"evidence-{key}": f"evidence-{value}" for key, value in aliases.items()}
+            )
+        return _replace_result_aliases(result, self._segment_id_aliases)
+
+
+def _legacy_selection_aliases(prompt_input: object) -> dict[str, str]:
+    if not isinstance(prompt_input, Mapping):
+        return {}
+    ranked = prompt_input.get("ranked_segments")
+    if not isinstance(ranked, list):
+        base = prompt_input.get("base_projection")
+        ranked = base.get("ranked_segments") if isinstance(base, Mapping) else None
+    if not isinstance(ranked, list):
+        return {}
+    ordered = sorted(
+        (item for item in ranked if isinstance(item, Mapping)),
+        key=lambda item: _legacy_resource_order(str(item.get("resource_ref", ""))),
+    )
+    stable_ids = [item.get("segment_id") for item in ordered]
+    return {
+        f"seg-{index}": value
+        for index, value in enumerate(stable_ids, start=1)
+        if isinstance(value, str)
+    }
+
+
+def _replace_result_aliases(
+    result: StructuredLLMResult, aliases: Mapping[str, str]
+) -> StructuredLLMResult:
+
+    def replace_value(value: object) -> object:
+        if isinstance(value, str):
+            return aliases.get(value, value)
+        if isinstance(value, list):
+            return [replace_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: replace_value(item) for key, item in value.items()}
+        return value
+
+    return _llm_result(replace_value(result.structured_output))
+
+
+def _legacy_resource_order(resource_ref: str) -> tuple[int, str]:
+    prefix = resource_ref.partition(":")[0]
+    rank = {
+        "gmail_thread": 0,
+        "gmail_message": 1,
+        "task_list": 2,
+        "task": 3,
+        "calendar": 4,
+        "calendar_event": 5,
+    }.get(prefix, 99)
+    return rank, resource_ref
 
 
 def _synthesize_tool_route_candidate(request_intent: RequestIntentV2) -> dict[str, object]:

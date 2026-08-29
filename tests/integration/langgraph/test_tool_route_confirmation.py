@@ -39,10 +39,12 @@ from tests.integration.langgraph.test_runtime import (
     _analysis_output,
     _answer_output,
     _clear_intent,
+    _legacy_selection_aliases,
     _llm_result,
     _make_runtime,
     _make_runtime_with_llm,
     _PendingPlanActionsState,
+    _replace_result_aliases,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -85,6 +87,7 @@ class _ToolRouteQueuedLLMRuntime:
         self.calls: list[dict[str, object]] = []
         self._classify_intent = classify_intent
         self._pending_plan_actions_state = _PendingPlanActionsState()
+        self._segment_id_aliases: dict[str, str] = {}
 
     def invoke_structured(self, **kwargs: object) -> Any:
         return self._invoke(**kwargs)
@@ -131,32 +134,45 @@ class _ToolRouteQueuedLLMRuntime:
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_route = cast(dict[str, object], prompt_input["output_route"])
-            return _llm_result(
-                _synthesize_action_argument_candidate(
-                    self._queued,
-                    self._pending_plan_actions_state,
-                    route_id=cast(str, output_route["route_id"]),
-                    tool_id=cast(str, output_route["selected_tool_id"]),
-                    effect=cast(str, output_route["effect"]),
-                )
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, output_route["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
             )
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments.revise":
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             base_projection = cast(dict[str, object], prompt_input["base_projection"])
             output_route = cast(dict[str, object], base_projection["output_route"])
             candidate_output = cast(dict[str, object], prompt_input["candidate_output"])
-            return _llm_result(
-                _synthesize_action_argument_candidate(
-                    self._queued,
-                    self._pending_plan_actions_state,
-                    route_id=cast(str, candidate_output["route_id"]),
-                    tool_id=cast(str, output_route["selected_tool_id"]),
-                    effect=cast(str, output_route["effect"]),
-                )
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, candidate_output["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
             )
         if not self._queued:
             raise RuntimeError("no queued llm result")
-        return self._queued.popleft()
+        result = self._queued.popleft()
+        if prompt_id in {"retrieval.select_evidence", "retrieval.select_evidence.revise"}:
+            aliases = _legacy_selection_aliases(kwargs["prompt_input"])
+            self._segment_id_aliases.update(aliases)
+            self._segment_id_aliases.update(
+                {f"evidence-{key}": f"evidence-{value}" for key, value in aliases.items()}
+            )
+        return _replace_result_aliases(result, self._segment_id_aliases)
 
 
 def _semantic_candidate(

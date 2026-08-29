@@ -6,11 +6,6 @@ from collections.abc import Mapping
 
 _ALLOWED = frozenset(
     {
-        "plan_query",
-        "build_query",
-        "execute_read",
-        "normalize_segments",
-        "rag_retrieve_rerank",
         "select_evidence",
         "assess_sufficiency",
         "finalize_retrieval",

@@ -12,6 +12,7 @@ from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2 as CanonicalRequestIntentV2,
 )
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
@@ -45,8 +46,10 @@ from google_work_agent.application.orchestration.profile_fused import (
     ProfileReasonPlanOutputV1,
     ProfileRequestSourceOutputV1,
 )
-from google_work_agent.application.orchestration.retrieval_attempts import QueryAttempt
 from google_work_agent.application.orchestration.retrieval_ranking import RagCandidateV1
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
+    RetrievalQueryPlanV2,
+)
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as V2SourceFetchPlanV1,
 )
@@ -147,6 +150,9 @@ class AcquisitionLocalState(GraphState):
 
 
 class ContextRetrievalLocalState(GraphState):
+    query_plan: NotRequired[RetrievalQueryPlanV2]
+    segments: NotRequired[list[str]]
+    ranked_segments: NotRequired[list[RagCandidateV1]]
     __context_agent_local__: NotRequired[AgentLocalStateV1]
     __context_rag_candidates__: NotRequired[list[RagCandidateV1]]
     __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
@@ -154,7 +160,7 @@ class ContextRetrievalLocalState(GraphState):
     __context_current_round_no__: NotRequired[int]
     __context_read_result_handles__: NotRequired[list[str]]
     __context_segment_handles__: NotRequired[list[str]]
-    __context_query_attempts__: NotRequired[list[QueryAttempt]]
+    __context_query_attempts__: NotRequired[list[QueryAttemptV1]]
     __context_followup_planner_input__: NotRequired[dict[str, object]]
     __context_canonical_plans__: NotRequired[dict[str, V2SourceFetchPlanV1]]
     __context_followup_operation__: NotRequired[str]

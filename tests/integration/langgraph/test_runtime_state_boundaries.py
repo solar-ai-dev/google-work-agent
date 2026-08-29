@@ -312,7 +312,8 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
         acquired = runtime._acquisition_subgraph.invoke(routed)  # noqa: SLF001
         context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
         assert context["__target__"] == "work_analysis"
-        assert context["context_result"]["evidence_drafts"][0]["evidence_id"] == "evidence-seg-2"
+        evidence_ref = context["context_result"]["evidence_drafts"][0]["evidence_id"]
+        assert evidence_ref.startswith("evidence-seg_")
         assert CONTEXT_RAG_CANDIDATES_KEY not in context
 
         analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
@@ -321,7 +322,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
 
         planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
         assert planned["__target__"] == "response_synthesis"
-        assert planned["answer_draft"]["evidence_refs"] == ["evidence-seg-2"]
+        assert planned["answer_draft"]["evidence_refs"] == [evidence_ref]
         planning_input = next(
             call["prompt_input"]
             for call in llm_runtime.calls

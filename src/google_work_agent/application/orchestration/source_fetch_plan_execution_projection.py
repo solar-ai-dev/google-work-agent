@@ -48,7 +48,7 @@ def project_for_legacy_read_executor(
                 "legacy read executor projection currently supports SEARCH and FREEBUSY only"
             )
         constraints, calendar_read_mode, temporal_query = _legacy_constraints(plan)
-        source = {"EMAIL": "GMAIL", "TASK": "TASKS", "CALENDAR": "CALENDAR"}[plan["resource_type"]]
+        source = _source_for_resource_type(plan["resource_type"])
         result.append(
             {
                 "schema_version": 2,
@@ -71,15 +71,28 @@ def project_for_legacy_read_executor(
 def _legacy_constraints(
     plan: SourceFetchPlanV1,
 ) -> tuple[dict[str, object], str | None, dict[str, object] | None]:
-    if plan["operation_kind"] == "FREEBUSY" and plan["resource_type"] != "CALENDAR":
+    source = _source_for_resource_type(plan["resource_type"])
+    if plan["operation_kind"] == "FREEBUSY" and source != "CALENDAR":
         raise SourceFetchPlanExecutionProjectionError(
             "FREEBUSY is only supported for CALENDAR routes"
         )
-    if plan["resource_type"] == "EMAIL":
+    if source == "GMAIL":
         return _gmail_constraints(plan), None, None
-    if plan["resource_type"] == "TASK":
+    if source == "TASKS":
         return _container_only_constraints(plan, container_key="task_list_id"), None, None
     return _calendar_constraints(plan)
+
+
+def _source_for_resource_type(resource_type: str) -> SourceName:
+    if resource_type.startswith("GMAIL_") or resource_type == "EMAIL":
+        return "GMAIL"
+    if resource_type in {"TASK", "TASK_LIST"}:
+        return "TASKS"
+    if resource_type.startswith("CALENDAR_") or resource_type == "CALENDAR":
+        return "CALENDAR"
+    raise SourceFetchPlanExecutionProjectionError(
+        f"unsupported frozen resource_type: {resource_type}"
+    )
 
 
 def _gmail_constraints(plan: SourceFetchPlanV1) -> dict[str, object]:

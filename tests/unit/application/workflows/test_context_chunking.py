@@ -214,7 +214,8 @@ def test_long_gmail_message_becomes_multiple_ordered_segments_with_chunk_locator
 
     assert 1 < len(segments) < DEFAULT_BUDGET.max_segments
     for index, segment in enumerate(segments):
-        assert segment.segment_id == f"seg-{index + 1}"
+        assert segment.segment_id.startswith("seg_")
+        assert len(segment.segment_id) == 68
         assert segment.resource_handle == "gmail_message:message-1"
         assert segment.locator["chunk_index"] == index
         assert segment.locator["chunk_count"] == len(segments)

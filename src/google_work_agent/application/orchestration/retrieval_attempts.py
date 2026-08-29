@@ -2,36 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, Required, TypedDict, cast
+from typing import Literal, cast
 
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.orchestration.handoff_contracts import SourceFetchPlanV1
 
-
-class QueryAttempt(TypedDict):
-    schema_version: Required[int]
-    query_attempt_id: Required[str]
-    run_id: Required[str]
-    route_id: Required[str]
-    round_no: Required[int]
-    attempt_no: Required[int]
-    resource_type: Required[Literal["EMAIL", "TASK", "CALENDAR"]]
-    connector_id: Required[str]
-    operation_kind: Required[Literal["SEARCH", "NEXT_PAGE", "DETAIL_FETCH", "FREEBUSY"]]
-    normalized_intent_constraints: Required[dict[str, object]]
-    query_spec: Required[dict[str, object]]
-    previous_query_hash: Required[str | None]
-    page_state_hash: Required[str | None]
-    added_constraints: Required[list[str]]
-    removed_constraints: Required[list[str]]
-    change_reason_code: Required[str | None]
-    candidate_count: Required[int | None]
-    top_score: Required[float | None]
-    score_margin: Required[float | None]
-    confidence_band: Required[Literal["HIGH", "MEDIUM", "LOW", "NONE"] | None]
-    retrieval_config_version: Required[str]
-    score_config_version: Required[str]
-    threshold_config_version: Required[str]
-    stop_reason: Required[str | None]
+QueryAttempt = QueryAttemptV1
 
 
 # The current deterministic lexical retrieval implementation owns these
@@ -57,7 +33,7 @@ def build_query_attempt(
     page_state_hash: str | None,
     candidate_count: int,
     stop_reason: str | None,
-) -> QueryAttempt:
+) -> QueryAttemptV1:
     """Record only bounded normalized read meaning, never provider arguments."""
     resource_type = cast(
         Literal["EMAIL", "TASK", "CALENDAR"],
@@ -77,14 +53,14 @@ def build_query_attempt(
         "resource_type": resource_type,
         "connector_id": connector_id,
         "operation_kind": operation_kind,
-        "normalized_intent_constraints": dict(plan["constraints"]),
+        "normalized_intent_constraints": [],
         "query_spec": {
-            "source": plan["source"],
-            "page_size": plan["page_size"],
-            "max_pages": plan["max_pages"],
-            "max_candidates": plan["max_candidates"],
-            "detail_limit": plan["detail_limit"],
-            "query_hash": query_hash,
+            "tool_id": f"legacy:{plan['source'].lower()}:{operation_kind.lower()}",
+            "tool_schema_version": "legacy-projection-v1",
+            "canonical_arguments": {
+                "query_identity_hash": query_hash,
+                "page_size": plan["page_size"],
+            },
         },
         "previous_query_hash": previous_query_hash,
         "page_state_hash": page_state_hash,
@@ -105,7 +81,7 @@ def build_query_attempt(
 def followup_planner_projection(
     *,
     current_round_no: int,
-    prior_query_attempts: list[QueryAttempt],
+    prior_query_attempts: list[QueryAttemptV1],
     unresolved_sufficiency_issues: list[dict[str, object]],
     read_result_summaries: list[dict[str, object]],
 ) -> dict[str, object]:

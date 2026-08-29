@@ -1,8 +1,8 @@
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.retrieval_operation_projection import (
-    project_retrieval_operation_input,
-)
 from google_work_agent.application.agents.retrieval.build_query import build_query
 
+from ..projections.build_query_projection import project_build_query_input
+from ..state import RetrievalState
 
-def build_query_node(state: dict[str, object]) -> dict[str, object]:
-    return {"fetch_plan": build_query(**project_retrieval_operation_input(state, "build_query"))}
+
+def build_query_node(state: RetrievalState) -> RetrievalState:
+    return {"fetch_plan": build_query(**project_build_query_input(state))}

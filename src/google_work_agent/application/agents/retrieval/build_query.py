@@ -6,11 +6,8 @@ import hashlib
 import json
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import cast
 
-from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
-    coarse_resource_category,
-)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
@@ -89,15 +86,13 @@ def _build_one(
     )
     if operation == "NEXT_PAGE" and prior_read_result_handle is None:
         raise RetrievalV2ValidationError("NEXT_PAGE requires a validated prior read-result handle")
-    resource_type = _canonical_resource_type(route["resource_type"])
-    if resource_type not in {"EMAIL", "TASK", "CALENDAR"}:
-        raise RetrievalV2ValidationError("unsupported canonical retrieval resource_type")
+    resource_type = route["resource_type"]
     normalized = _normalize_constraints(effective)
     return {
         "schema_version": 1,
         "route_id": route["route_id"],
         "connector_id": route["connector_id"],
-        "resource_type": cast(Literal["EMAIL", "TASK", "CALENDAR"], resource_type),
+        "resource_type": resource_type,
         "operation_kind": operation,
         "effective_constraints": normalized,
         "query_identity_hash": _query_identity(
@@ -151,12 +146,6 @@ def _validate_policies(
     for route_id, policy in policies.items():
         if not policy.required_kinds.issubset(policy.supported_kinds):
             raise RetrievalV2ValidationError(f"route {route_id} requires an unsupported constraint")
-
-
-def _canonical_resource_type(resource_type: str) -> str:
-    if resource_type in {"EMAIL", "TASK", "CALENDAR"}:
-        return resource_type
-    return coarse_resource_category(resource_type)
 
 
 def _canonical_constraints(constraints: Sequence[SemanticRetrievalConstraintV1]) -> str:

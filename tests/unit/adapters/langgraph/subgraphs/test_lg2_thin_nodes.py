@@ -29,8 +29,13 @@ def test_owned_nodes_do_not_execute_mcp_or_provider_directly():
 
 
 def test_retrieval_projection_is_operation_allowlisted():
-    state = {"operation_inputs": {"execute_read": {"plan": "p"}, "foreign": {"secret": True}}}
-    assert project_retrieval_operation_input(state, "execute_read") == {"plan": "p"}
+    state = {
+        "operation_inputs": {
+            "select_evidence": {"candidates": "c"},
+            "foreign": {"secret": True},
+        }
+    }
+    assert project_retrieval_operation_input(state, "select_evidence") == {"candidates": "c"}
     try:
         project_retrieval_operation_input(state, "foreign")
     except ValueError:

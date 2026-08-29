@@ -120,7 +120,7 @@ class SourceFetchPlanV1(TypedDict):
     schema_version: Required[Literal[1]]
     route_id: Required[str]
     connector_id: Required[str]
-    resource_type: Required[Literal["EMAIL", "TASK", "CALENDAR"]]
+    resource_type: Required[str]
     operation_kind: Required[RetrievalOperationV2]
     effective_constraints: Required[list[SemanticRetrievalConstraintV1]]
     query_identity_hash: Required[str]

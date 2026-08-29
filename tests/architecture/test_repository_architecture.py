@@ -31,6 +31,7 @@ ROLES = {
         "build_query",
         "execute_read",
         "normalize_segments",
+        "resolve_availability",
         "rag_retrieve_rerank",
         "select_evidence",
         "assess_sufficiency",

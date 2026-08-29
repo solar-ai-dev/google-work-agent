@@ -7,6 +7,29 @@ from pathlib import Path
 from typing import Literal, cast
 
 import google_work_agent.application.orchestration._schema_support as _schema
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    DEFAULT_CONTEXT_BUDGET,
+    ContextBudget,
+    _truncate,
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    SourceSegment as _SourceSegment,
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    _chunk_text as _chunk_text,  # noqa: F401
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    _estimate_tokens as _estimate_tokens,  # noqa: F401
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    _strip_email_quote_and_signature as _strip_email_quote_and_signature,  # noqa: F401
+)
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
+    RagCandidateV1,
+)
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
+    rag_retrieve_rerank as rank_segments,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
@@ -14,27 +37,10 @@ from google_work_agent.application.orchestration.confirmation import (
     build_clarification_question_v1,
 )
 from google_work_agent.application.orchestration.context_segmentation import (
-    DEFAULT_CONTEXT_BUDGET,
-    _SourceSegment,
-    _truncate,
-)
-from google_work_agent.application.orchestration.context_segmentation import (
-    ContextBudget as ContextBudget,
-)
-from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError as ContextRetrievalValidationError,
 )
 from google_work_agent.application.orchestration.context_segmentation import (
-    _chunk_text as _chunk_text,
-)
-from google_work_agent.application.orchestration.context_segmentation import (
-    _estimate_tokens as _estimate_tokens,
-)
-from google_work_agent.application.orchestration.context_segmentation import (
     _segments_from_acquisition as _segments_from_acquisition,
-)
-from google_work_agent.application.orchestration.context_segmentation import (
-    _strip_email_quote_and_signature as _strip_email_quote_and_signature,
 )
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
@@ -61,12 +67,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceSelectionResultV2,
     RequestIntentV2,
     SufficiencyResultV2,
-)
-from google_work_agent.application.orchestration.retrieval_ranking import (
-    RagCandidateV1 as RagCandidateV1,
-)
-from google_work_agent.application.orchestration.retrieval_ranking import (
-    rank_segments as rank_segments,
 )
 from google_work_agent.application.orchestration.retrieval_sufficiency import (
     SUFFICIENCY_OUTPUT_SCHEMA,
@@ -180,7 +180,7 @@ class ContextRetrievalAgent:
     ) -> list[object]:
         return cast(
             list[object],
-            _segments_from_acquisition(acquisition_result, self._context_budget),
+            _segments_from_acquisition(acquisition_result, context_budget=self._context_budget),
         )
 
     def rag_retrieve(

@@ -129,7 +129,7 @@ class FakeLLMRuntime:
         result = self.queued.popleft()
         if isinstance(result, Exception):
             raise result
-        return result
+        return _remap_legacy_segment_ids(result, prompt_input)
 
 
 def test_context_retrieval_builds_sufficient_context_result() -> None:
@@ -158,11 +158,12 @@ def test_context_retrieval_builds_sufficient_context_result() -> None:
         "llm_provider_result",
     }
     assert result["status"] == ContextResult.SUFFICIENT.value
-    assert result["selected_segment_ids"] == ["seg-1"]
+    stable_id = _stable_segment_ids(_acquisition_result())[0]
+    assert result["selected_segment_ids"] == [stable_id]
     assert result["context_bundle"]["resource_refs"][0]["resource_handle"] == (
         "gmail_thread:thread-kim"
     )
-    assert result["context_bundle"]["evidence_refs"] == ["evidence-seg-1"]
+    assert result["context_bundle"]["evidence_refs"] == [f"evidence-{stable_id}"]
     assert state_update["workflow_phase"] == WorkflowPhase.WORK_ANALYSIS.value
     assert state_update["context_result"] == result
     assert "evidence_selection_result" not in state_update
@@ -213,7 +214,7 @@ def test_stage5_inline_resources_are_context_input_without_cache_resolver() -> N
     assert set(selection_input) == {"request_intent", "ranked_segments"}
     assert "user_request" not in selection_input
     segments = _prompt_segments(selection_input)
-    assert segments[0]["segment_id"] == "seg-1"
+    assert segments[0]["segment_id"] == _stable_segment_ids(_acquisition_result())[0]
     assert segments[0]["resource_ref"] == ("gmail_thread:thread-kim")
 
 
@@ -287,7 +288,7 @@ def test_selection_semantic_revision_recovers_corrected_output() -> None:
         request=_request(),
     )
 
-    assert result["selected_segment_ids"] == ["seg-1"]
+    assert result["selected_segment_ids"] == [_stable_segment_ids(_acquisition_result())[0]]
     assert len(runtime.calls) == 3
     assert [call["prompt_ref"].prompt_id for call in runtime.calls] == [
         "context.select_evidence",
@@ -404,7 +405,7 @@ def test_sufficiency_all_context_results_are_llm_contract_outputs(
             "origin_result": ContextResult.NEEDS_MORE_DATA.value,
             "missing_slots": ["more context"],
             "missing_information": ["more context"],
-            "evidence_refs": ["evidence-seg-1"],
+            "evidence_refs": [f"evidence-{_stable_segment_ids(_acquisition_result())[0]}"],
             "reason_codes": ["SUPPORTS"],
         }
     )
@@ -466,7 +467,10 @@ def test_evidence_deduplication_and_excluded_hard_negative_are_packaged() -> Non
         request=_request(),
     )
 
-    assert [draft["evidence_id"] for draft in result["evidence_drafts"]] == ["evidence-seg-1"]
+    stable_id = _stable_segment_ids(_acquisition_result(include_task=True))[0]
+    assert [draft["evidence_id"] for draft in result["evidence_drafts"]] == [
+        f"evidence-{stable_id}"
+    ]
     assert result["excluded_resource_handles"] == ["task:task-1"]
 
 
@@ -880,6 +884,61 @@ def _selection_output(selected_segment_ids: list[str]) -> EvidenceSelectionResul
         "evidence_drafts": [_role_draft(selected_segment_ids[0])],
         "excluded_segment_ids": [],
     }
+
+
+def _stable_segment_ids(acquisition_result: AcquisitionResultV1) -> list[str]:
+    return [
+        segment.segment_id
+        for segment in _agent(FakeLLMRuntime()).build_segments_from_acquisition(acquisition_result)
+    ]
+
+
+def _remap_legacy_segment_ids(
+    result: StructuredLLMResult,
+    prompt_input: Mapping[str, object],
+) -> StructuredLLMResult:
+    prompt_id = result.structured_output
+    del prompt_id
+    ranked = prompt_input.get("ranked_segments")
+    if not isinstance(ranked, list):
+        base = prompt_input.get("base_projection")
+        ranked = base.get("ranked_segments") if isinstance(base, Mapping) else None
+    if not isinstance(ranked, list):
+        return result
+    ordered = sorted(
+        (item for item in ranked if isinstance(item, Mapping)),
+        key=lambda item: _legacy_resource_order(str(item.get("resource_ref", ""))),
+    )
+    stable_ids = [item.get("segment_id") for item in ordered]
+    if not stable_ids:
+        return result
+
+    def replace_value(value: object) -> object:
+        if isinstance(value, str) and value.startswith("seg-"):
+            try:
+                return stable_ids[int(value.removeprefix("seg-")) - 1]
+            except (ValueError, IndexError):
+                return value
+        if isinstance(value, list):
+            return [replace_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: replace_value(item) for key, item in value.items()}
+        return value
+
+    return _llm_result(replace_value(result.structured_output))
+
+
+def _legacy_resource_order(resource_ref: str) -> tuple[int, str]:
+    prefix = resource_ref.partition(":")[0]
+    rank = {
+        "gmail_thread": 0,
+        "gmail_message": 1,
+        "task_list": 2,
+        "task": 3,
+        "calendar": 4,
+        "calendar_event": 5,
+    }.get(prefix, 99)
+    return rank, resource_ref
 
 
 def _role_draft(

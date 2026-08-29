@@ -1,12 +1,8 @@
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.retrieval_operation_projection import (
-    project_retrieval_operation_input,
-)
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import rag_retrieve_rerank
 
+from ..projections.rag_retrieve_rerank_projection import project_rag_retrieve_rerank_input
+from ..state import RetrievalState
 
-def rag_retrieve_rerank_node(state: dict[str, object]) -> dict[str, object]:
-    return {
-        "ranked_segments": rag_retrieve_rerank(
-            **project_retrieval_operation_input(state, "rag_retrieve_rerank")
-        )
-    }
+
+def rag_retrieve_rerank_node(state: RetrievalState) -> RetrievalState:
+    return {"ranked_segments": rag_retrieve_rerank(**project_rag_retrieve_rerank_input(state))}
