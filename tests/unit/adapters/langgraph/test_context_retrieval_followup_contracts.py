@@ -16,6 +16,7 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.subgraphs.context_retrieval import (
     ContextRetrieverSubgraph,
+    _resolve_availability_from_reads,
 )
 from google_work_agent.application.orchestration.api_acquisition import (
     RetrievalBudget,
@@ -50,6 +51,58 @@ class _Reader:
         del request
         self.calls += 1
         return NormalizedConnectorRead(snapshots=())
+
+
+def test_freebusy_read_populates_provider_neutral_availability_local_state() -> None:
+    acquisition = cast(
+        Any,
+        {
+            "source_summaries": [
+                {
+                    "resources": [
+                        {
+                            "resource_handle": "calendar_freebusy:primary-window",
+                            "resource_type": "calendar_freebusy",
+                            "payload": {
+                                "time_min": "2026-09-01T09:00:00+09:00",
+                                "time_max": "2026-09-01T12:00:00+09:00",
+                                "busy_intervals": [
+                                    {
+                                        "start": "2026-09-01T10:00:00+09:00",
+                                        "end": "2026-09-01T11:00:00+09:00",
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+    plans = cast(
+        Any,
+        {
+            "route-1": {
+                "resource_type": "CALENDAR_EVENT",
+                "effective_constraints": [
+                    {
+                        "kind": "TEMPORAL_RANGE",
+                        "timezone": "Asia/Seoul",
+                    }
+                ],
+            }
+        },
+    )
+
+    result = _resolve_availability_from_reads(
+        acquisition_result=acquisition,
+        canonical_plans=plans,
+    )
+
+    assert [(item["start"], item["end"]) for item in result] == [
+        ("2026-09-01T09:00:00+09:00", "2026-09-01T10:00:00+09:00"),
+        ("2026-09-01T11:00:00+09:00", "2026-09-01T12:00:00+09:00"),
+    ]
 
 
 @dataclass

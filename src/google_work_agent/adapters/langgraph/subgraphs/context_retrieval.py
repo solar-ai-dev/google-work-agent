@@ -38,6 +38,11 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import ContextRetrievalLocalState
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.resolve_availability import (
+    AvailableIntervalV1,
+    BusyIntervalV1,
+    resolve_availability,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
@@ -63,6 +68,7 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
+    AcquisitionResultV1,
     ContextRetrievalResultV1,
     RequestIntentV2,
     RetrievalNeedV1,
@@ -99,6 +105,9 @@ from google_work_agent.application.orchestration.retrieval_rounds import (
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
 )
+from google_work_agent.application.orchestration.retrieval_v2_contracts import (
+    SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
+)
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     RouteConstraintPolicy,
     SourceFetchPlanBuilder,
@@ -118,6 +127,67 @@ ConfirmInline = Callable[
     [ContextRetrievalLocalState],
     tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None],
 ]
+
+
+def _resolve_availability_from_reads(
+    *,
+    acquisition_result: AcquisitionResultV1,
+    canonical_plans: Mapping[str, CanonicalSourceFetchPlanV1],
+) -> list[AvailableIntervalV1]:
+    """Project FreeBusy reads into provider-neutral availability Local State."""
+    timezones = {
+        str(constraint["timezone"])
+        for plan in canonical_plans.values()
+        if plan["resource_type"].startswith("CALENDAR")
+        for constraint in plan["effective_constraints"]
+        if constraint["kind"] == "TEMPORAL_RANGE"
+    }
+    freebusy_resources = [
+        resource
+        for summary in acquisition_result["source_summaries"]
+        for resource in cast(list[dict[str, object]], summary.get("resources", []))
+        if resource.get("resource_type") == "calendar_freebusy"
+    ]
+    if not freebusy_resources:
+        return []
+    if len(timezones) != 1:
+        raise ValueError("FreeBusy availability requires one frozen calendar timezone")
+    timezone = next(iter(timezones))
+    results: list[AvailableIntervalV1] = []
+    for resource in freebusy_resources:
+        handle = resource.get("resource_handle")
+        payload = resource.get("payload")
+        if not isinstance(handle, str) or not isinstance(payload, Mapping):
+            raise ValueError("FreeBusy resource projection is invalid")
+        window_start = payload.get("time_min")
+        window_end = payload.get("time_max")
+        raw_intervals = payload.get("busy_intervals", [])
+        if (
+            not isinstance(window_start, str)
+            or not isinstance(window_end, str)
+            or not isinstance(raw_intervals, list)
+        ):
+            raise ValueError("FreeBusy interval projection is invalid")
+        busy_intervals: list[BusyIntervalV1] = []
+        for interval in raw_intervals:
+            if not isinstance(interval, Mapping):
+                raise ValueError("FreeBusy busy interval must be an object")
+            start = interval.get("start")
+            end = interval.get("end")
+            if not isinstance(start, str) or not isinstance(end, str):
+                raise ValueError("FreeBusy busy interval boundaries are invalid")
+            busy_intervals.append(
+                {"start": start, "end": end, "resource_ref": handle}
+            )
+        results.extend(
+            resolve_availability(
+                window_start=window_start,
+                window_end=window_end,
+                timezone=timezone,
+                busy_intervals=busy_intervals,
+            )
+        )
+    return results
 
 
 def _runtime_route_constraint_policies(
@@ -382,7 +452,14 @@ class ContextRetrieverSubgraph:
         segments = cast(
             list[Any], self._agent.build_segments_from_acquisition(acquisition_result)
         )
-        return {**state, "segments": [segment.segment_id for segment in segments]}
+        return {
+            **state,
+            "segments": [segment.segment_id for segment in segments],
+            "availability_results": _resolve_availability_from_reads(
+                acquisition_result=acquisition_result,
+                canonical_plans=state.get(CONTEXT_CANONICAL_PLANS_KEY, {}),
+            ),
+        }
 
     def _normalized_segments(self, state: ContextRetrievalLocalState) -> list[Any]:
         acquisition_result = _require_state_value(
@@ -1207,6 +1284,7 @@ class ContextRetrieverSubgraph:
         merged.pop("query_plan", None)
         merged.pop("segments", None)
         merged.pop("ranked_segments", None)
+        merged.pop("availability_results", None)
         merged.pop("evidence_drafts", None)
         merged.pop("llm_provider_result", None)
         return cast(ContextRetrievalLocalState, merged)

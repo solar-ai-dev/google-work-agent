@@ -39,3 +39,9 @@ def test_production_retrieval_uses_exact_five_core_node_boundaries() -> None:
         "execute_detail",
     ):
         assert f'graph.add_node("{legacy_name}"' not in source
+
+    operation_source = (
+        root / "src/google_work_agent/adapters/langgraph/subgraphs/context_retrieval.py"
+    ).read_text()
+    assert "resolve_availability(" in operation_source
+    assert 'graph.add_node("resolve_availability"' not in source

@@ -13,6 +13,7 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2 as CanonicalRequestIntentV2,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
@@ -153,6 +154,7 @@ class ContextRetrievalLocalState(GraphState):
     query_plan: NotRequired[RetrievalQueryPlanV2]
     segments: NotRequired[list[str]]
     ranked_segments: NotRequired[list[RagCandidateV1]]
+    availability_results: NotRequired[list[AvailableIntervalV1]]
     __context_agent_local__: NotRequired[AgentLocalStateV1]
     __context_rag_candidates__: NotRequired[list[RagCandidateV1]]
     __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
