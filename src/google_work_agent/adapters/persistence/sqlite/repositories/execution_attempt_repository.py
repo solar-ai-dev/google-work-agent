@@ -58,6 +58,13 @@ class SqliteExecutionAttemptRepository:
         ).fetchone()
         return None if r is None else self._record(r)
 
+    def get_latest_for_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
+        r = self._connection.execute(
+            self._SELECT + " WHERE approval_id=? ORDER BY attempt_no DESC LIMIT 1;",
+            (approval_id,),
+        ).fetchone()
+        return None if r is None else self._record(r)
+
     def insert_claimed(self, record: ExecutionAttemptRecord) -> None:
         self._connection.execute(
             """INSERT INTO execution_attempts (
@@ -125,7 +132,9 @@ class SqliteExecutionAttemptRepository:
             raise ValueError("reconciliation limit must be between 1 and 256")
         rows = self._connection.execute(
             """
+            WITH classified AS (
             SELECT ea.id AS execution_attempt_id, a.id AS action_id, p.run_id,
+                   ea.started_at_ms,
                    CASE
                      WHEN ea.status='EXECUTING' AND a.status='EXECUTING'
                           AND EXISTS (
@@ -150,6 +159,12 @@ class SqliteExecutionAttemptRepository:
                             WHERE v.execution_attempt_id=ea.id
                           ) THEN 'EXECUTED_AWAITING_VERIFICATION'
                      WHEN ea.status='FAILED' AND a.status='FAILED'
+                          AND p.status='WAITING_APPROVAL'
+                          AND p.revision_no=(
+                            SELECT MAX(current_plan.revision_no)
+                            FROM plans current_plan
+                            WHERE current_plan.run_id=p.run_id
+                          )
                           AND EXISTS (
                             SELECT 1 FROM command_receipts resolved
                             WHERE resolved.command_id=(
@@ -159,14 +174,14 @@ class SqliteExecutionAttemptRepository:
                               AND resolved.status='APPLIED'
                               AND resolved.result_code='TRANSITION_APPLIED'
                           ) AND (
-                          EXISTS (
+                          (r.status='CANCEL_REQUESTED' AND EXISTS (
                             SELECT 1 FROM command_receipts cancel_receipt
                             WHERE cancel_receipt.command_type='RequestRunCancellation'
                               AND cancel_receipt.aggregate_type='Run'
                               AND cancel_receipt.aggregate_id=p.run_id
                               AND cancel_receipt.status='APPLIED'
                               AND cancel_receipt.result_code='TRANSITION_APPLIED'
-                          ) OR EXISTS (
+                          )) OR (r.status IN ('WAITING_APPROVAL','VERIFYING') AND EXISTS (
                             SELECT 1 FROM actions sibling
                             WHERE sibling.plan_id=p.id AND sibling.status='APPROVED'
                               AND NOT EXISTS (
@@ -177,18 +192,24 @@ class SqliteExecutionAttemptRepository:
                                 WHERE dependency.action_id=sibling.id
                                   AND predecessor.status <> 'VERIFIED'
                               )
-                          )
+                          ))
                      ) THEN 'FAILED_AWAITING_CONTINUATION'
                    END AS kind
             FROM execution_attempts ea
             JOIN approvals ap ON ap.id=ea.approval_id
             JOIN actions a ON a.id=ap.action_id
             JOIN plans p ON p.id=a.plan_id
+            JOIN runs r ON r.id=p.run_id
             WHERE ea.status IN ('EXECUTING','UNKNOWN_RESULT','SUCCEEDED','FAILED')
-            ORDER BY ea.started_at_ms, ea.id
-            """
+            )
+            SELECT execution_attempt_id, action_id, run_id, kind
+            FROM classified
+            WHERE kind IS NOT NULL
+            ORDER BY started_at_ms, execution_attempt_id
+            LIMIT ?
+            """,
+            (limit,),
         ).fetchall()
-        candidates = [row for row in rows if row["kind"] is not None]
         return tuple(
             ExecutionReconciliationCandidateV1(
                 schema_version=1,
@@ -197,5 +218,5 @@ class SqliteExecutionAttemptRepository:
                 action_id=str(row["action_id"]),
                 run_id=str(row["run_id"]),
             )
-            for row in candidates[:limit]
+            for row in rows
         )

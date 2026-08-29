@@ -1890,22 +1890,9 @@ class WorkflowRuntimeCore:
             attempts = [
                 attempt
                 for approval in approvals
-                for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
+                if (attempt := unit_of_work.execution_attempts.get_latest_for_approval(approval.id))
+                is not None
             ]
-            if not attempts:
-                attempts = [
-                    attempt
-                    for candidate in unit_of_work.execution_attempts.list_reconciliation_candidates(
-                        256
-                    )
-                    if candidate.action_id == action_id
-                    and (
-                        attempt := unit_of_work.execution_attempts.get(
-                            candidate.execution_attempt_id
-                        )
-                    )
-                    is not None
-                ]
             if not attempts:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
             return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms))
