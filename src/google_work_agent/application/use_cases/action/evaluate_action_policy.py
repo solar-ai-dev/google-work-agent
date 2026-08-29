@@ -3,17 +3,14 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.orchestration.contracts import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
-PolicyConfirmationKind = Literal["SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"]
-
-
-@dataclass(frozen=True, slots=True)
-class PolicyConfirmationEvidenceV1:
-    receipt_ref: str
-    confirmation_kind: PolicyConfirmationKind
-    decision: Literal["APPROVED", "DECLINED"]
-    decision_context_hash: str
+_PolicyConfirmationKind = Literal[
+    "SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +35,7 @@ class EvaluateActionPolicyQueryV1:
     conflict_detected: bool = False
     feasibility_blocked: bool = False
     policy_confirmation_receipt_refs: tuple[str, ...] = ()
-    policy_confirmation_receipts: tuple[PolicyConfirmationEvidenceV1, ...] = ()
+    policy_confirmation_receipts: tuple[PolicyConfirmationReceiptV1, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +44,7 @@ class ActionPolicyEvaluationResultV1:
     decision: Literal["ALLOW", "DENY", "CONFIRMATION_REQUIRED"]
     policy_version: str
     reason_codes: tuple[str, ...]
-    confirmation_kind: PolicyConfirmationKind | None
+    confirmation_kind: _PolicyConfirmationKind | None
 
 
 class EvaluateActionPolicyHandler:
@@ -59,7 +56,7 @@ class EvaluateActionPolicyHandler:
             denied.append("REQUIRED_SCOPE_MISSING")
         if query.feasibility_blocked:
             denied.append("FEASIBILITY_BLOCKED")
-        evidence_decision = evaluate_evidence_policy(
+        evidence_decision = _evaluate_evidence_policy(
             evidence_count=query.evidence_count,
             independent_evidence_count=query.independent_evidence_count,
             requires_existing_resource=query.effect in {"UPDATE", "DELETE"},
@@ -108,16 +105,19 @@ class EvaluateActionPolicyHandler:
         self,
         query: EvaluateActionPolicyQueryV1,
         *,
-        kind: PolicyConfirmationKind,
+        kind: _PolicyConfirmationKind,
         reason: str,
     ) -> ActionPolicyEvaluationResultV1:
-        context_hash = policy_confirmation_context_hash(query, kind)
+        context_hash = _policy_confirmation_context_hash(query, kind)
         for receipt in query.policy_confirmation_receipts:
-            if receipt.receipt_ref not in query.policy_confirmation_receipt_refs:
+            if not _matches_confirmation_receipt(
+                receipt,
+                referenced_receipt_ids=query.policy_confirmation_receipt_refs,
+                kind=kind,
+                context_hash=context_hash,
+            ):
                 continue
-            if receipt.confirmation_kind != kind or receipt.decision_context_hash != context_hash:
-                continue
-            if receipt.decision == "APPROVED":
+            if receipt["decision"] == "APPROVED":
                 return self._result(query, "ALLOW", ())
             return self._result(query, "DENY", (f"{kind}_DECLINED",))
         return self._result(query, "CONFIRMATION_REQUIRED", (reason,), kind)
@@ -127,7 +127,7 @@ class EvaluateActionPolicyHandler:
         query: EvaluateActionPolicyQueryV1,
         decision: Literal["ALLOW", "DENY", "CONFIRMATION_REQUIRED"],
         reason_codes: tuple[str, ...],
-        confirmation_kind: PolicyConfirmationKind | None = None,
+        confirmation_kind: _PolicyConfirmationKind | None = None,
     ) -> ActionPolicyEvaluationResultV1:
         return ActionPolicyEvaluationResultV1(
             schema_version=1,
@@ -138,8 +138,8 @@ class EvaluateActionPolicyHandler:
         )
 
 
-def policy_confirmation_context_hash(
-    query: EvaluateActionPolicyQueryV1, kind: PolicyConfirmationKind
+def _policy_confirmation_context_hash(
+    query: EvaluateActionPolicyQueryV1, kind: _PolicyConfirmationKind
 ) -> str:
     """Bind confirmation to the current Action/evidence/policy authority."""
 
@@ -159,7 +159,34 @@ def policy_confirmation_context_hash(
     )
 
 
-def evaluate_evidence_policy(
+def _matches_confirmation_receipt(
+    receipt: PolicyConfirmationReceiptV1,
+    *,
+    referenced_receipt_ids: tuple[str, ...],
+    kind: _PolicyConfirmationKind,
+    context_hash: str,
+) -> bool:
+    meta = receipt.get("meta")
+    if not isinstance(meta, dict):
+        return False
+    receipt_id = meta.get("artifact_id")
+    based_on = meta.get("based_on")
+    expected_owner = "TOOL_ROUTE" if kind == "SCOPE_EXPANSION" else "WORK_ANALYSIS"
+    return (
+        receipt.get("schema_version") == 1
+        and isinstance(receipt_id, str)
+        and receipt_id in referenced_receipt_ids
+        and meta.get("revision") == 1
+        and isinstance(based_on, list)
+        and bool(based_on)
+        and receipt.get("confirmation_kind") == kind
+        and receipt.get("semantic_owner_id") == expected_owner
+        and receipt.get("decision") in {"APPROVED", "DECLINED"}
+        and receipt.get("decision_context_hash") == context_hash
+    )
+
+
+def _evaluate_evidence_policy(
     *,
     evidence_count: int,
     independent_evidence_count: int,
@@ -180,7 +207,4 @@ __all__ = [
     "ActionPolicyEvaluationResultV1",
     "EvaluateActionPolicyHandler",
     "EvaluateActionPolicyQueryV1",
-    "PolicyConfirmationEvidenceV1",
-    "evaluate_evidence_policy",
-    "policy_confirmation_context_hash",
 ]

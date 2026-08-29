@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from google_work_agent.application.use_cases.action.evaluate_action_policy import (
-    evaluate_evidence_policy,
+    _evaluate_evidence_policy,
 )
 from google_work_agent.domain.action.model import PolicyViolationError
 
@@ -43,7 +43,7 @@ class ApprovalIntegrityInput:
 def validate_evidence_policy(policy_input: EvidencePolicyInput) -> None:
     """Project owner call-site facts through the single policy evaluator."""
 
-    result = evaluate_evidence_policy(
+    result = _evaluate_evidence_policy(
         evidence_count=policy_input.evidence_count,
         independent_evidence_count=policy_input.independent_evidence_count,
         requires_existing_resource=policy_input.requires_existing_resource,
