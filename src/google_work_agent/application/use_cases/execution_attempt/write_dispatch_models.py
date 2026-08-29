@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 
 
@@ -15,9 +16,7 @@ class PreparedWriteDispatch:
 @dataclass(frozen=True, slots=True)
 class AuthorizedWriteDispatch:
     prepared: PreparedWriteDispatch
-    claim_payload: dict[str, object]
-    approval_arguments_hash: str
-    execution_arguments_hash: str
+    claim_context: ClaimContextV2
 
 
 class WriteResultMaterializer(Protocol):

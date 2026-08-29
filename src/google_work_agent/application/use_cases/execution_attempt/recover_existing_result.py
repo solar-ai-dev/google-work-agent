@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from json import dumps
+from json import JSONDecodeError, dumps, loads
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
@@ -148,9 +148,10 @@ class RecoverExistingResultHandler:
                 error_code=command.safe_error_code,
                 error_detail_json=None,
                 result_resource_ref_id=persisted_resource_ref.id,
-                response_metadata_json=dumps(
-                    {"operation": action.tool_name, "resource_id": command.snapshot.resource_id},
-                    sort_keys=True,
+                response_metadata_json=_merge_response_metadata(
+                    attempt.response_metadata_json,
+                    operation=action.tool_name,
+                    resource_id=command.snapshot.resource_id,
                 ),
                 finished_at_ms=now_ms,
             )
@@ -241,3 +242,20 @@ class RecoverExistingResultHandler:
         finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)  # type: ignore[attr-defined]
         unit_of_work.commit()
         return _to_result(response)
+
+
+def _merge_response_metadata(
+    existing_json: str | None, *, operation: str, resource_id: str
+) -> str:
+    if existing_json is None:
+        metadata: dict[str, object] = {}
+    else:
+        try:
+            parsed = loads(existing_json)
+        except JSONDecodeError as error:
+            raise RuntimeError("ExecutionAttempt response metadata is malformed") from error
+        if not isinstance(parsed, dict):
+            raise RuntimeError("ExecutionAttempt response metadata must be an object")
+        metadata = dict(parsed)
+    metadata.update({"operation": operation, "resource_id": resource_id})
+    return dumps(metadata, sort_keys=True)

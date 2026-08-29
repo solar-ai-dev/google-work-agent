@@ -93,11 +93,15 @@ class _UnitOfWork:
             id="attempt-1",
             approval_id="approval-1",
             result_resource_ref_id=None,
+            version=1,
         )
         self.actions = _Repository({"action-1": action})
         self.approval_history = _Repository({"approval-1": approval})
         self.execution_attempts = _Repository({"attempt-1": attempt})
         self.resource_refs = _Repository({})
+        self.runs = _Repository(
+            {"run-1": SimpleNamespace(id="run-1", status=RunStatusV1.RECOVERY_REQUIRED)}
+        )
 
     def __enter__(self) -> _UnitOfWork:
         return self
@@ -236,7 +240,7 @@ def test_classify_dispatch_result_decision_is_authoritative_over_local_rederivat
         # The connector result here is MAY_HAVE_BEEN_SENT (a real dispatch was
         # attempted), which a re-derivation from the raw result alone would
         # route to mark_unknown. classify_dispatch_result's decision must win.
-        return SimpleNamespace(decision="MARK_FAILED")
+        return SimpleNamespace(disposition="MARK_FAILED")
 
     result = _coordinator(
         calls=calls,
@@ -280,11 +284,12 @@ def test_auth_failure_ambiguous_marks_unknown_before_reauth_and_never_resends() 
     result = _coordinator(
         calls=calls,
         execute_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=True),
+        lookup_error=_gateway_error(GoogleWorkspaceErrorCode.AUTH_EXPIRED, delivered=False),
     ).execute(_request())
 
     assert result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED
     assert result.action_status == ActionStatusV1.UNKNOWN_RESULT.value
-    assert calls[-2:] == ["mark_unknown", "require_reauth"]
+    assert calls[-3:] == ["mark_unknown", "lookup_unknown", "require_reauth"]
     assert calls.count("dispatch") == 1
 
 

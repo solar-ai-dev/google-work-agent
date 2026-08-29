@@ -9,6 +9,7 @@ from json import dumps, loads
 from google_work_agent.application.use_cases.action.write_action_arguments import (
     coerce_int as _coerce_int,
 )
+from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.claim.write_execution_integrity import read_claim_token
 from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
     BeginExecutionAttemptCommand,
@@ -100,9 +101,10 @@ class ExecuteWriteActionService:
         snapshot = self._connector_execution.execute_write(
             AuthorizedWriteDispatch(
                 prepared=prepared,
-                claim_payload=payload,
-                approval_arguments_hash=action.arguments_hash,
-                execution_arguments_hash=calculate_canonical_json_hash(prepared.arguments),
+                claim_context=_legacy_claim_context(
+                    payload,
+                    execution_arguments_hash=calculate_canonical_json_hash(prepared.arguments),
+                ),
             )
         )
         return ExecutedWriteActionResult(
@@ -112,6 +114,26 @@ class ExecuteWriteActionService:
                 sort_keys=True,
             ),
         )
+
+
+def _legacy_claim_context(
+    payload: dict[str, object], *, execution_arguments_hash: str
+) -> ClaimContextV2:
+    return ClaimContextV2(
+        claim_version=2,
+        service_instance_id=str(payload["service_instance_id"]),
+        mcp_process_instance_id="test-legacy-mcp",
+        action_id=str(payload["action_id"]),
+        approval_id=str(payload["approval_id"]),
+        execution_attempt_id=str(payload["execution_attempt_id"]),
+        tool_name=str(payload["tool_name"]),
+        approval_arguments_hash=str(payload["approval_arguments_hash"]),
+        execution_arguments_hash=execution_arguments_hash,
+        issued_at_ms=int(payload["issued_at_ms"]),
+        expires_at_ms=int(payload["expires_at_ms"]),
+        nonce=str(payload["nonce"]),
+        signature="test-legacy-signature",
+    )
 
 
 def classify_write_delivery(error: GoogleWorkspaceGatewayError) -> DeliveryCertainty:

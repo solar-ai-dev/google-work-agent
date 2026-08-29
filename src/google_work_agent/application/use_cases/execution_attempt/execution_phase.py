@@ -47,6 +47,9 @@ from google_work_agent.application.use_cases.execution_attempt.classify_dispatch
 from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
     ConnectorWriteProjection,
 )
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteResultV1,
+)
 from google_work_agent.application.use_cases.execution_attempt.mark_failed import (
     MarkFailedCommand,
     MarkFailedHandler,
@@ -419,14 +422,16 @@ class WriteExecutionPhaseCoordinator:
         )
         dispatch = AuthorizedWriteDispatch(
             prepared=PreparedWriteDispatch(action.tool_name, prepared.arguments),
-            claim_payload=claim_payload,
-            approval_arguments_hash=action.arguments_hash,
-            execution_arguments_hash=claim_context.execution_arguments_hash,
+            claim_context=claim_context,
         )
         try:
-            connector_result = self._connector_execution.dispatch_write(dispatch)
+            dispatch_result = self._connector_execution.dispatch_write(dispatch)
+            connector_result = dispatch_result
             decision = self._classify_dispatch_result(
-                ClassifyDispatchResultQueryV1(connector_result)
+                ClassifyDispatchResultQueryV1(
+                    schema_version=1,
+                    dispatch_result=DispatchConnectorWriteResultV1(dispatch_result),
+                )
             )
         except PermissionError as error:
             # No connector call was made (eligibility rejected before dispatch),
@@ -445,7 +450,7 @@ class WriteExecutionPhaseCoordinator:
                 error=connector_error,
                 mark_as_failed=True,
             )
-        if decision.decision != "STORE_SUCCESS":
+        if decision.disposition != "STORE_SUCCESS":
             # `classify_dispatch_result` is the sole write-dispatch persistence
             # decision authority; reuse its decision instead of re-deriving a
             # competing MARK_FAILED/MARK_UNKNOWN_RESULT choice here.
@@ -455,7 +460,7 @@ class WriteExecutionPhaseCoordinator:
                 attempt_id=attempt_id,
                 claimed_action_version=claimed.current_version,
                 error=connector_error,
-                mark_as_failed=decision.decision == "MARK_FAILED",
+                mark_as_failed=decision.disposition == "MARK_FAILED",
             )
         executed = ExecutedWriteActionResult(
             snapshot=self._connector_execution.materialize_success(dispatch, connector_result),

@@ -37,6 +37,18 @@ from google_work_agent.application.use_cases.execution_attempt.mark_failed impor
     MarkFailedCommand,
     MarkFailedHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
+    MarkUnknownResultCommand,
+    MarkUnknownResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedCommand,
+    ResolveAsFailedHandler,
+)
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
@@ -990,10 +1002,26 @@ def test_begin_execution_attempt_replay_survives_state_change_and_rejects_hash_c
     first = handler(command)
     assert first.attempt.status.value == "EXECUTING"
 
-    # Simulate a concurrent RequestCancel committing after the first success.
+    # Simulate later durable settlement plus RequestCancel committing after the
+    # first success. Replay must return the stored Begin result, not the now-
+    # FAILED Attempt row or the current mutable Run state.
     connection = connect_sqlite(write_database)
     try:
         connection.execute("UPDATE runs SET status = 'CANCEL_REQUESTED' WHERE id = 'run-1';")
+        connection.execute(
+            """
+            UPDATE execution_attempts
+            SET status = 'FAILED', version = version + 1,
+                response_metadata_json = '{"delivery_certainty":"NOT_SENT"}',
+                error_code = 'CONNECTION_CLOSED', finished_at_ms = 1100
+            WHERE id = ?;
+            """,
+            (first.attempt.id,),
+        )
+        connection.execute(
+            "UPDATE actions SET status = 'FAILED', version = version + 1 WHERE id = ?;",
+            (first.action.id,),
+        )
         connection.commit()
     finally:
         connection.close()
@@ -1001,6 +1029,10 @@ def test_begin_execution_attempt_replay_survives_state_change_and_rejects_hash_c
     replayed = handler(command)
     assert replayed.attempt.status.value == "EXECUTING"
     assert replayed.attempt.id == first.attempt.id
+    assert replayed.attempt.version == first.attempt.version
+    assert replayed.attempt.response_metadata_json is None
+    assert replayed.action.status == "EXECUTING"
+    assert replayed.action.version == first.action.version
 
     conflicting_payload = dict(payload)
     conflicting_payload["tool_name"] = "different-tool"
@@ -1082,6 +1114,106 @@ def test_mark_failed_persists_delivery_certainty_durably_across_restart(
 
     assert row is not None
     assert loads(row["response_metadata_json"]) == {"delivery_certainty": "NOT_SENT"}
+
+
+@pytest.mark.parametrize("settlement", ["recover", "resolve_failed"])
+def test_unknown_result_settlement_preserves_delivery_certainty_across_restart(
+    write_database: Path, settlement: str
+) -> None:
+    """Issue #131 / 003-02: every UNKNOWN_RESULT settlement writer retains
+    the durable delivery evidence written by MarkUnknownResult."""
+    clock = FakeClockPort(1000)
+    suffix = f"delivery-{settlement}"
+    _prepare_effect_write_plan(
+        write_database=write_database,
+        clock=clock,
+        suffix=suffix,
+        tool_name="tasks_create_task",
+        arguments={"task_list_id": "task-list-default", "payload": {"title": "Task"}},
+        expected={"resource_type": "task", "resource_id": None, "payload": {"title": "Task"}},
+    )
+    _approve_effect_action(write_database=write_database, clock=clock, suffix=suffix)
+    claimed = _claim_effect_action(
+        write_database=write_database, clock=clock, suffix=suffix, expected_version=1
+    )
+    payload = read_claim_token(claimed.claim_token or "", signing_secret="phase-e-secret")
+    payload["execution_attempt_id"] = payload["attempt_id"]
+    payload["approval_arguments_hash"] = payload["arguments_hash"]
+    begun = BeginExecutionAttemptHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        BeginExecutionAttemptCommand(
+            command_id=f"begin-execution-attempt:{payload['attempt_id']}",
+            request_hash=calculate_canonical_json_hash(payload),
+            action_id=claimed.action_id,
+            claim_payload=payload,
+        )
+    )
+    unknown = MarkUnknownResultHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+    )(
+        MarkUnknownResultCommand(
+            command_id=f"mark-unknown-{settlement}",
+            request_hash="e2" * 32,
+            action_id=begun.action.id,
+            attempt_id=begun.attempt.id,
+            expected_action_version=begun.action.version,
+            expected_attempt_version=begun.attempt.version,
+            delivery_certainty=DeliveryCertainty.SENT_RESPONSE_LOST,
+            error_code="TIMEOUT",
+            error_detail="provider response was lost",
+        )
+    )
+    assert unknown.applied is True
+
+    if settlement == "recover":
+        result = RecoverExistingResultHandler(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            now_ms=clock.now_ms,
+        )(
+            RecoverExistingResultCommand(
+                command_id="recover-delivery-certainty",
+                request_hash="e3" * 32,
+                action_id=begun.action.id,
+                attempt_id=begun.attempt.id,
+                expected_action_version=unknown.action_version,
+                expected_attempt_version=begun.attempt.version + 1,
+                snapshot=_duplicate_task("task-recovered", title="Task"),
+            )
+        )
+    else:
+        result = ResolveAsFailedHandler(
+            unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+            now_ms=clock.now_ms,
+        )(
+            ResolveAsFailedCommand(
+                command_id="resolve-failed-delivery-certainty",
+                request_hash="e4" * 32,
+                action_id=begun.action.id,
+                attempt_id=begun.attempt.id,
+                expected_action_version=unknown.action_version,
+                expected_attempt_version=begun.attempt.version + 1,
+                error_code="NOT_FOUND",
+                error_detail="recovery proved no external result",
+            )
+        )
+    assert result.applied is True
+
+    connection = connect_sqlite(write_database)
+    try:
+        row = connection.execute(
+            "SELECT response_metadata_json FROM execution_attempts WHERE id = ?;",
+            (begun.attempt.id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    metadata = loads(row["response_metadata_json"])
+    assert metadata["delivery_certainty"] == "SENT_RESPONSE_LOST"
+    if settlement == "recover":
+        assert metadata["resource_id"] == "task-recovered"
 
 
 def _prepare_effect_write_plan(

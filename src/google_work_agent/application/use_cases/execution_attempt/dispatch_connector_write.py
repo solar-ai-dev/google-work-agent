@@ -5,12 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from json import loads
-from typing import Literal, cast
+from typing import cast
 
 from google_work_agent.application.tool_registry.contracts.signed_tool_registry_entry import (
     ToolEffect,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.claim.build_claim_context import (
+    ClaimContextV2,
+    claim_context_payload,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -29,18 +33,16 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 @dataclass(frozen=True, slots=True)
 class DispatchConnectorWriteCommandV1:
-    schema_version: Literal[1]
-    connector_id: str
+    action_id: str
+    approval_id: str
+    execution_attempt_id: str
     tool_id: str
-    tool_arguments: dict[str, JsonValue]
-    claim_token: dict[str, JsonValue]
-    approval_arguments_hash: str
-    execution_arguments_hash: str
+    tool_arguments: dict[str, object]
+    claim_context: ClaimContextV2
 
 
 @dataclass(frozen=True, slots=True)
 class DispatchConnectorWriteResultV1:
-    schema_version: Literal[1]
     connector_result: ConnectorWriteResultV1
 
 
@@ -59,48 +61,41 @@ class DispatchConnectorWriteHandler:
         self._connector_write_port = connector_write_port
 
     def __call__(self, command: DispatchConnectorWriteCommandV1) -> DispatchConnectorWriteResultV1:
-        if command.schema_version != 1:
-            raise ValueError("unsupported dispatch command schema_version")
-        expected_effect = self._verify_dispatch_eligibility(command)
+        expected_effect, connector_id = self._verify_dispatch_eligibility(command)
         binding = self._tool_registry.bind_required(
-            command.connector_id,
+            connector_id,
             command.tool_id,
             expected_effect,
         )
         result = self._connector_write_port.execute_write(
             binding,
-            command.tool_arguments,
-            command.claim_token,
+            cast(dict[str, JsonValue], command.tool_arguments),
+            cast(dict[str, JsonValue], claim_context_payload(command.claim_context)),
         )
-        return DispatchConnectorWriteResultV1(schema_version=1, connector_result=result)
+        return DispatchConnectorWriteResultV1(connector_result=result)
 
-    def _verify_dispatch_eligibility(self, command: DispatchConnectorWriteCommandV1) -> ToolEffect:
-        claim = command.claim_token
-        attempt_id = _required_claim_text(claim, "execution_attempt_id")
-        action_id = _required_claim_text(claim, "action_id")
-        approval_id = _required_claim_text(claim, "approval_id")
-        if _required_claim_text(claim, "tool_name") != command.tool_id:
+    def _verify_dispatch_eligibility(
+        self, command: DispatchConnectorWriteCommandV1
+    ) -> tuple[ToolEffect, str]:
+        claim = command.claim_context
+        if (
+            claim.action_id != command.action_id
+            or claim.approval_id != command.approval_id
+            or claim.execution_attempt_id != command.execution_attempt_id
+        ):
+            raise PermissionError("claim persistence identity binding mismatch")
+        if claim.tool_name != command.tool_id:
             raise PermissionError("claim tool binding mismatch")
         if (
-            _required_claim_text(claim, "approval_arguments_hash")
-            != command.approval_arguments_hash
-        ):
-            raise PermissionError("claim approval arguments binding mismatch")
-        if (
-            _required_claim_text(claim, "execution_arguments_hash")
-            != command.execution_arguments_hash
-        ):
-            raise PermissionError("claim execution arguments binding mismatch")
-        if (
             calculate_canonical_json_hash(command.tool_arguments)
-            != command.execution_arguments_hash
+            != claim.execution_arguments_hash
         ):
             raise PermissionError("final connector arguments hash mismatch")
 
         with self._unit_of_work_factory() as unit_of_work:
-            attempt = unit_of_work.execution_attempts.get(attempt_id)
-            action = unit_of_work.actions.get(action_id)
-            approval = unit_of_work.approval_history.get(approval_id)
+            attempt = unit_of_work.execution_attempts.get(command.execution_attempt_id)
+            action = unit_of_work.actions.get(command.action_id)
+            approval = unit_of_work.approval_history.get(command.approval_id)
             if attempt is None or action is None or approval is None:
                 raise PermissionError("claim persistence binding is missing")
             plan = load_plan_record(unit_of_work.plans, action.plan_id)
@@ -114,17 +109,16 @@ class DispatchConnectorWriteHandler:
                 else max(current_plans, key=lambda candidate: candidate.revision_no)
             )
             receipt = unit_of_work.command_receipts.get_by_command_id(
-                f"begin-execution-attempt:{attempt_id}"
+                f"begin-execution-attempt:{command.execution_attempt_id}"
             )
 
         if (
             attempt.status is not ExecutionAttemptStatusV1.EXECUTING
             or attempt.approval_id != approval.id
-            or approval.id != approval_id
+            or approval.id != command.approval_id
             or approval.action_id != action.id
             or approval.status is not ApprovalStatusV1.CONSUMED
             or action.status != ActionStatusV1.EXECUTING.value
-            or action.connector_id != command.connector_id
             or action.tool_name != command.tool_id
             or plan.status is not PlanStatusV1.WAITING_APPROVAL
             or current_plan is None
@@ -141,8 +135,8 @@ class DispatchConnectorWriteHandler:
         ):
             raise PermissionError("connector write authority is no longer current")
         if (
-            action.arguments_hash != command.approval_arguments_hash
-            or approval.canonical_arguments_hash != command.approval_arguments_hash
+            action.arguments_hash != claim.approval_arguments_hash
+            or approval.canonical_arguments_hash != claim.approval_arguments_hash
         ):
             raise PermissionError("approved arguments hash mismatch")
         if receipt is None or receipt.status is not CommandReceiptStatus.APPLIED:
@@ -157,14 +151,7 @@ class DispatchConnectorWriteHandler:
             or receipt_result.get("attempt_status") != ExecutionAttemptStatusV1.EXECUTING.value
         ):
             raise PermissionError("BeginExecutionAttempt receipt did not authorize dispatch")
-        return cast(ToolEffect, action.effect_type)
-
-
-def _required_claim_text(claim: Mapping[str, JsonValue], key: str) -> str:
-    value = claim.get(key)
-    if not isinstance(value, str) or not value:
-        raise PermissionError(f"claim {key} is required")
-    return value
+        return cast(ToolEffect, action.effect_type), action.connector_id
 
 
 __all__ = [

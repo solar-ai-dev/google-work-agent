@@ -3,32 +3,44 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteResultV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class ClassifyDispatchResultQueryV1:
-    dispatch_result: ConnectorWriteResultV1
+    schema_version: Literal[1]
+    dispatch_result: DispatchConnectorWriteResultV1
 
 
 @dataclass(frozen=True, slots=True)
 class DispatchPersistenceDecisionV1:
-    decision: Literal["STORE_SUCCESS", "MARK_FAILED", "MARK_UNKNOWN_RESULT"]
-    result: ConnectorWriteResultV1
+    schema_version: Literal[1]
+    disposition: Literal["STORE_SUCCESS", "MARK_FAILED", "MARK_UNKNOWN_RESULT"]
+    delivery_certainty: Literal["NOT_SENT", "MAY_HAVE_BEEN_SENT", "SENT_RESPONSE_LOST"] | None
+    reason_code: str | None
 
 
 class ClassifyDispatchResultHandler:
     def __call__(self, query: ClassifyDispatchResultQueryV1) -> DispatchPersistenceDecisionV1:
-        result = query.dispatch_result
+        if query.schema_version != 1:
+            raise ValueError("unsupported classify dispatch query schema_version")
+        result = query.dispatch_result.connector_result
         if result.success:
-            decision: Literal["STORE_SUCCESS", "MARK_FAILED", "MARK_UNKNOWN_RESULT"] = (
+            disposition: Literal["STORE_SUCCESS", "MARK_FAILED", "MARK_UNKNOWN_RESULT"] = (
                 "STORE_SUCCESS"
             )
         elif result.delivery_certainty == "NOT_SENT":
-            decision = "MARK_FAILED"
+            disposition = "MARK_FAILED"
         else:
-            decision = "MARK_UNKNOWN_RESULT"
-        return DispatchPersistenceDecisionV1(decision, result)
+            disposition = "MARK_UNKNOWN_RESULT"
+        return DispatchPersistenceDecisionV1(
+            schema_version=1,
+            disposition=disposition,
+            delivery_certainty=result.delivery_certainty,
+            reason_code=result.error_code,
+        )
 
 
 __all__ = [

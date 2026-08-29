@@ -3,7 +3,7 @@ already-authorized in-flight dispatch as never started."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from json import dumps
 from types import SimpleNamespace
 from typing import Any, cast
@@ -11,9 +11,11 @@ from typing import Any, cast
 import pytest
 from tests.unit.application.use_cases._canonical_owner import assert_owner
 
+from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
     DispatchConnectorWriteCommandV1,
     DispatchConnectorWriteHandler,
+    DispatchConnectorWriteResultV1,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
@@ -22,7 +24,6 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.connector.connector_read_port import JsonValue
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 
 _TOOL_ARGUMENTS: dict[str, object] = {"task_list_id": "list-1", "payload": {"title": "Task"}}
@@ -145,22 +146,42 @@ class _ConnectorWritePort:
 
 
 def _command() -> DispatchConnectorWriteCommandV1:
-    claim_token: dict[str, object] = {
-        "execution_attempt_id": "attempt-1",
-        "action_id": "action-1",
-        "approval_id": "approval-1",
-        "tool_name": "tasks_create_task",
-        "approval_arguments_hash": "arguments-hash",
-        "execution_arguments_hash": _EXECUTION_ARGUMENTS_HASH,
-    }
-    return DispatchConnectorWriteCommandV1(
-        schema_version=1,
-        connector_id="google_workspace",
-        tool_id="tasks_create_task",
-        tool_arguments=cast("dict[str, JsonValue]", _TOOL_ARGUMENTS),
-        claim_token=cast("dict[str, JsonValue]", claim_token),
+    claim_context = ClaimContextV2(
+        claim_version=2,
+        service_instance_id="service-1",
+        mcp_process_instance_id="mcp-1",
+        action_id="action-1",
+        approval_id="approval-1",
+        execution_attempt_id="attempt-1",
+        tool_name="tasks_create_task",
         approval_arguments_hash="arguments-hash",
         execution_arguments_hash=_EXECUTION_ARGUMENTS_HASH,
+        issued_at_ms=1,
+        expires_at_ms=2,
+        nonce="nonce-1",
+        signature="signature-1",
+    )
+    return DispatchConnectorWriteCommandV1(
+        action_id="action-1",
+        approval_id="approval-1",
+        execution_attempt_id="attempt-1",
+        tool_id="tasks_create_task",
+        tool_arguments=_TOOL_ARGUMENTS,
+        claim_context=claim_context,
+    )
+
+
+def test_exact_canonical_contract_fields() -> None:
+    assert tuple(field.name for field in fields(DispatchConnectorWriteCommandV1)) == (
+        "action_id",
+        "approval_id",
+        "execution_attempt_id",
+        "tool_id",
+        "tool_arguments",
+        "claim_context",
+    )
+    assert tuple(field.name for field in fields(DispatchConnectorWriteResultV1)) == (
+        "connector_result",
     )
 
 

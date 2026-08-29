@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from json import dumps
+from dataclasses import dataclass, replace
+from json import dumps, loads
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_execution_attempt_record,
@@ -72,12 +72,6 @@ class BeginExecutionAttemptHandler:
         now_ms: int,
     ) -> BeginExecutionAttemptResult:
         payload = command.claim_payload
-        action = require_action(unit_of_work, command.action_id)
-        plan = require_plan(unit_of_work, action.plan_id)
-        run = require_run(unit_of_work, plan.run_id)
-        approval = require_approval(unit_of_work, str(payload["approval_id"]))
-        attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
-
         if calculate_canonical_json_hash(payload) != command.request_hash:
             raise PermissionError("BeginExecutionAttempt request_hash mismatch")
 
@@ -93,10 +87,66 @@ class BeginExecutionAttemptHandler:
             if (
                 existing.status is not CommandReceiptStatus.APPLIED
                 or existing.response_json is None
-                or attempt.status is not ExecutionAttemptStatusV1.EXECUTING
             ):
                 raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
-            return BeginExecutionAttemptResult(action, approval, attempt)
+            try:
+                stored = loads(existing.response_json)
+            except (TypeError, ValueError) as error:
+                raise RuntimeError("BeginExecutionAttempt receipt requires recovery") from error
+            if (
+                not isinstance(stored, Mapping)
+                or stored.get("applied") is not True
+                or stored.get("attempt_id") != str(payload["execution_attempt_id"])
+                or stored.get("attempt_status") != ExecutionAttemptStatusV1.EXECUTING.value
+                or not isinstance(stored.get("attempt_version"), int)
+            ):
+                raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
+            action = require_action(unit_of_work, command.action_id)
+            approval = require_approval(unit_of_work, str(payload["approval_id"]))
+            attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
+            action_version = stored.get("action_version", approval.action_version + 1)
+            action_updated_at_ms = stored.get("action_updated_at_ms", attempt.started_at_ms)
+            approval_consumed_at_ms = stored.get(
+                "approval_consumed_at_ms", attempt.started_at_ms
+            )
+            if (
+                not isinstance(action_version, int)
+                or not isinstance(action_updated_at_ms, int)
+                or not isinstance(approval_consumed_at_ms, int)
+            ):
+                raise RuntimeError("BeginExecutionAttempt receipt requires recovery")
+            replayed_action = replace(
+                action,
+                status=ActionStatusV1.EXECUTING.value,
+                version=action_version,
+                updated_at_ms=action_updated_at_ms,
+            )
+            replayed_approval = replace(
+                approval,
+                status=ApprovalStatusV1.CONSUMED,
+                consumed_at_ms=approval_consumed_at_ms,
+            )
+            replayed_attempt = replace(
+                attempt,
+                status=ExecutionAttemptStatusV1.EXECUTING,
+                version=int(stored["attempt_version"]),
+                result_resource_ref_id=None,
+                response_metadata_json=None,
+                error_code=None,
+                error_detail_json=None,
+                finished_at_ms=None,
+            )
+            return BeginExecutionAttemptResult(
+                replayed_action,
+                replayed_approval,
+                replayed_attempt,
+            )
+
+        action = require_action(unit_of_work, command.action_id)
+        plan = require_plan(unit_of_work, action.plan_id)
+        run = require_run(unit_of_work, plan.run_id)
+        approval = require_approval(unit_of_work, str(payload["approval_id"]))
+        attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
 
         plans = current_plan_tuple(unit_of_work.plans, run.id)
         if not plans:
@@ -174,6 +224,11 @@ class BeginExecutionAttemptHandler:
                     "attempt_id": updated_attempt.id,
                     "attempt_status": updated_attempt.status.value,
                     "attempt_version": updated_attempt.version,
+                    "action_status": action.status,
+                    "action_version": action.version,
+                    "action_updated_at_ms": action.updated_at_ms,
+                    "approval_status": approval.status.value,
+                    "approval_consumed_at_ms": approval.consumed_at_ms,
                 },
                 sort_keys=True,
             ),

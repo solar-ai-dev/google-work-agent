@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
+from google_work_agent.application.use_cases.claim.build_claim_context import claim_context_payload
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     PreparedWriteDispatch,
@@ -312,7 +313,7 @@ class LegacyGatewayWriteProjection:
             snapshot = self._port._dispatch(
                 request.prepared.tool_name,
                 request.prepared.arguments,
-                request.claim_payload,
+                claim_context_payload(request.claim_context),
             )
         except GoogleWorkspaceGatewayError as error:
             code = (

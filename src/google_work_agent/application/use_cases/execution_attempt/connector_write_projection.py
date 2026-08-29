@@ -16,7 +16,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_dispatch_mo
     PreparedWriteDispatch,
     WriteResultMaterializer,
 )
-from google_work_agent.ports.connector.connector_read_port import JsonValue
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 from google_work_agent.ports.connector.contracts.google_workspace import (
     DeliveryCertainty,
@@ -35,11 +34,9 @@ class ConnectorWriteProjection(WriteResultMaterializer):
         *,
         dispatch_connector_write: DispatchConnectorWriteHandler,
         connector_reader: ConnectorReadProjection,
-        connector_id: str = "google_workspace",
     ) -> None:
         self._dispatch_connector_write = dispatch_connector_write
         self._reader = connector_reader
-        self._connector_id = connector_id
         self._last_request_id: str | None = None
 
     @property
@@ -76,16 +73,15 @@ class ConnectorWriteProjection(WriteResultMaterializer):
         return self.materialize_success(request, result)
 
     def dispatch_write(self, request: AuthorizedWriteDispatch) -> ConnectorWriteResultV1:
-        claim = _claim_context(request)
+        claim = request.claim_context
         result = self._dispatch_connector_write(
             DispatchConnectorWriteCommandV1(
-                schema_version=1,
-                connector_id=self._connector_id,
+                action_id=claim.action_id,
+                approval_id=claim.approval_id,
+                execution_attempt_id=claim.execution_attempt_id,
                 tool_id=request.prepared.tool_name,
-                tool_arguments=cast(dict[str, JsonValue], request.prepared.arguments),
-                claim_token=cast(dict[str, JsonValue], claim),
-                approval_arguments_hash=request.approval_arguments_hash,
-                execution_arguments_hash=request.execution_arguments_hash,
+                tool_arguments=request.prepared.arguments,
+                claim_context=claim,
             )
         ).connector_result
         self._last_request_id = result.provider_request_id
@@ -197,10 +193,6 @@ class ConnectorWriteProjection(WriteResultMaterializer):
             recovery_fingerprint=cast(str | None, metadata.get("recovery_fingerprint")),
             payload={"deleted": True},
         )
-
-
-def _claim_context(request: AuthorizedWriteDispatch) -> dict[str, object]:
-    return dict(request.claim_payload)
 
 
 def _final_arguments(

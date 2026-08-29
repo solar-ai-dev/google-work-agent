@@ -134,7 +134,7 @@ class ResolveAsFailedHandler:
                 error_code=command.error_code,
                 error_detail_json=dumps({"detail": command.error_detail}, sort_keys=True),
                 result_resource_ref_id=None,
-                response_metadata_json=None,
+                response_metadata_json=attempt.response_metadata_json,
                 finished_at_ms=now_ms,
             )
             transition = transition_resolve_as_failed(
