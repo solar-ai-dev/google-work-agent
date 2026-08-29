@@ -21,9 +21,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
 )
-from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
-    RequestRunCancellationCommand,
-)
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
@@ -40,6 +37,14 @@ class _RunMutationResult:
     current_version: int
     next_allowed_commands: tuple[object, ...] = ()
     conflict_detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RequestRunCancellationCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
 
 
 def _apply_run_transition(

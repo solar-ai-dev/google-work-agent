@@ -9,6 +9,7 @@ from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeTargetValidator,
 )
 from google_work_agent.domain.run.model import (
+    RunStatusV1,
     is_preempting_run_status,
     is_terminal_run_status,
 )
@@ -144,7 +145,11 @@ class ScheduleRunExecutionHandler:
                     )
                     unit_of_work.commit()
                 return _rejected("NOT_COMMITTED")
-            if is_preempting_run_status(run.status):
+            if is_preempting_run_status(
+                run.status
+            ) and not handoff_matches_preempting_run_authority(
+                run.status, handoff
+            ):
                 return _rejected("BINDING_MISMATCH")
             binding = self._resolve_binding(handoff, command.submission_kind)
             if existing is not None:
@@ -232,6 +237,18 @@ def _binding_matches_handoff(
         and binding.graph_profile == execution.graph_profile
         and binding.graph_version == execution.graph_version
         and binding.requested_mode == execution.requested_mode
+    )
+
+
+def handoff_matches_preempting_run_authority(
+    status: RunStatusV1, handoff: WorkflowHandoffV1
+) -> bool:
+    target = handoff.execution.resume_target
+    return bool(
+        status is RunStatusV1.CANCEL_REQUESTED
+        and target is not None
+        and target.kind == "MAIN_CONTROL"
+        and target.stage_id == "CANCEL_RESOLUTION"
     )
 
 

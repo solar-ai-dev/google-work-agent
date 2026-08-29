@@ -88,13 +88,3 @@ class PrepareWriteRetryCommand:
     request_hash: str
     action_id: str
     expected_action_version: int
-
-
-@dataclass(frozen=True, slots=True)
-class RequireWriteReauthCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    action_id: str | None
-    safe_error_code: str
-    mcp_request_id: str | None = None

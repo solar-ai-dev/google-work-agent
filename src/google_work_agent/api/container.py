@@ -78,6 +78,8 @@ class ApiContainer:
     safe_mode_controller: Any | None = None
     get_runtime_status_handler: Any | None = None
     update_runtime_mode_handler: Any | None = None
+    operational_command_replay: Any | None = None
+    continue_cancel_resolution_handler: Any | None = None
     core_initialization_in_progress: bool = False
     get_settings_handler: Any | None = None
     update_settings_handler: Any | None = None

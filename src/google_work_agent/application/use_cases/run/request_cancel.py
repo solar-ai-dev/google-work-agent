@@ -6,20 +6,22 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
-    cancel_pending_actions,
 )
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
+    ContinueCancelResolutionCommandV1,
+    ContinueCancelResolutionResultV1,
+)
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.command_receipt.model import (
+    CommandReceipt as CommandReceiptRecord,
+)
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
-from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
@@ -60,14 +62,19 @@ class RequestCancelHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
-        resume_target_registry: ResumeTargetValidator,
+        resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
+        continue_cancel_resolution: Callable[
+            [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
+        ]
+        | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
+        self._continue_cancel_resolution = continue_cancel_resolution
 
     def __call__(
         self, command: RequestCancelCommand, *, request_id: str | None = None
@@ -83,6 +90,13 @@ class RequestCancelHandler:
                 self._schedule_run_execution(
                     ScheduleRunExecutionCommand(handoff_id=handoff.handoff_id)
                 )
+            elif self._continue_cancel_resolution is not None:
+                with self._unit_of_work_factory() as unit_of_work:
+                    head = unit_of_work.workflow_handoffs.get_dispatch_head(command.run_id)
+                if head is None:
+                    self._continue_cancel_resolution(
+                        ContinueCancelResolutionCommandV1(1, command.run_id)
+                    )
         return result
 
     def _persist(self, command: RequestCancelCommand) -> RequestCancelResult:
@@ -96,7 +110,6 @@ class RequestCancelHandler:
                 raise LookupError(f"run not found: {command.run_id}")
             plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
-            actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
                 command_type="RequestRunCancellation",
@@ -125,7 +138,7 @@ class RequestCancelHandler:
                     raise RuntimeError("validated RequestCancel CAS failed")
             if run.version != command.expected_version:
                 pass
-            elif self._has_started_action(actions):
+            else:
                 result = RequestCancelResult(
                     True,
                     ResultCode.TRANSITION_APPLIED.value,
@@ -134,48 +147,14 @@ class RequestCancelHandler:
                     (),
                     result_kind="CANCEL_REQUESTED",
                 )
-                self._stage_cancel_handoff(unit_of_work, command)
-            else:
-                if plan is not None:
-                    cancel_pending_actions(
-                        unit_of_work=unit_of_work,
-                        run_id=run.id,
-                        plan_id=plan.id,
-                        updated_at_ms=now_ms,
-                    )
-                    if (
-                        update_plan_record(
-                            unit_of_work,
-                            plan.id,
-                            expected_status=plan.status,
-                            next_status=PlanStatusV1.CANCELLED,
-                        )
-                        is None
-                    ):
-                        raise RuntimeError(f"validated Plan cancellation CAS failed: {plan.id}")
-                final_status = transition_finalize_cancel(requested_status)
-                if not unit_of_work.runs.update_if_version_and_status(
-                    run.id,
-                    run.version + 1,
-                    frozenset({requested_status}),
-                    {
-                        "status": final_status.value,
-                        "version": run.version + 2,
-                        "finished_at_ms": now_ms,
-                        "terminal_result_kind": "CANCELLED",
-                    },
-                ):
-                    raise RuntimeError("validated FinalizeCancel CAS failed")
-                result = RequestCancelResult(
-                    True,
-                    ResultCode.TRANSITION_APPLIED.value,
-                    final_status.value,
-                    run.version + 2,
-                    (),
-                    result_kind="CANCELLED",
+                unit_of_work.workflow_handoffs.supersede_unconsumed_for_run(
+                    run.id, "CANCEL_REQUESTED"
                 )
+                self._stage_cancel_handoff(unit_of_work, command)
             if result.applied:
-                metadata = {"plan_id": None if plan is None else plan.id}
+                metadata: dict[str, object] = {
+                    "plan_id": None if plan is None else plan.id
+                }
                 unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
@@ -213,12 +192,12 @@ class RequestCancelHandler:
     ) -> None:
         binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
         if binding is None:
-            raise RuntimeError("cancellation requires a durable workflow binding")
+            return
         checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
             command.run_id, binding.langgraph_thread_id
         )
         if checkpoint is None:
-            raise RuntimeError("cancellation requires a durable workflow checkpoint")
+            return
         target = self._resume_target_registry.issue_main_stage(
             binding.graph_profile, "CANCEL_RESOLUTION", binding.graph_version
         )
@@ -246,18 +225,10 @@ class RequestCancelHandler:
         )
 
     @staticmethod
-    def _has_started_action(actions: tuple[object, ...]) -> bool:
-        started = {
-            ActionStatusV1.EXECUTING.value,
-            ActionStatusV1.UNKNOWN_RESULT.value,
-            ActionStatusV1.EXECUTED.value,
-            ActionStatusV1.VERIFIED.value,
-        }
-        return any(getattr(action, "status", None) in started for action in actions)
-
-    @staticmethod
     def _replay(
-        unit_of_work: UnitOfWork, command: RequestCancelCommand, receipt: object
+        unit_of_work: UnitOfWork,
+        command: RequestCancelCommand,
+        receipt: CommandReceiptRecord,
     ) -> RequestCancelResult:
         if receipt.request_hash != command.request_hash:
             run = unit_of_work.runs.get(command.run_id)

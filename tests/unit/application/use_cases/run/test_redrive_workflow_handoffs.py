@@ -14,6 +14,9 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
+from google_work_agent.application.use_cases.run.reconcile_retrieval_cache_restart import (
+    ReconcileRetrievalCacheRestartResultV1,
+)
 from google_work_agent.application.use_cases.run.redrive_workflow_handoffs import (
     RedriveWorkflowHandoffsCommand,
     RedriveWorkflowHandoffsHandler,
@@ -25,6 +28,7 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
     WorkflowExecutionSubmissionV2,
@@ -285,6 +289,54 @@ def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
     assert result.accepted == 0
     assert execution.submitted == []
     assert _handoff_status(database_path, "h-1") == "PENDING"
+
+
+def test_newer_recovery_preemption_blocks_stale_retrieval_restart_before_cache_reader(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    target = MainControlResumeTargetV2(
+        "MAIN_CONTROL", "RETRIEVAL_ENTRY", "SIX_ROLE_BASELINE", "v1"
+    )
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                1,
+                "h-1",
+                "cmd-1",
+                RunExecutionRefV1(
+                    1, "RESUME", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", target
+                ),
+                "cp-1",
+                1,
+                "NONE",
+                None,
+                None,
+            )
+        )
+        unit_of_work.commit()
+    calls: list[str] = []
+
+    def reconcile(command: object) -> ReconcileRetrievalCacheRestartResultV1:
+        calls.append(command.run_id)  # type: ignore[attr-defined]
+        return ReconcileRetrievalCacheRestartResultV1(1, "NO_RESTART_REQUIRED", 1, None)
+
+    result = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory,
+        schedule_run_execution=ScheduleRunExecutionHandler(
+            unit_of_work_factory=factory,
+            workflow_execution=_ExecutionPort(),
+            id_factory=lambda: "a-1",
+        ),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory, now_ms=lambda: 20
+        ),
+        reconcile_retrieval_cache_restart=reconcile,  # type: ignore[arg-type]
+    )(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.accepted == 0
+    assert calls == []
 
 
 def _redrive(

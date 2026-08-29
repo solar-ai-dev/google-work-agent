@@ -56,3 +56,21 @@ def test_resume_after_reauth_rejects_read_execution_after_cancel() -> None:
             delivery_uncertain=False,
             cancel_intent_active=True,
         )
+
+
+def test_resume_after_reauth_restores_cancel_resolution_authority() -> None:
+    assert (
+        transition_resume_after_reauth(
+            RunStatusV1.REAUTH_REQUIRED,
+            resume_status=RunStatusV1.CANCEL_REQUESTED,
+            target_kind="MAIN_CONTROL",
+            target_stage="CANCEL_RESOLUTION",
+            binding_is_current=True,
+            action_statuses=(),
+            attempt_statuses=(),
+            has_legacy_read_executing=False,
+            delivery_uncertain=False,
+            cancel_intent_active=True,
+        )
+        is RunStatusV1.CANCEL_REQUESTED
+    )

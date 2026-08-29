@@ -12,11 +12,15 @@ from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
+from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
+    ContinueCancelResolutionCommandV1,
+    ContinueCancelResolutionResultV1,
+)
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
@@ -25,6 +29,9 @@ from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
+)
+from google_work_agent.ports.system.operational_command_replay_port import (
+    OperationalCommandReplayPort,
 )
 from google_work_agent.ports.system.uuid_port import UUIDPort
 
@@ -39,9 +46,13 @@ class RunRouteDependencies:
     workflow_runtime: object
     resolve_resume_authority: Callable[..., Mapping[str, object] | None]
     resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
-    resume_target_registry: ResumeTargetValidator
+    resume_target_registry: ResumeTargetIssuer
     clock: ClockPort
     id_generator: UUIDPort
+    operational_command_replay: OperationalCommandReplayPort | None
+    continue_cancel_resolution: Callable[
+        [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
+    ] | None
     resolve_selection_handle: ResolveSelectionHandle
     resource_connector_id: str
     current_account_id: Callable[[], str | None]
@@ -108,9 +119,20 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         workflow_runtime=container.workflow_runtime,
         resolve_resume_authority=resolve_resume_authority,
         resolve_pending_confirmation=resolve_pending_confirmation,
-        resume_target_registry=cast(ResumeTargetValidator, container.resume_target_registry),
+        resume_target_registry=cast(ResumeTargetIssuer, container.resume_target_registry),
         clock=container.clock,
         id_generator=container.id_generator,
+        operational_command_replay=cast(
+            OperationalCommandReplayPort | None,
+            getattr(container, "operational_command_replay", None),
+        ),
+        continue_cancel_resolution=cast(
+            Callable[
+                [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
+            ]
+            | None,
+            getattr(container, "continue_cancel_resolution_handler", None),
+        ),
         resolve_selection_handle=resolve_selection_handle,
         resource_connector_id=container.resource_connector_id,
         current_account_id=container.current_account_id_provider,

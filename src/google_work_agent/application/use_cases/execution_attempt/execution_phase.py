@@ -1086,11 +1086,19 @@ class WriteExecutionPhaseCoordinator:
                 command_id=self._id_factory(),
                 request_hash=self._request_hash({"kind": kind, "action_id": request.action_id}),
                 run_id=request.run_id,
+                expected_run_version=self._current_run_version(request.run_id),
                 action_id=request.action_id,
                 safe_error_code=error.code.value,
                 mcp_request_id=error.mcp_request_id,
             )
         )
+
+    def _current_run_version(self, run_id: str) -> int:
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(run_id)
+        if run is None:
+            raise LookupError(f"run not found: {run_id}")
+        return run.version
 
     @staticmethod
     def _is_auth_error(error: GoogleWorkspaceGatewayError) -> bool:

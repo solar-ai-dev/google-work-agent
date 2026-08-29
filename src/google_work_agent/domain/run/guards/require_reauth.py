@@ -44,6 +44,12 @@ def guard_require_reauth(
         return
     if target_kind != "MAIN_CONTROL" or target_stage is None:
         raise RunTransitionRejected("RequireReauth requires a registered resume target")
+    if target_stage == "CANCEL_RESOLUTION":
+        if current_status is not RunStatusV1.CANCEL_REQUESTED or not cancel_intent_active:
+            raise RunTransitionRejected(
+                "CANCEL_RESOLUTION reauth requires durable CANCEL_REQUESTED authority"
+            )
+        return
     if target_stage == "PREFLIGHT":
         has_dispatched_action = any(
             status

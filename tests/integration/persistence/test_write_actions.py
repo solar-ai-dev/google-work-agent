@@ -62,7 +62,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_recovery_co
     RecoverUnknownDeleteActionCommand,
     RecoverUnknownSendActionCommand,
     RecoverUnknownUpdateActionCommand,
-    RequireWriteReauthCommand,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.save_write_plan import (
@@ -74,16 +73,18 @@ from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
+from google_work_agent.application.use_cases.run.finalize_cancel import (
+    FinalizeCancelCommand as FinalizeRunCancellationCommand,
+)
 from google_work_agent.application.use_cases.run.finalize_cancel import FinalizeCancelHandler
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
 )
-from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
-from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
-    FinalizeRunCancellationCommand,
-    RequestRunCancellationCommand,
+from google_work_agent.application.use_cases.run.require_reauth import (
+    RequireReauthCommand as RequireWriteReauthCommand,
 )
+from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import EvidenceOriginType
@@ -111,7 +112,10 @@ from tests.support.legacy_write.write_actions import (
     classify_write_delivery,
     is_reauth_required_error,
 )
-from tests.support.legacy_write.write_cancellation import RequestRunCancellationService
+from tests.support.legacy_write.write_cancellation import (
+    RequestRunCancellationCommand,
+    RequestRunCancellationService,
+)
 from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write.write_execution import ExecuteWriteActionService
 from tests.support.legacy_write.write_recovery import (

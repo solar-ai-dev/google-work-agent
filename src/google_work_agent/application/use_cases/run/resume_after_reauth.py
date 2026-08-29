@@ -161,6 +161,7 @@ class ResumeAfterReauthHandler:
             and checkpoint.graph_version == binding.graph_version
             and target.graph_profile == binding.graph_profile
             and target.graph_version == binding.graph_version
+            and checkpoint.pre_reauth_status is resume_status
         )
         action_statuses = tuple(ActionStatusV1(action.status) for action in actions)
         attempt_statuses = tuple(attempt.status for attempt in attempts)

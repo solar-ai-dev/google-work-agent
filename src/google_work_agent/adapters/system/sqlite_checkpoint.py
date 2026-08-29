@@ -14,6 +14,7 @@ from typing import Any, cast
 from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.checkpoint import (
     GraphCheckpointEnvelopeV1,
     RetrievalCacheRequirementV1,
@@ -153,6 +154,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                     active_handoff_run_sequence INTEGER,
                     retrieval_cache_requirements_json TEXT NOT NULL,
                     created_at_ms INTEGER NOT NULL,
+                    pre_reauth_status TEXT,
                     PRIMARY KEY (langgraph_thread_id, checkpoint_ns, checkpoint_id),
                     UNIQUE (run_id, langgraph_thread_id, checkpoint_generation),
                     FOREIGN KEY (langgraph_thread_id, checkpoint_ns, checkpoint_id)
@@ -160,6 +162,17 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                         ON DELETE CASCADE
                 );"""
             )
+            columns = {
+                str(row[1])
+                for row in self._connection.execute(
+                    "PRAGMA table_info(workflow_checkpoint_envelopes);"
+                ).fetchall()
+            }
+            if "pre_reauth_status" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE workflow_checkpoint_envelopes "
+                    "ADD COLUMN pre_reauth_status TEXT;"
+                )
             self._connection.execute(
                 """CREATE INDEX IF NOT EXISTS ix_workflow_checkpoint_latest
                 ON workflow_checkpoint_envelopes(
@@ -402,7 +415,8 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                         owner_scope=?, registered_resume_target_json=?,
                         applied_handoff_id=?, execution_admission_id=?,
                         active_handoff_id=?, active_handoff_run_sequence=?,
-                        retrieval_cache_requirements_json=?, created_at_ms=?
+                        retrieval_cache_requirements_json=?, created_at_ms=?,
+                        pre_reauth_status=?
                     WHERE langgraph_thread_id=? AND checkpoint_id=?;""",
                     (
                         checkpoint.owner_scope,
@@ -413,6 +427,9 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                         checkpoint.active_handoff_run_sequence,
                         _requirements_json(checkpoint.retrieval_cache_requirements),
                         checkpoint.created_at_ms,
+                        None
+                        if checkpoint.pre_reauth_status is None
+                        else checkpoint.pre_reauth_status.value,
                         checkpoint.langgraph_thread_id,
                         checkpoint.checkpoint_id,
                     ),
@@ -653,8 +670,8 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 owner_scope, registered_resume_target_json, applied_handoff_id,
                 execution_admission_id, active_handoff_id,
                 active_handoff_run_sequence, retrieval_cache_requirements_json,
-                created_at_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                created_at_ms, pre_reauth_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
             (
                 binding.langgraph_thread_id,
                 checkpoint_ns,
@@ -671,6 +688,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 admission.handoff_run_sequence,
                 _requirements_json(context.retrieval_requirements),
                 self._now_ms(),
+                None,
             ),
         )
         head = _retrieval_head_from_checkpoint(
@@ -823,6 +841,11 @@ def _to_checkpoint(row: sqlite3.Row) -> GraphCheckpointEnvelopeV1:
         ),
         created_at_ms=int(row["created_at_ms"]),
         checkpoint_blob=bytes(row["checkpoint_blob"]),
+        pre_reauth_status=(
+            None
+            if row["pre_reauth_status"] is None
+            else RunStatusV1(str(row["pre_reauth_status"]))
+        ),
     )
 
 

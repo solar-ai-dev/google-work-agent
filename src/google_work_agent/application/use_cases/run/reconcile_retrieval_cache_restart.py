@@ -10,6 +10,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.run.model import is_preempting_run_status
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -65,6 +66,10 @@ class ReconcileRetrievalCacheRestartHandler:
         )
         if checkpoint is None:
             raise LookupError("workflow checkpoint is unavailable")
+        if self._is_preempted(command.run_id):
+            return ReconcileRetrievalCacheRestartResultV1(
+                1, "NO_RESTART_REQUIRED", checkpoint.checkpoint_generation, None
+            )
 
         invalid = []
         for requirement in checkpoint.retrieval_cache_requirements:
@@ -85,6 +90,11 @@ class ReconcileRetrievalCacheRestartHandler:
             f"system:retrieval-cache-restart:{command.run_id}:{checkpoint.checkpoint_generation}"
         )
         with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(command.run_id)
+            if run is None or is_preempting_run_status(run.status):
+                return ReconcileRetrievalCacheRestartResultV1(
+                    1, "NO_RESTART_REQUIRED", checkpoint.checkpoint_generation, None
+                )
             existing = unit_of_work.workflow_handoffs.get_by_trigger_command_id(trigger)
             if existing is not None:
                 return ReconcileRetrievalCacheRestartResultV1(
@@ -132,6 +142,11 @@ class ReconcileRetrievalCacheRestartHandler:
         return ReconcileRetrievalCacheRestartResultV1(
             1, "RESTART_STAGED", checkpoint.checkpoint_generation, handoff_id
         )
+
+    def _is_preempted(self, run_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(run_id)
+        return run is None or is_preempting_run_status(run.status)
 
 
 __all__ = [

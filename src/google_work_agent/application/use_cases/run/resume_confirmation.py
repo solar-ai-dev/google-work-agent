@@ -21,7 +21,11 @@ from google_work_agent.domain.run.transitions.resume_confirmation import (
     transition_resume_confirmation,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.workflow_binding import (
+    GraphProfileIdV1,
+    WorkflowBindingV1,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ConfirmationResumeControlV1,
@@ -158,6 +162,21 @@ class ResumeConfirmationHandler:
             unit_of_work.commit()
             return result
 
+    def replay_existing(
+        self, *, command_id: str, request_hash: str, run_id: str
+    ) -> ResumeConfirmationResult | None:
+        """Adjudicate durable identity before any mutable confirmation projection."""
+        with self._unit_of_work_factory() as unit_of_work:
+            receipt = unit_of_work.command_receipts.get_by_command_id(command_id)
+            if receipt is None:
+                return None
+            return self._replay_identity(
+                unit_of_work,
+                receipt,
+                request_hash=request_hash,
+                run_id=run_id,
+            )
+
     def _apply(
         self,
         unit_of_work: UnitOfWork,
@@ -253,17 +272,33 @@ class ResumeConfirmationHandler:
         receipt: CommandReceiptRecord,
         command: ResumeConfirmationCommand,
     ) -> ResumeConfirmationResult:
-        if receipt.request_hash != command.request_hash:
-            run = unit_of_work.runs.get(command.run_id)
+        return ResumeConfirmationHandler._replay_identity(
+            unit_of_work,
+            receipt,
+            request_hash=command.request_hash,
+            run_id=command.run_id,
+        )
+
+    @staticmethod
+    def _replay_identity(
+        unit_of_work: UnitOfWork,
+        receipt: CommandReceiptRecord,
+        *,
+        request_hash: str,
+        run_id: str,
+    ) -> ResumeConfirmationResult:
+        if receipt.request_hash != request_hash:
+            run = unit_of_work.runs.get(run_id)
             status = RunStatusV1.CREATED if run is None else run.status
             version = 0 if run is None else run.version
-            return _result(
-                command,
+            return ResumeConfirmationResult(
                 False,
-                ResultCode.DUPLICATE_COMMAND,
-                status,
+                ResultCode.DUPLICATE_COMMAND.value,
+                run_id,
+                status.value,
                 version,
                 None,
+                False,
                 "command_id already exists with a different request_hash",
             )
         if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
@@ -274,7 +309,11 @@ class ResumeConfirmationHandler:
         return ResumeConfirmationResult(**payload)
 
 
-def _binding_conflict(command: ResumeConfirmationCommand, binding: object, checkpoint: object):
+def _binding_conflict(
+    command: ResumeConfirmationCommand,
+    binding: WorkflowBindingV1 | None,
+    checkpoint: GraphCheckpointEnvelopeV1 | None,
+) -> str | None:
     if binding is None or checkpoint is None:
         return "durable workflow binding/checkpoint is unavailable"
     if (

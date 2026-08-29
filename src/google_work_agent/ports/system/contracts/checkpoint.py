@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import RegisteredResumeTargetRefV2
 
@@ -35,6 +36,7 @@ class GraphCheckpointEnvelopeV1:
     retrieval_cache_requirements: tuple[RetrievalCacheRequirementV1, ...]
     created_at_ms: int
     checkpoint_blob: bytes
+    pre_reauth_status: RunStatusV1 | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != 1 or not self.checkpoint_id:
@@ -45,3 +47,5 @@ class GraphCheckpointEnvelopeV1:
             raise ValueError("active handoff lineage must be complete")
         if self.active_handoff_run_sequence is not None and self.active_handoff_run_sequence < 1:
             raise ValueError("active handoff sequence must be positive")
+        if self.pre_reauth_status is RunStatusV1.REAUTH_REQUIRED:
+            raise ValueError("pre_reauth_status cannot be REAUTH_REQUIRED")

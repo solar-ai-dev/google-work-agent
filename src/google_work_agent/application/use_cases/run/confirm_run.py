@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from google_work_agent.application.agents.request_understanding.validate_intent import (
     validate_intent,
 )
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
+    PolicyConfirmationReceiptV1,
     validate_confirmation_response_projection_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
@@ -75,6 +76,22 @@ class ConfirmRunHandler:
         self._id_factory = id_factory
 
     def __call__(self, command: ConfirmRunCommand) -> ConfirmRunResult:
+        replayed = self._resume_confirmation.replay_existing(
+            command_id=command.command_id,
+            request_hash=command.request_hash,
+            run_id=command.run_id,
+        )
+        if replayed is not None:
+            return ConfirmRunResult(
+                applied=replayed.applied,
+                result_code=replayed.result_code,
+                run_id=replayed.run_id,
+                run_status=replayed.current_status,
+                run_version=replayed.current_version,
+                should_enqueue=False,
+                request_replayed=replayed.request_replayed,
+                conflict_detail=replayed.conflict_detail,
+            )
         authority = self._resolve_pending_confirmation(command.run_id)
         if authority is None:
             return _conflict(command, "persisted pending confirmation is unavailable")
@@ -152,7 +169,7 @@ class ConfirmRunHandler:
         self,
         authority: Mapping[str, object],
         projection: ConfirmationResponseProjectionV1,
-    ):
+    ) -> PolicyConfirmationReceiptV1 | None:
         raw = authority.get("policy_confirmation")
         if raw is None:
             return None
@@ -162,7 +179,7 @@ class ConfirmRunHandler:
         required_resource_types = _string_tuple(raw, "required_resource_types")
         reason_codes = _string_tuple(raw, "reason_codes")
         affected_route_ids = list(_string_tuple(raw, "affected_route_ids"))
-        decision = (
+        decision: Literal["APPROVED", "DECLINED"] = (
             "APPROVED"
             if projection["response_kind"] == "OPTION"
             and projection["selected_option"] == "APPROVED"
@@ -184,7 +201,7 @@ def _target(authority: Mapping[str, object]) -> AgentNodeResumeTargetV2:
     if not isinstance(raw, Mapping):
         raise ValueError("pending confirmation resume target is missing")
     try:
-        return AgentNodeResumeTargetV2(**dict(raw))  # type: ignore[arg-type]
+        return AgentNodeResumeTargetV2(**dict(raw))
     except TypeError as error:
         raise ValueError("pending confirmation resume target is invalid") from error
 

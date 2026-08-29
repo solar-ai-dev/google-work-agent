@@ -66,6 +66,7 @@ class ContinueCancelResolutionHandler:
                 ActionStatusV1.PROPOSED,
                 ActionStatusV1.MODIFIED,
                 ActionStatusV1.APPROVED,
+                ActionStatusV1.EXPIRED,
             }:
                 progressed = self._settle_pending_action(action.id, action.version)
             elif status is ActionStatusV1.EXECUTING:

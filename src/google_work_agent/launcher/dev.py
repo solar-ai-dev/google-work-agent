@@ -1234,6 +1234,8 @@ def build_container(
             runtime_mode=runtime_mode,
             replay=operational_replay,
         ),
+        operational_command_replay=operational_replay,
+        continue_cancel_resolution_handler=continue_cancel_resolution,
         startup_callbacks=(
             _reconcile_inflight_executions,
             _drain_workflow_handoffs,

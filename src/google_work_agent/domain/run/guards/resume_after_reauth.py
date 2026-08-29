@@ -13,6 +13,7 @@ _SAFE = frozenset(
         RunStatusV1.WAITING_APPROVAL,
         RunStatusV1.EXECUTING,
         RunStatusV1.VERIFYING,
+        RunStatusV1.CANCEL_REQUESTED,
         RunStatusV1.RECOVERY_REQUIRED,
     }
 )

@@ -204,6 +204,44 @@ def test_normal_schedule_rejects_each_fresh_preempting_status_without_submit(
         assert execution.submissions == []
 
 
+def test_cancel_requested_allows_only_its_cancel_resolution_handoff(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    target = MainControlResumeTargetV2(
+        "MAIN_CONTROL", "CANCEL_RESOLUTION", "SIX_ROLE_BASELINE", "v1"
+    )
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status='CANCEL_REQUESTED' WHERE id='r-1';")
+        connection.commit()
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                1,
+                "h-cancel",
+                "cmd-cancel",
+                RunExecutionRefV1(
+                    1, "RESUME", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", target
+                ),
+                "cp-1",
+                1,
+                "NONE",
+                None,
+                None,
+            )
+        )
+        unit_of_work.commit()
+    execution = _ExecutionPort()
+
+    result = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory,
+        workflow_execution=execution,
+        id_factory=lambda: "admission-cancel",
+    )(ScheduleRunExecutionCommand("h-cancel"))
+
+    assert result.accepted
+    assert len(execution.submissions) == 1
+
+
 def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
     target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     checkpoint = GraphCheckpointEnvelopeV1(

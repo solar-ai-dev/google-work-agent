@@ -345,6 +345,7 @@ def cancel_run(
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,
         schedule_run_execution=dependencies.schedule_run_execution,
+        continue_cancel_resolution=dependencies.continue_cancel_resolution,
     )(
         RequestCancelCommand(
             run_id=run_id,
@@ -384,14 +385,22 @@ def resume_run(
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
     if payload.resume_kind == "SAFE_CHECKPOINT_RESUME":
+        if dependencies.operational_command_replay is None:
+            raise RuntimeError("operational command replay is not configured")
         safe = ResumeSafeCheckpointHandler(
             unit_of_work_factory=dependencies.unit_of_work_factory,
             resume_target_registry=dependencies.resume_target_registry,
             schedule_run_execution=dependencies.schedule_run_execution,
             id_factory=dependencies.id_generator.new_uuid,
+            operational_replay=dependencies.operational_command_replay,
+            now_ms=dependencies.clock.now_ms,
         )(
             ResumeSafeCheckpointCommand(
                 command_id=payload.command_id,
+                request_hash=calculate_server_request_hash(
+                    operation="ResumeRunRequestV2",
+                    payload={"run_id": run_id, **payload.model_dump()},
+                ),
                 run_id=run_id,
                 expected_run_version=payload.expected_version,
             )
@@ -411,7 +420,7 @@ def resume_run(
             unit_of_work_factory=dependencies.unit_of_work_factory,
             now_ms=dependencies.clock.now_ms,
             next_id=dependencies.id_generator.new_uuid,
-            resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+            resume_target_registry=dependencies.resume_target_registry,
             schedule_run_execution=dependencies.schedule_run_execution,
         )(
             materialize_current_resolve_recovery_command(
@@ -527,7 +536,7 @@ def resolve_recovery(
         unit_of_work_factory=dependencies.unit_of_work_factory,
         now_ms=dependencies.clock.now_ms,
         next_id=dependencies.id_generator.new_uuid,
-        resume_target_registry=dependencies.resume_target_registry,  # type: ignore[arg-type]
+        resume_target_registry=dependencies.resume_target_registry,
         schedule_run_execution=dependencies.schedule_run_execution,
     )
     result = handler(

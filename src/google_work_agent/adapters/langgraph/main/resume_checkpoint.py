@@ -36,10 +36,19 @@ class ResumeCheckpointMixin:
         if resume_kind == "CONFIRMATION":
             return self.resolve_pending_confirmation(run_id)
         if resume_kind == "REAUTH_COMPLETED":
-            status = _reauth_resume_status(state)
-            if status is None:
+            binding = self._checkpoint_port.load_workflow_binding(run_id)
+            checkpoint = (
+                None
+                if binding is None
+                else self._checkpoint_port.load_same_run_checkpoint(
+                    run_id, binding.langgraph_thread_id
+                )
+            )
+            if checkpoint is None or checkpoint.pre_reauth_status is None:
                 return None
-            authority: dict[str, object] = {"resume_status": status}
+            authority: dict[str, object] = {
+                "resume_status": checkpoint.pre_reauth_status.value
+            }
             continuation_target = self._reauth_continuation_target(state)
             if continuation_target is not None:
                 authority["continuation_target"] = continuation_target
@@ -221,31 +230,6 @@ def _pending_interrupt_values(snapshot: object) -> list[Mapping[str, object]]:
         if state is not None and state is not snapshot:
             values.extend(_pending_interrupt_values(state))
     return values
-
-
-def _reauth_resume_status(state: GraphState) -> str | None:
-    phase = state.get("workflow_phase")
-    if not isinstance(phase, str):
-        return None
-    mapping = {
-        WorkflowPhase.REQUEST_ANALYSIS.value: RunStatusV1.ANALYZING,
-        WorkflowPhase.TOOL_ROUTING.value: RunStatusV1.ANALYZING,
-        WorkflowPhase.WORK_ANALYSIS.value: RunStatusV1.ANALYZING,
-        WorkflowPhase.SOURCE_PLANNING.value: RunStatusV1.RETRIEVING,
-        WorkflowPhase.API_ACQUISITION.value: RunStatusV1.RETRIEVING,
-        WorkflowPhase.CONTEXT_RETRIEVAL.value: RunStatusV1.RETRIEVING,
-        WorkflowPhase.CONTEXT_EVALUATION.value: RunStatusV1.RETRIEVING,
-        WorkflowPhase.SOLUTION_PLANNING.value: RunStatusV1.PLANNING,
-        WorkflowPhase.PLAN_REVIEW.value: RunStatusV1.PLANNING,
-        WorkflowPhase.DOMAIN_VALIDATION.value: RunStatusV1.PLANNING,
-        WorkflowPhase.WAITING_APPROVAL.value: RunStatusV1.WAITING_APPROVAL,
-        WorkflowPhase.PREFLIGHT.value: RunStatusV1.WAITING_APPROVAL,
-        WorkflowPhase.ACTION_EXECUTION.value: RunStatusV1.WAITING_APPROVAL,
-        WorkflowPhase.VERIFICATION.value: RunStatusV1.VERIFYING,
-        WorkflowPhase.RECOVERY.value: RunStatusV1.RECOVERY_REQUIRED,
-    }
-    target = mapping.get(phase)
-    return None if target is None else target.value
 
 
 __all__ = ["ResumeCheckpointMixin"]

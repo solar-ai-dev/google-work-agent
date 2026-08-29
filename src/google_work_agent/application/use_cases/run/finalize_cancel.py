@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from json import dumps
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
@@ -21,12 +22,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.use_cases.run.write_cancellation_contracts import (
-    FinalizeRunCancellationCommand,
-)
-from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.plan.model import PlanStatusV1
+from google_work_agent.domain.plan.model import Plan, PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
@@ -35,7 +33,15 @@ from google_work_agent.ports.persistence.execution_attempt_repository import act
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
-FinalizeCancelCommand = FinalizeRunCancellationCommand
+
+@dataclass(frozen=True, slots=True)
+class FinalizeCancelCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+
+
 FinalizeCancelResult = WriteRunResponse
 
 
@@ -308,7 +314,7 @@ def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
 
 
 def _finalize_transition(
-    *, unit_of_work: UnitOfWork, run_id: str, plan: object | None, actions: tuple[object, ...]
+    *, unit_of_work: UnitOfWork, run_id: str, plan: Plan | None, actions: tuple[Action, ...]
 ) -> Callable[[RunStatusV1], RunStatusV1]:
     current_plans = tuple(
         candidate

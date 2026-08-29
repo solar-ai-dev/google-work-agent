@@ -27,6 +27,7 @@ from google_work_agent.application.use_cases.run.reconcile_retrieval_cache_resta
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
+    handoff_matches_preempting_run_authority,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryReasonV1
@@ -93,6 +94,16 @@ class RedriveWorkflowHandoffsHandler:
             run_id = handoff.execution.run_id
             if self._is_run_execution_active(run_id):
                 continue
+            with self._unit_of_work_factory() as unit_of_work:
+                current_run = unit_of_work.runs.get(run_id)
+            if current_run is None or (
+                is_preempting_run_status(current_run.status)
+                and handoff.status != "BLOCKED_BINDING"
+                and not handoff_matches_preempting_run_authority(
+                    current_run.status, handoff
+                )
+            ):
+                continue
             if (
                 handoff.execution.execution_kind == "RESUME"
                 and self._reconcile_retrieval_cache_restart is not None
@@ -154,7 +165,10 @@ class RedriveWorkflowHandoffsHandler:
             return False
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(head.execution.run_id)
-        return run is not None and not is_preempting_run_status(run.status)
+        return run is not None and (
+            not is_preempting_run_status(run.status)
+            or handoff_matches_preempting_run_authority(run.status, head)
+        )
 
     def _reconcile_blocked_binding(self, handoff_id: str, expected_version: int) -> bool:
         """Canonical 7-step BLOCKED_BINDING reconciliation sequence: reload ->

@@ -4,11 +4,20 @@
 
 from __future__ import annotations
 
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
+from google_work_agent.application.use_cases.run.request_cancel import (
+    RequestCancelCommand,
+    RequestCancelHandler,
+)
 from google_work_agent.domain.recovery.model import RecoveryResolution
+from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -50,8 +59,49 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.integration.persistence.test_write_risk import _register_preflight_resume_target
+from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
+
+
+def test_production_request_cancel_stops_at_cancel_requested_and_stages_resolution(
+    write_database: Path,
+    fixture_gateway: FakeGoogleGateway,
+) -> None:
+    del fixture_gateway
+    clock = FakeClockPort(1000)
+    _prepare_write_plan(write_database=write_database, clock=clock, suffix="prod-cancel")
+    _register_preflight_resume_target(write_database, clock)
+    scheduled: list[str] = []
+    result = RequestCancelHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        now_ms=clock.now_ms,
+        id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
+        resume_target_registry=ResumeTargetRegistry(
+            NodeRegistry(graph_version="v1"), "v1"
+        ),
+        schedule_run_execution=lambda command: (
+            scheduled.append(command.handoff_id)
+            or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+        ),
+    )(
+        RequestCancelCommand("run-1", 1, "cmd-prod-cancel", "d" * 64)
+    )
+
+    assert result.applied
+    assert result.current_status == "CANCEL_REQUESTED"
+    assert result.current_version == 2
+    assert scheduled == ["handoff-cancel"]
+    with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
+        plan = unit_of_work.plans.get_current("run-1")
+        action = unit_of_work.actions.get("action-prod-cancel")
+        handoff = unit_of_work.workflow_handoffs.get("handoff-cancel")
+    assert plan is not None and plan.status.value != "CANCELLED"
+    assert action is not None and action.status != "CANCELLED"
+    assert handoff is not None
+    assert handoff.execution.resume_target is not None
+    assert handoff.execution.resume_target.stage_id == "CANCEL_RESOLUTION"
 
 
 def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(

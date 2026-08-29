@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from json import dumps
 
 from google_work_agent.application.use_cases.action.write_persistence import (
@@ -20,9 +21,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
 )
-from google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts import (
-    RequireWriteReauthCommand as RequireReauthCommand,
-)
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
@@ -35,6 +33,17 @@ from google_work_agent.ports.persistence.approval_repository import active_appro
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+
+@dataclass(frozen=True, slots=True)
+class RequireReauthCommand:
+    command_id: str
+    request_hash: str
+    run_id: str
+    expected_run_version: int
+    action_id: str | None
+    safe_error_code: str
+    mcp_request_id: str | None = None
 
 
 class RequireReauthHandler:
@@ -67,6 +76,22 @@ class RequireReauthHandler:
                 created_at_ms=now_ms,
             )
             run = _require_run(unit_of_work, command.run_id)
+            if command.expected_run_version != run.version:
+                response = WriteRunResponse(
+                    False,
+                    ResultCode.VERSION_CONFLICT.value,
+                    run.id,
+                    run.status.value,
+                    run.version,
+                    None,
+                    None,
+                    conflict_detail="expected_run_version does not match current version",
+                )
+                _finish_json_receipt(
+                    unit_of_work, command.command_id, response, run.version, now_ms
+                )
+                unit_of_work.commit()
+                return response
             plans = tuple(
                 plan
                 for plan in current_plan_tuple(unit_of_work.plans, command.run_id)
@@ -151,6 +176,11 @@ class RequireReauthHandler:
                 )
                 unit_of_work.commit()
                 return response
+            if checkpoint is None:
+                raise RuntimeError("validated RequireReauth checkpoint disappeared")
+            unit_of_work.checkpoints.store_same_run_checkpoint(
+                replace(checkpoint, pre_reauth_status=run.status)
+            )
             if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
                 run.version,
