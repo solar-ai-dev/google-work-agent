@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.use_cases.conversation.get_conversation import (
-    GetConversationResult,
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ConversationListItem,
 )
 from google_work_agent.application.use_cases.message.list_conversation_messages import (
     ConversationMessageItem,
@@ -34,7 +34,7 @@ class GetConversationHistoryQuery:
 
 @dataclass(frozen=True, slots=True)
 class GetConversationHistoryResult:
-    conversation: GetConversationResult
+    conversation: ConversationListItem
     messages: tuple[ConversationMessageItem, ...]
     runs: tuple[ConversationHistoryRunItem, ...]
     truncated: bool
@@ -59,46 +59,41 @@ class GetConversationHistoryHandler:
 
     def __call__(self, query: GetConversationHistoryQuery) -> GetConversationHistoryResult | None:
         with self._unit_of_work_factory() as unit_of_work:
-            record = unit_of_work.conversations.get(query.conversation_id)
-        if record is None:
+            conversation_record = unit_of_work.conversations.get(query.conversation_id)
+        if conversation_record is None:
             return None
-        conversation = GetConversationResult(
-            id=record.id,
-            account_id=record.account_id,
-            title=record.title,
-            created_at_ms=record.created_at_ms,
-            updated_at_ms=record.updated_at_ms,
-        )
         message_result = self._list_messages(
             ListConversationMessagesQuery(conversation_id=query.conversation_id)
         )
-        run_ids = tuple(
-            dict.fromkeys(item.run_id for item in message_result.items if item.run_id is not None)
-        )
         with self._unit_of_work_factory() as unit_of_work:
-            run_records = tuple(
-                record
-                for run_id in run_ids
-                if (record := unit_of_work.runs.get(run_id)) is not None
-                and record.conversation_id == query.conversation_id
+            run_records = unit_of_work.runs.list_for_conversation_bounded(
+                query.conversation_id,
+                limit=self._history_run_limit,
             )
-        run_records = tuple(
-            sorted(run_records, key=lambda item: item.started_at_ms, reverse=True)[
-                : self._history_run_limit
-            ]
-        )
         runs = tuple(
             ConversationHistoryRunItem(
-                run_id=record.id,
-                status=record.status.value,
-                started_at_ms=record.started_at_ms,
-                finished_at_ms=record.finished_at_ms,
+                run_id=run_record.id,
+                status=run_record.status.value,
+                started_at_ms=run_record.started_at_ms,
+                finished_at_ms=run_record.finished_at_ms,
             )
-            for record in reversed(run_records)
+            for run_record in run_records
+        )
+        conversation = ConversationListItem(
+            schema_version=1,
+            conversation_id=conversation_record.id,
+            title=conversation_record.title,
+            latest_message_at_ms=(
+                None if not message_result.items else message_result.items[-1].created_at_ms
+            ),
+            open_run_id=next(
+                (item.run_id for item in reversed(runs) if item.finished_at_ms is None),
+                None,
+            ),
         )
         return GetConversationHistoryResult(
             conversation=conversation,
             messages=message_result.items,
             runs=runs,
-            truncated=(message_result.truncated or len(run_ids) > self._history_run_limit),
+            truncated=message_result.truncated,
         )

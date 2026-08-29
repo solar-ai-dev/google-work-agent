@@ -15,6 +15,7 @@ code-owned regardless of what the per-route LLM candidate contains.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from json import loads
 from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -38,6 +39,7 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
 )
 
+from google_work_agent.adapters.persistence import connect_sqlite
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputRoutePlanV1,
     OutputToolRouteV1,
@@ -329,6 +331,19 @@ def test_single_action_route_uses_canonical_writer_exactly_once(tmp_path: Path) 
         assert plan_draft is not None
         assert plan_draft["status"] == "PLAN_READY"
         assert plan_draft["actions"][0]["tool_name"] == "tasks_create_task"
+        with connect_sqlite(database_path) as connection:
+            evidence = connection.execute(
+                "SELECT resource_ref_id, locator_json FROM evidence WHERE run_id='run-1'"
+            ).fetchone()
+            resource = connection.execute(
+                "SELECT resource_type, resource_id FROM resource_refs WHERE id=?",
+                (evidence["resource_ref_id"],),
+            ).fetchone()
+        locator = loads(evidence["locator_json"])
+        assert locator["retrieval_artifact_id"] == state["retrieval_result"]["meta"]["artifact_id"]
+        assert locator["segment_id"] == "seg-2"
+        assert locator["role"] == "SUPPORTS"
+        assert tuple(resource) == ("task", "task-followup")
     finally:
         runtime.close()
 

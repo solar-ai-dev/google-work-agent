@@ -54,6 +54,27 @@ class SqliteRunRepository:
         ).fetchone()
         return None if row is None else self.get(str(row["id"]))
 
+    def list_for_conversation_bounded(
+        self, conversation_id: str, *, limit: int
+    ) -> tuple[Run, ...]:
+        if limit < 1:
+            raise ValueError("run limit must be positive")
+        rows = self._connection.execute(
+            """
+            SELECT id
+            FROM runs
+            WHERE conversation_id = ?
+            ORDER BY started_at_ms DESC, id DESC
+            LIMIT ?;
+            """,
+            (conversation_id, limit),
+        ).fetchall()
+        return tuple(
+            run
+            for row in reversed(rows)
+            if (run := self.get(str(row["id"]))) is not None
+        )
+
     def create(self, run: RunCreate) -> None:
         try:
             self._connection.execute(

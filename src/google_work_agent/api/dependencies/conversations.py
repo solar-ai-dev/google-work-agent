@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
@@ -28,6 +28,7 @@ class ConversationRouteDependencies:
     create_conversation_handler: CreateConversationHandler
     list_conversations_handler: ListConversationsHandler
     get_conversation_history_handler: GetConversationHistoryHandler
+    current_account_id: Callable[[], str | None]
 
 
 def get_conversation_route_dependencies(request: Request) -> ConversationRouteDependencies:
@@ -36,8 +37,14 @@ def get_conversation_route_dependencies(request: Request) -> ConversationRouteDe
         api_contract_version=container.api_contract_version,
         unit_of_work_factory=lambda: container.unit_of_work_factory(),
         create_conversation_handler=container.create_conversation_handler,
-        list_conversations_handler=container.list_conversations_handler,
-        get_conversation_history_handler=container.get_conversation_history_handler,
+        list_conversations_handler=cast(
+            ListConversationsHandler, container.list_conversations_handler
+        ),
+        get_conversation_history_handler=cast(
+            GetConversationHistoryHandler,
+            container.get_conversation_history_handler,
+        ),
+        current_account_id=container.current_account_id_provider,
     )
 
 

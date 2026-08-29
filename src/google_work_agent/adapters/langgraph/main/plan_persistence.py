@@ -22,6 +22,8 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
+    EvidenceDraftV1,
+    RetrievalResultV1,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     resolve_evidence_projection,
@@ -216,6 +218,56 @@ def connector_ids_for_read_actions_from_frozen_routes(
     return connector_ids
 
 
+def _connector_id_for_evidence_handle(
+    *,
+    state: GraphState,
+    resource_handle: str,
+) -> str:
+    handle_kind = resource_handle.partition(":")[0]
+    if handle_kind.startswith("gmail_"):
+        category = "GMAIL"
+    elif handle_kind in {"task", "task_list"}:
+        category = "TASK"
+    elif handle_kind in {"calendar", "calendar_event", "calendar_freebusy"}:
+        category = "CALENDAR"
+    else:
+        raise ValueError(f"unsupported evidence resource handle: {resource_handle}")
+    route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
+    connector_ids = {
+        str(route["connector_id"])
+        for route in route_plan["input_plan"]["input_routes"]
+        if category in str(route["resource_type"]).upper()
+    }
+    if len(connector_ids) != 1:
+        raise ValueError(
+            "evidence ResourceRef must resolve to exactly one frozen connector; "
+            f"handle={resource_handle!r}, connectors={sorted(connector_ids)}"
+        )
+    return next(iter(connector_ids))
+
+
+def _current_retrieval_locator(
+    *, retrieval_result: RetrievalResultV1, evidence: EvidenceDraftV1
+) -> str:
+    reason_codes = evidence.get("reason_codes", [])
+    roles = [
+        item for item in reason_codes if item in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
+    ]
+    if len(roles) != 1:
+        raise ValueError("selected Evidence must carry exactly one canonical context role")
+    return dumps(
+        {
+            "retrieval_artifact_id": retrieval_result["meta"]["artifact_id"],
+            "segment_id": evidence["segment_id"],
+            "role": roles[0],
+            "resource_handle": evidence["resource_handle"],
+            "source_locator": evidence.get("locator"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 class PlanPersistenceMixin:
     """Canonical runtime with deterministic Expected and explicit connector persistence."""
 
@@ -249,7 +301,9 @@ class PlanPersistenceMixin:
         revision_no = 1
         plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         action_id_map = {a["action_id"]: a["action_id"] for a in plan_draft["actions"]}
-        evidence_id_map = {item: item for item in plan_draft["evidence_refs"]}
+        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
+        retrieval_evidence_ids = list(retrieval_result["evidence_refs"])
+        evidence_id_map = {item: item for item in retrieval_evidence_ids}
         if replan_from_plan_id is not None:
             plans = self._plans_for_run(run_id)
             if not any(plan.id == replan_from_plan_id for plan in plans):
@@ -257,28 +311,37 @@ class PlanPersistenceMixin:
             revision_no = max(plan.revision_no for plan in plans) + 1
             plan_id = self._id_factory()
             action_id_map = {a["action_id"]: self._id_factory() for a in plan_draft["actions"]}
-            evidence_id_map = {item: self._id_factory() for item in plan_draft["evidence_refs"]}
+            evidence_id_map = {item: self._id_factory() for item in retrieval_evidence_ids}
 
-        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
         evidence_drafts = {
             item["evidence_id"]: item
             for item in resolve_evidence_projection(
                 store=self._evidence_store, run_id=run_id, retrieval_result=retrieval_result
             )
         }
+        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
         mapped_evidence = tuple(
             WriteEvidenceDraft(
                 evidence_id=evidence_id_map[evidence_id],
-                origin_type=EvidenceOriginType.DERIVED,
+                origin_type=EvidenceOriginType.GOOGLE_RESOURCE,
                 kind=evidence_drafts[evidence_id]["kind"],
                 excerpt=evidence_drafts[evidence_id]["excerpt"],
-                locator_json=None
-                if evidence_drafts[evidence_id].get("locator") is None
-                else dumps(evidence_drafts[evidence_id]["locator"], sort_keys=True),
+                locator_json=_current_retrieval_locator(
+                    retrieval_result=retrieval_result,
+                    evidence=evidence_drafts[evidence_id],
+                ),
+                resource_ref_id=self._resolve_target_resource_ref_for_connector(
+                    run_id=run_id,
+                    connector_id=_connector_id_for_evidence_handle(
+                        state=state,
+                        resource_handle=evidence_drafts[evidence_id]["resource_handle"],
+                    ),
+                    resource_handle=evidence_drafts[evidence_id]["resource_handle"],
+                    acquisition_result=acquisition,
+                ),
             )
-            for evidence_id in plan_draft["evidence_refs"]
+            for evidence_id in retrieval_evidence_ids
         )
-        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
         mapped_actions: list[WriteActionDraft] = []
         for action in plan_draft["actions"]:
             connector_id = connector_ids[action["action_id"]]
@@ -368,17 +431,28 @@ class PlanPersistenceMixin:
                 store=self._evidence_store, run_id=run_id, retrieval_result=retrieval_result
             )
         }
+        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
         mapped_evidence = tuple(
             ReadEvidenceDraft(
                 evidence_id=evidence_id,
-                origin_type=EvidenceOriginType.DERIVED,
+                origin_type=EvidenceOriginType.GOOGLE_RESOURCE,
                 kind=evidence_drafts[evidence_id]["kind"],
                 excerpt=evidence_drafts[evidence_id]["excerpt"],
-                locator_json=None
-                if evidence_drafts[evidence_id].get("locator") is None
-                else dumps(evidence_drafts[evidence_id]["locator"], sort_keys=True),
+                locator_json=_current_retrieval_locator(
+                    retrieval_result=retrieval_result,
+                    evidence=evidence_drafts[evidence_id],
+                ),
+                resource_ref_id=self._resolve_target_resource_ref_for_connector(
+                    run_id=run_id,
+                    connector_id=_connector_id_for_evidence_handle(
+                        state=state,
+                        resource_handle=evidence_drafts[evidence_id]["resource_handle"],
+                    ),
+                    resource_handle=evidence_drafts[evidence_id]["resource_handle"],
+                    acquisition_result=acquisition,
+                ),
             )
-            for evidence_id in plan_draft["evidence_refs"]
+            for evidence_id in retrieval_result["evidence_refs"]
         )
         mapped_actions = tuple(
             ReadActionDraft(

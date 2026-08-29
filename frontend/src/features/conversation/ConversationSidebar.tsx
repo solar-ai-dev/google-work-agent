@@ -19,7 +19,7 @@ export function ConversationSidebar({
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const visibleConversations = conversations.filter((conversation) => (
-    conversation.title.toLowerCase().includes(normalizedQuery)
+    (conversation.title ?? "").toLowerCase().includes(normalizedQuery)
   ));
 
   return (
@@ -40,15 +40,17 @@ export function ConversationSidebar({
         </label>
         <ul className="conversation-list">
           {visibleConversations.map((conversation) => (
-            <li key={conversation.id} className={`conversation-item ${selectedConversationId === conversation.id ? "selected" : ""}`}>
-              <button type="button" className="conversation-summary" onClick={() => onSelectConversation(conversation.id)}>
+            <li key={conversation.conversation_id} className={`conversation-item ${selectedConversationId === conversation.conversation_id ? "selected" : ""}`}>
+              <button type="button" className="conversation-summary" onClick={() => onSelectConversation(conversation.conversation_id)}>
                 <svg className="conversation-row-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M5.5 6.5h13v8h-7l-4 3.5v-3.5h-2z" />
                 </svg>
                 <span className="conversation-summary-content">
                   <span className="conversation-summary-header">
-                    <strong>{conversation.title}</strong>
-                    <span className="muted conversation-summary-time">{formatConversationTimestamp(conversation.updated_at_ms)}</span>
+                    <strong>{conversation.title ?? "제목 없음"}</strong>
+                    {conversation.latest_message_at_ms === null ? null : (
+                      <span className="muted conversation-summary-time">{formatConversationTimestamp(conversation.latest_message_at_ms)}</span>
+                    )}
                   </span>
                 </span>
               </button>

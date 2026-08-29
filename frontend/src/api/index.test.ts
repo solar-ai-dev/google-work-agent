@@ -63,8 +63,8 @@ describe("api index wrappers", () => {
         method: "GET",
       },
       {
-        call: () => api.listConversations("account-1", "cursor-1"),
-        path: "/api/v1/conversations?account_id=account-1&cursor=cursor-1",
+        call: () => api.listConversations("cursor-1"),
+        path: "/api/v1/conversations?page_size=50&cursor=cursor-1",
         method: "GET",
       },
       {

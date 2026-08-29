@@ -10,6 +10,16 @@ type MockResponse = {
   headers?: Record<string, string>;
 };
 
+function conversationItem(conversationId: string, title: string, latestMessageAtMs: number) {
+  return {
+    schema_version: 1,
+    conversation_id: conversationId,
+    title,
+    latest_message_at_ms: latestMessageAtMs,
+    open_run_id: null,
+  } as const;
+}
+
 type SnapshotShape = {
   run_id: string;
   conversation_id: string;
@@ -232,11 +242,11 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
+        schema_version: 1,
         items: conversationCreated
-          ? [{ id: createdConversationId, account_id: "account-1", title: "Project sync", created_at_ms: 1, updated_at_ms: 2 }]
+          ? [conversationItem(createdConversationId, "Project sync", 2)]
           : [],
         next_cursor: null,
-        api_contract_version: "1",
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
@@ -359,8 +369,8 @@ test("keeps the last selected conversation when earlier latest-run responses arr
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
         items: [
-          { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 },
-          { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 2, updated_at_ms: 2 },
+          conversationItem("conversation-a", "대화 A", 1),
+          conversationItem("conversation-b", "대화 B", 2),
         ],
         next_cursor: null,
         api_contract_version: "1",
@@ -468,8 +478,8 @@ test("groups the message timeline by date and shows one separator per day", asyn
 test("moves a conversation to the top of the list after sending a message to it", async () => {
   const started: RequestInit[] = [];
   let conversationListItems = [
-    { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
-    { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 100 },
+    conversationItem("conversation-b", "대화 B", 200),
+    conversationItem("conversation-a", "대화 A", 100),
   ];
   installFetch((path, init) => {
     if (path === "/health/live") return jsonResponse(liveResponse());
@@ -478,7 +488,7 @@ test("moves a conversation to the top of the list after sending a message to it"
     if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
     if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
-      return jsonResponse({ items: conversationListItems, next_cursor: null, api_contract_version: "1" });
+      return jsonResponse({ schema_version: 1, items: conversationListItems, next_cursor: null });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
     if (path === "/api/v1/conversations/conversation-a/latest-run") {
@@ -487,8 +497,8 @@ test("moves a conversation to the top of the list after sending a message to it"
     if (path === "/api/v1/runs" && init?.method === "POST") {
       started.push(init);
       conversationListItems = [
-        { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 300 },
-        { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 1, updated_at_ms: 200 },
+        conversationItem("conversation-a", "대화 A", 300),
+        conversationItem("conversation-b", "대화 B", 200),
       ];
       return jsonResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-a", conversation_id: "conversation-a", run_status: "PLANNING", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-a", enqueued: true, request_replayed: false });
     }
@@ -589,7 +599,11 @@ test("continues an existing conversation with a new run and keeps the earlier hi
     if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
     if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
-      return jsonResponse({ items: [{ id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 }], next_cursor: null, api_contract_version: "1" });
+      return jsonResponse({
+        schema_version: 1,
+        items: [conversationItem("conversation-a", "대화 A", 1)],
+        next_cursor: null,
+      });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
     if (path === "/api/v1/conversations/conversation-a/latest-run") {
@@ -634,7 +648,11 @@ test("adds the stored assistant answer once the open run reaches a terminal stat
     if (path === "/api/v1/google/connection") return jsonResponse(googleConnection());
     if (path === "/api/v1/identity/google-account") return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
     if (path.startsWith("/api/v1/conversations?")) {
-      return jsonResponse({ items: [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", created_at_ms: 1, updated_at_ms: 2 }], next_cursor: null, api_contract_version: "1" });
+      return jsonResponse({
+        schema_version: 1,
+        items: [conversationItem("conversation-1", "업무 대화", 2)],
+        next_cursor: null,
+      });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
     if (path === "/api/v1/runs/run-1") {
@@ -694,9 +712,9 @@ test("shows approve button for write actions and posts approve command", async (
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
-        items: [{ id: "conversation-1", account_id: "account-1", title: "Inbox", created_at_ms: 1, updated_at_ms: 2 }],
+        items: [conversationItem("conversation-1", "Inbox", 2)],
         next_cursor: null,
-        api_contract_version: "1",
+        schema_version: 1,
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
@@ -784,9 +802,9 @@ test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
-        items: [{ id: "conversation-1", account_id: "account-1", title: "Inbox", created_at_ms: 1, updated_at_ms: 2 }],
+        items: [conversationItem("conversation-1", "Inbox", 2)],
         next_cursor: null,
-        api_contract_version: "1",
+        schema_version: 1,
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
@@ -847,9 +865,9 @@ test("confirms an interrupt and explicitly resolves a mismatch", async () => {
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
-        items: [{ id: "conversation-1", account_id: "account-1", title: "Inbox", created_at_ms: 1, updated_at_ms: 2 }],
+        items: [conversationItem("conversation-1", "Inbox", 2)],
         next_cursor: null,
-        api_contract_version: "1",
+        schema_version: 1,
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
@@ -1166,9 +1184,9 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
-        items: [{ id: "conversation-1", account_id: "account-1", title: "Inbox", created_at_ms: 1, updated_at_ms: 2 }],
+        items: [conversationItem("conversation-1", "Inbox", 2)],
         next_cursor: null,
-        api_contract_version: "1",
+        schema_version: 1,
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
@@ -3208,11 +3226,17 @@ function installUiContractFetch(options: {
         mime_type: "text/plain",
         size_bytes: 6,
         sha256: "a".repeat(64),
-        api_contract_version: "1",
+        schema_version: 1,
       });
     }
     if (path.startsWith("/api/v1/conversations?")) {
-      return jsonFetchResponse({ items: options.conversations ? [{ id: "conversation-1", account_id: "account-1", title: "업무 대화", updated_at_ms: 1, created_at_ms: 1 }] : [], next_cursor: null, api_contract_version: "1" });
+      return jsonFetchResponse({
+        schema_version: 1,
+        items: options.conversations
+          ? [conversationItem("conversation-1", "업무 대화", 1)]
+          : [],
+        next_cursor: null,
+      });
     }
     if (path.endsWith("/history")) {
       return jsonFetchResponse(historyPayload(options.historyMessages, options.historyRuns));
@@ -3471,8 +3495,8 @@ function installConversationHistoryFetch(
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({
         items: [
-          { id: "conversation-a", account_id: "account-1", title: "대화 A", created_at_ms: 1, updated_at_ms: 1 },
-          { id: "conversation-b", account_id: "account-1", title: "대화 B", created_at_ms: 2, updated_at_ms: 2 },
+          conversationItem("conversation-a", "대화 A", 1),
+          conversationItem("conversation-b", "대화 B", 2),
         ],
         next_cursor: null,
         api_contract_version: "1",
@@ -3520,9 +3544,10 @@ function historyPayload(
   conversationId = "conversation-1",
 ): Record<string, unknown> {
   return {
-    conversation: { id: conversationId, account_id: "account-1", title: "업무 대화", created_at_ms: 1, updated_at_ms: 1 },
-    messages,
-    runs,
+    schema_version: 1,
+    conversation: conversationItem(conversationId, "업무 대화", 1),
+    messages: messages.map((message) => ({ schema_version: 1, ...message })),
+    runs: runs.map((run) => ({ schema_version: 1, ...run })),
     truncated: false,
     api_contract_version: "1",
   };

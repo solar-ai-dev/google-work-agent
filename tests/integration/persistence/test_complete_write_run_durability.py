@@ -172,7 +172,7 @@ def test_complete_write_run_message_and_result_survive_restart(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path)
     )(GetRunSnapshotQuery("run-1"))
     assert snapshot is not None
-    assert snapshot.result_kind == expected_kind
+    assert snapshot.terminal_result_kind == expected_kind
 
     with SqliteUnitOfWork(database_path) as unit_of_work, pytest.raises(sqlite3.IntegrityError):
         unit_of_work.messages.append_terminal_assistant_message(

@@ -52,8 +52,8 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
 
   useEffect(() => () => subscriptionRef.current?.(), []);
 
-  const refreshConversations = useCallback(async (accountId: string): Promise<void> => {
-    const response = await listConversations(accountId);
+  const refreshConversations = useCallback(async (): Promise<void> => {
+    const response = await listConversations();
     setConversations(response.items);
   }, []);
 
@@ -200,10 +200,9 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
       }
       const response = await startRun({ command_id: crypto.randomUUID(), conversation_id: conversationId, request_text: requestText, entry_mode: selectedResourceHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH", selected_resource_handles: selectedResourceHandles, requested_mode: "AUTO" });
       await reloadConversationHistory(conversationId, projectionGeneration);
-      // The just-started run advances the conversation's server-side
-      // updated_at_ms, so the sidebar list (sorted by that field) needs a
-      // refetch here regardless of whether this conversation is new.
-      await refreshConversations(currentAccount.account_id);
+      // The just-started run changes the server-owned list projection, so the
+      // sidebar needs a refetch regardless of whether this conversation is new.
+      await refreshConversations();
       await selectRun(response.run_id, conversationId, projectionGeneration);
       setComposerText("");
     } catch (error) {

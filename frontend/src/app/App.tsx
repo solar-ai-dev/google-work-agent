@@ -282,7 +282,7 @@ export function App(): JSX.Element {
         setCalendarTimezone(configuredTimezone);
       }
       if (accountResponse.account?.account_id) {
-        await refreshConversations(accountResponse.account.account_id);
+        await refreshConversations();
       }
       setStartup({
         phase: "ready",

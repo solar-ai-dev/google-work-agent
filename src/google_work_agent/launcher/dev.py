@@ -291,6 +291,8 @@ from google_work_agent.ports.system.settings_port import SettingsViewV1
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
+HISTORY_MESSAGE_LIMIT = 200
+HISTORY_RUN_LIMIT = 200
 RELEASE_VERSION = "0.1.0-dev"
 # Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
 # that is not "approved" (the structured-inference router's local-runtime gate),
@@ -1163,9 +1165,12 @@ def build_container(
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
+            history_message_limit=HISTORY_MESSAGE_LIMIT,
+            history_run_limit=HISTORY_RUN_LIMIT,
         ),
         project_context_preview_handler=project_context_preview,
         adjust_context_handler=AdjustContextHandler(
+            unit_of_work_factory=unit_of_work_factory,
             project_context_preview=project_context_preview,
             begin_planning=BeginPlanningHandler(
                 unit_of_work_factory=unit_of_work_factory,
@@ -1176,7 +1181,10 @@ def build_container(
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
         project_recovery_options_handler=ProjectRecoveryOptionsHandler(unit_of_work_factory),
-        project_error_actions_handler=ProjectErrorActionsHandler(),
+        project_error_actions_handler=ProjectErrorActionsHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            resume_target_registry=resume_target_registry,
+        ),
         project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
         get_llm_credential_status_handler=GetLlmCredentialStatusHandler(credential_service),
         get_settings_handler=GetSettingsHandler(settings_service),

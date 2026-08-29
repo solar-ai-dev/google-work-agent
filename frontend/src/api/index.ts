@@ -106,10 +106,16 @@ export function getCurrentAccount(): Promise<CurrentGoogleAccountResponse> {
   return requestJson("/api/v1/identity/google-account");
 }
 
-export function listConversations(accountId: string, cursor?: string | null): Promise<ConversationListResponse> {
-  const search = new URLSearchParams({ account_id: accountId });
+export function listConversations(
+  cursor?: string | null,
+  query?: string | null,
+): Promise<ConversationListResponse> {
+  const search = new URLSearchParams({ page_size: "50" });
   if (cursor) {
     search.set("cursor", cursor);
+  }
+  if (query) {
+    search.set("search", query);
   }
   return requestJson(`/api/v1/conversations?${search.toString()}`);
 }

@@ -575,6 +575,22 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert started.status_code == 202
         run_id = started.json()["run_id"]
 
+        listed = client.get("/api/v1/conversations?search=hello", headers=headers)
+        assert listed.status_code == 200
+        assert listed.json() == {
+            "schema_version": 1,
+            "items": [
+                {
+                    "schema_version": 1,
+                    "conversation_id": "conversation-1",
+                    "title": "Inbox",
+                    "latest_message_at_ms": clock.now_ms(),
+                    "open_run_id": run_id,
+                }
+            ],
+            "next_cursor": None,
+        }
+
         latest_run = client.get("/api/v1/conversations/conversation-1/latest-run", headers=headers)
         assert latest_run.status_code == 200
         assert latest_run.json()["run"]["run_id"] == run_id
@@ -582,7 +598,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         history = client.get("/api/v1/conversations/conversation-1/history", headers=headers)
         assert history.status_code == 200
         history_body = history.json()
-        assert history_body["conversation"]["id"] == "conversation-1"
+        assert history_body["conversation"]["conversation_id"] == "conversation-1"
         assert [(item["role"], item["content"]) for item in history_body["messages"]] == [
             ("USER", "hello")
         ]

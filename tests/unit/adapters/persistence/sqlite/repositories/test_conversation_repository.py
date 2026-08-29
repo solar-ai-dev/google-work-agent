@@ -17,6 +17,14 @@ def _repository() -> SqliteConversationRepository:
             created_at_ms INTEGER, updated_at_ms INTEGER
         )"""
     )
+    connection.execute(
+        "CREATE TABLE messages (conversation_id TEXT, content TEXT, created_at_ms INTEGER)"
+    )
+    connection.execute(
+        """CREATE TABLE runs (
+            id TEXT, conversation_id TEXT, started_at_ms INTEGER, finished_at_ms INTEGER
+        )"""
+    )
     return SqliteConversationRepository(connection)
 
 
@@ -36,8 +44,8 @@ def test_conversation_repository_implements_exact_keyset_surface() -> None:
     first, cursor = repository.list_keyset(account_id="account-1", cursor=None, page_size=2)
     second, next_cursor = repository.list_keyset(account_id="account-1", cursor=cursor, page_size=2)
 
-    assert [item.id for item in first] == ["c-3", "c-2"]
-    assert [item.id for item in second] == ["c-1"]
+    assert [item.conversation.id for item in first] == ["c-3", "c-2"]
+    assert [item.conversation.id for item in second] == ["c-1"]
     assert next_cursor is None
     repository.touch_updated_at("c-1", updated_at_ms=40)
     assert repository.get("c-1").updated_at_ms == 40  # type: ignore[union-attr]

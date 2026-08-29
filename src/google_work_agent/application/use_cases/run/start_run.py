@@ -136,6 +136,7 @@ class StartRunHandler:
         unit_of_work: UnitOfWork,
         command: StartRunCommand,
     ) -> StartRunResult:
+        self._validate_new_run_input(command)
         now_ms = self._now_ms()
         run_id = self._id_factory()
         user_message_id = self._id_factory()
@@ -154,25 +155,6 @@ class StartRunHandler:
         conversation = unit_of_work.conversations.get(command.conversation_id)
         if conversation is None:
             raise LookupError(f"conversation not found: {command.conversation_id}")
-
-        if len(command.request_text.encode("utf-8")) > 65536:
-            response = StartRunResult(
-                applied=False,
-                result_code=ResultCode.STATE_CONFLICT.value,
-                run_id=run_id,
-                conversation_id=command.conversation_id,
-                run_status=RunStatusV1.CREATED.value,
-                run_version=0,
-                user_message_id=user_message_id,
-                workflow_key=workflow_key,
-                handoff_id="",
-                enqueued=False,
-                request_replayed=False,
-                conflict_detail="request text exceeds message limit",
-            )
-            self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
-            unit_of_work.commit()
-            return response
 
         current_open = unit_of_work.runs.find_open_by_conversation(command.conversation_id)
         if current_open is None:
@@ -382,6 +364,22 @@ class StartRunHandler:
                 )
             )
         return tuple(selected)
+
+    @staticmethod
+    def _validate_new_run_input(command: StartRunCommand) -> None:
+        request_bytes = command.request_text.encode("utf-8")
+        if not request_bytes or len(request_bytes) > 65536:
+            raise ValueError("request_text must contain 1..65536 UTF-8 bytes")
+        if command.entry_mode not in {"AGENT_SEARCH", "RESOURCE_SELECTED"}:
+            raise ValueError("unsupported entry_mode")
+        if command.requested_mode not in {"AUTO", "LOCAL_GPU", "API_LLM"}:
+            raise ValueError("unsupported requested_mode")
+        if command.entry_mode == "AGENT_SEARCH" and command.resolved_resource_selections:
+            raise ValueError("AGENT_SEARCH cannot include resolved resource selections")
+        if command.entry_mode == "RESOURCE_SELECTED" and not command.resolved_resource_selections:
+            raise ValueError("RESOURCE_SELECTED requires resolved resource selections")
+        if len(command.resolved_resource_selections) > 20:
+            raise ValueError("RESOURCE_SELECTED accepts at most 20 resource selections")
 
     def _resolve_existing_receipt(
         self,

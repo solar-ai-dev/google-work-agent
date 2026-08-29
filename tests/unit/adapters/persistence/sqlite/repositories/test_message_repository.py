@@ -35,6 +35,7 @@ def test_message_repository_appends_owned_roles_and_lists_keyset() -> None:
 
     assert [item.id for item in messages] == ["m-2", "m-1"]
     assert cursor is None
+    assert [item.id for item in repository.list_for_run_bounded("r-1", limit=1)] == ["m-2"]
 
 
 def test_message_repository_rejects_cross_role_append() -> None:

@@ -18,12 +18,9 @@ from google_work_agent.api.schemas.runs.adjust_context import (
     AdjustContextResponseV1,
 )
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2, RunCommandResponse
-from google_work_agent.api.schemas.runs.confirm_run import (
-    ConfirmationResponseV1,
-    PendingInterruptResponseV1,
-)
-from google_work_agent.api.schemas.runs.get_run import RunSnapshotResponse
+from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
 from google_work_agent.api.schemas.runs.get_run_context import RunContextResponse
+from google_work_agent.api.schemas.runs.get_run_snapshot import RunSnapshotResponseV1
 from google_work_agent.api.schemas.runs.recovery import RecoveryUiProjectionV1
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
@@ -180,13 +177,13 @@ def _resolve_start_run_selections(
         ) from error
 
 
-@router.get("/runs/{run_id}", response_model=RunSnapshotResponse)
+@router.get("/runs/{run_id}", response_model=RunSnapshotResponseV1)
 def get_run_snapshot(
     run_id: str,
     request: Request,
     dependencies: RunRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
-) -> RunSnapshotResponse:
+) -> RunSnapshotResponseV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -227,6 +224,7 @@ def get_run_snapshot(
             )
             else None
         ),
+        resolve_pending_confirmation=dependencies.resolve_pending_confirmation,
     )(GetRunSnapshotQuery(run_id=run_id))
     if snapshot is None:
         raise ApiRequestError(
@@ -235,30 +233,22 @@ def get_run_snapshot(
             status_code=404,
             request_id=request.state.request_id,
         )
-    projection = asdict(snapshot)
-    recovery_options = projection.pop("recovery_options")
-    projection["recovery"] = (
+    canonical_projection = asdict(snapshot)
+    recovery = canonical_projection["recovery"]
+    canonical_projection["recovery"] = (
         None
-        if recovery_options is None
-        else RecoveryUiProjectionV1.model_validate(recovery_options).model_dump()
+        if recovery is None
+        else RecoveryUiProjectionV1.model_validate(recovery).model_dump()
     )
-    pending = (
-        dependencies.resolve_pending_confirmation(run_id)
-        if snapshot.status == "WAITING_CONFIRMATION"
-        else None
-    )
-    if pending is not None:
-        options = pending.get("options")
-        projection["pending_interrupt"] = PendingInterruptResponseV1(
-            interrupt_id=str(pending["interrupt_id"]),
-            semantic_owner_id=pending["semantic_owner_id"],  # type: ignore[arg-type]
-            question=str(pending["question"]),
-            options=[] if not isinstance(options, list) else options,
-            response_mode="FREE_TEXT" if not options else "OPTION",
-        ).model_dump()
-    else:
-        projection["pending_interrupt"] = None
-    return RunSnapshotResponse(
+    run_projection = canonical_projection.pop("run")
+    projection = {
+        **run_projection,
+        **canonical_projection,
+        "active_plan": canonical_projection.pop("current_plan"),
+        "result_kind": canonical_projection.pop("terminal_result_kind"),
+        "snapshot_version": canonical_projection.pop("projection_version"),
+    }
+    return RunSnapshotResponseV1(
         snapshot=projection, api_contract_version=dependencies.api_contract_version
     )
 
@@ -290,15 +280,14 @@ def adjust_context(
             schema_version=payload.schema_version,
             command_id=payload.command_id,
             run_id=run_id,
-            plan_id=payload.plan_id,
-            expected_run_version=payload.expected_run_version,
+            expected_version=payload.expected_version,
             expected_retrieval_revision=payload.expected_retrieval_revision,
             adjustment_kind=payload.adjustment_kind,
-            evidence_ids=payload.evidence_ids,
-            retrieval_query=payload.retrieval_query,
+            segment_ids=None if payload.segment_ids is None else tuple(payload.segment_ids),
+            requested_information=payload.requested_information,
         )
     )
-    response.status_code = http_status_for_result_code(result.result_code)
+    response.status_code = status.HTTP_200_OK if result.accepted else status.HTTP_409_CONFLICT
     return AdjustContextResponseV1(**asdict(result))
 
 

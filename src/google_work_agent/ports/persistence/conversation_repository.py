@@ -1,8 +1,16 @@
-"""Conversation persistence port."""
+"""Conversation persistence and bounded list-projection port."""
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationListRecord:
+    conversation: ConversationRecord
+    latest_message_at_ms: int | None
+    open_run_id: str | None
 
 
 class ConversationRepository(Protocol):
@@ -16,6 +24,7 @@ class ConversationRepository(Protocol):
         account_id: str,
         cursor: str | None,
         page_size: int,
-    ) -> tuple[tuple[ConversationRecord, ...], str | None]: ...
+        search: str | None = None,
+    ) -> tuple[tuple[ConversationListRecord, ...], str | None]: ...
 
     def touch_updated_at(self, conversation_id: str, *, updated_at_ms: int) -> None: ...

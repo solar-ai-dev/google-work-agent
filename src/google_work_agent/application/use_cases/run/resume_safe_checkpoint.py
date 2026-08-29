@@ -48,6 +48,39 @@ _UNRESOLVED_WRITE_STATUSES = frozenset(
 )
 
 
+def safe_checkpoint_resume_is_allowed(
+    *,
+    unit_of_work: UnitOfWork,
+    run: Run,
+    resume_target_registry: ResumeTargetValidator,
+) -> bool:
+    """Read-only eligibility projection shared with Error UI actions."""
+    binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+    checkpoint = (
+        None
+        if binding is None
+        else unit_of_work.checkpoints.load_same_run_checkpoint(
+            run.id, binding.langgraph_thread_id
+        )
+    )
+    if ResumeSafeCheckpointHandler._checkpoint_mismatch(run, binding, checkpoint) is not None:
+        return False
+    assert checkpoint is not None and checkpoint.registered_resume_target is not None
+    try:
+        resume_target_registry.validate(checkpoint.registered_resume_target)
+    except (LookupError, ValueError):
+        return False
+    command = ResumeSafeCheckpointCommand(
+        command_id="projection-only",
+        request_hash="projection-only",
+        run_id=run.id,
+        expected_run_version=run.version,
+    )
+    return ResumeSafeCheckpointHandler._guard(
+        unit_of_work, command, run.status, run.version
+    ) is None
+
+
 @dataclass(frozen=True, slots=True)
 class ResumeSafeCheckpointCommand:
     command_id: str
@@ -374,4 +407,5 @@ __all__ = [
     "ResumeSafeCheckpointCommand",
     "ResumeSafeCheckpointHandler",
     "ResumeSafeCheckpointResult",
+    "safe_checkpoint_resume_is_allowed",
 ]

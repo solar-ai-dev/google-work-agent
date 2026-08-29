@@ -18,10 +18,15 @@ from google_work_agent.api.schemas.conversations.create_conversation import (
     CreateConversationRequest,
 )
 from google_work_agent.api.schemas.conversations.get_conversation_history import (
-    ConversationHistoryResponse,
+    ConversationHistoryResponseV1,
+    ConversationHistoryRunV1,
+    ConversationMessageV1,
 )
 from google_work_agent.api.schemas.conversations.get_latest_run import LatestConversationRunResponse
-from google_work_agent.api.schemas.conversations.list_conversations import ConversationListResponse
+from google_work_agent.api.schemas.conversations.list_conversations import (
+    ConversationItemV1,
+    ConversationListResponseV1,
+)
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationCommand,
 )
@@ -67,38 +72,50 @@ def create_conversation(
     return ConversationResponse(**asdict(result))
 
 
-@router.get("", response_model=ConversationListResponse)
+@router.get("", response_model=ConversationListResponseV1)
 def list_conversations(
     request: Request,
     dependencies: ConversationRouteDependency,
-    account_id: str = Query(...),
     cursor: str | None = Query(default=None),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=50, ge=1, le=50),
+    search: str | None = Query(default=None, max_length=256),
     x_api_contract_version: str | None = Header(default=None),
-) -> ConversationListResponse:
+) -> ConversationListResponseV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
+    account_id = dependencies.current_account_id()
+    if account_id is None:
+        raise ApiRequestError(
+            error_code="AUTH_REQUIRED",
+            user_message="Google 계정 연결이 필요합니다.",
+            status_code=401,
+            request_id=request.state.request_id,
+        )
     result = dependencies.list_conversations_handler(
-        ListConversationsQuery(account_id=account_id, cursor=cursor, page_size=page_size)
+        ListConversationsQuery(
+            account_id=account_id,
+            cursor=cursor,
+            page_size=page_size,
+            search=search,
+        )
     )
-    return ConversationListResponse(
-        items=[asdict(item) for item in result.items],
+    return ConversationListResponseV1(
+        items=[ConversationItemV1(**asdict(item)) for item in result.items],
         next_cursor=result.next_cursor,
-        api_contract_version=dependencies.api_contract_version,
     )
 
 
-@router.get("/{conversation_id}", response_model=ConversationListResponse)
+@router.get("/{conversation_id}", response_model=ConversationItemV1)
 def get_conversation(
     conversation_id: str,
     request: Request,
     dependencies: ConversationRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
-) -> ConversationListResponse:
+) -> ConversationItemV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -115,20 +132,21 @@ def get_conversation(
             status_code=404,
             request_id=request.state.request_id,
         )
-    return ConversationListResponse(
-        items=[asdict(conversation)],
-        next_cursor=None,
-        api_contract_version=dependencies.api_contract_version,
+    return ConversationItemV1(
+        conversation_id=conversation.id,
+        title=conversation.title,
+        latest_message_at_ms=None,
+        open_run_id=None,
     )
 
 
-@router.get("/{conversation_id}/history", response_model=ConversationHistoryResponse)
+@router.get("/{conversation_id}/history", response_model=ConversationHistoryResponseV1)
 def get_conversation_history(
     conversation_id: str,
     request: Request,
     dependencies: ConversationRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
-) -> ConversationHistoryResponse:
+) -> ConversationHistoryResponseV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -145,10 +163,10 @@ def get_conversation_history(
             status_code=404,
             request_id=request.state.request_id,
         )
-    return ConversationHistoryResponse(
-        conversation=asdict(history.conversation),
-        messages=[asdict(item) for item in history.messages],
-        runs=[asdict(item) for item in history.runs],
+    return ConversationHistoryResponseV1(
+        conversation=ConversationItemV1(**asdict(history.conversation)),
+        messages=[ConversationMessageV1(**asdict(item)) for item in history.messages],
+        runs=[ConversationHistoryRunV1(**asdict(item)) for item in history.runs],
         truncated=history.truncated,
         api_contract_version=dependencies.api_contract_version,
     )

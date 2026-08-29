@@ -34,6 +34,7 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotResult as RunSnapshot,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import RunSnapshotRunV1
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelResult
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthResult as ResumeRunResponse,
@@ -354,16 +355,20 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
     container, _ = _build_container(_AllowGuard())
     risk: dict[str, object] = {"validator": {"outcome": "WARNING"}}
     snapshot = RunSnapshot(
-        run_id="run-1",
-        conversation_id="conversation-1",
-        status="WAITING_APPROVAL",
-        version=1,
-        entry_mode="AGENT_SEARCH",
-        requested_mode="AUTO",
-        actual_runtime="API_LLM",
-        started_at_ms=1,
-        finished_at_ms=None,
-        active_plan={"plan_id": "plan-1"},
+        run=RunSnapshotRunV1(
+            run_id="run-1",
+            conversation_id="conversation-1",
+            status="WAITING_APPROVAL",
+            version=1,
+            entry_mode="AGENT_SEARCH",
+            requested_mode="AUTO",
+            actual_runtime="API_LLM",
+            started_at_ms=1,
+            finished_at_ms=None,
+            next_allowed_commands=("REQUEST_CANCEL",),
+        ),
+        messages=(),
+        current_plan={"plan_id": "plan-1"},
         actions=(
             ActionSnapshot(
                 action_id="action-1",
@@ -381,14 +386,17 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
         execution_status={"action_count": 1, "terminal_action_count": 0},
         verification_summary={"verified_count": 0, "mismatch_count": 0},
         recovery_summary={"unknown_result_action_count": 0},
-        result_kind=None,
-        next_allowed_commands=("REQUEST_CANCEL",),
-        snapshot_version=1,
-        recovery_options=ProjectRecoveryOptionsResultV1(
+        context_preview=None,
+        pending_interrupt=None,
+        recovery=ProjectRecoveryOptionsResultV1(
             reason_code="VERIFICATION_MISMATCH",
             target={"target_kind": "ACTION", "action_id": "action-1"},
             allowed_resolution_kinds=("RECHECK", "ACCEPT_PARTIAL"),
         ),
+        error=None,
+        external_llm_transfer_scope=None,
+        terminal_result_kind="NONE",
+        projection_version=1,
     )
 
     with (

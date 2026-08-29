@@ -109,20 +109,21 @@ export type CurrentGoogleAccountResponse = {
 };
 
 export type ConversationItem = {
-  id: string;
-  account_id: string;
-  title: string;
-  updated_at_ms: number;
-  created_at_ms: number;
+  schema_version: 1;
+  conversation_id: string;
+  title: string | null;
+  latest_message_at_ms: number | null;
+  open_run_id: string | null;
 };
 
 export type ConversationListResponse = {
+  schema_version: 1;
   items: ConversationItem[];
   next_cursor: string | null;
-  api_contract_version: string;
 };
 
 export type ConversationMessage = {
+  schema_version: 1;
   id: string;
   run_id: string | null;
   role: "USER" | "ASSISTANT" | "SYSTEM";
@@ -131,6 +132,7 @@ export type ConversationMessage = {
 };
 
 export type ConversationHistoryRun = {
+  schema_version: 1;
   run_id: string;
   status: string;
   started_at_ms: number;
@@ -138,6 +140,7 @@ export type ConversationHistoryRun = {
 };
 
 export type ConversationHistoryResponse = {
+  schema_version: 1;
   conversation: ConversationItem;
   messages: ConversationMessage[];
   runs: ConversationHistoryRun[];

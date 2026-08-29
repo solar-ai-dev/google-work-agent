@@ -38,8 +38,28 @@ def test_evidence_repository_bounded_run_and_action_reads() -> None:
         ),
         action_ids=("action-1",),
     )
+    repository.insert_bounded(
+        Evidence(
+            id="evidence-2",
+            run_id="run-1",
+            origin_type=EvidenceOriginType.DERIVED,
+            resource_ref_id=None,
+            message_id=None,
+            kind="excerpt",
+            excerpt="current",
+            locator_json='{"retrieval_artifact_id":"retrieval-2"}',
+            created_at_ms=2,
+        )
+    )
 
-    assert [item.id for item in repository.list_for_run("run-1")] == ["evidence-1"]
+    assert [item.id for item in repository.list_for_run("run-1")] == [
+        "evidence-1",
+        "evidence-2",
+    ]
     assert [item.id for item in repository.list_for_action("action-1")] == ["evidence-1"]
+    assert [
+        item.id
+        for item in repository.list_for_retrieval_artifact("run-1", "retrieval-2")
+    ] == ["evidence-2"]
     with pytest.raises(ValueError):
         repository.list_for_run("run-1", limit=501)

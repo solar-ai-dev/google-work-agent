@@ -155,7 +155,7 @@ def test_history_returns_every_turn_of_one_conversation_in_time_order(tmp_path: 
     )
 
     assert history is not None
-    assert history.conversation.id == "conversation-1"
+    assert history.conversation.conversation_id == "conversation-1"
     assert [(item.role, item.content) for item in history.messages] == [
         ("USER", "요청 1"),
         ("ASSISTANT", "응답 1"),

@@ -484,7 +484,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
-    assert snapshot.result_kind is None
+    assert snapshot.terminal_result_kind == "NONE"
     connection = connect_sqlite(write_database)
     try:
         row = connection.execute(
@@ -599,7 +599,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
-    assert snapshot.result_kind == "PARTIAL"
+    assert snapshot.terminal_result_kind == "PARTIAL"
     assert snapshot.execution_status["terminal_action_count"] == 2
     connection = connect_sqlite(write_database)
     try:
@@ -705,7 +705,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
-    assert snapshot.result_kind is None
+    assert snapshot.terminal_result_kind == "NONE"
     connection = connect_sqlite(write_database)
     try:
         counts = connection.execute(
@@ -772,7 +772,7 @@ def test_cancel_result_reflects_durably_observed_external_mutation(
         runtime_status_provider=None,  # type: ignore[arg-type]
     ).get_run_snapshot("run-1")
     assert snapshot is not None
-    assert snapshot.result_kind == expected_result_kind
+    assert snapshot.terminal_result_kind == expected_result_kind
     assert {action.status for action in snapshot.actions} == {terminal_status, "CANCELLED"}
 
 

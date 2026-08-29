@@ -17,3 +17,7 @@ class MessageRepository(Protocol):
         cursor: str | None,
         page_size: int,
     ) -> tuple[tuple[MessageRecord, ...], str | None]: ...
+
+    def list_for_run_bounded(
+        self, run_id: str, *, limit: int
+    ) -> tuple[MessageRecord, ...]: ...
