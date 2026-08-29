@@ -17,7 +17,7 @@ from google_work_agent.ports.system.runtime_mode_port import RequestedRuntimeMod
 
 
 @dataclass(frozen=True, slots=True)
-class ConnectorRuntimeStatusV1:
+class _ConnectorRuntimeStatus:
     schema_version: Literal[1]
     connector_id: str
     connection_status: Literal[
@@ -29,7 +29,7 @@ class ConnectorRuntimeStatusV1:
 
 
 @dataclass(frozen=True, slots=True)
-class ComponentCircuitStatusV1:
+class _ComponentCircuitStatus:
     schema_version: Literal[1]
     key: ComponentCircuitKeyV1
     state: Literal["CLOSED", "OPEN"]
@@ -37,7 +37,7 @@ class ComponentCircuitStatusV1:
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeModeStatusV1:
+class _RuntimeModeStatus:
     schema_version: Literal[1]
     requested_mode: RequestedRuntimeModeV1
     actual_runtime: Literal["LOCAL_GPU", "API_LLM", "MIXED"] | None
@@ -45,7 +45,7 @@ class RuntimeModeStatusV1:
 
 
 @dataclass(frozen=True, slots=True)
-class RunBudgetSummaryV1:
+class _RunBudgetSummary:
     schema_version: Literal[1]
     profile: Literal["NORMAL", "RETRIEVAL_HEAVY", "REVISION_HEAVY"]
     llm_calls_used: int
@@ -77,16 +77,16 @@ class GetRuntimeStatusQuery:
 class GetRuntimeStatusResult:
     schema_version: Literal[1]
     service_instance_id: str
-    connectors: tuple[ConnectorRuntimeStatusV1, ...]
+    connectors: tuple[_ConnectorRuntimeStatus, ...]
     llm_providers: tuple[LlmRuntimeStatusV1, ...]
-    component_circuits: tuple[ComponentCircuitStatusV1, ...]
-    active_run_budget: RunBudgetSummaryV1 | None
+    component_circuits: tuple[_ComponentCircuitStatus, ...]
+    active_run_budget: _RunBudgetSummary | None
     recovery_required: bool
     release_version: str
     frontend_build_version: str
     api_contract_version: str
     deployment_profile: str
-    runtime_mode: RuntimeModeStatusV1
+    runtime_mode: _RuntimeModeStatus
     database_status: Literal["READY", "DEGRADED", "UNAVAILABLE"]
     migration_status: Literal["READY", "PENDING", "FAILED"]
     sse_status: Literal["READY", "DEGRADED", "UNAVAILABLE"]
@@ -112,7 +112,7 @@ class GetRuntimeStatusHandler:
         frontend_build_version: str = "unavailable",
         api_contract_version: str = "1",
         deployment_profile: str = "unavailable",
-        active_run_budget: Callable[[], RunBudgetSummaryV1 | None] = lambda: None,
+        active_run_budget: Callable[[], _RunBudgetSummary | None] = lambda: None,
         recovery_required: Callable[[], bool] = lambda: False,
         database_status: Callable[[], Literal["READY", "DEGRADED", "UNAVAILABLE"]] = (
             lambda: "UNAVAILABLE"
@@ -174,11 +174,11 @@ class GetRuntimeStatusHandler:
             for state in circuit_states
             if state.key.kind == "CONNECTOR"
         }
-        connectors: list[ConnectorRuntimeStatusV1] = []
+        connectors: list[_ConnectorRuntimeStatus] = []
         for connector_id in query.connector_ids:
             connection = self._oauth.get_connection_status(connector_id)
             connectors.append(
-                ConnectorRuntimeStatusV1(
+                _ConnectorRuntimeStatus(
                     schema_version=1,
                     connector_id=connector_id,
                     connection_status=connection.connection_status,
@@ -199,7 +199,7 @@ class GetRuntimeStatusHandler:
             connectors=tuple(connectors),
             llm_providers=tuple(self._llm_status.get_status(item) for item in query.llm_providers),
             component_circuits=tuple(
-                ComponentCircuitStatusV1(1, state.key, state.state, state.retry_at_ms)
+                _ComponentCircuitStatus(1, state.key, state.state, state.retry_at_ms)
                 for state in circuit_states
             ),
             active_run_budget=self._active_run_budget(),
@@ -208,9 +208,7 @@ class GetRuntimeStatusHandler:
             frontend_build_version=self._frontend_build_version,
             api_contract_version=self._api_contract_version,
             deployment_profile=self._deployment_profile,
-            runtime_mode=RuntimeModeStatusV1(
-                1, self._runtime_mode.get_requested_mode(), None, None
-            ),
+            runtime_mode=_RuntimeModeStatus(1, self._runtime_mode.get_requested_mode(), None, None),
             database_status=self._database_status(),
             migration_status=self._migration_status(),
             sse_status=self._sse_status(),
@@ -225,11 +223,7 @@ class GetRuntimeStatusHandler:
 
 
 __all__ = [
-    "ComponentCircuitStatusV1",
-    "ConnectorRuntimeStatusV1",
     "GetRuntimeStatusHandler",
     "GetRuntimeStatusQuery",
     "GetRuntimeStatusResult",
-    "RunBudgetSummaryV1",
-    "RuntimeModeStatusV1",
 ]

@@ -536,8 +536,8 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             run_id=str(row["run_id"]),
             scope_revision=int(row["scope_revision"]),
             scope_hash=str(row["scope_hash"]),
-            source_kinds=tuple(json.loads(str(row["source_kinds_json"]))),
-            data_classes=tuple(json.loads(str(row["data_classes_json"]))),
+            source_kinds=list(json.loads(str(row["source_kinds_json"]))),
+            data_classes=list(json.loads(str(row["data_classes_json"]))),
         )
 
     def release_active_lineage(

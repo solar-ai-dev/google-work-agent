@@ -5,14 +5,14 @@ from typing import Literal
 from google_work_agent.api.schemas.model import ApiModel
 
 
-class ComponentCircuitKey(ApiModel):
+class ComponentCircuitKeyV1(ApiModel):
     schema_version: Literal[1]
     kind: Literal["CONNECTOR", "LLM_RUNTIME"]
     connector_id: str | None
     llm_runtime: Literal["API_LLM", "LOCAL_GPU"] | None
 
 
-class ConnectorRuntimeStatus(ApiModel):
+class ConnectorRuntimeStatusV1(ApiModel):
     schema_version: Literal[1]
     connector_id: str
     connection_status: Literal[
@@ -23,7 +23,7 @@ class ConnectorRuntimeStatus(ApiModel):
     retry_at_ms: int | None
 
 
-class LlmRuntimeStatus(ApiModel):
+class LlmRuntimeStatusV1(ApiModel):
     schema_version: Literal[1]
     provider: str
     configured: bool
@@ -32,14 +32,14 @@ class LlmRuntimeStatus(ApiModel):
     error_code: str | None
 
 
-class ComponentCircuitStatus(ApiModel):
+class ComponentCircuitStatusV1(ApiModel):
     schema_version: Literal[1]
-    key: ComponentCircuitKey
+    key: ComponentCircuitKeyV1
     state: Literal["CLOSED", "OPEN"]
     retry_at_ms: int | None
 
 
-class RunBudgetSummary(ApiModel):
+class RunBudgetSummaryV1(ApiModel):
     schema_version: Literal[1]
     profile: Literal["NORMAL", "RETRIEVAL_HEAVY", "REVISION_HEAVY"]
     llm_calls_used: int
@@ -58,26 +58,26 @@ class RunBudgetSummary(ApiModel):
     max_execution_ms: int
 
 
-class RuntimeModeStatus(ApiModel):
+class RuntimeModeStatusV1(ApiModel):
     schema_version: Literal[1]
     requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
     actual_runtime: Literal["LOCAL_GPU", "API_LLM", "MIXED"] | None
     fallback_reason: str | None
 
 
-class RuntimeSummaryResponse(ApiModel):
+class RuntimeDetailResponseV1(ApiModel):
     schema_version: Literal[1]
     service_instance_id: str
-    connectors: list[ConnectorRuntimeStatus]
-    llm_providers: list[LlmRuntimeStatus]
-    component_circuits: list[ComponentCircuitStatus]
-    active_run_budget: RunBudgetSummary | None
+    connectors: list[ConnectorRuntimeStatusV1]
+    llm_providers: list[LlmRuntimeStatusV1]
+    component_circuits: list[ComponentCircuitStatusV1]
+    active_run_budget: RunBudgetSummaryV1 | None
     recovery_required: bool
     release_version: str
     frontend_build_version: str
     api_contract_version: str
     deployment_profile: str
-    runtime_mode: RuntimeModeStatus
+    runtime_mode: RuntimeModeStatusV1
     database_status: Literal["READY", "DEGRADED", "UNAVAILABLE"]
     migration_status: Literal["READY", "PENDING", "FAILED"]
     sse_status: Literal["READY", "DEGRADED", "UNAVAILABLE"]
@@ -90,6 +90,4 @@ class RuntimeSummaryResponse(ApiModel):
     last_migration_status: str | None
 
 
-RuntimeDetailResponse = RuntimeSummaryResponse
-
-__all__ = ["RuntimeDetailResponse", "RuntimeModeStatus", "RuntimeSummaryResponse"]
+__all__ = ["RuntimeDetailResponseV1", "RuntimeModeStatusV1"]

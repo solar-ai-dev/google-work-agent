@@ -95,9 +95,7 @@ class _Repairer:
 
 
 def _scope(*, scope_hash: str = "scope-hash") -> ExternalLlmTransferScopeV1:
-    return ExternalLlmTransferScopeV1(
-        1, "run-1", 1, scope_hash, ("user_request",), ("USER_REQUEST",)
-    )
+    return ExternalLlmTransferScopeV1(1, "run-1", 1, scope_hash, ["user_request"], ["USER_REQUEST"])
 
 
 def _router(

@@ -11,10 +11,10 @@ from google_work_agent.api.dependencies.contract_version import (
 )
 from google_work_agent.api.dependencies.runtime_summaries import RuntimeRouteDependency
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
-    RuntimeSummaryResponse,
+    RuntimeDetailResponseV1,
 )
 from google_work_agent.api.schemas.runtime_summaries.update_runtime_mode import (
-    RuntimeModeStatus,
+    RuntimeModeStatusV1,
     UpdateRuntimeModeRequest,
 )
 from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode import (
@@ -30,12 +30,12 @@ from google_work_agent.ports.system.api_access_port import EndpointPolicy
 router = APIRouter(prefix="/api/v1")
 
 
-@router.get("/runtime", response_model=RuntimeSummaryResponse)
+@router.get("/runtime", response_model=RuntimeDetailResponseV1)
 def get_runtime(
     request: Request,
     dependencies: RuntimeRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
-) -> RuntimeSummaryResponse:
+) -> RuntimeDetailResponseV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -50,7 +50,7 @@ def get_runtime(
         safe_mode = dependencies.safe_mode_state()
         if safe_mode is None or not safe_mode.enabled:
             raise RuntimeError("RUNTIME_STATUS_UNAVAILABLE")
-        return RuntimeSummaryResponse(
+        return RuntimeDetailResponseV1(
             schema_version=1,
             service_instance_id="unavailable",
             connectors=[],
@@ -62,7 +62,7 @@ def get_runtime(
             frontend_build_version="unavailable",
             api_contract_version=dependencies.api_contract_version,
             deployment_profile="unavailable",
-            runtime_mode=RuntimeModeStatus(
+            runtime_mode=RuntimeModeStatusV1(
                 schema_version=1,
                 requested_mode="AUTO",
                 actual_runtime=None,
@@ -86,16 +86,16 @@ def get_runtime(
     safe_mode = dependencies.safe_mode_state()
     summary["safe_mode"] = bool(safe_mode and safe_mode.enabled)
     summary["session_status"] = "ESTABLISHED"
-    return cast(RuntimeSummaryResponse, RuntimeSummaryResponse.model_validate(summary))
+    return cast(RuntimeDetailResponseV1, RuntimeDetailResponseV1.model_validate(summary))
 
 
-@router.post("/runtime/mode", response_model=RuntimeModeStatus)
+@router.post("/runtime/mode", response_model=RuntimeModeStatusV1)
 def update_runtime_mode(
     payload: UpdateRuntimeModeRequest,
     request: Request,
     dependencies: RuntimeRouteDependency,
     x_api_contract_version: str | None = Header(default=None),
-) -> RuntimeModeStatus:
+) -> RuntimeModeStatusV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -111,7 +111,7 @@ def update_runtime_mode(
             requested_mode=payload.requested_mode,
         )
     )
-    return RuntimeModeStatus(
+    return RuntimeModeStatusV1(
         schema_version=1,
         requested_mode=result.requested_mode,
         actual_runtime=None,

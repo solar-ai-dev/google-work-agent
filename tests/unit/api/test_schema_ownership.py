@@ -1,5 +1,6 @@
 """Repository-architecture checks for canonical API schema ownership."""
 
+from importlib import import_module
 from pathlib import Path
 
 from google_work_agent.api.schemas.actions.approve_action import ApproveActionRequestV2
@@ -25,7 +26,7 @@ from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryR
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
-    RuntimeSummaryResponse,
+    RuntimeDetailResponseV1,
 )
 from google_work_agent.api.schemas.settings.update_settings import PatchSettingsRequest
 
@@ -54,9 +55,42 @@ def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert EventEnvelope.__module__.endswith(".events.get_events")
     assert ResourceListResponse.__module__.endswith(".resources.list_resources")
     assert PatchSettingsRequest.__module__.endswith(".settings.update_settings")
-    assert RuntimeSummaryResponse.__module__.endswith(".runtime_summaries.get_runtime_summary")
+    assert RuntimeDetailResponseV1.__module__.endswith(".runtime_summaries.get_runtime_summary")
     assert LiveResponse.__module__.endswith(".health_checks.get_liveness")
     assert ReadyResponse.__module__.endswith(".health_checks.get_readiness")
+
+
+def test_runtime_detail_uses_exact_canonical_wire_vocabulary() -> None:
+    runtime_schema = import_module(
+        "google_work_agent.api.schemas.runtime_summaries.get_runtime_summary"
+    )
+
+    assert set(RuntimeDetailResponseV1.model_fields) == {
+        "schema_version",
+        "service_instance_id",
+        "connectors",
+        "llm_providers",
+        "component_circuits",
+        "active_run_budget",
+        "recovery_required",
+        "release_version",
+        "frontend_build_version",
+        "api_contract_version",
+        "deployment_profile",
+        "runtime_mode",
+        "database_status",
+        "migration_status",
+        "sse_status",
+        "recent_sanitized_error_code",
+        "launcher_status",
+        "manifest_status",
+        "session_status",
+        "safe_mode",
+        "last_backup_status",
+        "last_migration_status",
+    }
+    assert not hasattr(runtime_schema, "RuntimeSummaryResponse")
+    assert not hasattr(runtime_schema, "RuntimeDetailResponse")
 
 
 def test_retired_broad_plural_resource_schema_modules_are_absent() -> None:

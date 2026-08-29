@@ -1,6 +1,7 @@
 """Read the current Run-scoped external-LLM transfer disclosure."""
 
 from dataclasses import dataclass
+from threading import Lock
 from typing import Literal
 
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
@@ -37,6 +38,8 @@ class ProjectExternalLlmTransferScopeHandler:
     ) -> None:
         self._checkpoint = checkpoint
         self._project_run_event = project_run_event
+        self._publication_lock = Lock()
+        self._announced_scopes: set[tuple[str, int, str]] = set()
 
     def __call__(
         self, query: ProjectExternalLlmTransferScopeQueryV1
@@ -47,8 +50,8 @@ class ProjectExternalLlmTransferScopeHandler:
             return self._checkpoint.load_external_llm_scope(query.run_id)
         if query.source_kinds is None or query.data_classes is None:
             raise ValueError("source_kinds and data_classes must be projected together")
-        source_kinds = tuple(sorted(set(query.source_kinds)))
-        data_classes = tuple(sorted(set(query.data_classes)))
+        source_kinds = sorted(set(query.source_kinds))
+        data_classes = sorted(set(query.data_classes))
         if not source_kinds or not data_classes or any(not item.strip() for item in source_kinds):
             raise ValueError("external-LLM scope must be non-empty")
         if self._project_run_event is not None and (
@@ -62,35 +65,42 @@ class ProjectExternalLlmTransferScopeHandler:
                 "data_classes": data_classes,
             }
         )
-        current = self._checkpoint.load_external_llm_scope(query.run_id)
-        if current is not None and current.scope_hash == scope_hash:
-            return current
-        scope = ExternalLlmTransferScopeV1(
-            schema_version=1,
-            run_id=query.run_id,
-            scope_revision=1 if current is None else current.scope_revision + 1,
-            scope_hash=scope_hash,
-            source_kinds=source_kinds,
-            data_classes=data_classes,
-        )
-        if self._project_run_event is not None:
-            assert query.occurred_at_ms is not None
-            self._project_run_event(
-                ProjectRunEventCommand(
+        with self._publication_lock:
+            current = self._checkpoint.load_external_llm_scope(query.run_id)
+            if current is not None and current.scope_hash == scope_hash:
+                scope = current
+            else:
+                scope = ExternalLlmTransferScopeV1(
+                    schema_version=1,
                     run_id=query.run_id,
-                    occurred_at_ms=query.occurred_at_ms,
-                    event_type="EXTERNAL_LLM_SCOPE_PUBLISHED",
-                    payload={
-                        "scope_revision": scope.scope_revision,
-                        "scope_hash": scope.scope_hash,
-                        "source_kinds": list(scope.source_kinds),
-                        "data_classes": list(scope.data_classes),
-                    },
+                    scope_revision=1 if current is None else current.scope_revision + 1,
+                    scope_hash=scope_hash,
+                    source_kinds=source_kinds,
+                    data_classes=data_classes,
                 )
-            )
-        self._checkpoint.store_external_llm_scope(scope)
-        self._checkpoint.flush()
-        return scope
+                self._checkpoint.store_external_llm_scope(scope)
+                self._checkpoint.flush()
+            publication_key = (scope.run_id, scope.scope_revision, scope.scope_hash)
+            if (
+                self._project_run_event is not None
+                and publication_key not in self._announced_scopes
+            ):
+                assert query.occurred_at_ms is not None
+                self._project_run_event(
+                    ProjectRunEventCommand(
+                        run_id=query.run_id,
+                        occurred_at_ms=query.occurred_at_ms,
+                        event_type="EXTERNAL_LLM_SCOPE_PUBLISHED",
+                        payload={
+                            "scope_revision": scope.scope_revision,
+                            "scope_hash": scope.scope_hash,
+                            "source_kinds": list(scope.source_kinds),
+                            "data_classes": list(scope.data_classes),
+                        },
+                    )
+                )
+                self._announced_scopes.add(publication_key)
+            return scope
 
 
 __all__ = [

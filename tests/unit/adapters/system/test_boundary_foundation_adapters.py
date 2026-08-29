@@ -253,15 +253,15 @@ def test_checkpoint_external_llm_scope_is_typed_and_revision_monotonic(tmp_path)
         "run-1",
         1,
         "scope-hash-1",
-        ("USER",),
-        ("USER_REQUEST", "EVIDENCE_EXCERPT"),
+        ["USER"],
+        ["USER_REQUEST", "EVIDENCE_EXCERPT"],
     )
     try:
         adapter.store_external_llm_scope(scope)
         assert adapter.load_external_llm_scope("run-1") == scope
         with pytest.raises(CheckpointConflictError, match="conflicts"):
             adapter.store_external_llm_scope(
-                ExternalLlmTransferScopeV1(1, "run-1", 1, "different", ("USER",), ("USER_REQUEST",))
+                ExternalLlmTransferScopeV1(1, "run-1", 1, "different", ["USER"], ["USER_REQUEST"])
             )
     finally:
         adapter.close()

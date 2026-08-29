@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Literal, get_args, get_origin, get_type_hints
 
 import pytest
 
@@ -40,6 +41,31 @@ class _Events:
             raise RuntimeError("SSE_UNAVAILABLE")
 
 
+def test_external_llm_transfer_scope_uses_exact_canonical_list_contract() -> None:
+    annotations = get_type_hints(ExternalLlmTransferScopeV1)
+
+    assert annotations["source_kinds"] == list[str]
+    assert get_origin(annotations["data_classes"]) is list
+    data_class = get_args(annotations["data_classes"])[0]
+    assert get_origin(data_class) is Literal
+    assert set(get_args(data_class)) == {
+        "USER_REQUEST",
+        "RESOURCE_METADATA",
+        "EVIDENCE_EXCERPT",
+        "PLAN_CONTEXT",
+    }
+
+    with pytest.raises(TypeError, match="collections must be lists"):
+        ExternalLlmTransferScopeV1(
+            1,
+            "run-1",
+            1,
+            "scope-hash",
+            ("USER_REQUEST",),  # type: ignore[arg-type]
+            ("USER_REQUEST",),  # type: ignore[arg-type]
+        )
+
+
 def test_project_external_llm_transfer_scope_publishes_bounded_metadata_and_replays() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(checkpoint)  # type: ignore[arg-type]
@@ -55,8 +81,8 @@ def test_project_external_llm_transfer_scope_publishes_bounded_metadata_and_repl
 
     assert first is not None
     assert first.scope_revision == 1
-    assert first.source_kinds == ("GMAIL", "TASKS")
-    assert first.data_classes == ("RESOURCE_METADATA", "USER_REQUEST")
+    assert first.source_kinds == ["GMAIL", "TASKS"]
+    assert first.data_classes == ["RESOURCE_METADATA", "USER_REQUEST"]
     assert replay == first
     assert checkpoint.calls == ["store", "flush"]
 
@@ -78,7 +104,7 @@ def test_project_external_llm_transfer_scope_changes_hash_and_revision() -> None
     assert second.scope_hash != first.scope_hash
 
 
-def test_scope_checkpoint_is_not_published_before_sse_append_succeeds() -> None:
+def test_scope_checkpoint_remains_durable_when_sse_append_fails() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
@@ -96,11 +122,11 @@ def test_scope_checkpoint_is_not_published_before_sse_append_succeeds() -> None:
             )
         )
 
-    assert checkpoint.calls == ["event"]
-    assert checkpoint.scope is None
+    assert checkpoint.calls == ["store", "flush", "event"]
+    assert checkpoint.scope is not None
 
 
-def test_scope_checkpoint_is_flushed_only_after_sse_append() -> None:
+def test_scope_checkpoint_is_flushed_before_sse_append() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
@@ -117,4 +143,31 @@ def test_scope_checkpoint_is_flushed_only_after_sse_append() -> None:
         )
     )
 
-    assert checkpoint.calls == ["event", "store", "flush"]
+    assert checkpoint.calls == ["store", "flush", "event"]
+
+
+def test_scope_event_is_retried_after_checkpoint_first_crash_without_rewriting_scope() -> None:
+    checkpoint = _Checkpoint()
+    failing_handler = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,  # type: ignore[arg-type]
+        _Events(checkpoint.calls, fail=True),  # type: ignore[arg-type]
+    )
+    query = ProjectExternalLlmTransferScopeQueryV1(
+        1,
+        "run-1",
+        ("USER_REQUEST",),
+        ("USER_REQUEST",),
+        occurred_at_ms=1,
+    )
+
+    with pytest.raises(RuntimeError, match="SSE_UNAVAILABLE"):
+        failing_handler(query)
+
+    recovered_handler = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,  # type: ignore[arg-type]
+        _Events(checkpoint.calls),  # type: ignore[arg-type]
+    )
+    recovered = recovered_handler(query)
+
+    assert recovered == checkpoint.scope
+    assert checkpoint.calls == ["store", "flush", "event", "event"]
