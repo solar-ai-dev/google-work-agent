@@ -549,8 +549,11 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             approved = client.post(f"/api/v1/actions/{action_id}/approve", json=approval_body)
             assert approved.status_code == 200
             effective_approval_body = approval_body
-            assert production_runtime.workflow_execution.await_drained(5_000)
             completed = _wait_for_snapshot(client, run_id, "COMPLETED")
+            # Queue drain is process-local evidence, not durable workflow
+            # completion.  Assert it only after the Domain snapshot proves
+            # that any required admission redrive has settled.
+            assert production_runtime.workflow_execution.await_drained(5_000)
 
             assert _first_action(completed)["status"] == "VERIFIED"
             assert gateway.count_calls(write_operation) == 1
@@ -661,7 +664,9 @@ def _create_conversation_and_run(
 
 
 def _wait_for_snapshot(client: TestClient, run_id: str, expected_status: str) -> dict[str, object]:
-    deadline = time.monotonic() + 10
+    # One same-process durable redrive may follow SQLite's configured
+    # five-second busy timeout; keep the product wait above that retry horizon.
+    deadline = time.monotonic() + 30
     latest: dict[str, object] = {}
     while time.monotonic() < deadline:
         response = client.get(f"/api/v1/runs/{run_id}")
