@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `a455aa8aa10ef94cf822a4fe4db8ac32754ffef7`
+**Validation HEAD:** `57f2a65b6ffd228f62f04fbb203b7bc61c76ec9f`
 
 ## Purpose
 
@@ -93,7 +93,9 @@ At production SHA `a455aa8aa10ef94cf822a4fe4db8ac32754ffef7`, #143 independently
 
 # Persistence
 
-At production SHA `25af98b520015272de604ddd84a2336b72d4460e`, Persistence remains **63/63 accounted**: STR **49/49 COMPLETE**, NPA **14/14 accounted**, Persistence-owned gaps **0**. Forward migrations `0016_persistence_final_defense.sql` and `0017_recovery_context_reason_matrix.sql` close #128 final defenses and #132 Recovery reason-matrix/currentness defenses. Applied migrations 0001..0016 remain unchanged.
+At production SHA `57f2a65b6ffd228f62f04fbb203b7bc61c76ec9f`, #144 independently revalidated Persistence as **63/63 accounted**: STR **49/49 COMPLETE**, NPA **14/14 accounted**, Repository contract mismatches **0**, duplicate durable writers **0**, direct SQL bypasses **0**, DB final-defense gaps **0**, and UoW business-semantic leakage **0**. Forward migrations `0016_persistence_final_defense.sql` and `0017_recovery_context_reason_matrix.sql` close #128 final defenses and #132 Recovery reason-matrix/currentness defenses; applied migrations 0001..0017 remain unchanged. Fresh and populated-predecessor migration paths, checksum/order enforcement, direct-SQL constraints, owner-specific repository/UoW behavior, and the full repository regression are CLEAN (`332 passed`; complete repository `2569 passed, 6 skipped`).
+
+#144 made one targeted STR-331 type-boundary correction: deserialized durable workflow-handoff owner, compiled-subgraph, and main-stage values are narrowed to their canonical Literal types. The existing repository, migration, transaction behavior, and production callers were preserved; no second persistence authority was introduced.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
