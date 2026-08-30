@@ -21,7 +21,7 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.state import (
     PLANNING_AGENT_LOCAL_KEY,
-    ProductionGraphStateV2,
+    MultiAgentGraphStateV2,
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -189,7 +189,7 @@ class PlanningSubgraph:
             StateGraph(
                 PlanningLocalState,
                 input_schema=PlanningInputState,
-                output_schema=ProductionGraphStateV2,
+                output_schema=MultiAgentGraphStateV2,
             )
             if self._is_production_integration
             else StateGraph(PlanningLocalState)

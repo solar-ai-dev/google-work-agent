@@ -42,9 +42,11 @@ class WorkflowInvocationCoordinator:
         cancel_signal_lock: Any,
         cancel_signals: set[str],
         resume_reauth_execution: Callable[[GraphState], GraphState] | None = None,
+        graph_version: str = "v1",
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
+        self._graph_version = graph_version
         self._start_node = start_node
         self._initial_state = initial_state
         self._current_run_status = current_run_status
@@ -331,13 +333,10 @@ class WorkflowInvocationCoordinator:
         )
 
     def is_profile_compatible(self, state: GraphState) -> bool:
-        prompt_context = state.get("prompt_context")
-        if not isinstance(prompt_context, dict):
-            return True
-        persisted_profile = prompt_context.get("graph_profile")
-        if not isinstance(persisted_profile, str):
-            return True
-        return persisted_profile == self._graph_profile.value
+        return (
+            state.get("graph_profile") == self._graph_profile.value
+            and state.get("graph_version") == self._graph_version
+        )
 
 
 def _first_pending_confirmation_interrupt(tasks: Sequence[Any]) -> dict[str, object] | None:

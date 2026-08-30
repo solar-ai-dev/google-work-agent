@@ -17,7 +17,6 @@ from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCo
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     MainControlNodeBindings,
-    WorkflowGraphComposition,
 )
 from google_work_agent.adapters.langgraph.main.nodes.action_execution_node import (
     action_execution_node,
@@ -70,7 +69,10 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.adapters.langgraph.pre_analysis_composition import (
     build_pre_analysis_subgraphs,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import (
+    GraphProfile,
+    get_graph_profile_builder,
+)
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
@@ -878,24 +880,25 @@ class WorkflowRuntimeCore:
                 confirm_inline=self._confirm_context_retrieval_inline,
             ).build()
         self._topology = self._topology_for_profile()
-        self._graph_composition = WorkflowGraphComposition(
-            profile=self._graph_profile,
-            topology=self._topology,
-            bindings=GraphNodeBindings(
-                request_understanding=self._request_subgraph,
-                tool_route=self._tool_route_subgraph,
-                acquisition=self._acquisition_subgraph,
-                context_retriever=self._context_subgraph,
-                work_analysis=self._analysis_subgraph,
-                planning=self._planning_subgraph,
-                review=self._review_subgraph,
-                single_workflow=self._single_workflow_subgraph,
-                waiting_approval=self._waiting_approval_node,
-                stage_one=self._three_stage_one_subgraph,
-                stage_two=self._three_stage_two_subgraph,
-                stage_three=self._three_stage_review_subgraph,
-            ),
-            control_bindings=self._main_control_bindings(),
+        self._graph_node_bindings = GraphNodeBindings(
+            request_understanding=self._request_subgraph,
+            tool_route=self._tool_route_subgraph,
+            acquisition=self._acquisition_subgraph,
+            context_retriever=self._context_subgraph,
+            work_analysis=self._analysis_subgraph,
+            planning=self._planning_subgraph,
+            review=self._review_subgraph,
+            single_workflow=self._single_workflow_subgraph,
+            waiting_approval=self._waiting_approval_node,
+            stage_one=self._three_stage_one_subgraph,
+            stage_two=self._three_stage_two_subgraph,
+            stage_three=self._three_stage_review_subgraph,
+        )
+        self._main_graph_control_bindings = self._main_control_bindings()
+        profile_builder = get_graph_profile_builder(self._graph_profile)
+        self._graph_composition = profile_builder(
+            bindings=self._graph_node_bindings,
+            control_bindings=self._main_graph_control_bindings,
             route_next_node=self._route_next_node,
             checkpointer=self._checkpointer,
         )
@@ -904,6 +907,7 @@ class WorkflowRuntimeCore:
         self._invocation = WorkflowInvocationCoordinator(
             graph=self._graph,
             graph_profile=self._graph_profile,
+            graph_version=RESUME_CONTRACT_VERSION,
             start_node="initialize",
             initial_state=self._initial_state,
             current_run_status=self._current_run_status,
@@ -1330,6 +1334,7 @@ class WorkflowRuntimeCore:
         return initial_graph_state(
             request,
             graph_profile=self._graph_profile,
+            graph_version=RESUME_CONTRACT_VERSION,
             initial_target=self._topology[0],
         )
 

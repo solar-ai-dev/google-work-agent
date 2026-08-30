@@ -11,7 +11,7 @@ typed parent boundary.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final, NotRequired, cast
+from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
 from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
     TerminalCommitIntentV1,
@@ -34,9 +34,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
     AnswerDraftV1,
-    ContextBundleV1,
     ContextRetrievalResultV1,
-    EvidenceDraftV1,
     EvidenceSelectionResultV2,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
@@ -57,6 +55,36 @@ from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceR
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
+type WorkflowPhaseV2 = Literal[
+    "INITIALIZE",
+    "REQUEST_UNDERSTANDING",
+    "TOOL_ROUTING",
+    "RETRIEVAL",
+    "WORK_ANALYSIS",
+    "PLANNING",
+    "REVIEW",
+    "DOMAIN_VALIDATION",
+    "WAITING_CONFIRMATION",
+    "WAITING_APPROVAL",
+    "PREFLIGHT",
+    "ACTION_EXECUTION",
+    "READ_EXECUTION",
+    "VERIFICATION",
+    "RECOVERY",
+    "RESPONSE_SYNTHESIS",
+    "TERMINAL_COMMIT",
+    "FINALIZE",
+]
+
+
+class RunInputV1(TypedDict):
+    """Immutable user input projection for one Run."""
+
+    entry_mode: Literal["AGENT_SEARCH", "RESOURCE_SELECTED"]
+    user_request: str
+    selected_resource_refs: list[dict[str, str | None]]
+    requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
+
 
 class ParentGraphState(MultiAgentGraphState):
     """State projected from a native subgraph back to the parent graph."""
@@ -69,16 +97,19 @@ class ParentGraphState(MultiAgentGraphState):
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
     __replan_from_plan_id__: NotRequired[str]
     __reserved_corrective_plan_id__: NotRequired[str | None]
-    context_bundle: NotRequired[ContextBundleV1]
-    evidence_drafts: NotRequired[list[EvidenceDraftV1]]
-    llm_provider_result: NotRequired[dict[str, object] | None]
     # Temporary #118 ACTION-delegate projection. Canonical ANSWER never
     # reads or writes this V1 compatibility channel.
     analysis_result: NotRequired[WorkAnalysisResultV1 | None]
 
 
-class ProductionGraphStateV2(ParentGraphState, total=False):
-    """Production state extension for canonical post-Retrieval V2 artifacts."""
+class MultiAgentGraphStateV2(ParentGraphState, total=False):
+    """Canonical Main State plus bounded migration-only control projections."""
+
+    schema_version: Required[Literal[2]]  # type: ignore[misc]
+    langgraph_thread_id: Required[str]
+    graph_profile: Required[Literal["SINGLE_BASELINE", "THREE_STAGE", "SIX_ROLE_BASELINE"]]
+    graph_version: Required[str]
+    run_input: Required[RunInputV1]
 
     planning_result: NotRequired[PlanningResultV2 | None]
     post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
@@ -90,7 +121,7 @@ class ProductionGraphStateV2(ParentGraphState, total=False):
     terminal_commit_intent: NotRequired[TerminalCommitIntentV1 | None]
 
 
-GraphState = ProductionGraphStateV2
+GraphState = MultiAgentGraphStateV2
 
 
 ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
@@ -122,13 +153,33 @@ def initial_graph_state(
     request: WorkflowStartRequest,
     *,
     graph_profile: GraphProfile,
+    graph_version: str,
     initial_target: str,
 ) -> GraphState:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": request.run_id,
         "conversation_id": request.conversation_id,
         "thread_id": request.workflow_key,
+        "langgraph_thread_id": request.workflow_key,
+        "graph_profile": graph_profile.value,
+        "graph_version": graph_version,
+        "run_input": {
+            "entry_mode": cast(Literal["AGENT_SEARCH", "RESOURCE_SELECTED"], request.entry_mode),
+            "user_request": request.request_text,
+            "selected_resource_refs": [
+                {
+                    "source": item.source,
+                    "resource_type": item.resource_type,
+                    "resource_id": item.resource_id,
+                    "parent_resource_id": item.parent_resource_id,
+                }
+                for item in request.selected_resources
+            ],
+            "requested_mode": cast(
+                Literal["AUTO", "LOCAL_GPU", "API_LLM"], request.requested_mode
+            ),
+        },
         "workflow_phase": WorkflowPhase.INITIALIZE.value,
         "request_intent": None,
         "tool_route_plan": None,
@@ -157,7 +208,7 @@ def initial_graph_state(
             "last_rechecked_planning_revision": 0,
             "semantic_revision_signatures_used": [],
         },
-        "prompt_context": {"graph_profile": graph_profile.value},
+        "prompt_context": {},
         "trace_context": {
             "agent_invocation_count": 0,
             "llm_call_count": 0,

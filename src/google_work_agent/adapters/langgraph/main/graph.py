@@ -128,7 +128,10 @@ class WorkflowGraphComposition:
 
     def build(self) -> Any:
         graph = StateGraph(GraphState)
-        for name in dict.fromkeys((*self._topology, "context_retriever", "planning", "review")):
+        agent_node_names = tuple(
+            dict.fromkeys((*self._topology, "context_retriever", "planning", "review"))
+        )
+        for name in agent_node_names:
             graph.add_node(name, self._bindings.for_name(name))
         for name in (
             "initialize",
@@ -151,7 +154,8 @@ class WorkflowGraphComposition:
             "tool_route",
             "waiting_approval",
         ):
-            graph.add_node(name, self._bindings.for_name(name))
+            if name not in agent_node_names:
+                graph.add_node(name, self._bindings.for_name(name))
         graph.add_edge(START, "initialize")
         edges = self.edge_map()
         for name in dict.fromkeys(

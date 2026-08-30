@@ -20,7 +20,6 @@ from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
-    WorkflowGraphComposition,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
@@ -29,7 +28,10 @@ from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.optional_input_subgraphs import (
     CanonicalOptionalWorkAnalysisSubgraph,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import (
+    GraphProfile,
+    get_graph_profile_builder,
+)
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
 )
@@ -225,24 +227,25 @@ class ResponseSynthesisMixin:
         self._rebuild_six_role_graph_with_optional_subgraphs()
 
     def _rebuild_six_role_graph_with_optional_subgraphs(self) -> None:
-        self._graph_composition = WorkflowGraphComposition(
-            profile=self._graph_profile,
-            topology=self._topology,
-            bindings=GraphNodeBindings(
-                request_understanding=self._request_subgraph,
-                tool_route=self._tool_route_subgraph,
-                acquisition=self._acquisition_subgraph,
-                context_retriever=self._context_subgraph,
-                work_analysis=self._analysis_subgraph,
-                planning=self._planning_subgraph,
-                review=self._review_subgraph,
-                single_workflow=self._single_workflow_subgraph,
-                waiting_approval=self._waiting_approval_node,
-                stage_one=self._three_stage_one_subgraph,
-                stage_two=self._three_stage_two_subgraph,
-                stage_three=self._three_stage_review_subgraph,
-            ),
-            control_bindings=self._main_control_bindings(),
+        self._graph_node_bindings = GraphNodeBindings(
+            request_understanding=self._request_subgraph,
+            tool_route=self._tool_route_subgraph,
+            acquisition=self._acquisition_subgraph,
+            context_retriever=self._context_subgraph,
+            work_analysis=self._analysis_subgraph,
+            planning=self._planning_subgraph,
+            review=self._review_subgraph,
+            single_workflow=self._single_workflow_subgraph,
+            waiting_approval=self._waiting_approval_node,
+            stage_one=self._three_stage_one_subgraph,
+            stage_two=self._three_stage_two_subgraph,
+            stage_three=self._three_stage_review_subgraph,
+        )
+        self._main_graph_control_bindings = self._main_control_bindings()
+        profile_builder = get_graph_profile_builder(self._graph_profile)
+        self._graph_composition = profile_builder(
+            bindings=self._graph_node_bindings,
+            control_bindings=self._main_graph_control_bindings,
             route_next_node=self._route_next_node,
             checkpointer=self._checkpointer,
         )

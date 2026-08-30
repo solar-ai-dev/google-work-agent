@@ -18,7 +18,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
-from google_work_agent.adapters.langgraph.main.state import ProductionGraphStateV2
+from google_work_agent.adapters.langgraph.main.state import MultiAgentGraphStateV2
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
@@ -171,7 +171,7 @@ class ReviewSubgraph:
             StateGraph(
                 ReviewLocalState,
                 input_schema=ReviewInputState,
-                output_schema=ProductionGraphStateV2,
+                output_schema=MultiAgentGraphStateV2,
             )
             if self._is_production_integration
             else StateGraph(ReviewLocalState)

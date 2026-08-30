@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 
+from google_work_agent.adapters.langgraph.profiles.profile_registry import (
+    get_profile_owner_bindings,
+    supported_graph_profiles,
+)
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     CompiledAgentSubgraphIdV1,
@@ -48,34 +53,12 @@ RUNTIME_NODE_OWNERS: dict[str, SemanticAgentOwnerIdV1] = {
     "review.recheck": "REVIEW",
 }
 
-PROFILE_OWNER_BINDINGS: dict[
-    GraphProfileIdV1, dict[SemanticAgentOwnerIdV1, CompiledAgentSubgraphIdV1]
-] = {
-    "SINGLE_BASELINE": {
-        "REQUEST_UNDERSTANDING": "UNIFIED_AGENT",
-        "TOOL_ROUTE": "UNIFIED_AGENT",
-        "RETRIEVAL": "UNIFIED_AGENT",
-        "WORK_ANALYSIS": "UNIFIED_AGENT",
-        "PLANNING": "UNIFIED_AGENT",
-        "REVIEW": "UNIFIED_AGENT",
-    },
-    "THREE_STAGE": {
-        "REQUEST_UNDERSTANDING": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "TOOL_ROUTE": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "RETRIEVAL": "STAGE_REQUEST_ROUTE_RETRIEVAL",
-        "WORK_ANALYSIS": "STAGE_ANALYSIS_PLANNING",
-        "PLANNING": "STAGE_ANALYSIS_PLANNING",
-        "REVIEW": "STAGE_REVIEW",
-    },
-    "SIX_ROLE_BASELINE": {
-        "REQUEST_UNDERSTANDING": "SIX_REQUEST_UNDERSTANDING",
-        "TOOL_ROUTE": "SIX_TOOL_ROUTE",
-        "RETRIEVAL": "SIX_RETRIEVAL",
-        "WORK_ANALYSIS": "SIX_WORK_ANALYSIS",
-        "PLANNING": "SIX_PLANNING",
-        "REVIEW": "SIX_REVIEW",
-    },
-}
+PROFILE_OWNER_BINDINGS = MappingProxyType(
+    {
+        profile.value: get_profile_owner_bindings(profile)
+        for profile in supported_graph_profiles()
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
