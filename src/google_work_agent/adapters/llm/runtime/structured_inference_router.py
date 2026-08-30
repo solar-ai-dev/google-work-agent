@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, cast
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
@@ -36,23 +36,13 @@ from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext, Severity
+from google_work_agent.ports.system.contracts.observability import (
+    LLMEventRecorder,
+    ObservabilityContext,
+    Severity,
+)
 from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
-
-
-class LLMEventRecorder(Protocol):
-    def record(
-        self,
-        *,
-        event_name: str,
-        severity: Severity,
-        correlation: ObservabilityContext,
-        attributes: Mapping[str, object],
-        result_code: str | None = None,
-        status: str | None = None,
-        duration_ms: int | None = None,
-    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

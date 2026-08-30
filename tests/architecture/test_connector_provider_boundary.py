@@ -125,7 +125,8 @@ def test_production_callers_do_not_import_connector_adapter_barrel() -> None:
 
 
 def test_connector_port_boundary_does_not_depend_on_adapters() -> None:
-    port_root = SRC / "ports" / "connectors"
+    port_root = SRC / "ports" / "connector"
+    assert port_root.is_dir()
     violations: list[str] = []
     for path in _python_files(port_root):
         for module_name in _imports(path):

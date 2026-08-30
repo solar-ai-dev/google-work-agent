@@ -42,25 +42,11 @@ from google_work_agent.ports.system.contracts.external_llm_transfer_scope import
     ExternalLlmTransferScopeV1,
 )
 from google_work_agent.ports.system.contracts.observability import (
+    LLMEventRecorder,
     ObservabilityContext,
     Severity,
 )
 from google_work_agent.ports.system.contracts.runtime import AppSettings
-
-
-class LLMEventRecorder(Protocol):
-    def record(
-        self,
-        *,
-        event_name: str,
-        severity: Severity,
-        correlation: ObservabilityContext,
-        attributes: Mapping[str, object],
-        result_code: str | None = None,
-        status: str | None = None,
-        duration_ms: int | None = None,
-    ) -> None:
-        """Emit one sanitized LLM event."""
 
 
 class StructuredLLMRuntime(Protocol):

@@ -234,6 +234,22 @@ class ObservabilityContext:
     google_request_id: str | None = None
 
 
+class LLMEventRecorder(Protocol):
+    """Record one sanitized LLM boundary event."""
+
+    def record(
+        self,
+        *,
+        event_name: str,
+        severity: Severity,
+        correlation: ObservabilityContext,
+        attributes: Mapping[str, object],
+        result_code: str | None = None,
+        status: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None: ...
+
+
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 

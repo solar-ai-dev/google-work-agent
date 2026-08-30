@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast
 
 from google_work_agent.application.orchestration.failure_record import (
     FAILURE_RECORD_FIELDS,
@@ -26,50 +26,15 @@ from google_work_agent.ports.llm import (
     PromptReference,
     ProviderResponsePayload,
     RuntimePolicy,
+    StructuredLLMProvider,
+    ToolCallingLLMProvider,
     ToolCallProviderResponse,
     ToolDefinition,
 )
 
 
-class _StructuredProvider(Protocol):
-    @property
-    def provider_name(self) -> str: ...
-    @property
-    def runtime(self) -> ActualRuntime: ...
-
-    def invoke_structured(
-        self,
-        *,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        runtime_policy: RuntimePolicy,
-        api_key: str | None,
-    ) -> ProviderResponsePayload: ...
-
-
 class _PromptInputValidator(Protocol):
     def validate(self, *, prompt_id: str, prompt_input: Mapping[str, object]) -> None: ...
-
-
-class _ToolCallingProvider(Protocol):
-    provider_name: str
-    runtime: ActualRuntime
-
-    def invoke_tool_call(
-        self,
-        *,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        tools: Sequence[ToolDefinition],
-        runtime_policy: RuntimePolicy,
-        api_key: str | None,
-    ) -> ToolCallProviderResponse: ...
-
-
-@runtime_checkable
-class _RuntimeToolCallingProvider(_ToolCallingProvider, Protocol):
-    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +48,7 @@ class PromptInputGuardedProvider:
     timeout/error therefore still consumes exactly one RunBudget call.
     """
 
-    delegate: _StructuredProvider
+    delegate: StructuredLLMProvider
     validator: _PromptInputValidator
 
     @property
@@ -126,13 +91,13 @@ class PromptInputGuardedProvider:
         normalized_input = _canonical_prompt_input(prompt_input)
         self._validate(prompt_ref=prompt_ref, prompt_input=normalized_input)
         delegate = self.delegate
-        if not isinstance(delegate, _RuntimeToolCallingProvider):
+        if not callable(getattr(delegate, "invoke_tool_call", None)):
             raise LLMInvocationError(
                 LLMErrorCode.RUNTIME_MODE_BLOCKED,
                 "selected provider does not support native tool calling",
             )
         account_provider_dispatch()
-        return delegate.invoke_tool_call(
+        return cast(ToolCallingLLMProvider, delegate).invoke_tool_call(
             prompt_ref=prompt_ref,
             prompt_input=normalized_input,
             tools=tools,

@@ -182,6 +182,36 @@ def test_non_persistence_p0_bindings_are_closed_and_unique() -> None:
     assert len({adapter for _port, adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
 
 
+def test_each_non_persistence_adapter_implements_its_port_surface() -> None:
+    for port, adapter in NON_PERSISTENCE_P0_BINDINGS:
+        port_methods = {
+            name
+            for name, value in vars(port).items()
+            if not name.startswith("_") and callable(value)
+        }
+        adapter_methods = {
+            name
+            for name, value in vars(adapter).items()
+            if not name.startswith("_") and callable(value)
+        }
+        assert port_methods <= adapter_methods, (port.__name__, adapter.__name__)
+
+
+def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols() -> None:
+    prompt_guard = _source("application/orchestration/prompt_input_guarded_provider.py")
+    application_runtime = _source("application/use_cases/llm/structured_inference_runtime.py")
+    adapter_router = _source("adapters/llm/runtime/structured_inference_router.py")
+
+    assert "class _StructuredProvider(Protocol)" not in prompt_guard
+    assert "class _ToolCallingProvider(Protocol)" not in prompt_guard
+    assert "class LLMEventRecorder(Protocol)" not in application_runtime
+    assert "class LLMEventRecorder(Protocol)" not in adapter_router
+    assert "StructuredLLMProvider," in prompt_guard
+    assert "ToolCallingLLMProvider," in prompt_guard
+    assert "LLMEventRecorder," in application_runtime
+    assert "LLMEventRecorder," in adapter_router
+
+
 @pytest.mark.parametrize(
     ("canonical_path", "canonical_symbol", "legacy_symbol"),
     [
