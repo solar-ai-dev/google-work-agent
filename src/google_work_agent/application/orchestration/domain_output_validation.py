@@ -49,6 +49,7 @@ from google_work_agent.domain.action.model import EffectType
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})
 _TARGET_BINDINGS: dict[str, tuple[str, str, str | None]] = {
+    "gmail_send": ("gmail_draft", "draft_id", None),
     "gmail_update_draft": ("gmail_draft", "draft_id", None),
     "tasks_update_task": ("task", "task_id", "task_list_id"),
     "tasks_delete_task": ("task", "task_id", "task_list_id"),
@@ -249,6 +250,7 @@ def _validate_work_analysis_receipt_references(
         "evidence_refs",
         "policy_confirmation_receipt_refs",
         "action_necessity",
+        "action_necessity_reason",
     }
     if set(root) != expected or root["schema_version"] != 2:
         raise CanonicalDomainValidationError("work analysis artifact is invalid")
@@ -278,12 +280,12 @@ def _validate_work_analysis_receipt_references(
         receipt_by_ref[key] = cast(PolicyConfirmationReceiptV1, receipt)
 
     for ref in refs:
-        receipt = receipt_by_ref.get((ref["artifact_id"], ref["revision"]))
-        if receipt is None:
+        resolved_receipt = receipt_by_ref.get((ref["artifact_id"], ref["revision"]))
+        if resolved_receipt is None:
             raise CanonicalDomainValidationError(
                 "work analysis references a missing/stale policy confirmation receipt"
             )
-        if receipt.get("decision") != "APPROVED":
+        if resolved_receipt.get("decision") != "APPROVED":
             raise CanonicalDomainValidationError(
                 "work analysis references a non-approved policy confirmation receipt"
             )
@@ -373,7 +375,7 @@ def _validate_action(
     if len(dependencies) != len(set(dependencies)):
         raise CanonicalDomainValidationError(f"{path}.depends_on_action_ids contains duplicates")
 
-    if effect in {EffectType.UPDATE.value, EffectType.DELETE.value}:
+    if effect in {EffectType.UPDATE.value, EffectType.DELETE.value} or tool_id == "gmail_send":
         _require_exact_target_evidence(
             tool_id=tool_id,
             arguments=arguments,

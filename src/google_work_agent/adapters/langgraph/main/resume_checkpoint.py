@@ -46,9 +46,7 @@ class ResumeCheckpointMixin:
             )
             if checkpoint is None or checkpoint.pre_reauth_status is None:
                 return None
-            authority: dict[str, object] = {
-                "resume_status": checkpoint.pre_reauth_status.value
-            }
+            authority: dict[str, object] = {"resume_status": checkpoint.pre_reauth_status.value}
             continuation_target = self._reauth_continuation_target(state)
             if continuation_target is not None:
                 authority["continuation_target"] = continuation_target
@@ -158,7 +156,7 @@ class ResumeCheckpointMixin:
             WorkflowPhase.PLAN_REVIEW.value: SupervisorTarget.PLAN_REVIEW_INSPECT,
             WorkflowPhase.DOMAIN_VALIDATION.value: SupervisorTarget.DOMAIN_VALIDATION,
             WorkflowPhase.WAITING_APPROVAL.value: SupervisorTarget.WAITING_APPROVAL,
-            WorkflowPhase.PREFLIGHT.value: SupervisorTarget.ACTION_EXECUTION,
+            WorkflowPhase.PREFLIGHT.value: SupervisorTarget.PREFLIGHT,
             WorkflowPhase.ACTION_EXECUTION.value: SupervisorTarget.ACTION_EXECUTION,
             WorkflowPhase.VERIFICATION.value: SupervisorTarget.ACTION_EXECUTION,
         }

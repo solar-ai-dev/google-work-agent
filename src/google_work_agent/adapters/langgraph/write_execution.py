@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import cast
 
 from langgraph.types import interrupt
@@ -17,6 +17,7 @@ from google_work_agent.application.use_cases.execution_attempt.execution_phase i
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
+    WriteExecutionPhaseResult,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
@@ -53,6 +54,52 @@ class WriteExecutionNode:
         self._has_persisted_cancel_intent = has_persisted_cancel_intent
         self._complete_write_run = complete_write_run
         self._current_run_version = current_run_version
+
+    def preflight(self, state: Mapping[str, object]) -> dict[str, object]:
+        """Project freshness/Claim readiness without invoking connector write."""
+
+        run_id = cast(str, state["run_id"])
+        plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
+        actions = self._list_actions(plan_id)
+        if actions and all(action.effect_type == "READ" for action in actions):
+            return {
+                "__target__": "action_execution",
+                "__logical_target__": "action_execution",
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            }
+        action = next(
+            (item for item in actions if item.status == ActionStatusV1.APPROVED.value),
+            None,
+        )
+        if action is None:
+            return {
+                "__target__": "domain_reconcile",
+                "__logical_target__": "domain_reconcile",
+            }
+        request = WriteExecutionPhaseRequest(run_id, action.id, action.version)
+        result = self._execution_phase.preflight(request)
+        if result.disposition is WriteExecutionDisposition.CLAIM_READY:
+            return {
+                "__target__": "action_execution",
+                "__logical_target__": "action_execution",
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "PREFLIGHT_READY",
+                    "run_id": run_id,
+                    "action_id": action.id,
+                    "action_version": action.version,
+                    "attempt_id": result.attempt_id,
+                    "approval_id": result.approval_id,
+                    "claimed_action_version": result.claimed_action_version,
+                },
+            }
+        return self._preflight_failure_patch(
+            state=state,
+            plan_id=plan_id,
+            action_id=action.id,
+            result=result,
+        )
 
     def __call__(self, state: GraphState) -> GraphState:
         run_id = cast(str, state["run_id"])
@@ -120,6 +167,12 @@ class WriteExecutionNode:
                 plan_id=plan_id,
                 verification_statuses=verification_statuses,
             )
+        control = state.get("__workflow_control__")
+        control_matches = (
+            isinstance(control, dict)
+            and control.get("stage") == "PREFLIGHT_READY"
+            and control.get("action_id") == action.id
+        )
         if action.status in {
             ActionStatusV1.VERIFIED.value,
             ActionStatusV1.MISMATCH.value,
@@ -131,16 +184,30 @@ class WriteExecutionNode:
         }:
             verification_statuses.append(action.status)
             return None
-        if action.status != ActionStatusV1.APPROVED.value:
+        if action.status != ActionStatusV1.APPROVED.value and not control_matches:
             return None
 
-        phase_result = self._execution_phase.execute(
+        if not control_matches:
+            return {
+                **state,
+                "__target__": "preflight",
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            }
+        assert isinstance(control, dict)
+        phase_result = self._execution_phase.execute_claimed(
             WriteExecutionPhaseRequest(
-                run_id=run_id,
-                action_id=action.id,
-                action_version=action.version,
-            )
+                run_id,
+                action.id,
+                cast(int, control["action_version"]),
+            ),
+            WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.CLAIM_READY,
+                attempt_id=cast(str | None, control.get("attempt_id")),
+                approval_id=cast(str | None, control.get("approval_id")),
+                claimed_action_version=cast(int | None, control.get("claimed_action_version")),
+            ),
         )
+        state = cast(GraphState, {**state, "__workflow_control__": None})
         if phase_result.disposition is WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED:
             _ = interrupt(
                 {
@@ -231,6 +298,60 @@ class WriteExecutionNode:
                 verification_statuses=verification_statuses,
             )
         return None
+
+    def _preflight_failure_patch(
+        self,
+        *,
+        state: Mapping[str, object],
+        plan_id: str,
+        action_id: str,
+        result: WriteExecutionPhaseResult,
+    ) -> dict[str, object]:
+        if result.disposition is WriteExecutionDisposition.PREFLIGHT_REAPPROVAL_REQUIRED:
+            _ = interrupt(
+                {
+                    "interrupt_kind": "APPROVAL",
+                    "run_id": state["run_id"],
+                    "plan_id": plan_id,
+                    "action_id": action_id,
+                    "reason": "PREFLIGHT_REAPPROVAL_REQUIRED",
+                }
+            )
+            return {
+                "__target__": "preflight",
+                "__logical_target__": "preflight",
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            }
+        if result.disposition is WriteExecutionDisposition.PREFLIGHT_BLOCKED:
+            return {
+                "__target__": "end",
+                "__logical_target__": "end",
+                "execution_summary": {
+                    "result": "PREFLIGHT_BLOCKED",
+                    "action_id": action_id,
+                    "safe_error_code": result.safe_error_code,
+                },
+            }
+        if result.disposition is WriteExecutionDisposition.REAUTH_REQUIRED:
+            return {
+                "__target__": "end",
+                "__logical_target__": "end",
+                "execution_summary": {
+                    "result": "REAUTH_REQUIRED",
+                    "action_id": action_id,
+                    "result_code": result.result_code,
+                },
+            }
+        if result.disposition is WriteExecutionDisposition.CANCEL_REQUESTED:
+            return {
+                "__target__": "end",
+                "__logical_target__": "end",
+                "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+            }
+        return {
+            "__target__": "domain_reconcile",
+            "__logical_target__": "domain_reconcile",
+        }
 
     def _reconcile_phase_result(
         self,

@@ -29,6 +29,7 @@ from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     BudgetDecision,
     BudgetDecisionV1,
+    BudgetProfile,
     DomainValidationOutputV1,
     DomainValidationResult,
     FinalizeIntent,
@@ -37,12 +38,14 @@ from google_work_agent.application.orchestration.contracts import (
     PlanningResult,
     RequestUnderstandingResult,
     ReviewResult,
+    RunBudgetV1,
     WorkflowPhase,
     approve_additional_acquisition,
     approve_planning_revision,
     approve_review_recheck,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
+    promote_budget_profile,
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -333,6 +336,7 @@ def _route_tool_routing(
                 WorkflowPhase.CONTEXT_RETRIEVAL,
                 tool_route_plan=plan,
                 workflow_signal=None,
+                retry_budget=_retrieval_route_budget(state),
             ),
             reason_code=disposition.value,
         )
@@ -420,6 +424,14 @@ def _route_source_planning(
         ),
         source_fetch_plans=source_fetch_plans,
     )
+
+
+def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV1:
+    budget = dict(state["retry_budget"])
+    budget["profile"] = promote_budget_profile(
+        budget["profile"], BudgetProfile.RETRIEVAL_HEAVY
+    ).value
+    return cast(RunBudgetV1, budget)
 
 
 def _route_api_acquisition(

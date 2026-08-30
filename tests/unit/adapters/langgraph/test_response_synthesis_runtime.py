@@ -138,6 +138,8 @@ def test_response_synthesis_target_is_routable_for_every_profile(profile: GraphP
 
 
 def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
+    from google_work_agent.adapters.langgraph.main.graph import MainControlNodeBindings
+
     finalize_handler = object()
     bindings = GraphNodeBindings(
         request_understanding=object(),
@@ -148,9 +150,7 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
         planning=object(),
         review=object(),
         single_workflow=object(),
-        domain_validation=object(),
         waiting_approval=object(),
-        modify_review=object(),
         action_execution=object(),
         recovery=object(),
         finalize=finalize_handler,
@@ -162,6 +162,15 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
         profile=GraphProfile.SIX_ROLE_BASELINE,
         topology=("planning",),
         bindings=bindings,
+        control_bindings=MainControlNodeBindings(
+            initialize=object(),
+            retrieval_entry=object(),
+            planning_entry=object(),
+            review_entry=object(),
+            domain_validation=object(),
+            preflight=object(),
+            domain_reconcile=object(),
+        ),
         route_next_node=lambda _state: "end",
         checkpointer=None,
     )

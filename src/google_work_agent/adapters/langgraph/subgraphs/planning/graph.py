@@ -383,14 +383,27 @@ class PlanningSubgraph:
         if "work_analysis" in working:
             result["work_analysis"] = working["work_analysis"]
         if self._llm_runtime is not None:
+            first = not isinstance(state.get(PLANNING_AGENT_LOCAL_KEY), Mapping)
+            if first:
+                assert self._id_factory is not None
+                result[PLANNING_AGENT_LOCAL_KEY] = build_agent_local_state(
+                    agent_role="planning",
+                    invocation_id=self._id_factory(),
+                    node_state="ACTION_OBJECTIVE_COMPLETE",
+                    input_projection={"route": "ACTION"},
+                    prompt_ref=self._prompt_refs[
+                        "planning.draft_action_objective_per_output_route"
+                    ],
+                )
             result["retry_budget"] = consume_llm_call_budget(
                 cast(Any, state), provider_calls_consumed=len(cast(list[object], routes))
             )
+            trace_state = cast(PlanningLocalState, {**state, **result})
             result["trace_context"] = self._trace(
-                state,
+                trace_state,
                 "draft_action_objective_per_output_route",
                 self._prompt_refs["planning.draft_action_objective_per_output_route"],
-                first=not isinstance(state.get(PLANNING_AGENT_LOCAL_KEY), Mapping),
+                first=first,
             )
         return result
 

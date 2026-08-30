@@ -131,8 +131,10 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
     "planning.compose_answer.revise",
-    "review.inspect",
-    "review.inspect.recheck",
+    "review.inspect_goal_and_evidence",
+    "review.inspect_action_scope_and_route",
+    "review.inspect_constraints_and_policy_summary",
+    "review.recheck_affected_dimensions",
 }
 _PROFILE_CANDIDATE_PROMPT_IDS = {
     "profile.single.request_source.initial",
@@ -184,6 +186,123 @@ class _PendingLegacyAnalysisState:
     def __init__(self) -> None:
         self.payload: Mapping[str, object] | None = None
         self.facts: list[dict[str, object]] = []
+
+
+class _PendingLegacyReviewState:
+    """Carry one historical whole-Review fixture across exact atomic prompts."""
+
+    def __init__(self) -> None:
+        self.payload: Mapping[str, object] | None = None
+
+
+_REVIEW_DIMENSIONS = (
+    "review.inspect_goal_and_evidence",
+    "review.inspect_action_scope_and_route",
+    "review.inspect_constraints_and_policy_summary",
+)
+
+
+def _synthesize_atomic_review(
+    *,
+    prompt_id: str | None,
+    prompt_input: Mapping[str, object],
+    queued: "deque[StructuredLLMResult]",
+    state: _PendingLegacyReviewState,
+) -> StructuredLLMResult | None:
+    """Adapt historical integration outcomes to the exact Review contract."""
+
+    if prompt_id == "review.recheck_affected_dimensions":
+        if not queued:
+            raise RuntimeError("no queued Review recheck fixture")
+        payload = queued.popleft().structured_output
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("Review recheck fixture must be an object")
+        dimensions = cast(list[str], prompt_input["affected_dimensions"])
+        findings = _legacy_review_findings(payload)
+        return _llm_result(
+            {
+                "schema_version": 1,
+                "affected_dimensions": dimensions,
+                "findings": [item for item in findings if item["dimension"] in dimensions],
+            }
+        )
+
+    if prompt_id not in _REVIEW_DIMENSIONS:
+        return None
+    if prompt_id == _REVIEW_DIMENSIONS[0]:
+        if not queued:
+            raise RuntimeError("no queued Review fixture")
+        payload = queued.popleft().structured_output
+        if not isinstance(payload, Mapping) or "status" not in payload:
+            raise RuntimeError("atomic Review requires a queued historical Review fixture")
+        state.payload = payload
+    if state.payload is None:
+        raise RuntimeError("atomic Review fixture state is missing")
+    findings = _legacy_review_findings(state.payload)
+    result = _llm_result(
+        {
+            "schema_version": 1,
+            "dimension": prompt_id,
+            "findings": [item for item in findings if item["dimension"] == prompt_id],
+        }
+    )
+    if prompt_id == _REVIEW_DIMENSIONS[-1]:
+        state.payload = None
+    return result
+
+
+def _legacy_review_findings(payload: Mapping[str, object]) -> list[dict[str, object]]:
+    status = str(payload.get("status", "BLOCK"))
+    if status == "PASS":
+        return []
+    dimension = {
+        "ROUTE_RECONSIDERATION": "review.inspect_action_scope_and_route",
+        "CONFIRM": "review.inspect_constraints_and_policy_summary",
+        "BLOCK": "review.inspect_constraints_and_policy_summary",
+    }.get(status, "review.inspect_goal_and_evidence")
+    kind = {
+        "RETRIEVE_MORE": "EVIDENCE_GAP",
+        "ROUTE_RECONSIDERATION": "ROUTE_ISSUE",
+        "CONFIRM": "CONFIRMATION",
+        "BLOCK": "BLOCKER",
+    }.get(status, "ISSUE")
+    issues = payload.get("issues")
+    source = next(
+        (dict(item) for item in issues if isinstance(item, Mapping)),
+        {},
+    ) if isinstance(issues, list) else {}
+    confirmation = payload.get("confirmation")
+    if status == "CONFIRM" and isinstance(confirmation, Mapping):
+        source = dict(confirmation)
+    blockers = payload.get("blockers")
+    description = source.get("message") or source.get("question")
+    if not isinstance(description, str) or not description:
+        if isinstance(blockers, list) and blockers and isinstance(blockers[0], str):
+            description = blockers[0]
+        else:
+            description = f"Historical Review fixture requested {status}."
+    required = source.get("options") or source.get("required_information") or []
+    if status == "RETRIEVE_MORE" and not required:
+        request = payload.get("additional_acquisition_request")
+        if isinstance(request, Mapping):
+            required = (
+                request.get("queries")
+                or request.get("required_information")
+                or request.get("missing_information")
+                or []
+            )
+    return [
+        {
+            "dimension": dimension,
+            "code": str(source.get("kind") or source.get("code") or status),
+            "finding_kind": kind,
+            "description": description,
+            "evidence_refs": list(source.get("evidence_refs", [])),
+            "affected_action_ids": list(source.get("affected_action_ids", [])),
+            "affected_route_ids": list(source.get("resource_refs", [])),
+            "required_information": list(required) if isinstance(required, list) else [],
+        }
+    ]
 
 
 def _synthesize_atomic_work_analysis(
@@ -428,6 +547,7 @@ class _QueuedLLMRuntime:
         self._pending_request_intent: Mapping[str, object] | None = None
         self._segment_id_aliases: dict[str, str] = {}
         self._pending_legacy_analysis_state = _PendingLegacyAnalysisState()
+        self._pending_legacy_review_state = _PendingLegacyReviewState()
 
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
@@ -531,6 +651,14 @@ class _QueuedLLMRuntime:
         )
         if atomic_analysis is not None:
             return atomic_analysis
+        atomic_review = _synthesize_atomic_review(
+            prompt_id=getattr(prompt_ref, "prompt_id", None),
+            prompt_input=cast(Mapping[str, object], kwargs["prompt_input"]),
+            queued=self._queued,
+            state=self._pending_legacy_review_state,
+        )
+        if atomic_review is not None:
+            return atomic_review
         if getattr(prompt_ref, "prompt_id", None) == "planning.outline_answer":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             if self._queued and isinstance(self._queued[0].structured_output, Mapping):
@@ -1577,8 +1705,10 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
     "planning.compose_answer.revise",
-    "review.inspect",
-    "review.inspect.recheck",
+    "review.inspect_goal_and_evidence",
+    "review.inspect_action_scope_and_route",
+    "review.inspect_constraints_and_policy_summary",
+    "review.recheck_affected_dimensions",
 }
 # GAP-F1 (Q2-X update): requested_effect_hints (RequestIntentV2), not a
 # keyword scan over request_text, decides the SIX_ROLE_BASELINE Planning

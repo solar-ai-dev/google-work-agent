@@ -225,7 +225,7 @@ def test_tool_route_subgraph_freezes_plan_before_context_retriever(tmp_path: Pat
         )
         routed = runtime._tool_route_subgraph.invoke(understood)  # noqa: SLF001
 
-        assert routed["__target__"] == "context_retriever"
+        assert routed["__target__"] == "retrieval_entry"
         assert routed["tool_route_plan"]["schema_version"] == 2
         input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
         assert {route["resource_type"] for route in input_routes} == {"TASK", "TASK_LIST"}
@@ -259,8 +259,8 @@ def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
         assert "__request_agent_local__" not in result
         assert "__acquisition_agent_local__" not in result
         assert "__acquisition_planning_output__" not in result
-        assert result["__logical_target__"] == "context_retriever"
-        assert result["__target__"] == "context_retriever"
+        assert result["__logical_target__"] == "retrieval_entry"
+        assert result["__target__"] == "retrieval_entry"
         assert gateway.count_calls("list_tasks") == 1
         assert gateway.count_calls("get_task") >= 1
         assert gateway.count_calls("search_gmail_threads") == 0
@@ -333,7 +333,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_atomic_llm_calls(
         assert result.outcome is WorkflowOutcome.ACCEPTED
         trace_context = values["trace_context"]
         assert trace_context["agent_invocation_count"] == 6
-        assert trace_context["llm_call_count"] == 11
+        assert trace_context["llm_call_count"] == 16
         invocation_log: list[str] = []
         seen_invocation_ids: set[str] = set()
         for item in trace_context["agent_node_log"]:
@@ -504,7 +504,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
             "based_on": [],
         }
         routed = runtime._tool_route_subgraph.invoke(tool_route_state)  # noqa: SLF001
-        assert routed["__target__"] == "context_retriever"
+        assert routed["__target__"] == "retrieval_entry"
 
         runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
         runtime._analysis_subgraph.invoke = _forbid_peer_invoke("work_analysis")  # noqa: SLF001
@@ -532,7 +532,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
         review_state["analysis_result"] = analysis_result
         review_state["answer_draft"] = answer_draft
         review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
-        assert review_result["__target__"] == "planning"
+        assert review_result["__target__"] == "planning_entry"
 
         assert peer_invocations == []
     finally:
@@ -558,6 +558,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         "affected_field_paths": ["$.answer"],
         "evidence_refs": ["evidence-seg-2"],
         "resource_refs": ["task:task-followup"],
+        "required_information": ["current task evidence"],
         "reason_codes": ["EVIDENCE_SUPPORTED"],
     }
     runtime = _make_runtime(
@@ -584,8 +585,8 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         base_state["answer_draft"] = _answer_output()
 
         revise_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
-        assert revise_state["__logical_target__"] == "planning"
-        assert revise_state["__target__"] == "planning"
+        assert revise_state["__logical_target__"] == "planning_entry"
+        assert revise_state["__target__"] == "planning_entry"
 
         # This hand-built base_state never froze a tool_route_plan, so
         # _route_retrieval_required's executability guard fails closed to

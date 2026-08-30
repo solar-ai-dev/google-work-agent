@@ -134,6 +134,7 @@ def _analysis(
         "evidence_refs": ["ev-1"],
         "policy_confirmation_receipt_refs": list(receipt_refs),
         "action_necessity": action_necessity,
+        "action_necessity_reason": "requested write" if action_necessity == "REQUIRED" else None,
     }
 
 

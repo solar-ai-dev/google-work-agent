@@ -1262,7 +1262,14 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
 
 
 @pytest.mark.parametrize(
-    ("plan_output", "expected_operation", "context_family", "recovery_fault", "intent"),
+    (
+        "plan_output",
+        "expected_operation",
+        "context_family",
+        "recovery_fault",
+        "intent",
+        "expected_domain_block",
+    ),
     [
         (
             _send_write_plan_output,
@@ -1270,6 +1277,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             "GMAIL",
             None,
             _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
+            True,
         ),
         (
             _delete_write_plan_output,
@@ -1281,6 +1289,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
                 effect="DELETE",
                 source="CALENDAR",
             ),
+            False,
         ),
         (
             _delete_task_write_plan_output,
@@ -1288,6 +1297,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             "TASKS",
             None,
             _action_intent(resource="TASK", effect="DELETE"),
+            False,
         ),
         (
             _send_write_plan_output,
@@ -1295,6 +1305,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             "GMAIL",
             GoogleGatewayFaultKind.HTTP_500,
             _action_intent(resource="GMAIL_MESSAGE", effect="SEND"),
+            True,
         ),
     ],
 )
@@ -1305,6 +1316,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     context_family: Literal["TASKS", "GMAIL", "CALENDAR"],
     recovery_fault: GoogleGatewayFaultKind | None,
     intent: RequestIntentV2,
+    expected_domain_block: bool,
 ) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
@@ -1338,6 +1350,12 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
     )
 
     started = start_with_admission(runtime, database_path, _start_write_request())
+    if expected_domain_block:
+        assert started.outcome is WorkflowOutcome.COMPLETED
+        assert started.payload["run_status"] == "BLOCKED"
+        assert gateway.count_calls(expected_operation) == 0
+        runtime.close()
+        return
     assert started.outcome is WorkflowOutcome.ACCEPTED
     action_id = _sole_persisted_action_id(database_path)
     approved = ApproveWriteActionService(

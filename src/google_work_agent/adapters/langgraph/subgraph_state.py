@@ -112,6 +112,7 @@ class AgentSubgraphInputEnvelope(TypedDict, total=False):
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
+    __workflow_control__: dict[str, object] | None
 
 
 class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):
@@ -181,6 +182,8 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV2 | None
+    __modify_review_plan_id__: str | None
+    __modify_review_version__: int | None
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
 

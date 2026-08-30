@@ -46,8 +46,8 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.SINGLE_BASELINE,
             SupervisorTarget.PLAN_REVIEW_RECHECK,
-            "single_workflow",
-            "single_workflow",
+            "review_entry",
+            "review_entry",
         ),
         (
             GraphProfile.THREE_STAGE,
@@ -64,14 +64,14 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.PLANNING_REVISE_PLAN,
-            "stage_two",
-            "stage_two",
+            "planning_entry",
+            "planning_entry",
         ),
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.PLAN_REVIEW_RECHECK,
-            "stage_three",
-            "stage_three",
+            "review_entry",
+            "review_entry",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,
@@ -82,20 +82,20 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.SIX_ROLE_BASELINE,
             SupervisorTarget.CONTEXT_RETRIEVAL,
-            "context_retriever",
-            "context_retriever",
+            "retrieval_entry",
+            "retrieval_entry",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,
             SupervisorTarget.PLANNING_REVISE_ANSWER,
-            "planning",
-            "planning",
+            "planning_entry",
+            "planning_entry",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,
             SupervisorTarget.PLAN_REVIEW_INSPECT,
-            "review",
-            "review",
+            "review_entry",
+            "review_entry",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,
@@ -120,14 +120,6 @@ def test_profile_route_translation_is_preserved(
 @pytest.mark.parametrize(
     "target",
     [
-        # A SupervisorTarget enum member that is defined but has no entry
-        # for this profile's route table (e.g. PREFLIGHT is never present
-        # in any _PROFILE_ROUTES map -- runtime.py's domain_validation node
-        # always rewrites it to ACTION_EXECUTION before this is reached in
-        # production, but translate() itself must still fail closed rather
-        # than silently defaulting to "end" if that override is ever
-        # bypassed or a future target is added without a route entry).
-        SupervisorTarget.PREFLIGHT.value,
         # A string that is not even a valid SupervisorTarget at all.
         "NOT_A_REAL_TARGET",
     ],

@@ -165,7 +165,7 @@ def test_edge_request_to_acquisition_to_context_preserves_typed_state(
         assert understood["__target__"] == "tool_route"
 
         acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
-        assert acquired["__target__"] == "context_retriever"
+        assert acquired["__target__"] == "retrieval_entry"
         assert acquired["source_fetch_plans"][0]["source"] == source
         assert acquired["acquisition_result"]["status"] in {"COMPLETE", "PARTIAL"}
         assert gateway.count_calls(expected_operation) >= 1
@@ -192,7 +192,7 @@ def test_edge_answer_only_no_fetch_skips_google_and_builds_typed_result(
             runtime._initial_state(_start_request())  # noqa: SLF001
         )
         acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
-        assert acquired["__target__"] == "context_retriever"
+        assert acquired["__target__"] == "retrieval_entry"
         assert acquired["source_fetch_plans"] == []
         assert acquired["acquisition_result"]["status"] == "COMPLETE"
         assert acquired["acquisition_result"]["source_summaries"] == []
@@ -255,7 +255,7 @@ def test_edge_partial_acquisition_preserves_result_and_routes_to_context(tmp_pat
         state["request_intent"] = _clear_intent()
         result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
         assert result["acquisition_result"]["status"] == "PARTIAL"
-        assert result["__target__"] == "context_retriever"
+        assert result["__target__"] == "retrieval_entry"
         assert len(result["acquisition_result"]["source_summaries"]) == 2
     finally:
         runtime.close()
@@ -326,7 +326,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
         assert CONTEXT_RAG_CANDIDATES_KEY not in context
 
         analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
-        assert analysis["__target__"] == "planning"
+        assert analysis["__target__"] == "planning_entry"
         assert analysis["work_analysis_result"]["work_facts"]
 
         planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001

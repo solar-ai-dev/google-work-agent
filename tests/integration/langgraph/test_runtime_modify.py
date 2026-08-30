@@ -50,6 +50,13 @@ def _current_review_version(database_path: Path, plan_id: str) -> int:
     return bundle.plan.review_version
 
 
+def _run_persisted_review(runtime: object, prepared: dict[str, object]) -> dict[str, object]:
+    entry = runtime._main_control_bindings().review_entry  # type: ignore[attr-defined]  # noqa: SLF001
+    first = entry(prepared)
+    reviewed = runtime._review_subgraph.invoke({**prepared, **first})  # type: ignore[attr-defined]  # noqa: SLF001
+    return cast(dict[str, object], {**reviewed, **entry(reviewed)})
+
+
 def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Path) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
@@ -170,6 +177,14 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
             _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ]
+        if profile is GraphProfile.SINGLE_BASELINE
+        else [
+            _profile_request_source_output(request_intent=_action_required_intent()),
+            _selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _write_plan_output(),
+            _review_output("PASS"),
+        ]
     )
     runtime = _make_runtime(
         database_path=database_path,
@@ -276,7 +291,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                     }
                 ],
             ),
-            "planning",
+            "planning_entry",
             "REQUIRED",
             "SUPERSEDED",
             "PLANNING",
@@ -308,7 +323,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
                     "resource_hints": ["task:task-followup"],
                 },
             ),
-            "context_retriever",
+            "retrieval_entry",
             "REQUIRED",
             "SUPERSEDED",
             "PLANNING",
@@ -385,7 +400,7 @@ def test_modify_review_branches_use_existing_supervisor_routes(
             plan_id=plan_id,
             review_version=review_version,
         )
-        reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
+        reviewed = _run_persisted_review(runtime, prepared)
 
         assert reviewed["__target__"] == expected_target
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
@@ -485,7 +500,7 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
             plan_id=plan_id,
             review_version=review_version,
         )
-        reviewed = runtime._modify_review_node(prepared)  # noqa: SLF001
+        reviewed = _run_persisted_review(runtime, prepared)
 
         assert reviewed["__target__"] == "end"
         assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
@@ -625,6 +640,14 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
             )
         )
 
+        if review_status == "RETRIEVE_MORE":
+            assert resumed.outcome is WorkflowOutcome.COMPLETED
+            assert resumed.payload["run_status"] == "BLOCKED"
+            with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+                run = unit_of_work.runs.get("run-1")
+            assert run is not None and run.status.value == "BLOCKED"
+            assert gateway.count_calls("create_task") == 0
+            return
         assert resumed.outcome is WorkflowOutcome.ACCEPTED
         connection = connect_sqlite(database_path)
         try:
@@ -792,8 +815,9 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         )
         assert second_modified["applied"] is True
         second_review_version = _current_review_version(database_path, plan_id)
-        stale_review = runtime._modify_review_node(first_generation)  # noqa: SLF001
-        stale_domain_result = runtime._domain_validation_node(stale_review)  # noqa: SLF001
+        stale_review = _run_persisted_review(runtime, first_generation)
+        domain_validation = runtime._main_control_bindings().domain_validation  # noqa: SLF001
+        stale_domain_result = domain_validation(stale_review)
 
         assert stale_domain_result["__target__"] == "end"
         assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -44,6 +44,7 @@ from tests.integration.langgraph.test_runtime import (
     _make_runtime,
     _make_runtime_with_llm,
     _PendingLegacyAnalysisState,
+    _PendingLegacyReviewState,
     _PendingPlanActionsState,
     _replace_result_aliases,
     _review_output,
@@ -55,6 +56,7 @@ from tests.integration.langgraph.test_runtime import (
     _sufficiency_output,
     _synthesize_action_argument_candidate,
     _synthesize_action_objective_candidate,
+    _synthesize_atomic_review,
     _synthesize_atomic_work_analysis,
     _synthesize_retrieval_query_plan,
     _write_plan_output,
@@ -91,6 +93,7 @@ class _ToolRouteQueuedLLMRuntime:
         self._classify_intent = classify_intent
         self._pending_plan_actions_state = _PendingPlanActionsState()
         self._pending_legacy_analysis_state = _PendingLegacyAnalysisState()
+        self._pending_legacy_review_state = _PendingLegacyReviewState()
         self._segment_id_aliases: dict[str, str] = {}
 
     def invoke_structured(self, **kwargs: object) -> Any:
@@ -143,6 +146,49 @@ class _ToolRouteQueuedLLMRuntime:
         )
         if atomic_analysis is not None:
             return atomic_analysis
+        atomic_review = _synthesize_atomic_review(
+            prompt_id=prompt_id,
+            prompt_input=cast(Mapping[str, object], kwargs["prompt_input"]),
+            queued=self._queued,
+            state=self._pending_legacy_review_state,
+        )
+        if atomic_review is not None:
+            return atomic_review
+        if prompt_id == "planning.outline_answer":
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            request_intent = cast(Mapping[str, object], prompt_input["request_intent"])
+            evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
+            evidence_refs = [
+                cast(str, item.get("evidence_id", item.get("evidence_ref")))
+                for item in evidence
+                if isinstance(item.get("evidence_id", item.get("evidence_ref")), str)
+            ]
+            return _llm_result(
+                {
+                    "sections": [str(request_intent.get("goal", "direct answer"))],
+                    "evidence_refs": evidence_refs,
+                }
+            )
+        if prompt_id == "planning.compose_answer":
+            output_schema = kwargs.get("output_schema")
+            if getattr(output_schema, "schema_version", None) == "planning-answer-draft-v2":
+                if not self._queued:
+                    raise RuntimeError("no queued Planning answer result")
+                payload = self._queued.popleft().structured_output
+                if not isinstance(payload, Mapping):
+                    raise RuntimeError("Planning answer fixture must be an object")
+                return _replace_result_aliases(
+                    _llm_result(
+                        {
+                            "schema_version": 2,
+                            "answer": payload.get("answer", ""),
+                            "evidence_refs": list(
+                                cast(list[str], payload.get("evidence_refs", []))
+                            ),
+                        }
+                    ),
+                    self._segment_id_aliases,
+                )
         if prompt_id == "planning.draft_action_objective_per_output_route":
             return _llm_result(
                 _synthesize_action_objective_candidate(

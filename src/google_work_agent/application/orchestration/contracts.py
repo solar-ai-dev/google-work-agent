@@ -12,8 +12,6 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
 # ``handoff_contracts`` imports this module for shared budget types.  Keep the
 # runtime annotation resolvable without creating that reverse import cycle;
 # static checking still sees the exact union below.
-WorkflowSignalV1 = object
-
 if TYPE_CHECKING:
     from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
         ScopeExpansionRequiredV1,
@@ -33,6 +31,8 @@ if TYPE_CHECKING:
         StateArtifactMetaV1,
         WorkflowSignalV1,
     )
+else:
+    WorkflowSignalV1 = object
 
 
 class BudgetProfile(StrEnum):
@@ -647,16 +647,15 @@ def promote_budget_profile(
 def _effective_llm_call_cap(budget: RunBudgetV1) -> int:
     """Combined Revision+Retrieval cap (docs/15 SS8.2, docs/06 SS11).
 
-    When a Run has actually triggered both a planning revision
-    (``planning_revisions_used`` -- shared by Review REVISE approval and
-    mandatory Modify Review, both via ``approve_planning_revision``) and an
-    additional acquisition (``additional_acquisitions_used`` via
-    ``approve_additional_acquisition``), neither single profile's own
-    ceiling applies -- the Run may use up to ``ABSOLUTE_MAX_LLM_CALLS``.
-    Reads only the two existing persisted counters; no new Profile value or
-    counter is introduced.
+    When a Run has both a planning revision (shared by Review REVISE and
+    mandatory Modify Review) and retrieval-heavy execution, neither single
+    profile ceiling applies. Retrieval-heavy may come from the initial frozen
+    route or an additional acquisition; no new profile or counter is needed.
     """
-    if budget["planning_revisions_used"] > 0 and budget["additional_acquisitions_used"] > 0:
+    if budget["planning_revisions_used"] > 0 and (
+        budget["additional_acquisitions_used"] > 0
+        or budget["profile"] == BudgetProfile.RETRIEVAL_HEAVY.value
+    ):
         return ABSOLUTE_MAX_LLM_CALLS
     current_profile = BudgetProfile(budget["profile"])
     return BUDGET_PROFILE_LIMITS[current_profile]

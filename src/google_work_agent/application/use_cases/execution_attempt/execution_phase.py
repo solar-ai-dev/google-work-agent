@@ -132,6 +132,7 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class WriteExecutionDisposition(StrEnum):
+    CLAIM_READY = "CLAIM_READY"
     PREFLIGHT_REAPPROVAL_REQUIRED = "PREFLIGHT_REAPPROVAL_REQUIRED"
     PREFLIGHT_BLOCKED = "PREFLIGHT_BLOCKED"
     DOMAIN_RECONCILE = "DOMAIN_RECONCILE"
@@ -159,6 +160,9 @@ class WriteExecutionPhaseResult:
     current_status: str | None = None
     current_version: int | None = None
     next_allowed_commands: tuple[str, ...] = ()
+    attempt_id: str | None = None
+    approval_id: str | None = None
+    claimed_action_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +238,16 @@ class WriteExecutionPhaseCoordinator:
         self._resolve_as_failed = resolve_as_failed
 
     def execute(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
+        """Preserve the Application API while keeping preflight and write boundaries explicit."""
+
+        claim = self.preflight(request)
+        if claim.disposition is not WriteExecutionDisposition.CLAIM_READY:
+            return claim
+        return self.execute_claimed(request, claim)
+
+    def preflight(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
+        """Validate freshness and commit Claim without performing connector I/O."""
+
         try:
             source_snapshot = self._preflight_write(action_id=request.action_id) or {}
         except (GoogleWorkspaceGatewayError, LookupError, PolicyViolationError) as error:
@@ -354,12 +368,43 @@ class WriteExecutionPhaseCoordinator:
         if claimed.attempt_id is None or claimed.approval_id is None:
             return self._claim_authority_missing(claimed)
 
-        attempt_id = claimed.attempt_id
+        return WriteExecutionPhaseResult(
+            disposition=WriteExecutionDisposition.CLAIM_READY,
+            action_status=claimed.current_status.value,
+            result_code=claimed.result_code.value,
+            current_status=claimed.current_status.value,
+            current_version=claimed.current_version,
+            next_allowed_commands=tuple(command.value for command in claimed.next_allowed_commands),
+            attempt_id=claimed.attempt_id,
+            approval_id=claimed.approval_id,
+            claimed_action_version=claimed.current_version,
+        )
+
+    def execute_claimed(
+        self,
+        request: WriteExecutionPhaseRequest,
+        claim: WriteExecutionPhaseResult,
+    ) -> WriteExecutionPhaseResult:
+        """Execute only a claim that PREFLIGHT committed and projected."""
+
+        if (
+            claim.disposition is not WriteExecutionDisposition.CLAIM_READY
+            or claim.attempt_id is None
+            or claim.approval_id is None
+            or claim.claimed_action_version is None
+        ):
+            raise ValueError("execute_claimed requires a complete CLAIM_READY projection")
+
+        attempt_id = claim.attempt_id
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(request.action_id)
-            approval = unit_of_work.approval_history.get(claimed.approval_id)
+            approval = unit_of_work.approval_history.get(claim.approval_id)
         if action is None or approval is None:
-            return self._claim_authority_missing(claimed)
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+                result_code=ResultCode.STATE_CONFLICT.value,
+                current_version=claim.claimed_action_version,
+            )
         prepared = self._connector_execution.prepare_write(
             tool_name=action.tool_name,
             arguments=cast(dict[str, object], loads(action.arguments_json)),
@@ -383,7 +428,7 @@ class WriteExecutionPhaseCoordinator:
             abort_payload = {
                 "action_id": request.action_id,
                 "attempt_id": attempt_id,
-                "expected_action_version": claimed.current_version,
+                "expected_action_version": claim.claimed_action_version,
                 "expected_attempt_version": 0,
                 "error_code": "CANCEL_REQUESTED",
                 "error_detail": "write was not sent because cancellation was requested",
@@ -394,7 +439,7 @@ class WriteExecutionPhaseCoordinator:
                     request_hash=calculate_canonical_json_hash(abort_payload),
                     action_id=request.action_id,
                     attempt_id=attempt_id,
-                    expected_action_version=claimed.current_version,
+                    expected_action_version=claim.claimed_action_version,
                     expected_attempt_version=0,
                     error_code="CANCEL_REQUESTED",
                     error_detail="write was not sent because cancellation was requested",
@@ -446,7 +491,7 @@ class WriteExecutionPhaseCoordinator:
             return self._handle_execution_error(
                 request=request,
                 attempt_id=attempt_id,
-                claimed_action_version=claimed.current_version,
+                claimed_action_version=claim.claimed_action_version,
                 error=connector_error,
                 mark_as_failed=True,
             )
@@ -458,7 +503,7 @@ class WriteExecutionPhaseCoordinator:
             return self._handle_execution_error(
                 request=request,
                 attempt_id=attempt_id,
-                claimed_action_version=claimed.current_version,
+                claimed_action_version=claim.claimed_action_version,
                 error=connector_error,
                 mark_as_failed=decision.disposition == "MARK_FAILED",
             )
@@ -475,7 +520,7 @@ class WriteExecutionPhaseCoordinator:
                 ),
                 action_id=request.action_id,
                 attempt_id=attempt_id,
-                expected_action_version=claimed.current_version,
+                expected_action_version=claim.claimed_action_version,
                 expected_attempt_version=begun.attempt.version,
                 snapshot=executed.snapshot,
             )

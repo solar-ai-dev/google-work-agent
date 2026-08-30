@@ -284,9 +284,7 @@ class ResponseSynthesisMixin:
                 planning=self._planning_subgraph,
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
-                domain_validation=self._domain_validation_node,
                 waiting_approval=self._waiting_approval_node,
-                modify_review=self._modify_review_node,
                 action_execution=self._write_execution_node,
                 recovery=self._write_recovery.recover_unknown,
                 finalize=self._finalize_node,
@@ -294,6 +292,7 @@ class ResponseSynthesisMixin:
                 stage_two=self._three_stage_two_subgraph,
                 stage_three=self._three_stage_review_subgraph,
             ),
+            control_bindings=self._main_control_bindings(),
             route_next_node=self._route_next_node,
             checkpointer=self._checkpointer,
         )

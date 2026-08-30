@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Mapping
 from copy import deepcopy
+from functools import partial
 from hashlib import sha256
 from json import dumps, loads
 from pathlib import Path
@@ -15,7 +16,26 @@ from langgraph.types import interrupt
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
+    MainControlNodeBindings,
     WorkflowGraphComposition,
+)
+from google_work_agent.adapters.langgraph.main.nodes.domain_reconcile_node import (
+    domain_reconcile_node,
+)
+from google_work_agent.adapters.langgraph.main.nodes.domain_validation_node import (
+    domain_validation_node,
+)
+from google_work_agent.adapters.langgraph.main.nodes.initialize_node import initialize_node
+from google_work_agent.adapters.langgraph.main.nodes.planning_entry_node import (
+    planning_entry_node,
+)
+from google_work_agent.adapters.langgraph.main.nodes.preflight_node import preflight_node
+from google_work_agent.adapters.langgraph.main.nodes.retrieval_entry_node import (
+    retrieval_entry_node,
+)
+from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import review_entry_node
+from google_work_agent.adapters.langgraph.main.plan_persistence import (
+    _connector_id_for_evidence_handle,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
@@ -76,12 +96,19 @@ from google_work_agent.application.orchestration.contracts import (
     WorkflowPhase,
     approve_planning_revision,
 )
+from google_work_agent.application.orchestration.domain_output_validation import (
+    CanonicalDomainValidationService,
+    CurrentRunResourceIdentityV1,
+)
 from google_work_agent.application.orchestration.domain_validation import (
     DomainValidationService,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
+)
+from google_work_agent.application.orchestration.persist_planning_output import (
+    project_action_plan_v2_for_persistence,
 )
 from google_work_agent.application.orchestration.profile_fused import (
     load_profile_single_reason_plan_prompt_reference,
@@ -241,6 +268,10 @@ from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
     CompleteWriteRunHandler,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
+    GetRunSnapshotQuery,
+)
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationHandler,
 )
@@ -275,7 +306,7 @@ from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError, PromptReference
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
@@ -292,6 +323,27 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 
 JsonObject = dict[str, object]
+
+
+class _ResourceIdentityProjection:
+    def __init__(self, resources: Mapping[str, ResourceRefRecord]) -> None:
+        self._resources = resources
+
+    def resolve_resource_identity(
+        self,
+        *,
+        run_id: str,
+        resource_handle: str,
+    ) -> CurrentRunResourceIdentityV1 | None:
+        resource = self._resources.get(resource_handle)
+        if resource is None or resource.run_id != run_id:
+            return None
+        return {
+            "resource_handle": resource_handle,
+            "resource_type": resource.resource_type,
+            "resource_id": resource.resource_id,
+            "parent_id": resource.parent_resource_id,
+        }
 
 
 def _legacy_connector_identity_unavailable() -> str:
@@ -337,6 +389,7 @@ class WorkflowRuntimeCore:
         resume_target_registry: ResumeTargetRegistry | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._tool_catalog = tool_catalog
         self._llm_runtime = llm_runtime
         self._now_ms = now_ms
         self._id_factory = id_factory
@@ -367,6 +420,9 @@ class WorkflowRuntimeCore:
         self._start_analysis_handler = StartAnalysisHandler(
             unit_of_work_factory=canonical_uow_factory,
             now_ms=now_ms,
+        )
+        self._get_run_snapshot_handler = GetRunSnapshotHandler(
+            unit_of_work_factory=unit_of_work_factory,
         )
         self._begin_retrieval_handler = BeginRetrievalHandler(
             unit_of_work_factory=canonical_uow_factory,
@@ -437,6 +493,9 @@ class WorkflowRuntimeCore:
                 prompt_manifest_path
             )
         self._domain_validation = DomainValidationService()
+        self._canonical_domain_validation = CanonicalDomainValidationService(
+            tool_registry=tool_catalog,
+        )
 
         self._complete_answer_only = CompleteAnswerOnlyRunHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -758,9 +817,7 @@ class WorkflowRuntimeCore:
                 planning=self._planning_subgraph,
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
-                domain_validation=self._domain_validation_node,
                 waiting_approval=self._waiting_approval_node,
-                modify_review=self._modify_review_node,
                 action_execution=self._write_execution_node,
                 recovery=self._write_recovery.recover_unknown,
                 finalize=self._finalize_node,
@@ -768,6 +825,7 @@ class WorkflowRuntimeCore:
                 stage_two=self._three_stage_two_subgraph,
                 stage_three=self._three_stage_review_subgraph,
             ),
+            control_bindings=self._main_control_bindings(),
             route_next_node=self._route_next_node,
             checkpointer=self._checkpointer,
         )
@@ -776,7 +834,7 @@ class WorkflowRuntimeCore:
         self._invocation = WorkflowInvocationCoordinator(
             graph=self._graph,
             graph_profile=self._graph_profile,
-            start_node=self._topology[0],
+            start_node="initialize",
             initial_state=self._initial_state,
             current_run_status=self._current_run_status,
             latest_unknown_action=self._latest_unknown_action,
@@ -789,7 +847,14 @@ class WorkflowRuntimeCore:
         )
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
-        return self._invocation.start(request)
+        try:
+            return self._invocation.start(request)
+        except LLMInvocationError as error:
+            return self._settle_llm_budget_exhaustion(
+                error=error,
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+            )
 
     def prepare_start(self, request: WorkflowStartRequest) -> None:
         self._invocation.prepare_start(request)
@@ -800,7 +865,7 @@ class WorkflowRuntimeCore:
             "RETRIEVAL_ENTRY": SupervisorTarget.CONTEXT_RETRIEVAL.value,
             "PLANNING_ENTRY": SupervisorTarget.SOLUTION_PLANNING.value,
             "REVIEW_ENTRY": SupervisorTarget.PLAN_REVIEW_INSPECT.value,
-            "PREFLIGHT": SupervisorTarget.ACTION_EXECUTION.value,
+            "PREFLIGHT": SupervisorTarget.PREFLIGHT.value,
             "READ_EXECUTION": SupervisorTarget.ACTION_EXECUTION.value,
             "VERIFICATION": SupervisorTarget.ACTION_EXECUTION.value,
             "RECOVERY": SupervisorTarget.RECOVERY.value,
@@ -828,7 +893,53 @@ class WorkflowRuntimeCore:
         return self._route_translator.translate(target).node
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        return self._invocation.resume(request)
+        try:
+            return self._invocation.resume(request)
+        except LLMInvocationError as error:
+            return self._settle_llm_budget_exhaustion(
+                error=error,
+                run_id=request.run_id,
+                workflow_key=request.workflow_key,
+            )
+
+    def _settle_llm_budget_exhaustion(
+        self,
+        *,
+        error: LLMInvocationError,
+        run_id: str,
+        workflow_key: str,
+    ) -> WorkflowInvocationResult:
+        """Fail closed when the canonical per-Run provider budget is exhausted."""
+
+        if error.code is not LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED:
+            raise error
+        message = str(error)
+        reason_code = (
+            "ABSOLUTE_LLM_LIMIT_EXHAUSTED"
+            if "ABSOLUTE_LLM_LIMIT_EXHAUSTED" in message
+            else "PROFILE_LLM_LIMIT_EXHAUSTED"
+        )
+        run_version = self._current_run_version(run_id)
+        self._block_run(
+            BlockRunCommand(
+                command_id=self._phase_command_id(run_id, "llm_budget_block", run_version),
+                request_hash=self._request_hash(
+                    {
+                        "kind": "llm_budget_block",
+                        "run_id": run_id,
+                        "run_version": run_version,
+                        "reason_code": reason_code,
+                    }
+                ),
+                run_id=run_id,
+                expected_version=run_version,
+                reason_code=reason_code,
+            )
+        )
+        return self._invocation.result_from_thread(
+            workflow_key=workflow_key,
+            run_id=run_id,
+        )
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         with self._cancel_signal_lock:
@@ -845,6 +956,61 @@ class WorkflowRuntimeCore:
 
     def close(self) -> None:
         self._checkpoint_port.close()
+
+    def _main_control_bindings(self) -> MainControlNodeBindings:
+        return MainControlNodeBindings(
+            initialize=partial(
+                initialize_node,
+                start_analysis=self._start_analysis_for_main,
+                request_node=self._topology[0],
+            ),
+            retrieval_entry=partial(
+                retrieval_entry_node,
+                current_run_status=self._current_run_status,
+                begin_retrieval=self._begin_retrieval_for_main,
+                retrieval_node="context_retriever",
+            ),
+            planning_entry=partial(
+                planning_entry_node,
+                current_run_status=self._current_run_status,
+                begin_planning=self._begin_planning_for_main,
+                planning_node="planning",
+            ),
+            review_entry=partial(
+                review_entry_node,
+                prepare_persisted_review=self._prepare_current_persisted_review_state,
+                settle_persisted_review=self._settle_persisted_review,
+                review_node="review",
+            ),
+            domain_validation=partial(
+                domain_validation_node,
+                validate_and_project=self._validate_domain_and_project,
+            ),
+            preflight=partial(
+                preflight_node,
+                check_freshness_and_claim=self._write_execution_node.preflight,
+            ),
+            domain_reconcile=partial(
+                domain_reconcile_node,
+                read_durable_run=self._read_durable_run,
+            ),
+        )
+
+    def _read_durable_run(self, run_id: str) -> Any:
+        snapshot = self._get_run_snapshot_handler(GetRunSnapshotQuery(run_id))
+        return None if snapshot is None else snapshot.run
+
+    def _prepare_current_persisted_review_state(self, state: Mapping[str, object]) -> GraphState:
+        plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
+        with self._unit_of_work_factory() as unit_of_work:
+            plan = load_plan_record(unit_of_work.plans, plan_id)
+        if plan is None:
+            raise LookupError(f"plan not found: {plan_id}")
+        return self._prepare_modify_review_state(
+            cast(GraphState, state),
+            plan_id=plan_id,
+            review_version=plan.review_version,
+        )
 
     def _build_graph(self) -> Any:
         return self._graph_composition.build()
@@ -874,18 +1040,139 @@ class WorkflowRuntimeCore:
     def _native_subgraphs_for_profile(self) -> dict[str, Any]:
         return self._graph_composition.native_subgraphs()
 
-    def _domain_validation_node(self, state: GraphState) -> GraphState:
-        plan_draft = _require_state_value(state["plan_draft"], "plan_draft")
-        result = self._domain_validation(
-            plan_draft=plan_draft,
-            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-        )
+    def _validate_domain_and_project(self, state: Mapping[str, object]) -> GraphState:
+        typed_state = cast(GraphState, state)
+        original_state = typed_state
+        planning_result = typed_state.get("planning_result")
+        if (
+            isinstance(planning_result, Mapping)
+            and planning_result.get("schema_version") == 2
+            and isinstance(planning_result.get("meta"), Mapping)
+        ):
+            run_id = self._required_string(typed_state.get("run_id"), "run_id")
+            retrieval_result = _require_state_value(
+                typed_state.get("retrieval_result"), "retrieval_result"
+            )
+            evidence_drafts = list(
+                resolve_evidence_projection(
+                    store=self._evidence_store,
+                    run_id=run_id,
+                    retrieval_result=retrieval_result,
+                )
+            )
+            with self._unit_of_work_factory() as unit_of_work:
+                resource_refs = {
+                    _resource_handle_for_ref(item): item
+                    for item in unit_of_work.resource_refs.list_for_run_bounded(
+                        run_id, limit=1000
+                    )
+                }
+            acquisition_result = typed_state.get("acquisition_result")
+            for draft in evidence_drafts:
+                    handle = draft.get("resource_handle")
+                    if not isinstance(handle, str) or handle in resource_refs:
+                        continue
+                    acquired = (
+                        _acquired_resource_by_handle(
+                            acquisition_result=cast(Any, acquisition_result),
+                            resource_handle=handle,
+                        )
+                        if isinstance(acquisition_result, Mapping)
+                        else None
+                    )
+                    if acquired is None:
+                        resource_type, separator, resource_id = handle.partition(":")
+                        if not separator or not resource_id:
+                            continue
+                        parent_id: str | None = None
+                        raw_actions = cast(Mapping[str, object], planning_result).get("actions", [])
+                        for action in cast(list[Mapping[str, object]], raw_actions):
+                            if draft.get("evidence_id") not in cast(
+                                list[object], action.get("evidence_refs", [])
+                            ):
+                                continue
+                            arguments = action.get("arguments")
+                            if isinstance(arguments, Mapping):
+                                parent_field = (
+                                    "task_list_id"
+                                    if resource_type == "task"
+                                    else "calendar_id"
+                                    if resource_type == "calendar_event"
+                                    else None
+                                )
+                                if parent_field is not None:
+                                    parent_id = cast(str | None, arguments.get(parent_field))
+                            break
+                        acquired = {
+                            "resource_type": resource_type,
+                            "resource_id": resource_id,
+                            "parent_id": parent_id,
+                            "payload": {},
+                        }
+                    payload = cast(dict[str, object], acquired["payload"])
+                    resource_refs[handle] = ResourceRefRecord(
+                        id=f"projection-{run_id}-{handle.replace(':', '-')}",
+                        run_id=run_id,
+                        connector_id=_connector_id_for_evidence_handle(
+                            state=typed_state,
+                            resource_handle=handle,
+                        ),
+                        resource_type=str(acquired["resource_type"]),
+                        resource_id=str(acquired["resource_id"]),
+                        parent_resource_id=cast(str | None, acquired.get("parent_id")),
+                        canonical_url=None,
+                        title=str(
+                            payload.get("subject")
+                            or payload.get("title")
+                            or acquired["resource_id"]
+                        )[:200],
+                        event_time_ms=None,
+                        version_token=cast(str | None, acquired.get("version")),
+                        metadata_json=dumps(payload, sort_keys=True),
+                        captured_at_ms=self._now_ms(),
+                    )
+            plan_review = _require_state_value(typed_state.get("plan_review"), "plan_review")
+            result = self._canonical_domain_validation(
+                run_id=run_id,
+                planning_result=cast(Any, planning_result),
+                plan_review=cast(PlanReviewResultV2, plan_review),
+                work_analysis_result=typed_state.get("work_analysis_result"),
+                evidence_drafts=evidence_drafts,
+                policy_confirmation_receipts=typed_state.get(
+                    "policy_confirmation_receipts", []
+                ),
+                resource_identity_reader=_ResourceIdentityProjection(resource_refs),
+            )
+            if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
+                plan_draft = project_action_plan_v2_for_persistence(
+                    run_id=run_id,
+                    request_intent=_require_state_value(
+                        typed_state.get("request_intent"), "request_intent"
+                    ),
+                    plan=cast(Any, planning_result),
+                    tool_route_plan=_require_state_value(
+                        typed_state.get("tool_route_plan"), "tool_route_plan"
+                    ),
+                    evidence_drafts=evidence_drafts,
+                    resource_refs_by_handle=resource_refs,
+                )
+                typed_state = cast(GraphState, {**typed_state, "plan_draft": plan_draft})
+            else:
+                plan_draft = cast(ActionPlanDraftV1, typed_state.get("plan_draft") or {})
+        else:
+            plan_draft = _require_state_value(typed_state["plan_draft"], "plan_draft")
+            result = self._domain_validation(
+                plan_draft=plan_draft,
+                analysis_result=_require_state_value(
+                    typed_state["analysis_result"], "analysis_result"
+                ),
+            )
         decision = route_supervisor(
             phase=WorkflowPhase.DOMAIN_VALIDATION,
-            state=cast(MultiAgentGraphState, state),
+            state=cast(MultiAgentGraphState, typed_state),
             result=result,
         )
-        is_modify_review = state.get("__modify_review_plan_id__") is not None
+        is_modify_review = typed_state.get("__modify_review_plan_id__") is not None
         if is_modify_review:
             review_status = (
                 PlanReviewStatus.PASSED
@@ -893,12 +1180,12 @@ class WorkflowRuntimeCore:
                 else PlanReviewStatus.REQUIRED
             )
             if not self._store_modify_review_result(
-                state,
+                typed_state,
                 review_status,
                 "PASS" if review_status is PlanReviewStatus.PASSED else "BLOCK",
             ):
                 return {
-                    **state,
+                    **typed_state,
                     "__target__": "end",
                     "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
                 }
@@ -906,25 +1193,31 @@ class WorkflowRuntimeCore:
                 decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
                 decision["state_update"] = {
                     **decision["state_update"],
-                    "approved_plan_id": state["__modify_review_plan_id__"],
+                    "approved_plan_id": typed_state["__modify_review_plan_id__"],
                 }
         elif result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
-            plan_id = self._persist_write_plan(state, plan_draft)
+            plan_id = self._persist_write_plan(typed_state, plan_draft)
             decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
                 **decision["state_update"],
                 "approved_plan_id": plan_id,
             }
         elif result["result"] == DomainValidationResult.ALLOW_READ.value:
-            plan_id = self._persist_read_plan(state, plan_draft)
-            decision["target"] = SupervisorTarget.ACTION_EXECUTION.value
+            plan_id = self._persist_read_plan(typed_state, plan_draft)
+            decision["target"] = SupervisorTarget.PREFLIGHT.value
             decision["state_update"] = {
                 **decision["state_update"],
                 "approved_plan_id": plan_id,
                 "workflow_phase": WorkflowPhase.PREFLIGHT.value,
             }
-        return self._merge_decision(
-            state, {"workflow_phase": WorkflowPhase.DOMAIN_VALIDATION.value}, decision
+        merged = self._merge_decision(
+            typed_state,
+            {"workflow_phase": WorkflowPhase.DOMAIN_VALIDATION.value},
+            decision,
+        )
+        return cast(
+            GraphState,
+            {key: value for key, value in merged.items() if original_state.get(key) != value},
         )
 
     def _confirm_request_understanding_inline(
@@ -1019,7 +1312,7 @@ class WorkflowRuntimeCore:
             return {**state, "__target__": "end"}
         return {
             **state,
-            "__target__": "action_execution",
+            "__target__": "preflight",
             "workflow_phase": WorkflowPhase.PREFLIGHT.value,
         }
 
@@ -1085,20 +1378,22 @@ class WorkflowRuntimeCore:
             "__modify_review_plan_id__": plan_id,
             "__modify_review_version__": review_version,
             "__modify_review_risks__": {action.id: action.risk for action in actions},
-            "__target__": "modify_review",
-            "__logical_target__": self._modify_review_profile_target(),
+            "__target__": "review_entry",
+            "__logical_target__": "review_entry",
             "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
             "retry_budget": budget["run_budget"],
         }
 
-    def _modify_review_node(self, state: GraphState) -> GraphState:
-        reviewed = cast(GraphState, self._review_subgraph.invoke(state))
-
+    def _settle_persisted_review(self, state: Mapping[str, object]) -> GraphState:
+        reviewed = cast(GraphState, state)
         reviewed = {
             **reviewed,
-            "__modify_review_plan_id__": state["__modify_review_plan_id__"],
-            "__modify_review_version__": state["__modify_review_version__"],
-            "__modify_review_risks__": state["__modify_review_risks__"],
+            "__modify_review_plan_id__": cast(str | None, state["__modify_review_plan_id__"]),
+            "__modify_review_version__": cast(int | None, state["__modify_review_version__"]),
+            "__modify_review_risks__": cast(
+                dict[str, dict[str, object]] | None,
+                state["__modify_review_risks__"],
+            ),
         }
 
         route_reconsideration_signal = reviewed.get("workflow_signal")
@@ -1132,8 +1427,34 @@ class WorkflowRuntimeCore:
             reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
             return reviewed
 
-        review = _require_state_value(reviewed["plan_review"], "plan_review")
+        review = cast(
+            PlanReviewResultV2,
+            _require_state_value(reviewed["plan_review"], "plan_review"),
+        )
         if review["status"] == ReviewResult.PASS.value:
+            return reviewed
+        if review["status"] == ReviewResult.ROUTE_RECONSIDERATION.value:
+            if not self._store_modify_review_result(
+                reviewed,
+                PlanReviewStatus.REQUIRED,
+                ReviewResult.ROUTE_RECONSIDERATION.value,
+            ) or not self._begin_modify_replan(reviewed):
+                return {
+                    **reviewed,
+                    "__target__": "end",
+                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                }
+            reviewed = cast(GraphState, dict(reviewed))
+            reviewed["__replan_from_plan_id__"] = cast(
+                str, reviewed["__modify_review_plan_id__"]
+            )
+            reviewed["__modify_review_plan_id__"] = None
+            reviewed["__modify_review_version__"] = None
+            reviewed["__modify_review_risks__"] = None
+            reviewed["__target__"] = "end"
+            reviewed["execution_summary"] = {
+                "result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"
+            }
             return reviewed
         if not self._store_modify_review_result(
             reviewed,
@@ -1161,13 +1482,6 @@ class WorkflowRuntimeCore:
             reviewed["__modify_review_version__"] = None
             reviewed["__modify_review_risks__"] = None
         return reviewed
-
-    def _modify_review_profile_target(self) -> str:
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            return "single_workflow"
-        if self._graph_profile is GraphProfile.THREE_STAGE:
-            return "stage_three"
-        return "review"
 
     @staticmethod
     def _review_status(review: PlanReviewResultV2) -> PlanReviewStatus:
@@ -1308,6 +1622,13 @@ class WorkflowRuntimeCore:
         run_id = state.get("run_id")
         if isinstance(run_id, str) and self._should_stop_for_cancel(run_id):
             return "end"
+        control = state.get("__workflow_control__")
+        if (
+            isinstance(control, Mapping)
+            and control.get("stage") == "REVIEW_PENDING_SETTLEMENT"
+            and state.get("__target__") != "review"
+        ):
+            return "review_entry"
         return cast(str, state.get("__target__", "end"))
 
     def _merge_decision(
@@ -1714,7 +2035,36 @@ class WorkflowRuntimeCore:
             "verification_summary": {"action_statuses": verification_statuses},
         }
 
+    def _start_analysis_for_main(self, run_id: str) -> Any:
+        return self._apply_run_transition(run_id, "start_analysis")
+
+    def _begin_retrieval_for_main(self, run_id: str) -> Any:
+        return self._apply_run_transition(run_id, "begin_retrieval")
+
+    def _begin_planning_for_main(self, run_id: str) -> Any:
+        return self._apply_run_transition(run_id, "begin_planning")
+
     def _transition_run(self, run_id: str, transition_name: str) -> None:
+        expected_status = {
+            "start_analysis": RunStatusV1.ANALYZING.value,
+            "begin_retrieval": RunStatusV1.RETRIEVING.value,
+            "begin_planning": RunStatusV1.PLANNING.value,
+        }.get(transition_name)
+        if expected_status is None:
+            raise ValueError(f"unsupported Run transition callback: {transition_name}")
+        if self._current_run_status(run_id) == expected_status:
+            return
+        result = self._apply_run_transition(run_id, transition_name)
+        if not result.applied and result.current_status not in {
+            RunStatusV1.ANALYZING.value,
+            RunStatusV1.RETRIEVING.value,
+            RunStatusV1.PLANNING.value,
+        }:
+            raise RuntimeError(
+                f"{transition_name} rejected for Run {run_id}: {result.conflict_detail}"
+            )
+
+    def _apply_run_transition(self, run_id: str, transition_name: str) -> Any:
         with self._unit_of_work_factory() as unit_of_work:
             canonical_uow = cast(CanonicalUnitOfWork, unit_of_work)
             run = canonical_uow.runs.get(run_id)
@@ -1727,7 +2077,20 @@ class WorkflowRuntimeCore:
                 RunStatusV1.RETRIEVING,
                 RunStatusV1.PLANNING,
             }:
-                return
+                return self._start_analysis_handler(
+                    StartAnalysisCommand(
+                        run_id=run_id,
+                        expected_version=run.version,
+                        command_id=self._phase_command_id(run_id, transition_name, run.version),
+                        request_hash=self._request_hash(
+                            {
+                                "kind": "start_analysis",
+                                "run_id": run_id,
+                                "version": run.version,
+                            }
+                        ),
+                    )
+                )
             result = self._start_analysis_handler(
                 StartAnalysisCommand(
                     run_id=run_id,
@@ -1740,7 +2103,20 @@ class WorkflowRuntimeCore:
             )
         elif transition_name == "begin_retrieval":
             if run.status is RunStatusV1.RETRIEVING:
-                return
+                return self._begin_retrieval_handler(
+                    BeginRetrievalCommand(
+                        run_id=run_id,
+                        expected_version=run.version,
+                        command_id=self._phase_command_id(run_id, transition_name, run.version),
+                        request_hash=self._request_hash(
+                            {
+                                "kind": "begin_retrieval",
+                                "run_id": run_id,
+                                "version": run.version,
+                            }
+                        ),
+                    )
+                )
             result = self._begin_retrieval_handler(
                 BeginRetrievalCommand(
                     run_id=run_id,
@@ -1753,7 +2129,20 @@ class WorkflowRuntimeCore:
             )
         elif transition_name == "begin_planning":
             if run.status is RunStatusV1.PLANNING:
-                return
+                return self._begin_planning_handler(
+                    BeginPlanningCommand(
+                        run_id=run_id,
+                        expected_version=run.version,
+                        command_id=self._phase_command_id(run_id, transition_name, run.version),
+                        request_hash=self._request_hash(
+                            {
+                                "kind": "begin_planning",
+                                "run_id": run_id,
+                                "version": run.version,
+                            }
+                        ),
+                    )
+                )
             result = self._begin_planning_handler(
                 BeginPlanningCommand(
                     run_id=run_id,
@@ -1766,10 +2155,7 @@ class WorkflowRuntimeCore:
             )
         else:
             raise ValueError(f"unsupported Run transition callback: {transition_name}")
-        if not result.applied:
-            raise RuntimeError(
-                f"{transition_name} rejected for Run {run_id}: {result.conflict_detail}"
-            )
+        return result
 
     @staticmethod
     def _phase_command_id(run_id: str, operation: str, expected_version: int) -> str:

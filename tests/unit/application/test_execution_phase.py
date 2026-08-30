@@ -100,11 +100,7 @@ class _UnitOfWork:
         self.execution_attempts = _Repository({"attempt-1": attempt})
         self.resource_refs = _Repository({})
         self.runs = _Repository(
-            {
-                "run-1": SimpleNamespace(
-                    id="run-1", status=RunStatusV1.RECOVERY_REQUIRED, version=4
-                )
-            }
+            {"run-1": SimpleNamespace(id="run-1", status=RunStatusV1.RECOVERY_REQUIRED, version=4)}
         )
 
     def __enter__(self) -> _UnitOfWork:
@@ -193,6 +189,23 @@ def test_successful_write_phase_preserves_call_trajectory() -> None:
         "verify_effect",
         "store_verification",
     ]
+
+
+def test_preflight_commits_claim_without_preparing_or_dispatching_write() -> None:
+    calls: list[str] = []
+    coordinator = _coordinator(calls=calls)
+
+    claim = coordinator.preflight(_request())
+
+    assert claim.disposition is WriteExecutionDisposition.CLAIM_READY
+    assert claim.attempt_id == "attempt-1"
+    assert claim.approval_id == "approval-1"
+    assert calls == ["preflight", "claim"]
+
+    result = coordinator.execute_claimed(_request(), claim)
+    assert result.disposition is WriteExecutionDisposition.VERIFIED
+    assert calls[2:4] == ["prepare", "build_claim_context"]
+    assert calls.count("dispatch") == 1
 
 
 def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:

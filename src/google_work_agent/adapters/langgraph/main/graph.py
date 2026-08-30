@@ -25,9 +25,7 @@ class GraphNodeBindings:
     planning: Any
     review: Any
     single_workflow: Any
-    domain_validation: Any
     waiting_approval: Any
-    modify_review: Any
     action_execution: Any
     recovery: Any
     finalize: Any
@@ -45,9 +43,7 @@ class GraphNodeBindings:
             "planning": self.planning,
             "review": self.review,
             "single_workflow": self.single_workflow,
-            "domain_validation": self.domain_validation,
             "waiting_approval": self.waiting_approval,
-            "modify_review": self.modify_review,
             "action_execution": self.action_execution,
             "recovery": self.recovery,
             # Response Synthesis is a deterministic pre-finalize boundary.
@@ -79,6 +75,30 @@ class GraphNodeBindings:
         return {name: self.for_name(name) for name in names}
 
 
+@dataclass(frozen=True, slots=True)
+class MainControlNodeBindings:
+    """Exact bindings for the seven #121-owned deterministic controls."""
+
+    initialize: Any
+    retrieval_entry: Any
+    planning_entry: Any
+    review_entry: Any
+    domain_validation: Any
+    preflight: Any
+    domain_reconcile: Any
+
+    def for_name(self, name: str) -> Any:
+        return {
+            "initialize": self.initialize,
+            "retrieval_entry": self.retrieval_entry,
+            "planning_entry": self.planning_entry,
+            "review_entry": self.review_entry,
+            "domain_validation": self.domain_validation,
+            "preflight": self.preflight,
+            "domain_reconcile": self.domain_reconcile,
+        }[name]
+
+
 class WorkflowGraphComposition:
     def __init__(
         self,
@@ -86,12 +106,14 @@ class WorkflowGraphComposition:
         profile: GraphProfile,
         topology: tuple[str, ...],
         bindings: GraphNodeBindings,
+        control_bindings: MainControlNodeBindings,
         route_next_node: Callable[[GraphState], str],
         checkpointer: Any,
     ) -> None:
         self._profile = profile
         self._topology = topology
         self._bindings = bindings
+        self._control_bindings = control_bindings
         self._route_next_node = route_next_node
         self._checkpointer = (
             None
@@ -103,31 +125,49 @@ class WorkflowGraphComposition:
 
     def build(self) -> Any:
         graph = StateGraph(GraphState)
-        for name in self._topology:
+        for name in dict.fromkeys((*self._topology, "context_retriever", "planning", "review")):
             graph.add_node(name, self._bindings.for_name(name))
         for name in (
-            "tool_route",
+            "initialize",
+            "retrieval_entry",
+            "planning_entry",
+            "review_entry",
             "domain_validation",
+            "preflight",
+            "domain_reconcile",
+        ):
+            graph.add_node(name, self._control_bindings.for_name(name))
+        for name in (
+            "tool_route",
             "waiting_approval",
-            "modify_review",
             "action_execution",
             "recovery",
             "response_synthesis",
             "finalize",
         ):
             graph.add_node(name, self._bindings.for_name(name))
-        graph.add_edge(START, self._topology[0])
+        graph.add_edge(START, "initialize")
         edges = self.edge_map()
-        for name in (
-            *self._topology,
-            "tool_route",
-            "domain_validation",
-            "waiting_approval",
-            "modify_review",
-            "action_execution",
-            "recovery",
-            "response_synthesis",
-            "finalize",
+        for name in dict.fromkeys(
+            (
+                *self._topology,
+                "context_retriever",
+                "planning",
+                "review",
+                "initialize",
+                "retrieval_entry",
+                "planning_entry",
+                "review_entry",
+                "tool_route",
+                "domain_validation",
+                "preflight",
+                "domain_reconcile",
+                "waiting_approval",
+                "action_execution",
+                "recovery",
+                "response_synthesis",
+                "finalize",
+            )
         ):
             graph.add_conditional_edges(name, self._route_next_node, edges)
         return graph.compile(checkpointer=self._checkpointer)
@@ -135,20 +175,34 @@ class WorkflowGraphComposition:
     def edge_map(self) -> dict[Hashable, str]:
         edges: dict[Hashable, str] = {
             "tool_route": "tool_route",
+            "retrieval_entry": "retrieval_entry",
+            "planning_entry": "planning_entry",
+            "review_entry": "review_entry",
             "domain_validation": "domain_validation",
+            "preflight": "preflight",
+            "domain_reconcile": "domain_reconcile",
             "waiting_approval": "waiting_approval",
-            "modify_review": "modify_review",
             "action_execution": "action_execution",
             "recovery": "recovery",
             "response_synthesis": "response_synthesis",
             "finalize": "finalize",
             "end": END,
         }
-        for name in self._topology:
+        for name in dict.fromkeys((*self._topology, "context_retriever", "planning", "review")):
             edges[name] = name
         return edges
 
     def node_handler(self, name: str) -> Any:
+        if name in {
+            "initialize",
+            "retrieval_entry",
+            "planning_entry",
+            "review_entry",
+            "domain_validation",
+            "preflight",
+            "domain_reconcile",
+        }:
+            return self._control_bindings.for_name(name)
         return self._bindings.for_name(name)
 
     def native_subgraphs(self) -> dict[str, Any]:

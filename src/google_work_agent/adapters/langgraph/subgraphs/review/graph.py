@@ -324,7 +324,9 @@ class ReviewSubgraph:
             {**decision, "state_update": cast(GraphStateUpdateV1, decision_update)},
         )
         merged = self._merge_decision(
-            state, cast(GraphStateUpdateV1, {"plan_review": result}), decision
+            state,
+            cast(GraphStateUpdateV1, {**patch, "plan_review": result}),
+            decision,
         )
         return cast(ReviewLocalState, merged)
 
@@ -355,6 +357,9 @@ class ReviewSubgraph:
                 subgraph_namespace="review",
                 node_name=node_name,
                 llm_call_id=f"{original.get('run_id', 'review')}:review.{node_name}",
+                agent_invocation_increment=(
+                    1 if node_name in {"inspect_goal_and_evidence", "recheck"} else 0
+                ),
                 llm_call_increment=consumed,
                 repair_increment=sum(
                     max(0, item.structured_output_attempts - 1) for item in results

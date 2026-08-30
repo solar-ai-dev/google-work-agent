@@ -342,6 +342,7 @@ def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
 def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
     from google_work_agent.adapters.langgraph.main.graph import (
         GraphNodeBindings,
+        MainControlNodeBindings,
         WorkflowGraphComposition,
     )
     from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -362,9 +363,7 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
             planning=noop,
             review=noop,
             single_workflow=noop,
-            domain_validation=noop,
             waiting_approval=noop,
-            modify_review=noop,
             action_execution=noop,
             recovery=noop,
             finalize=noop,
@@ -383,6 +382,15 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
                 "review",
             ),
             bindings=bindings,
+            control_bindings=MainControlNodeBindings(
+                initialize=noop,
+                retrieval_entry=noop,
+                planning_entry=noop,
+                review_entry=noop,
+                domain_validation=noop,
+                preflight=noop,
+                domain_reconcile=noop,
+            ),
             route_next_node=lambda _state: "end",
             checkpointer=underlying,
         )

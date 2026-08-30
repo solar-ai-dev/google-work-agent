@@ -180,8 +180,8 @@ def project_action_plan_v2_for_persistence(
                 "resource_handle": handle,
                 "resource_ref_id": resource.id,
                 "connector_id": resource.connector_id,
-                "source": resource.source.value,
-                "resource_type": resource.resource_type.value,
+                "source": _source_for_resource_type(resource.resource_type),
+                "resource_type": resource.resource_type,
                 "resource_id": resource.resource_id,
                 "parent_resource_id": resource.parent_resource_id,
             }
@@ -293,6 +293,16 @@ def _required_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise V2PersistenceProjectionError(f"{label} is required")
     return value
+
+
+def _source_for_resource_type(resource_type: str) -> str:
+    if resource_type.startswith("gmail_"):
+        return "GMAIL"
+    if resource_type in {"task", "task_list"}:
+        return "TASKS"
+    if resource_type.startswith("calendar"):
+        return "CALENDAR"
+    raise V2PersistenceProjectionError(f"unsupported ResourceRef type: {resource_type}")
 
 
 __all__ = [
