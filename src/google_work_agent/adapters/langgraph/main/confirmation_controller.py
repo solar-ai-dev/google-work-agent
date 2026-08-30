@@ -27,7 +27,6 @@ from google_work_agent.application.orchestration.contracts import (
     validate_run_budget_v1,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorDecisionV1
-from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationCommand,
 )
@@ -57,10 +56,6 @@ class ConfirmationControllerMixin:
         kwargs["llm_runtime"] = confirmation_llm_runtime
         self._confirmation_llm_runtime = confirmation_llm_runtime
         super().__init__(*args, **kwargs)
-
-    def _has_persisted_cancel_intent(self, run_id: str) -> bool:
-        with self._unit_of_work_factory() as unit_of_work:
-            return has_durable_cancel_intent(unit_of_work, run_id)
 
     def _merge_decision(
         self,

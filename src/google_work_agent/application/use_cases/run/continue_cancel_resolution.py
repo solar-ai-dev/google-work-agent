@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
@@ -53,7 +54,15 @@ class ContinueCancelResolutionHandler:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
-            if run.status is not RunStatusV1.CANCEL_REQUESTED:
+            cancel_intent_active = has_durable_cancel_intent(
+                unit_of_work.cancel_intents, command.run_id
+            )
+            if not cancel_intent_active or run.status not in {
+                RunStatusV1.CANCEL_REQUESTED,
+                RunStatusV1.VERIFYING,
+                RunStatusV1.REAUTH_REQUIRED,
+                RunStatusV1.RECOVERY_REQUIRED,
+            }:
                 raise ValueError("cancel resolution requires CANCEL_REQUESTED")
             plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: item.revision_no, default=None)

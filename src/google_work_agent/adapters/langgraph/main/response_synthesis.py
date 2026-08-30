@@ -285,8 +285,6 @@ class ResponseSynthesisMixin:
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 waiting_approval=self._waiting_approval_node,
-                action_execution=self._write_execution_node,
-                recovery=self._write_recovery.recover_unknown,
                 finalize=self._finalize_node,
                 stage_one=self._three_stage_one_subgraph,
                 stage_two=self._three_stage_two_subgraph,

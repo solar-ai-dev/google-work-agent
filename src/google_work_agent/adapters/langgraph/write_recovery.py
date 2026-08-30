@@ -13,7 +13,9 @@ from google_work_agent.adapters.langgraph.write_reconciliation import (
 from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
     UnknownRecoveryPhaseRequest,
+    WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,
+    WriteExecutionPhaseRequest,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
@@ -26,6 +28,9 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult
 from google_work_agent.domain.run.model import RunCommand, RunStatusV1
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceGatewayError,
+)
 
 
 class WriteRecoveryCoordinator:
@@ -87,6 +92,18 @@ class WriteRecoveryCoordinator:
                 response=response,
                 outcome="DOMAIN_RECONCILE",
             )
+        if response.action_status == ActionStatusV1.EXECUTED.value:
+            return {
+                **state,
+                "__target__": "verification",
+                "__logical_target__": "verification",
+                "workflow_phase": WorkflowPhase.VERIFICATION.value,
+                "execution_summary": {
+                    "result": "RECOVERED_AWAITING_VERIFICATION",
+                    "action_id": action.id,
+                },
+                "verification_summary": {"action_statuses": [response.action_status]},
+            }
         if response.action_status != ActionStatusV1.VERIFIED.value:
             return self._suspend_action_response(
                 state=state,
@@ -159,12 +176,36 @@ class WriteRecoveryCoordinator:
                     )
                 verification_started = True
 
-            verified = self._execution_phase.verify_executed(
-                action_id=action.id,
-                action_version=action.version,
-                attempt_id=self._latest_attempt_id(action.id),
-                request_kind="verify_after_restart",
-            )
+            try:
+                verified = self._execution_phase.verify_executed(
+                    action_id=action.id,
+                    action_version=action.version,
+                    attempt_id=self._latest_attempt_id(action.id),
+                    request_kind="verify_after_restart",
+                )
+            except GoogleWorkspaceGatewayError as error:
+                failure = self._execution_phase.handle_verification_error(
+                    request=WriteExecutionPhaseRequest(run_id, action.id, action.version),
+                    error=error,
+                )
+                if failure.disposition is not WriteExecutionDisposition.REAUTH_REQUIRED:
+                    return self._suspend(
+                        state=state,
+                        outcome="DOMAIN_RECONCILE",
+                        facts={"action_id": action.id, "result_code": failure.result_code},
+                        verification_statuses=statuses,
+                    )
+                return {
+                    **state,
+                    "__target__": "end",
+                    "workflow_phase": WorkflowPhase.VERIFICATION.value,
+                    "execution_summary": {
+                        "result": "REAUTH_REQUIRED",
+                        "action_id": action.id,
+                        "safe_error_code": failure.safe_error_code,
+                    },
+                    "verification_summary": {"action_statuses": statuses},
+                }
             if not verified.applied:
                 return self._suspend_action_response(
                     state=state,
@@ -177,6 +218,21 @@ class WriteRecoveryCoordinator:
 
         completion = self._complete_write_run_if_verified(latest_plan.id, run_id)
         if completion is None:
+            if any(
+                status in {ActionStatusV1.APPROVED.value, ActionStatusV1.PROPOSED.value}
+                for status in statuses
+            ):
+                return {
+                    **state,
+                    "__target__": "preflight",
+                    "__logical_target__": "preflight",
+                    "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+                    "execution_summary": {
+                        "result": "VERIFICATION_COMPLETE_NEXT_ACTION",
+                        "plan_id": latest_plan.id,
+                    },
+                    "verification_summary": {"action_statuses": statuses},
+                }
             return self._suspend(
                 state=state,
                 outcome="RECOVERY_NOT_COMPLETABLE",

@@ -26,8 +26,6 @@ class GraphNodeBindings:
     review: Any
     single_workflow: Any
     waiting_approval: Any
-    action_execution: Any
-    recovery: Any
     finalize: Any
     stage_one: Any
     stage_two: Any
@@ -44,8 +42,6 @@ class GraphNodeBindings:
             "review": self.review,
             "single_workflow": self.single_workflow,
             "waiting_approval": self.waiting_approval,
-            "action_execution": self.action_execution,
-            "recovery": self.recovery,
             # Response Synthesis is a deterministic pre-finalize boundary.
             # The canonical runtime's finalize handler distinguishes this
             # graph target and materializes a FinalizeIntent before the real
@@ -77,7 +73,7 @@ class GraphNodeBindings:
 
 @dataclass(frozen=True, slots=True)
 class MainControlNodeBindings:
-    """Exact bindings for the seven #121-owned deterministic controls."""
+    """Exact bindings for canonical deterministic Main controls."""
 
     initialize: Any
     retrieval_entry: Any
@@ -86,6 +82,10 @@ class MainControlNodeBindings:
     domain_validation: Any
     preflight: Any
     domain_reconcile: Any
+    action_execution: Any
+    verification: Any
+    recovery: Any
+    cancel_resolution: Any
 
     def for_name(self, name: str) -> Any:
         return {
@@ -96,6 +96,10 @@ class MainControlNodeBindings:
             "domain_validation": self.domain_validation,
             "preflight": self.preflight,
             "domain_reconcile": self.domain_reconcile,
+            "action_execution": self.action_execution,
+            "verification": self.verification,
+            "recovery": self.recovery,
+            "cancel_resolution": self.cancel_resolution,
         }[name]
 
 
@@ -135,13 +139,15 @@ class WorkflowGraphComposition:
             "domain_validation",
             "preflight",
             "domain_reconcile",
+            "action_execution",
+            "verification",
+            "recovery",
+            "cancel_resolution",
         ):
             graph.add_node(name, self._control_bindings.for_name(name))
         for name in (
             "tool_route",
             "waiting_approval",
-            "action_execution",
-            "recovery",
             "response_synthesis",
             "finalize",
         ):
@@ -164,7 +170,9 @@ class WorkflowGraphComposition:
                 "domain_reconcile",
                 "waiting_approval",
                 "action_execution",
+                "verification",
                 "recovery",
+                "cancel_resolution",
                 "response_synthesis",
                 "finalize",
             )
@@ -183,7 +191,9 @@ class WorkflowGraphComposition:
             "domain_reconcile": "domain_reconcile",
             "waiting_approval": "waiting_approval",
             "action_execution": "action_execution",
+            "verification": "verification",
             "recovery": "recovery",
+            "cancel_resolution": "cancel_resolution",
             "response_synthesis": "response_synthesis",
             "finalize": "finalize",
             "end": END,
@@ -201,6 +211,10 @@ class WorkflowGraphComposition:
             "domain_validation",
             "preflight",
             "domain_reconcile",
+            "action_execution",
+            "verification",
+            "recovery",
+            "cancel_resolution",
         }:
             return self._control_bindings.for_name(name)
         return self._bindings.for_name(name)

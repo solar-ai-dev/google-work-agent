@@ -203,9 +203,11 @@ def test_preflight_commits_claim_without_preparing_or_dispatching_write() -> Non
     assert calls == ["preflight", "claim"]
 
     result = coordinator.execute_claimed(_request(), claim)
-    assert result.disposition is WriteExecutionDisposition.VERIFIED
+    assert result.disposition is WriteExecutionDisposition.EXECUTED
     assert calls[2:4] == ["prepare", "build_claim_context"]
     assert calls.count("dispatch") == 1
+    assert "begin_verification" not in calls
+    assert "verify_effect" not in calls
 
 
 def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:

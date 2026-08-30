@@ -101,7 +101,6 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
 from google_work_agent.application.use_cases.run.begin_verification import (
     BeginVerificationCommand,
     BeginVerificationHandler,
-    BeginVerificationResult,
 )
 from google_work_agent.application.use_cases.run.require_reauth import (
     RequireReauthCommand,
@@ -141,6 +140,7 @@ class WriteExecutionDisposition(StrEnum):
     REAUTH_REQUIRED = "REAUTH_REQUIRED"
     UNKNOWN_RESULT = "UNKNOWN_RESULT"
     FAILED = "FAILED"
+    EXECUTED = "EXECUTED"
     VERIFIED = "VERIFIED"
 
 
@@ -243,7 +243,51 @@ class WriteExecutionPhaseCoordinator:
         claim = self.preflight(request)
         if claim.disposition is not WriteExecutionDisposition.CLAIM_READY:
             return claim
-        return self.execute_claimed(request, claim)
+        executed = self.execute_claimed(request, claim)
+        if executed.disposition is not WriteExecutionDisposition.EXECUTED:
+            return executed
+        assert executed.action_status is not None
+        assert executed.current_version is not None
+        assert executed.attempt_id is not None
+        begin = self._begin_verification(
+            BeginVerificationCommand(
+                command_id=self._id_factory(),
+                request_hash=self._request_hash(
+                    {"kind": "begin_verification", "run_id": request.run_id}
+                ),
+                run_id=request.run_id,
+            )
+        )
+        if begin is not None and not begin.applied:
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+                result_code=begin.result_code.value,
+                current_status=begin.current_status.value,
+                current_version=begin.current_version,
+                next_allowed_commands=tuple(item.value for item in begin.next_allowed_commands),
+            )
+        try:
+            verified = self._verify_and_store(
+                run_id=request.run_id,
+                action_id=request.action_id,
+                action_version=executed.current_version,
+                attempt_id=executed.attempt_id,
+            )
+        except GoogleWorkspaceGatewayError as error:
+            return self._handle_verification_error(request=request, error=error)
+        return WriteExecutionPhaseResult(
+            disposition=(
+                WriteExecutionDisposition.VERIFIED
+                if verified.action_status == ActionStatusV1.VERIFIED.value
+                else WriteExecutionDisposition.DOMAIN_RECONCILE
+            ),
+            action_status=verified.action_status,
+            result_code=verified.result_code,
+            current_status=verified.action_status,
+            current_version=verified.action_version,
+            next_allowed_commands=verified.next_allowed_commands,
+            attempt_id=verified.attempt_id,
+        )
 
     def preflight(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
         """Validate freshness and commit Claim without performing connector I/O."""
@@ -540,47 +584,22 @@ class WriteExecutionPhaseCoordinator:
                 )
             )
 
-        begin: BeginVerificationResult | None
-        begin = self._begin_verification(
-            BeginVerificationCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash(
-                    {"kind": "begin_verification", "run_id": request.run_id}
-                ),
-                run_id=request.run_id,
-            )
-        )
-        if begin is not None and not begin.applied:
-            return WriteExecutionPhaseResult(
-                disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
-                result_code=begin.result_code.value,
-                current_status=begin.current_status.value,
-                current_version=begin.current_version,
-                next_allowed_commands=tuple(item.value for item in begin.next_allowed_commands),
-            )
-        try:
-            verified = self._verify_and_store(
-                run_id=request.run_id,
-                action_id=request.action_id,
-                action_version=stored.action_version,
-                attempt_id=stored.attempt_id,
-            )
-        except GoogleWorkspaceGatewayError as error:
-            return self._handle_verification_error(request=request, error=error)
         return WriteExecutionPhaseResult(
-            disposition=(
-                WriteExecutionDisposition.VERIFIED
-                if verified.action_status == ActionStatusV1.VERIFIED.value
-                else WriteExecutionDisposition.DOMAIN_RECONCILE
-            ),
-            action_status=verified.action_status,
-            result_code=verified.result_code,
-            current_status=verified.action_status,
-            current_version=verified.action_version,
-            next_allowed_commands=verified.next_allowed_commands,
+            disposition=WriteExecutionDisposition.EXECUTED,
+            action_status=stored.action_status,
+            result_code=stored.result_code,
+            current_status=stored.action_status,
+            current_version=stored.action_version,
+            next_allowed_commands=stored.next_allowed_commands,
+            attempt_id=stored.attempt_id,
         )
 
-    def recover_unknown(self, request: UnknownRecoveryPhaseRequest) -> WriteActionResponse:
+    def recover_unknown(
+        self,
+        request: UnknownRecoveryPhaseRequest,
+        *,
+        allow_reauth: bool = True,
+    ) -> WriteActionResponse:
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(request.action_id)
             attempt = unit_of_work.execution_attempts.get(request.attempt_id)
@@ -622,7 +641,8 @@ class WriteExecutionPhaseCoordinator:
             if not self._is_auth_error(error):
                 raise
             self._ensure_unknown_recovery(request, approval.recovery_fingerprint)
-            self._require_reauth(request=request, error=error, kind="recover_unknown_reauth")
+            if allow_reauth:
+                self._require_reauth(request=request, error=error, kind="recover_unknown_reauth")
             return WriteActionResponse(
                 applied=False,
                 result_code=ResultCode.RECOVERY_REQUIRED.value,
@@ -667,14 +687,8 @@ class WriteExecutionPhaseCoordinator:
                 recovered_status=ActionStatusV1.EXECUTED,
                 lookup=lookup,
             )
-            if not resolved or continuation_staged:
-                return self._as_write_response(recovered)
-            return self.verify_executed(
-                action_id=request.action_id,
-                action_version=recovered.action_version,
-                attempt_id=request.attempt_id,
-                request_kind="verify_recovered",
-            )
+            del resolved, continuation_staged
+            return self._as_write_response(recovered)
         if lookup.disposition == "MUTATION_NOT_FOUND":
             command_id = self._id_factory()
             failed = self._resolve_as_failed(
@@ -871,6 +885,16 @@ class WriteExecutionPhaseCoordinator:
             action_version=action_version,
             attempt_id=attempt_id,
         )
+
+    def handle_verification_error(
+        self,
+        *,
+        request: WriteExecutionPhaseRequest,
+        error: GoogleWorkspaceGatewayError,
+    ) -> WriteExecutionPhaseResult:
+        """Apply only the canonical auth pause for a technical verification failure."""
+
+        return self._handle_verification_error(request=request, error=error)
 
     def _verify_and_store(
         self,

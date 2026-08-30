@@ -274,6 +274,20 @@ class WriteExecutionNode:
                     "safe_error_code": phase_result.safe_error_code,
                 },
             }
+        if phase_result.disposition is WriteExecutionDisposition.EXECUTED:
+            verification_statuses.append(ActionStatusV1.EXECUTED.value)
+            return {
+                **state,
+                "__target__": "verification",
+                "__logical_target__": "verification",
+                "workflow_phase": WorkflowPhase.VERIFICATION.value,
+                "execution_summary": {
+                    "result": "EXECUTED_AWAITING_VERIFICATION",
+                    "action_id": action.id,
+                    "attempt_id": phase_result.attempt_id,
+                },
+                "verification_summary": {"action_statuses": verification_statuses},
+            }
         if phase_result.disposition is WriteExecutionDisposition.FAILED:
             verification_statuses.append(ActionStatusV1.FAILED.value)
             return {
@@ -507,8 +521,9 @@ class WriteExecutionNode:
     ) -> GraphState:
         return {
             **state,
-            "__target__": "end",
-            "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
+            "__target__": "cancel_resolution",
+            "__logical_target__": "cancel_resolution",
+            "workflow_phase": "CANCEL_RESOLUTION",
             "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
             "verification_summary": {"action_statuses": verification_statuses},
         }

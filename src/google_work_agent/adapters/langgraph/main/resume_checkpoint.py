@@ -145,6 +145,10 @@ class ResumeCheckpointMixin:
             return None
         if phase == WorkflowPhase.REQUEST_ANALYSIS.value:
             return self._topology[0]
+        if phase == WorkflowPhase.VERIFICATION.value:
+            return "verification"
+        if phase == WorkflowPhase.ACTION_EXECUTION.value:
+            return None
         target_by_phase = {
             WorkflowPhase.TOOL_ROUTING.value: SupervisorTarget.TOOL_ROUTE,
             WorkflowPhase.SOURCE_PLANNING.value: SupervisorTarget.SOURCE_PLANNING,
@@ -157,8 +161,6 @@ class ResumeCheckpointMixin:
             WorkflowPhase.DOMAIN_VALIDATION.value: SupervisorTarget.DOMAIN_VALIDATION,
             WorkflowPhase.WAITING_APPROVAL.value: SupervisorTarget.WAITING_APPROVAL,
             WorkflowPhase.PREFLIGHT.value: SupervisorTarget.PREFLIGHT,
-            WorkflowPhase.ACTION_EXECUTION.value: SupervisorTarget.ACTION_EXECUTION,
-            WorkflowPhase.VERIFICATION.value: SupervisorTarget.ACTION_EXECUTION,
         }
         target = target_by_phase.get(phase)
         if target is None:

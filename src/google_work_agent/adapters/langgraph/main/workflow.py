@@ -19,6 +19,12 @@ from google_work_agent.adapters.langgraph.main.graph import (
     MainControlNodeBindings,
     WorkflowGraphComposition,
 )
+from google_work_agent.adapters.langgraph.main.nodes.action_execution_node import (
+    action_execution_node,
+)
+from google_work_agent.adapters.langgraph.main.nodes.cancel_resolution_node import (
+    cancel_resolution_node,
+)
 from google_work_agent.adapters.langgraph.main.nodes.domain_reconcile_node import (
     domain_reconcile_node,
 )
@@ -30,10 +36,12 @@ from google_work_agent.adapters.langgraph.main.nodes.planning_entry_node import 
     planning_entry_node,
 )
 from google_work_agent.adapters.langgraph.main.nodes.preflight_node import preflight_node
+from google_work_agent.adapters.langgraph.main.nodes.recovery_node import recovery_node
 from google_work_agent.adapters.langgraph.main.nodes.retrieval_entry_node import (
     retrieval_entry_node,
 )
 from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import review_entry_node
+from google_work_agent.adapters.langgraph.main.nodes.verification_node import verification_node
 from google_work_agent.adapters.langgraph.main.plan_persistence import (
     _connector_id_for_evidence_handle,
 )
@@ -146,6 +154,10 @@ from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
+from google_work_agent.application.use_cases.action.cancel_pending_action import (
+    CancelPendingActionCommand,
+    CancelPendingActionHandler,
+)
 from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,
@@ -197,6 +209,7 @@ from google_work_agent.application.use_cases.execution_attempt.connector_write_p
     ConnectorWriteProjection,
 )
 from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+    UnknownRecoveryPhaseRequest,
     WriteExecutionPhaseCoordinator,
 )
 from google_work_agent.application.use_cases.execution_attempt.mark_failed import MarkFailedHandler
@@ -268,6 +281,14 @@ from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
     CompleteWriteRunHandler,
 )
+from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
+    ContinueCancelResolutionCommandV1,
+    ContinueCancelResolutionHandler,
+)
+from google_work_agent.application.use_cases.run.finalize_cancel import (
+    FinalizeCancelCommand,
+    FinalizeCancelHandler,
+)
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
@@ -308,7 +329,6 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
 from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError, PromptReference
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -703,6 +723,22 @@ class WorkflowRuntimeCore:
             ),
             latest_attempt_id=self._latest_attempt_id,
         )
+        self._cancel_pending_action = CancelPendingActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._finalize_cancel = FinalizeCancelHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
+        self._continue_cancel_resolution = ContinueCancelResolutionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            settle_pending_action=self._settle_pending_cancel_action,
+            reconcile_inflight_action=self._reconcile_cancelling_action,
+            verify_executed_action=self._verify_cancelling_action,
+            resolve_unknown_action=self._resolve_cancelling_unknown_action,
+            finalize_cancel=self._finalize_cancelling_run,
+        )
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
@@ -818,8 +854,6 @@ class WorkflowRuntimeCore:
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 waiting_approval=self._waiting_approval_node,
-                action_execution=self._write_execution_node,
-                recovery=self._write_recovery.recover_unknown,
                 finalize=self._finalize_node,
                 stage_one=self._three_stage_one_subgraph,
                 stage_two=self._three_stage_two_subgraph,
@@ -838,7 +872,10 @@ class WorkflowRuntimeCore:
             initial_state=self._initial_state,
             current_run_status=self._current_run_status,
             latest_unknown_action=self._latest_unknown_action,
-            recovery_node=self._write_recovery.recover_unknown,
+            recovery_node=partial(
+                recovery_node,
+                recover_from_durable_facts=self._write_recovery.recover_unknown,
+            ),
             has_executed_action=self._has_executed_action,
             recover_executed_actions=self._write_recovery.recover_executed,
             mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
@@ -861,15 +898,19 @@ class WorkflowRuntimeCore:
 
     def control_resume_node(self, stage_id: str) -> str:
         """Resolve a registered external-control stage to this profile's native node."""
+        exact_control = {
+            "READ_EXECUTION": "action_execution",
+            "VERIFICATION": "verification",
+            "RECOVERY": "recovery",
+            "CANCEL_RESOLUTION": "cancel_resolution",
+        }.get(stage_id)
+        if exact_control is not None:
+            return exact_control
         target_by_stage = {
             "RETRIEVAL_ENTRY": SupervisorTarget.CONTEXT_RETRIEVAL.value,
             "PLANNING_ENTRY": SupervisorTarget.SOLUTION_PLANNING.value,
             "REVIEW_ENTRY": SupervisorTarget.PLAN_REVIEW_INSPECT.value,
             "PREFLIGHT": SupervisorTarget.PREFLIGHT.value,
-            "READ_EXECUTION": SupervisorTarget.ACTION_EXECUTION.value,
-            "VERIFICATION": SupervisorTarget.ACTION_EXECUTION.value,
-            "RECOVERY": SupervisorTarget.RECOVERY.value,
-            "CANCEL_RESOLUTION": SupervisorTarget.ACTION_EXECUTION.value,
         }
         target = target_by_stage.get(stage_id)
         if target is None:
@@ -993,6 +1034,24 @@ class WorkflowRuntimeCore:
             domain_reconcile=partial(
                 domain_reconcile_node,
                 read_durable_run=self._read_durable_run,
+            ),
+            action_execution=partial(
+                action_execution_node,
+                execute_claimed_action=self._write_execution_node,
+            ),
+            verification=partial(
+                verification_node,
+                verify_durable_effects=lambda state: self._write_recovery.recover_executed(
+                    cast(GraphState, state), cast(str, state["run_id"])
+                ),
+            ),
+            recovery=partial(
+                recovery_node,
+                recover_from_durable_facts=self._write_recovery.recover_unknown,
+            ),
+            cancel_resolution=partial(
+                cancel_resolution_node,
+                continue_cancel_resolution=self._continue_cancel_resolution_for_main,
             ),
         )
 
@@ -1973,18 +2032,26 @@ class WorkflowRuntimeCore:
             }:
                 verification_statuses.append(action.status)
                 continue
-            if action.status != ActionStatusV1.PROPOSED.value:
+            if action.status not in {
+                ActionStatusV1.PROPOSED.value,
+                ActionStatusV1.EXECUTING.value,
+            }:
                 continue
-            claimed = self._claim_read(
-                ClaimReadActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash({"kind": "claim_read", "action_id": action.id}),
-                    action_id=action.id,
-                    expected_version=action.version,
+            action_version = action.version
+            if action.status == ActionStatusV1.PROPOSED.value:
+                claimed = self._claim_read(
+                    ClaimReadActionCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "claim_read", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        expected_version=action.version,
+                    )
                 )
-            )
-            if not claimed.applied:
-                continue
+                if not claimed.applied:
+                    continue
+                action_version = claimed.action_version
             try:
                 executed = self._execute_read(action_id=action.id)
             except GoogleWorkspaceGatewayError as error:
@@ -1995,7 +2062,7 @@ class WorkflowRuntimeCore:
                             {"kind": "fail_read", "action_id": action.id}
                         ),
                         action_id=action.id,
-                        expected_version=claimed.action_version,
+                        expected_version=action_version,
                         safe_error_code=error.code.value,
                         retryable=False,
                         safe_error_detail=str(error),
@@ -2010,7 +2077,7 @@ class WorkflowRuntimeCore:
                         {"kind": "complete_read", "action_id": action.id}
                     ),
                     action_id=action.id,
-                    expected_version=claimed.action_version,
+                    expected_version=action_version,
                     output_json=executed.output_json,
                     resource_refs=executed.resource_refs,
                     evidence=executed.evidence,
@@ -2192,6 +2259,140 @@ class WorkflowRuntimeCore:
                 sorted(unit_of_work.actions.list_for_plan(plan_id), key=lambda item: item.position)
             )
 
+    def _continue_cancel_resolution_for_main(self, run_id: str) -> dict[str, object]:
+        result = self._continue_cancel_resolution(ContinueCancelResolutionCommandV1(1, run_id))
+        if result.outcome == "FINALIZED":
+            target = "finalize"
+        elif result.outcome == "PROGRESSED":
+            target = "cancel_resolution"
+        else:
+            target = "end"
+        return {
+            "__target__": target,
+            "__logical_target__": target,
+            "workflow_phase": "CANCEL_RESOLUTION",
+            "execution_summary": {
+                "result": result.outcome,
+                "run_status": result.run_status,
+                "progressed_action_id": result.progressed_action_id,
+            },
+        }
+
+    def _settle_pending_cancel_action(self, action_id: str, version: int) -> bool:
+        payload = {"action_id": action_id, "expected_version": version}
+        return self._cancel_pending_action(
+            CancelPendingActionCommand(
+                command_id=f"system:cancel-resolution:action:{action_id}:{version}",
+                request_hash=calculate_canonical_json_hash(payload),
+                action_id=action_id,
+                expected_version=version,
+            )
+        ).applied
+
+    def _reconcile_cancelling_action(self, action_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+        if action is None:
+            return False
+        if action.effect_type == "READ":
+            failed = self._fail_read(
+                FailReadActionCommand(
+                    command_id=f"system:cancel-resolution:read:{action.id}:{action.version}",
+                    request_hash=calculate_canonical_json_hash(
+                        {"action_id": action.id, "expected_version": action.version}
+                    ),
+                    action_id=action.id,
+                    expected_version=action.version,
+                    safe_error_code="CANCEL_REQUESTED",
+                    retryable=False,
+                    safe_error_detail="cancel intent forbids a new legacy READ dispatch",
+                )
+            )
+            return failed.applied
+        attempt = self._latest_attempt(action_id)
+        if attempt.status is not ExecutionAttemptStatusV1.CLAIMED:
+            return False
+        payload = {
+            "action_id": action.id,
+            "attempt_id": attempt.id,
+            "expected_action_version": action.version,
+            "expected_attempt_version": attempt.version,
+            "error_code": "CANCEL_REQUESTED",
+            "error_detail": "write was not sent because cancellation was requested",
+        }
+        return self._abort_claimed_execution(
+            AbortClaimedExecutionCommandV1(
+                command_id=f"system:cancel-resolution:abort:{attempt.id}:{attempt.version}",
+                request_hash=calculate_canonical_json_hash(payload),
+                action_id=action.id,
+                attempt_id=attempt.id,
+                expected_action_version=action.version,
+                expected_attempt_version=attempt.version,
+                error_code="CANCEL_REQUESTED",
+                error_detail="write was not sent because cancellation was requested",
+            )
+        ).applied
+
+    def _verify_cancelling_action(self, action_id: str) -> bool:
+        action, run_id = self._action_and_run_id(action_id)
+        if self._current_run_status(run_id) == RunStatusV1.CANCEL_REQUESTED.value:
+            begun = self._begin_write_verification(
+                BeginVerificationCommand(
+                    command_id=f"system:cancel-resolution:begin-verification:{run_id}",
+                    request_hash=calculate_canonical_json_hash(
+                        {"kind": "cancel_begin_verification", "run_id": run_id}
+                    ),
+                    run_id=run_id,
+                )
+            )
+            if not begun.applied:
+                return False
+        try:
+            verified = self._write_execution_phase.verify_executed(
+                action_id=action.id,
+                action_version=action.version,
+                attempt_id=self._latest_attempt_id(action.id),
+                request_kind="cancel_verification",
+            )
+        except GoogleWorkspaceGatewayError:
+            return False
+        return verified.applied
+
+    def _resolve_cancelling_unknown_action(self, action_id: str) -> bool:
+        action, run_id = self._action_and_run_id(action_id)
+        attempt = self._latest_attempt(action_id)
+        response = self._write_execution_phase.recover_unknown(
+            UnknownRecoveryPhaseRequest(
+                run_id=run_id,
+                action_id=action.id,
+                effect_type=action.effect_type,
+                action_version=action.version,
+                attempt_id=attempt.id,
+                attempt_version=attempt.version,
+            ),
+            allow_reauth=False,
+        )
+        return response.applied
+
+    def _finalize_cancelling_run(self, run_id: str, version: int) -> bool:
+        payload = {"run_id": run_id, "expected_run_version": version}
+        return self._finalize_cancel(
+            FinalizeCancelCommand(
+                command_id=f"system:cancel-resolution:finalize:{run_id}:{version}",
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                expected_run_version=version,
+            )
+        ).applied
+
+    def _action_and_run_id(self, action_id: str) -> tuple[ActionRecord, str]:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            plan = None if action is None else load_plan_record(unit_of_work.plans, action.plan_id)
+        if action is None or plan is None:
+            raise LookupError(f"action/plan not found: {action_id}")
+        return action, plan.run_id
+
     def _plans_for_run(self, run_id: str) -> tuple[PlanRecord, ...]:
         with self._unit_of_work_factory() as unit_of_work:
             return current_plan_tuple(unit_of_work.plans, run_id)
@@ -2283,24 +2484,6 @@ class WorkflowRuntimeCore:
         return self._current_run_status(
             run_id
         ) == RunStatusV1.CANCEL_REQUESTED.value or self._has_persisted_cancel_intent(run_id)
-
-    def _has_persisted_cancel_intent(self, run_id: str) -> bool:
-        with self._unit_of_work_factory() as unit_of_work:
-            cursor: int | None = None
-            while True:
-                events = unit_of_work.audits.list_page(
-                    AuditEventCursor(run_id=run_id, after_id=cursor),
-                    100,
-                )
-                if any(
-                    event.event_type == "RUN_CANCELLATION_REQUESTED"
-                    and event.outcome == ResultCode.TRANSITION_APPLIED.value
-                    for event in events
-                ):
-                    return True
-                if len(events) < 100:
-                    return False
-                cursor = events[-1].id
 
     def _latest_unknown_action(self, run_id: str) -> tuple[ActionRecord, str, int] | None:
         with self._unit_of_work_factory() as unit_of_work:
