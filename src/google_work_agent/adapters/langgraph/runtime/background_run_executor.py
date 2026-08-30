@@ -79,6 +79,11 @@ class BackgroundRunExecutorAdapter:
         with self._lock:
             return run_id in self._active_run_admissions
 
+    def has_active_runs(self) -> bool:
+        """Project whether any workflow admission is executing in this process."""
+        with self._lock:
+            return bool(self._active_run_admissions)
+
     def await_drained(self, deadline_ms: int) -> bool:
         deadline = time.monotonic() + max(0, deadline_ms) / 1000
         while time.monotonic() <= deadline:

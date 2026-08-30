@@ -48,7 +48,4 @@ class CreateBackupHandler:
             replayed=outcome.replayed,
         )
 
-    handle = __call__
-
-
 __all__ = ["CreateBackupCommand", "CreateBackupHandler", "CreateBackupResult"]

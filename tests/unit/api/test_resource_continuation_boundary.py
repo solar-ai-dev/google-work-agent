@@ -4,12 +4,9 @@ from typing import Any, cast
 from tests.support.fakes import FakeClockPort
 
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
-    OpaqueConnectorResourceAccess,
-)
 
 
-def _container_with_resource_service(resource_query_service: object) -> ApiContainer:
+def _container_with_list_handler(handler: object) -> ApiContainer:
     dynamic = cast(Any, None)
     return ApiContainer(
         unit_of_work_factory=lambda: dynamic,
@@ -30,18 +27,16 @@ def _container_with_resource_service(resource_query_service: object) -> ApiConta
         release_version="test",
         environment="test",
         service_instance_id="test-instance",
-        resource_query_service=resource_query_service,
+        list_resources_handler=handler,
     )
 
 
-def test_api_container_wraps_resource_query_service_once() -> None:
-    raw_service = object()
-    wrapped_service = OpaqueConnectorResourceAccess(cast(Any, raw_service))
+def test_api_container_preserves_exact_resource_handler_binding() -> None:
+    handler = object()
+    container = _container_with_list_handler(handler)
 
-    container = _container_with_resource_service(wrapped_service)
-
-    assert container.resource_query_service is wrapped_service
+    assert container.list_resources_handler is handler
 
     replaced = replace(container, environment="test-2")
 
-    assert replaced.resource_query_service is container.resource_query_service
+    assert replaced.list_resources_handler is container.list_resources_handler

@@ -57,9 +57,19 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess,
 )
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler,
+)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
     IssueSelectionHandleCommand,
+)
+from google_work_agent.application.use_cases.resource.list_resources import ListResourcesHandler
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    OpaqueConnectorResourceAccess,
 )
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
@@ -205,6 +215,12 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
         now_ms=clock.now_ms,
     )
+    resource_access = OpaqueConnectorResourceAccess(
+        ConnectorResourceAccess(
+            gateway=gateway,
+            default_calendar_id_provider=lambda: "calendar-primary",
+        )
+    )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         current_account_id_provider=lambda: "account-1",
@@ -279,10 +295,9 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         local_session_manager=session_manager,
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
         client_address_resolver=lambda _request: "127.0.0.1",
-        resource_query_service=ConnectorResourceAccess(
-            gateway=gateway,
-            default_calendar_id_provider=lambda: "calendar-primary",
-        ),
+        list_resources_handler=ListResourcesHandler(resource_access),
+        get_resource_count_handler=GetResourceCountHandler(resource_access),
+        get_resource_detail_handler=GetResourceDetailHandler(resource_access),
         issue_selection_handle=selection_issuer,
         resolve_selection_handle=selection_resolver,
     )
@@ -364,8 +379,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert completed_item["metadata"]["completed_at"] == "2026-08-13T00:30:00.000Z"
 
         tasks_count = client.get("/api/v1/resources/tasks/count", headers=headers)
-        assert tasks_count.status_code == 200
-        assert tasks_count.json()["total_count"] == 2
+        assert tasks_count.status_code == 422
 
         calendar = client.get(
             "/api/v1/resources/calendar?page_size=10&time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
@@ -383,8 +397,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "/api/v1/resources/calendar/count?time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
             headers=headers,
         )
-        assert calendar_count.status_code == 200
-        assert calendar_count.json()["total_count"] == len(calendar.json()["items"])
+        assert calendar_count.status_code == 422
 
         unsupported_count = client.get("/api/v1/resources/drive/count", headers=headers)
         assert unsupported_count.status_code == 404

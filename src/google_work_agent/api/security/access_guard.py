@@ -11,7 +11,6 @@ from google_work_agent.api.security.fetch_metadata import (
     validate_mutation_fetch_metadata,
 )
 from google_work_agent.api.security.origin import is_exact_origin_match
-from google_work_agent.application.use_cases.trace_event.observability import append_operational_log
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -20,9 +19,11 @@ from google_work_agent.ports.system.api_access_port import (
 from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
+    OperationalLogRecord,
     OperationalLogSink,
     Severity,
     create_event_envelope,
+    serialize_event_envelope,
 )
 
 from .sessions import LocalSessionManager
@@ -78,7 +79,12 @@ class LocalApiAccessGuard:
                 result_code=decision.error_code,
                 status="DENIED",
             )
-            append_operational_log(self.operational_log_sink, envelope=envelope)
+            self.operational_log_sink.append(
+                OperationalLogRecord(
+                    event_json=serialize_event_envelope(envelope),
+                    occurred_at_ms=envelope.occurred_at_ms,
+                )
+            )
         return decision
 
     def _authorize(

@@ -6,9 +6,11 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.application.use_cases.trace_event.observability import (
+from google_work_agent.adapters.system.sanitized_jsonl_log import (
     SanitizedJsonlLogSink,
-    StaticMaintenanceGate,
+)
+from google_work_agent.adapters.system.static_maintenance_gate import (
+    StaticMaintenanceGateAdapter,
 )
 from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
@@ -196,7 +198,7 @@ def test_jsonl_sink_rotates_and_applies_retention(tmp_path: Path) -> None:
 
 
 def test_static_maintenance_gate_reports_flags() -> None:
-    snapshot = StaticMaintenanceGate(
+    snapshot = StaticMaintenanceGateAdapter(
         has_active_write=True,
         migration_running=False,
         restore_running=True,

@@ -1,4 +1,4 @@
-"""Compatibility façade and narrow Google resource access for canonical use cases."""
+"""Narrow Google connector/config/time access for canonical resource handlers."""
 
 from __future__ import annotations
 
@@ -9,24 +9,9 @@ from email.utils import parseaddr
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
-from google_work_agent.application.use_cases.resource.get_resource_count import (
-    GetResourceCountHandler,
-    GetResourceCountQuery,
-    ResourceCount,
-)
-from google_work_agent.application.use_cases.resource.get_resource_detail import (
-    GetResourceDetailHandler,
-    GetResourceDetailQuery,
-    GmailResourceDetail,
-    _gmail_search_permalink,
-)
 from google_work_agent.application.use_cases.resource.list_resources import (
     GMAIL_PRIMARY_QUERY,
     MAX_RESOURCE_PAGE_SIZE,
-    ListResourcesHandler,
-    ListResourcesQuery,
-    ResourceListItem,
-    ResourceListPage,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
     GmailAttachmentMetadata,
@@ -37,12 +22,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 __all__ = (
     "GMAIL_PRIMARY_QUERY",
     "MAX_RESOURCE_PAGE_SIZE",
-    "GmailResourceDetail",
-    "ResourceCount",
-    "ResourceListItem",
-    "ResourceListPage",
     "ConnectorResourceAccess",
-    "_gmail_search_permalink",
 )
 
 
@@ -59,13 +39,7 @@ def _string_tuple(value: object) -> tuple[str, ...]:
 
 
 class ConnectorResourceAccess:
-    """Legacy-compatible façade over narrow connector/config/time access.
-
-    Canonical resource semantics live in application.use_cases.resource.
-    The methods ending in ``_page`` and the config/time accessors are narrow
-    collaborators used by those canonical handlers. The historical public
-    list/count/detail methods delegate back into the canonical handlers.
-    """
+    """Narrow connector/config/time collaborator without query semantics."""
 
     def __init__(
         self,
@@ -297,90 +271,3 @@ class ConnectorResourceAccess:
 
     def current_time(self) -> datetime:
         return self._now()
-
-    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
-        return GetResourceDetailHandler(self)(
-            GetResourceDetailQuery(source="gmail", resource_id=resource_id)
-        ).resource
-
-    def list_gmail_threads(
-        self,
-        *,
-        query: str,
-        page_token: str | None,
-        page_size: int,
-        include_thread_metadata: bool = True,
-    ) -> ResourceListPage:
-        return ListResourcesHandler(self)(
-            ListResourcesQuery(
-                source="gmail",
-                query=query,
-                page_token=page_token,
-                page_size=page_size,
-                include_thread_metadata=include_thread_metadata,
-            )
-        ).page
-
-    def list_tasks(
-        self,
-        *,
-        task_list_id: str | None,
-        page_token: str | None,
-        page_size: int,
-        status_scope: str = "incomplete",
-    ) -> ResourceListPage:
-        return ListResourcesHandler(self)(
-            ListResourcesQuery(
-                source="tasks",
-                task_list_id=task_list_id,
-                page_token=page_token,
-                page_size=page_size,
-                status_scope=status_scope,
-            )
-        ).page
-
-    def list_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-        page_token: str | None,
-        page_size: int,
-    ) -> ResourceListPage:
-        return ListResourcesHandler(self)(
-            ListResourcesQuery(
-                source="calendar",
-                calendar_id=calendar_id,
-                time_min=time_min,
-                time_max=time_max,
-                page_token=page_token,
-                page_size=page_size,
-            )
-        ).page
-
-    def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
-        return GetResourceCountHandler(self)(
-            GetResourceCountQuery(source="gmail", query=query)
-        ).count
-
-    def count_tasks(self, *, task_list_id: str | None) -> ResourceCount:
-        return GetResourceCountHandler(self)(
-            GetResourceCountQuery(source="tasks", task_list_id=task_list_id)
-        ).count
-
-    def count_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-    ) -> ResourceCount:
-        return GetResourceCountHandler(self)(
-            GetResourceCountQuery(
-                source="calendar",
-                calendar_id=calendar_id,
-                time_min=time_min,
-                time_max=time_max,
-            )
-        ).count

@@ -14,11 +14,6 @@ from secrets import token_urlsafe
 from threading import RLock
 from typing import Protocol
 
-from google_work_agent.application.use_cases.resource.connector_resource_access import (
-    GmailResourceDetail,
-    ResourceCount,
-    ResourceListPage,
-)
 from google_work_agent.ports.connector.contracts.google_workspace import (
     GmailThreadDetail,
     GoogleWorkspaceErrorCode,
@@ -30,7 +25,7 @@ ContinuationScope = tuple[str, ...]
 
 
 class ResourceAccess(Protocol):
-    """Narrow connector access plus legacy compatibility surface."""
+    """Narrow connector/config/time collaborators used by resource handlers."""
 
     def get_gmail_thread_detail_raw(self, *, resource_id: str) -> GmailThreadDetail: ...
 
@@ -131,48 +126,6 @@ class ResourceAccess(Protocol):
     def timezone_name(self) -> str: ...
 
     def current_time(self) -> datetime: ...
-
-    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail: ...
-
-    def list_gmail_threads(
-        self,
-        *,
-        query: str,
-        page_token: str | None,
-        page_size: int,
-        include_thread_metadata: bool = True,
-    ) -> ResourceListPage: ...
-
-    def list_tasks(
-        self,
-        *,
-        task_list_id: str | None,
-        page_token: str | None,
-        page_size: int,
-        status_scope: str = "incomplete",
-    ) -> ResourceListPage: ...
-
-    def list_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-        page_token: str | None,
-        page_size: int,
-    ) -> ResourceListPage: ...
-
-    def count_gmail_threads(self, *, query: str = "") -> ResourceCount: ...
-
-    def count_tasks(self, *, task_list_id: str | None) -> ResourceCount: ...
-
-    def count_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-    ) -> ResourceCount: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,95 +354,6 @@ class OpaqueConnectorResourceAccess:
     def current_time(self) -> datetime:
         return self._service.current_time()
 
-    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
-        return self._service.get_gmail_thread_detail(resource_id=resource_id)
-
-    def list_gmail_threads(
-        self,
-        *,
-        query: str,
-        page_token: str | None,
-        page_size: int,
-        include_thread_metadata: bool = True,
-    ) -> ResourceListPage:
-        scope = (
-            "gmail",
-            query.strip(),
-            str(page_size),
-            "metadata" if include_thread_metadata else "no-metadata",
-        )
-        provider_token = self._resolve(scope=scope, local_handle=page_token)
-        page = self._service.list_gmail_threads(
-            query=query,
-            page_token=provider_token,
-            page_size=page_size,
-            include_thread_metadata=include_thread_metadata,
-        )
-        return self._localize(page=page, scope=scope)
-
-    def list_tasks(
-        self,
-        *,
-        task_list_id: str | None,
-        page_token: str | None,
-        page_size: int,
-        status_scope: str = "incomplete",
-    ) -> ResourceListPage:
-        scope = ("tasks", task_list_id or "", str(page_size), status_scope)
-        provider_token = self._resolve(scope=scope, local_handle=page_token)
-        page = self._service.list_tasks(
-            task_list_id=task_list_id,
-            page_token=provider_token,
-            page_size=page_size,
-            status_scope=status_scope,
-        )
-        return self._localize(page=page, scope=scope)
-
-    def list_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-        page_token: str | None,
-        page_size: int,
-    ) -> ResourceListPage:
-        scope = (
-            "calendar",
-            calendar_id or "",
-            time_min or "",
-            time_max or "",
-            str(page_size),
-        )
-        provider_token = self._resolve(scope=scope, local_handle=page_token)
-        page = self._service.list_calendar_resources(
-            calendar_id=calendar_id,
-            time_min=time_min,
-            time_max=time_max,
-            page_token=provider_token,
-            page_size=page_size,
-        )
-        return self._localize(page=page, scope=scope)
-
-    def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
-        return self._service.count_gmail_threads(query=query)
-
-    def count_tasks(self, *, task_list_id: str | None) -> ResourceCount:
-        return self._service.count_tasks(task_list_id=task_list_id)
-
-    def count_calendar_resources(
-        self,
-        *,
-        calendar_id: str | None,
-        time_min: str | None,
-        time_max: str | None,
-    ) -> ResourceCount:
-        return self._service.count_calendar_resources(
-            calendar_id=calendar_id,
-            time_min=time_min,
-            time_max=time_max,
-        )
-
     def _resolve(
         self,
         *,
@@ -499,25 +363,6 @@ class OpaqueConnectorResourceAccess:
         if local_handle is None:
             return None
         return self._continuations.resolve(scope=scope, local_handle=local_handle)
-
-    def _localize(
-        self,
-        *,
-        page: ResourceListPage,
-        scope: ContinuationScope,
-    ) -> ResourceListPage:
-        provider_next = page.next_page_token
-        if provider_next is None:
-            return ResourceListPage(source=page.source, items=page.items, next_page_token=None)
-        local_next = self._continuations.issue(
-            scope=scope,
-            provider_page_token=provider_next,
-        )
-        return ResourceListPage(
-            source=page.source,
-            items=page.items,
-            next_page_token=local_next,
-        )
 
     def _localize_resource_page(
         self,

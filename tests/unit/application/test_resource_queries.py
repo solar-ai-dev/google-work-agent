@@ -5,14 +5,79 @@ from datetime import UTC, datetime
 import pytest
 
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
-    ConnectorResourceAccess,
+    ConnectorResourceAccess as _ConnectorResourceAccess,
+)
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler,
+    GetResourceCountQuery,
+    ResourceCount,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler,
+    GetResourceDetailQuery,
+    GmailResourceDetail,
     _gmail_search_permalink,
+)
+from google_work_agent.application.use_cases.resource.list_resources import (
+    ListResourcesHandler,
+    ListResourcesQuery,
+    ResourceListPage,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourcePage,
     ResourceSnapshot,
     ResourceType,
 )
+
+
+class ConnectorResourceAccess(_ConnectorResourceAccess):
+    """Test-only convenience surface that calls the exact canonical handlers."""
+
+    def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
+        return GetResourceDetailHandler(self)(
+            GetResourceDetailQuery(source="gmail", resource_id=resource_id)
+        ).resource
+
+    def list_gmail_threads(self, **kwargs: object) -> ResourceListPage:
+        return ListResourcesHandler(self)(
+            ListResourcesQuery(source="gmail", **kwargs)  # type: ignore[arg-type]
+        ).page
+
+    def list_tasks(self, **kwargs: object) -> ResourceListPage:
+        return ListResourcesHandler(self)(
+            ListResourcesQuery(source="tasks", **kwargs)  # type: ignore[arg-type]
+        ).page
+
+    def list_calendar_resources(self, **kwargs: object) -> ResourceListPage:
+        return ListResourcesHandler(self)(
+            ListResourcesQuery(source="calendar", **kwargs)  # type: ignore[arg-type]
+        ).page
+
+    def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
+        return GetResourceCountHandler(self)(
+            GetResourceCountQuery(source="gmail", query=query)
+        ).count
+
+    def count_tasks(self, *, task_list_id: str | None) -> ResourceCount:
+        return GetResourceCountHandler(self)(
+            GetResourceCountQuery(source="tasks", task_list_id=task_list_id)
+        ).count
+
+    def count_calendar_resources(
+        self,
+        *,
+        calendar_id: str | None,
+        time_min: str | None,
+        time_max: str | None,
+    ) -> ResourceCount:
+        return GetResourceCountHandler(self)(
+            GetResourceCountQuery(
+                source="calendar",
+                calendar_id=calendar_id,
+                time_min=time_min,
+                time_max=time_max,
+            )
+        ).count
 
 
 class _Gateway:

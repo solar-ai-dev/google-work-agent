@@ -18,8 +18,8 @@ class _Settings:
     def __init__(self, retention_days: int) -> None:
         self._retention_days = retention_days
 
-    def get(self) -> SimpleNamespace:
-        return SimpleNamespace(run_retention_days=self._retention_days)
+    def get_settings(self) -> SimpleNamespace:
+        return SimpleNamespace(retention_days=self._retention_days)
 
 
 class _Retention:

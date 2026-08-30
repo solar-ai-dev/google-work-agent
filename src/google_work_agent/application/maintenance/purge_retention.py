@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.use_cases.trace_event.observability import emit_audit_event
+from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.ports.persistence.retention_repository import (
     RetentionCutoffs,
     RetentionPurgeResult,
@@ -13,6 +13,8 @@ from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
     Severity,
+    create_event_envelope,
+    serialize_event_envelope,
 )
 from google_work_agent.ports.system.settings_port import SettingsPort
 
@@ -38,7 +40,7 @@ class PurgeRetentionHandler:
         self._unit_of_work_factory = unit_of_work_factory
 
     def handle(self, command: PurgeRetentionCommand) -> RetentionPurgeResult:
-        retention_days = self._settings.get().run_retention_days
+        retention_days = self._settings.get_settings().retention_days
         if not 1 <= retention_days <= 30:
             raise ValueError("retention_days must be between 1 and 30")
         if not 1 <= command.batch_limit <= _MAX_BATCH_LIMIT:
@@ -53,13 +55,7 @@ class PurgeRetentionHandler:
         )
         with self._unit_of_work_factory() as unit_of_work:
             result = unit_of_work.retention.purge_batch(cutoffs, command.batch_limit)
-            emit_audit_event(
-                unit_of_work,
-                correlation=ObservabilityContext(),
-                account_id=None,
-                actor_type="SYSTEM",
-                actor_id="purge_retention",
-                actor_display="PurgeRetentionHandler",
+            envelope = create_event_envelope(
                 event_name="PURGE_COMPLETED",
                 event_category=EventCategory.PERSISTENCE,
                 occurred_at_ms=command.now_ms,
@@ -67,6 +63,7 @@ class PurgeRetentionHandler:
                 component="retention",
                 environment="local",
                 release_version="dev",
+                correlation=ObservabilityContext(),
                 attributes={
                     "runs": result.runs,
                     "checkpoints": result.checkpoints,
@@ -79,7 +76,20 @@ class PurgeRetentionHandler:
                 },
                 result_code="TRANSITION_APPLIED",
                 status="COMPLETED",
-                required=True,
+            )
+            unit_of_work.audits.append(
+                AuditEventRecord(
+                    account_id=None,
+                    run_id=None,
+                    action_id=None,
+                    actor_type="SYSTEM",
+                    actor_id="purge_retention",
+                    actor_display="PurgeRetentionHandler",
+                    event_type="PURGE_COMPLETED",
+                    outcome="TRANSITION_APPLIED",
+                    metadata_json=serialize_event_envelope(envelope),
+                    created_at_ms=command.now_ms,
+                )
             )
             unit_of_work.commit()
         return result

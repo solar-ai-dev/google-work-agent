@@ -1,5 +1,6 @@
 """Update the process-local requested runtime mode with crash-safe replay."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
@@ -25,12 +26,19 @@ class UpdateRuntimeModeResult:
 
 class UpdateRuntimeModeHandler:
     def __init__(
-        self, *, runtime_mode: RuntimeModePort, replay: OperationalCommandReplayPort
+        self,
+        *,
+        runtime_mode: RuntimeModePort,
+        replay: OperationalCommandReplayPort,
+        has_active_run: Callable[[], bool],
     ) -> None:
         self._runtime_mode = runtime_mode
         self._replay = replay
+        self._has_active_run = has_active_run
 
     def __call__(self, command: UpdateRuntimeModeCommand) -> UpdateRuntimeModeResult:
+        if self._has_active_run():
+            raise RuntimeError("RUNTIME_MODE_CHANGE_BLOCKED_BY_ACTIVE_RUN")
         outcome = execute_operational_command(
             replay_port=self._replay,
             command_id=command.command_id,

@@ -84,6 +84,9 @@ from google_work_agent.adapters.system.process_component_circuit_state import (
 from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.adapters.system.static_maintenance_gate import (
+    StaticMaintenanceGateAdapter,
+)
 from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
 from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
@@ -198,6 +201,12 @@ from google_work_agent.application.use_cases.resource.connector_resource_access 
 from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
     GetCalendarResourceDetailHandler,
 )
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler,
+)
 from google_work_agent.application.use_cases.resource.get_task_resource_detail import (
     GetTaskResourceDetailHandler,
 )
@@ -205,6 +214,7 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
     IssueSelectionHandle,
 )
 from google_work_agent.application.use_cases.resource.list_calendars import ListCalendarsHandler
+from google_work_agent.application.use_cases.resource.list_resources import ListResourcesHandler
 from google_work_agent.application.use_cases.resource.list_task_lists import ListTaskListsHandler
 from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
     OpaqueConnectorResourceAccess,
@@ -253,7 +263,6 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
 from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
     EmitTraceEventHandler,
 )
-from google_work_agent.application.use_cases.trace_event.observability import StaticMaintenanceGate
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.launcher.connector_composition import build_connectors
 from google_work_agent.launcher.development_constants import (
@@ -642,7 +651,7 @@ def build_container(
         database_path=database_path,
         backups_dir=root / "backups",
         clock=clock,
-        maintenance_gate=StaticMaintenanceGate(),
+        maintenance_gate=StaticMaintenanceGateAdapter(),
         release_version=RELEASE_VERSION,
         domain_contract_version="1",
         schema_version="1",
@@ -1082,6 +1091,19 @@ def build_container(
         marker_path=root / "shutdown" / "request.json",
     )
 
+    resource_access = OpaqueConnectorResourceAccess(
+        ConnectorResourceAccess(
+            gateway=read_projection,
+            default_calendar_id_provider=(
+                lambda: llm_runtime.settings_service().default_calendar_id
+            ),
+            default_tasklist_id_provider=(
+                lambda: llm_runtime.settings_service().default_tasklist_id
+            ),
+            timezone_provider=lambda: llm_runtime.settings_service().timezone,
+        )
+    )
+
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
@@ -1141,18 +1163,9 @@ def build_container(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        resource_query_service=OpaqueConnectorResourceAccess(
-            ConnectorResourceAccess(
-                gateway=read_projection,
-                default_calendar_id_provider=(
-                    lambda: llm_runtime.settings_service().default_calendar_id
-                ),
-                default_tasklist_id_provider=(
-                    lambda: llm_runtime.settings_service().default_tasklist_id
-                ),
-                timezone_provider=lambda: llm_runtime.settings_service().timezone,
-            )
-        ),
+        list_resources_handler=ListResourcesHandler(resource_access),
+        get_resource_count_handler=GetResourceCountHandler(resource_access),
+        get_resource_detail_handler=GetResourceDetailHandler(resource_access),
         issue_selection_handle=issue_selection_handle,
         resolve_selection_handle=resolve_selection_handle,
         list_task_lists_handler=ListTaskListsHandler(
@@ -1264,6 +1277,7 @@ def build_container(
         update_runtime_mode_handler=UpdateRuntimeModeHandler(
             runtime_mode=runtime_mode,
             replay=operational_replay,
+            has_active_run=production_runtime.workflow_execution.has_active_runs,
         ),
         operational_command_replay=operational_replay,
         continue_cancel_resolution_handler=continue_cancel_resolution,

@@ -1,7 +1,7 @@
 """Resource projection routes over canonical Application use cases."""
 
 from dataclasses import asdict
-from typing import cast
+from typing import NoReturn, cast
 
 from fastapi import APIRouter, Header, Path, Query, Request
 
@@ -48,9 +48,6 @@ from google_work_agent.application.use_cases.resource.list_task_lists import (
     ListTaskListsHandler,
     ListTaskListsQuery,
 )
-from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
-    ResourceAccess,
-)
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
@@ -92,19 +89,6 @@ def list_calendars(
     return cast(dict[str, object], asdict(result))
 
 
-def _resource_service(dependencies: ResourceRouteDependency, *, request_id: str) -> ResourceAccess:
-    service = dependencies.resource_query_service()
-    if service is None:
-        raise ApiRequestError(
-            error_code="SERVICE_BUSY",
-            user_message="Resource provider is not configured.",
-            status_code=503,
-            request_id=request_id,
-            detail_code="RESOURCE_QUERY_UNAVAILABLE",
-        )
-    return service
-
-
 @router.get("/gmail", response_model=ResourceListResponse)
 def list_gmail_resources(
     request: Request,
@@ -122,9 +106,10 @@ def list_gmail_resources(
         request_version=x_api_contract_version,
     )
     try:
-        result = ListResourcesHandler(
-            _resource_service(dependencies, request_id=request.state.request_id)
-        )(
+        handler = dependencies.list_resources_handler
+        if not isinstance(handler, ListResourcesHandler):
+            _raise_resource_handler_unavailable(request)
+        result = handler(
             ListResourcesQuery(
                 source="gmail",
                 query=query,
@@ -144,16 +129,11 @@ def list_gmail_resources(
     )
 
 
-@router.get("/{source}/count", response_model=ResourceCountResponse)
+@router.get("/gmail/count", response_model=ResourceCountResponse)
 def get_resource_count(
     request: Request,
     dependencies: ResourceRouteDependency,
-    source: str = Path(min_length=1, max_length=32),
     query: str = Query(default=""),
-    task_list_id: str | None = Query(default=None),
-    calendar_id: str | None = Query(default=None),
-    time_min: str | None = Query(default=None, min_length=1, max_length=64),
-    time_max: str | None = Query(default=None, min_length=1, max_length=64),
     refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceCountResponse:
@@ -165,16 +145,13 @@ def get_resource_count(
         request_version=x_api_contract_version,
     )
     try:
-        result = GetResourceCountHandler(
-            _resource_service(dependencies, request_id=request.state.request_id)
-        )(
+        handler = dependencies.get_resource_count_handler
+        if not isinstance(handler, GetResourceCountHandler):
+            _raise_resource_handler_unavailable(request)
+        result = handler(
             GetResourceCountQuery(
-                source=source,
+                source="gmail",
                 query=query,
-                task_list_id=task_list_id,
-                calendar_id=calendar_id,
-                time_min=time_min,
-                time_max=time_max,
             )
         )
     except ConnectorOperationFailure as error:
@@ -201,9 +178,10 @@ def get_gmail_resource_detail(
         request_version=x_api_contract_version,
     )
     try:
-        result = GetResourceDetailHandler(
-            _resource_service(dependencies, request_id=request.state.request_id)
-        )(GetResourceDetailQuery(source="gmail", resource_id=resource_id))
+        handler = dependencies.get_resource_detail_handler
+        if not isinstance(handler, GetResourceDetailHandler):
+            _raise_resource_handler_unavailable(request)
+        result = handler(GetResourceDetailQuery(source="gmail", resource_id=resource_id))
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
     return GmailResourceDetailResponse(
@@ -285,9 +263,10 @@ def list_task_resources(
         request_version=x_api_contract_version,
     )
     try:
-        result = ListResourcesHandler(
-            _resource_service(dependencies, request_id=request.state.request_id)
-        )(
+        handler = dependencies.list_resources_handler
+        if not isinstance(handler, ListResourcesHandler):
+            _raise_resource_handler_unavailable(request)
+        result = handler(
             ListResourcesQuery(
                 source="tasks",
                 task_list_id=task_list_id,
@@ -325,9 +304,10 @@ def list_calendar_resources(
         request_version=x_api_contract_version,
     )
     try:
-        result = ListResourcesHandler(
-            _resource_service(dependencies, request_id=request.state.request_id)
-        )(
+        handler = dependencies.list_resources_handler
+        if not isinstance(handler, ListResourcesHandler):
+            _raise_resource_handler_unavailable(request)
+        result = handler(
             ListResourcesQuery(
                 source="calendar",
                 calendar_id=calendar_id,
@@ -386,7 +366,7 @@ def _enforce_resource_access(
     )
 
 
-def _raise_resource_handler_unavailable(request: Request) -> None:
+def _raise_resource_handler_unavailable(request: Request) -> NoReturn:
     raise ApiRequestError(
         error_code="SERVICE_BUSY",
         user_message="Resource provider is not configured.",

@@ -70,7 +70,9 @@ class ApiContainer:
     get_connection_status_handler: Any | None = None
     revoke_connection_handler: Any | None = None
     current_account_id_provider: Callable[[], str | None] = lambda: None
-    resource_query_service: Any | None = None
+    list_resources_handler: Any | None = None
+    get_resource_count_handler: Any | None = None
+    get_resource_detail_handler: Any | None = None
     list_task_lists_handler: Any | None = None
     list_calendars_handler: Any | None = None
     get_task_resource_detail_handler: Any | None = None

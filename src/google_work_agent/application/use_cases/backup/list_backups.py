@@ -26,9 +26,4 @@ class ListBackupsHandler:
         del query
         return BackupListResponseV1(1, tuple(self._backups.list_backups()))
 
-    handle = __call__
-
-
-ListBackupsResult = BackupListResponseV1
-
-__all__ = ["BackupListResponseV1", "ListBackupsHandler", "ListBackupsQuery", "ListBackupsResult"]
+__all__ = ["BackupListResponseV1", "ListBackupsHandler", "ListBackupsQuery"]
