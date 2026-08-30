@@ -72,8 +72,23 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.execut
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_assess_sufficiency import (  # noqa: E501
     route_after_assess_sufficiency,
 )
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_build_query import (  # noqa: E501
+    route_after_build_query,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_execute_read import (  # noqa: E501
+    route_after_execute_read,
+)
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_finalize_retrieval import (  # noqa: E501
     route_after_finalize_retrieval,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_normalize_segments import (  # noqa: E501
+    route_after_normalize_segments,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_plan_query import (  # noqa: E501
+    route_after_plan_query,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_rag_retrieve_rerank import (  # noqa: E501
+    route_after_rag_retrieve_rerank,
 )
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_select_evidence import (  # noqa: E501
     route_after_select_evidence,
@@ -346,15 +361,31 @@ class RetrievalSubgraph:
         graph.add_node("assess_sufficiency", self._assess_sufficiency_node)
         graph.add_node("finalize", self._finalize_node)
         graph.add_edge(START, "plan_query")
-        graph.add_edge("plan_query", "build_query")
+        graph.add_conditional_edges(
+            "plan_query",
+            route_after_plan_query,
+            {"build_query": "build_query"},
+        )
         graph.add_conditional_edges(
             "build_query",
-            self._route_after_build_query,
+            route_after_build_query,
             {"execute_read": "execute_read", "finalize": "finalize"},
         )
-        graph.add_edge("execute_read", "normalize_segments")
-        graph.add_edge("normalize_segments", "rag_retrieve")
-        graph.add_edge("rag_retrieve", "select_evidence")
+        graph.add_conditional_edges(
+            "execute_read",
+            route_after_execute_read,
+            {"normalize_segments": "normalize_segments"},
+        )
+        graph.add_conditional_edges(
+            "normalize_segments",
+            route_after_normalize_segments,
+            {"rag_retrieve": "rag_retrieve"},
+        )
+        graph.add_conditional_edges(
+            "rag_retrieve",
+            route_after_rag_retrieve_rerank,
+            {"select_evidence": "select_evidence"},
+        )
         graph.add_conditional_edges(
             "select_evidence",
             route_after_select_evidence,
@@ -743,14 +774,6 @@ class RetrievalSubgraph:
                 "confirmation_interrupt": confirmation_interrupt,
             }
         return next_state
-
-    @staticmethod
-    def _route_after_build_query(state: ContextRetrievalLocalState) -> str:
-        return (
-            "finalize"
-            if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) == "FINALIZE"
-            else "execute_read"
-        )
 
     def _validated_container_refs(
         self, frozen_routes: list[InputToolRouteV1]

@@ -58,6 +58,19 @@ def test_production_retrieval_uses_exact_eight_node_boundaries() -> None:
         assert f"nodes.{node_symbol.removesuffix('_node')}_node import" in source
         assert f"{node_symbol}(" in source
 
+    for router_symbol in (
+        "route_after_plan_query",
+        "route_after_build_query",
+        "route_after_execute_read",
+        "route_after_normalize_segments",
+        "route_after_rag_retrieve_rerank",
+        "route_after_select_evidence",
+        "route_after_assess_sufficiency",
+        "route_after_finalize_retrieval",
+    ):
+        assert f"{router_symbol}," in source
+        assert f"{router_symbol}(" in source or f"            {router_symbol}," in source
+
     for operation in (
         "plan_query",
         "build_query",
