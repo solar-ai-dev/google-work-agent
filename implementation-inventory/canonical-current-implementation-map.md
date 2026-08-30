@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `62940648f97c92a37103221419bf1b69fab992f4`
+**Validation HEAD:** `e40c320cdb1b208cce713251522e9821419bde12`
 
 ## Purpose
 
@@ -534,7 +534,7 @@ At production SHA `dc580108f062df653c69ec6812f58f074f8a5f21`, the Boundary scope
 | STR-080 | RunRetrievalCachePort — ports/system/run_retrieval_cache_port.py → RunRetrievalCachePort | exact typed cache surface verified | COMPLETE | KEEP |
 | STR-081 | InMemoryRunRetrievalCache — adapters/system/memory/run_retrieval_cache.py → InMemoryRunRetrievalCache | all five resolution statuses and discard behavior verified | COMPLETE | KEEP |
 | STR-082 | WorkflowExecutionPort — ports/system/workflow_execution_port.py → WorkflowExecutionPort | exact callable surface verified | COMPLETE | KEEP |
-| STR-083 | BackgroundRunExecutorAdapter — adapters/langgraph/runtime/background_run_executor.py → BackgroundRunExecutorAdapter | exact adapter binding verified | COMPLETE | KEEP |
+| STR-083 | BackgroundRunExecutorAdapter — adapters/langgraph/runtime/background_run_executor.py → BackgroundRunExecutorAdapter | Exact adapter binding; the process-local admission fence is bounded to one queued/active worker attempt, so a durable admission left unsettled by a transient checkpoint/materialization failure can be redriven in the same process while duplicate active submissions remain fenced. | COMPLETE | KEEP; focused same-admission replay, active-run exclusion, pre-settlement failure/redrive, stale-authority, product approval, invocation, crash-recovery, and full regression tests pass at `e40c320cdb1b208cce713251522e9821419bde12`. |
 | STR-084 | SettingsPort — ports/system/settings_port.py → SettingsPort | exact operation_ref/reconciliation surface verified | COMPLETE | KEEP |
 | STR-085 | JsonSettingsAdapter — adapters/system/json_settings.py → JsonSettingsAdapter | atomic update and replay reconciliation verified | COMPLETE | KEEP |
 | STR-086 | RuntimeModePort — ports/system/runtime_mode_port.py → RuntimeModePort | exact requested-mode/reconciliation surface verified | COMPLETE | KEEP |
