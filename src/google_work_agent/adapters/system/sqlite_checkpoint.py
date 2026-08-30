@@ -107,6 +107,24 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         adapter._setup_external_llm_scope_storage()
         return adapter
 
+    @classmethod
+    def for_read_transaction(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        now_ms: Callable[[], int],
+    ) -> SqliteCheckpointAdapter:
+        """Bind checkpoint reads without attempting schema or lifecycle writes."""
+
+        adapter = cls.__new__(cls)
+        adapter._initialize(
+            connection=connection,
+            now_ms=now_ms,
+            owns_connection=False,
+            target_resolver=None,
+        )
+        return adapter
+
     def _initialize(
         self,
         *,

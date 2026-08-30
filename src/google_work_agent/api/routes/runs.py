@@ -194,7 +194,7 @@ def get_run_snapshot(
         request_version=x_api_contract_version,
     )
     snapshot = GetRunSnapshotHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
+        unit_of_work_factory=dependencies.read_unit_of_work_factory,
         project_context_preview=(
             dependencies.project_context_preview_handler
             if isinstance(
@@ -308,7 +308,7 @@ def get_run_context(
         request_version=x_api_contract_version,
     )
     context = GetExecutionContextHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
+        unit_of_work_factory=dependencies.read_unit_of_work_factory,
     )(GetExecutionContextQuery(run_id=run_id))
     return RunContextResponse(
         context=None if context is None else asdict(context),

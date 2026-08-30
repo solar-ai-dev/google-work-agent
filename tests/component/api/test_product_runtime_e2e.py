@@ -47,7 +47,10 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
     ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
-from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    sqlite_read_unit_of_work_factory,
+    sqlite_unit_of_work_factory,
+)
 from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
 )
@@ -367,6 +370,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     database_path = _seed_product_database(tmp_path)
     clock = FakeClockPort(1000)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    read_unit_of_work_factory = sqlite_read_unit_of_work_factory(database_path)
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     )
@@ -416,7 +420,9 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         checkpoint_port=checkpoint,
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
-    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    get_execution_context = GetExecutionContextHandler(
+        unit_of_work_factory=read_unit_of_work_factory
+    )
     publisher = InMemorySseEventBuffer(service_instance_id="svc-product", capacity_per_run=32)
     id_generator = DeterministicUUID(prefix="api")
 
@@ -446,16 +452,17 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
     )
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
+        read_unit_of_work_factory=read_unit_of_work_factory,
         current_account_id_provider=lambda: "account-1",
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
         list_conversations_handler=ListConversationsHandler(
-            unit_of_work_factory=unit_of_work_factory,
+            unit_of_work_factory=read_unit_of_work_factory,
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
-            unit_of_work_factory=unit_of_work_factory,
+            unit_of_work_factory=read_unit_of_work_factory,
         ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",

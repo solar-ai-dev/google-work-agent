@@ -92,3 +92,17 @@ def test_issue_146_application_does_not_import_concrete_adapters() -> None:
         if "google_work_agent.adapters" in text:
             violations.append(str(path.relative_to(ROOT)))
     assert violations == []
+
+
+def test_issue_146_sqlite_queries_use_a_read_only_uow_boundary() -> None:
+    unit_of_work = (
+        SOURCE / "adapters/persistence/sqlite/unit_of_work.py"
+    ).read_text(encoding="utf-8")
+    assert "def sqlite_read_unit_of_work_factory(" in unit_of_work
+    assert 'connection.execute("PRAGMA query_only = ON;")' in unit_of_work
+    assert 'connection.execute("BEGIN;")' in unit_of_work
+
+    run_routes = (SOURCE / "api/routes/runs.py").read_text(encoding="utf-8")
+    assert run_routes.count(
+        "unit_of_work_factory=dependencies.read_unit_of_work_factory"
+    ) == 2

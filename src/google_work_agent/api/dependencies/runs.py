@@ -41,6 +41,7 @@ from google_work_agent.ports.system.uuid_port import UUIDPort
 class RunRouteDependencies:
     api_contract_version: str
     unit_of_work_factory: Callable[[], UnitOfWork]
+    read_unit_of_work_factory: Callable[[], UnitOfWork]
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
@@ -78,10 +79,15 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         def unit_of_work_factory() -> UnitOfWork:
             return cast(Callable[[], UnitOfWork], container.unit_of_work_factory)()
 
+    read_unit_of_work_factory = cast(
+        Callable[[], UnitOfWork],
+        getattr(container, "read_unit_of_work_factory", None) or unit_of_work_factory,
+    )
+
     def resolve_resume_authority(*, run_id: str, resume_kind: str) -> Mapping[str, object] | None:
         if resume_kind not in {"REAUTH_COMPLETED", "RECOVERY_RECHECK"}:
             return None
-        context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)(
+        context = GetExecutionContextHandler(unit_of_work_factory=read_unit_of_work_factory)(
             GetExecutionContextQuery(run_id=run_id)
         )
         if context is None:
@@ -112,6 +118,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         unit_of_work_factory=unit_of_work_factory,
+        read_unit_of_work_factory=read_unit_of_work_factory,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=cast(

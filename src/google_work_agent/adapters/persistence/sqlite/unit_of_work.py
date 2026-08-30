@@ -114,17 +114,28 @@ class _PostCommitTraceBuffer:
 
 
 class SqliteUnitOfWork:
-    """Context-managed SQLite transaction boundary using BEGIN IMMEDIATE."""
+    """Context-managed SQLite transaction boundary for commands or queries."""
 
-    def __init__(self, database_path: Path, *, now_ms: Callable[[], int] | None = None) -> None:
+    def __init__(
+        self,
+        database_path: Path,
+        *,
+        now_ms: Callable[[], int] | None = None,
+        read_only: bool = False,
+    ) -> None:
         self._database_path = database_path
         self._now_ms = now_ms or (lambda: int(time.time() * 1000))
+        self._read_only = read_only
         self._connection: sqlite3.Connection | None = None
         self._committed = False
 
     def __enter__(self) -> "SqliteUnitOfWork":
         connection = connect_sqlite(self._database_path)
-        connection.execute("BEGIN IMMEDIATE;")
+        if self._read_only:
+            connection.execute("PRAGMA query_only = ON;")
+            connection.execute("BEGIN;")
+        else:
+            connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
         self.connected_accounts = SqliteConnectedAccountStore(connection)
         self.conversations = SqliteConversationRepository(connection)
@@ -145,7 +156,11 @@ class SqliteUnitOfWork:
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
         self.recovery_contexts = SqliteRecoveryRepository(connection, now_ms=self._now_ms)
         self.retention = SqliteRetentionRepository(connection)
-        self.checkpoints = SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
+        self.checkpoints = (
+            SqliteCheckpointAdapter.for_read_transaction(connection, now_ms=self._now_ms)
+            if self._read_only
+            else SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
+        )
         return self
 
     def commit(self) -> None:
@@ -179,5 +194,16 @@ def sqlite_unit_of_work_factory(
 ) -> Callable[[], UnitOfWork]:
     def _factory() -> SqliteUnitOfWork:
         return SqliteUnitOfWork(database_path, now_ms=now_ms)
+
+    return cast(Callable[[], UnitOfWork], _factory)
+
+
+def sqlite_read_unit_of_work_factory(
+    database_path: Path, *, now_ms: Callable[[], int] | None = None
+) -> Callable[[], UnitOfWork]:
+    """Build snapshot-consistent query UoWs without acquiring a writer lock."""
+
+    def _factory() -> SqliteUnitOfWork:
+        return SqliteUnitOfWork(database_path, now_ms=now_ms, read_only=True)
 
     return cast(Callable[[], UnitOfWork], _factory)

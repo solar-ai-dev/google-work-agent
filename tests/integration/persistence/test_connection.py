@@ -1,7 +1,12 @@
 import sqlite3
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import connect_sqlite
+from google_work_agent.adapters.persistence import (
+    apply_migrations,
+    connect_sqlite,
+    sqlite_read_unit_of_work_factory,
+    sqlite_unit_of_work_factory,
+)
 
 
 def test_file_database_connection_applies_required_pragmas(tmp_path: Path) -> None:
@@ -36,3 +41,21 @@ def test_connection_close_is_caller_controlled(tmp_path: Path) -> None:
         assert "closed" in str(exc)
     else:
         raise AssertionError("closed SQLite connection accepted a query")
+
+
+def test_read_unit_of_work_does_not_compete_for_writer_lock(tmp_path: Path) -> None:
+    database_path = tmp_path / "read-uow.db"
+    with connect_sqlite(database_path) as connection:
+        apply_migrations(connection, now_ms=lambda: 1)
+    with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
+        unit_of_work.commit()
+
+    writer = connect_sqlite(database_path)
+    try:
+        writer.execute("BEGIN IMMEDIATE;")
+        with sqlite_read_unit_of_work_factory(database_path)() as unit_of_work:
+            assert unit_of_work.runs.get("missing-run") is None
+    finally:
+        if writer.in_transaction:
+            writer.execute("ROLLBACK;")
+        writer.close()

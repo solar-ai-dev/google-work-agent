@@ -10,6 +10,7 @@ from google_work_agent.adapters.persistence.migration import (
     normalize_migration_bytes,
 )
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    sqlite_read_unit_of_work_factory,
     sqlite_unit_of_work_factory,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "connect_sqlite",
     "discover_migrations",
     "normalize_migration_bytes",
+    "sqlite_read_unit_of_work_factory",
     "sqlite_unit_of_work_factory",
 ]

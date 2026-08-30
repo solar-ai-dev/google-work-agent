@@ -59,7 +59,10 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
 )
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
-from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    sqlite_read_unit_of_work_factory,
+    sqlite_unit_of_work_factory,
+)
 from google_work_agent.adapters.runtime import (
     BuildProfile,
     FileSettingsStore,
@@ -600,7 +603,10 @@ def build_container(
     google_connector = connector_bundle.google_connector
     google_provider = google_connector.oauth_port
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    read_unit_of_work_factory = sqlite_read_unit_of_work_factory(database_path)
+    get_execution_context = GetExecutionContextHandler(
+        unit_of_work_factory=read_unit_of_work_factory
+    )
     get_connection_status = GetConnectionStatusHandler(
         google_provider,
         unit_of_work_factory=unit_of_work_factory,
@@ -1051,7 +1057,7 @@ def build_container(
         ),
     )
     project_context_preview = ProjectContextPreviewHandler(
-        unit_of_work_factory=unit_of_work_factory,
+        unit_of_work_factory=read_unit_of_work_factory,
         checkpoint=checkpoint,
     )
 
@@ -1078,6 +1084,7 @@ def build_container(
 
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
+        read_unit_of_work_factory=read_unit_of_work_factory,
         settings_port=settings_service,
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -1175,10 +1182,10 @@ def build_container(
             replay=operational_replay,
         ),
         list_conversations_handler=ListConversationsHandler(
-            unit_of_work_factory=unit_of_work_factory,
+            unit_of_work_factory=read_unit_of_work_factory,
         ),
         get_conversation_history_handler=GetConversationHistoryHandler(
-            unit_of_work_factory=unit_of_work_factory,
+            unit_of_work_factory=read_unit_of_work_factory,
             history_message_limit=HISTORY_MESSAGE_LIMIT,
             history_run_limit=HISTORY_RUN_LIMIT,
         ),
@@ -1194,9 +1201,11 @@ def build_container(
             ),
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
-        project_recovery_options_handler=ProjectRecoveryOptionsHandler(unit_of_work_factory),
+        project_recovery_options_handler=ProjectRecoveryOptionsHandler(
+            read_unit_of_work_factory
+        ),
         project_error_actions_handler=ProjectErrorActionsHandler(
-            unit_of_work_factory=unit_of_work_factory,
+            unit_of_work_factory=read_unit_of_work_factory,
             resume_target_registry=resume_target_registry,
         ),
         project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
