@@ -180,9 +180,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
         if profile is GraphProfile.SINGLE_BASELINE
         else [
             _profile_request_source_output(request_intent=_action_required_intent()),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _write_plan_output(),
+            _profile_reason_plan_output("PLAN_READY"),
             _review_output("PASS"),
         ]
     )
@@ -330,7 +328,7 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
         ),
         (
             _review_output("BLOCK", blockers=["Modified plan is unsafe."]),
-            "finalize",
+            "response_synthesis",
             "REQUIRED",
             "WAITING_APPROVAL",
             "WAITING_APPROVAL",

@@ -236,7 +236,7 @@ def test_native_profiles_record_answer_path_invocation_counts(
         single_state = single._graph.get_state(single._config_for_thread("thread-1"))  # noqa: SLF001
         assert single_result.outcome is WorkflowOutcome.COMPLETED
         assert single_state.values["trace_context"]["agent_invocation_count"] == 1
-        assert single_state.values["trace_context"]["llm_call_count"] == 3
+        assert single_state.values["trace_context"]["llm_call_count"] == 2
         assert {
             item["agent_subgraph_id"]
             for item in single_state.values["trace_context"]["agent_node_log"]

@@ -19,11 +19,6 @@ from google_work_agent.application.use_cases.execution_attempt.execution_phase i
     WriteExecutionPhaseRequest,
     WriteExecutionPhaseResult,
 )
-from google_work_agent.application.use_cases.run.complete_write_run import (
-    CompleteWriteRunCommand,
-    CompleteWriteRunHandler,
-)
-from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
@@ -42,8 +37,6 @@ class WriteExecutionNode:
         execute_read_only_plan: Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState],
         execution_phase: WriteExecutionPhaseCoordinator,
         has_persisted_cancel_intent: Callable[[str], bool],
-        complete_write_run: CompleteWriteRunHandler,
-        current_run_version: Callable[[str], int],
     ) -> None:
         self._id_factory = id_factory
         self._request_hash = request_hash
@@ -52,8 +45,6 @@ class WriteExecutionNode:
         self._execute_read_only_plan = execute_read_only_plan
         self._execution_phase = execution_phase
         self._has_persisted_cancel_intent = has_persisted_cancel_intent
-        self._complete_write_run = complete_write_run
-        self._current_run_version = current_run_version
 
     def preflight(self, state: Mapping[str, object]) -> dict[str, object]:
         """Project freshness/Claim readiness without invoking connector write."""
@@ -122,31 +113,22 @@ class WriteExecutionNode:
             if state_update is not None:
                 return state_update
 
-        completion = self._complete_if_verified(
+        completion_ready = self._completion_is_ready(
             run_id=run_id,
             actions=actions,
             verification_statuses=verification_statuses,
         )
-        if completion is None:
+        if not completion_ready:
             return self._not_completable_state(
                 state=state,
                 plan_id=plan_id,
                 actions=actions,
                 verification_statuses=verification_statuses,
             )
-        if not completion.applied:
-            return self._reconcile_run_transition(
-                state=state,
-                plan_id=plan_id,
-                verification_statuses=verification_statuses,
-                result_code=completion.result_code,
-                current_status=completion.run_status,
-                current_version=completion.run_version,
-                next_allowed_commands=completion.next_allowed_commands,
-            )
         return {
             **state,
-            "__target__": "finalize",
+            "__target__": "response_synthesis",
+            "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.VERIFICATION.value,
             "execution_summary": {"result": "EXECUTED", "plan_id": plan_id},
             "verification_summary": {"action_statuses": verification_statuses},
@@ -410,39 +392,6 @@ class WriteExecutionNode:
             },
         }
 
-    def _reconcile_run_transition(
-        self,
-        *,
-        state: GraphState,
-        plan_id: str,
-        verification_statuses: list[str],
-        result_code: str,
-        current_status: str,
-        current_version: int,
-        next_allowed_commands: tuple[str, ...],
-    ) -> GraphState:
-        decision = reconcile_write_conflict(
-            aggregate=ReconcileAggregate.RUN,
-            current_status=current_status,
-            next_allowed_commands=next_allowed_commands,
-        )
-        return {
-            **state,
-            "__target__": decision.target,
-            "workflow_phase": self._phase_for_reconcile_target(decision.target),
-            "execution_summary": {
-                "result": "DOMAIN_RECONCILE",
-                "aggregate": ReconcileAggregate.RUN.value,
-                "result_code": result_code,
-                "current_status": current_status,
-                "current_version": current_version,
-                "next_allowed_commands": list(next_allowed_commands),
-                "reconcile_outcome": decision.outcome,
-                "plan_id": plan_id,
-            },
-            "verification_summary": {"action_statuses": verification_statuses},
-        }
-
     def _not_completable_state(
         self,
         *,
@@ -481,27 +430,20 @@ class WriteExecutionNode:
             "verification_summary": {"action_statuses": verification_statuses},
         }
 
-    def _complete_if_verified(
+    def _completion_is_ready(
         self,
         *,
         run_id: str,
         actions: tuple[ActionRecord, ...],
         verification_statuses: list[str],
-    ) -> RunTransitionResponse | None:
-        if (
-            not actions
-            or len(verification_statuses) != len(actions)
-            or not all(status == ActionStatusV1.VERIFIED.value for status in verification_statuses)
-            or self._has_persisted_cancel_intent(run_id)
-        ):
-            return None
-        return self._complete_write_run(
-            CompleteWriteRunCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "complete_write_run", "run_id": run_id}),
-                run_id=run_id,
-                expected_version=self._current_run_version(run_id),
+    ) -> bool:
+        return bool(
+            actions
+            and len(verification_statuses) == len(actions)
+            and all(
+                status == ActionStatusV1.VERIFIED.value for status in verification_statuses
             )
+            and not self._has_persisted_cancel_intent(run_id)
         )
 
     @staticmethod

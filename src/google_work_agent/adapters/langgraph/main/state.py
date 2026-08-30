@@ -13,6 +13,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Final, NotRequired, cast
 
+from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
+    TerminalCommitIntentV1,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -84,6 +87,7 @@ class ProductionGraphStateV2(ParentGraphState, total=False):
     __workflow_control__: NotRequired[dict[str, object] | None]
     exclusion_obligation_segment_ids: NotRequired[list[str]]
     pending_user_retrieval_need: NotRequired[dict[str, object] | None]
+    terminal_commit_intent: NotRequired[TerminalCommitIntentV1 | None]
 
 
 GraphState = ProductionGraphStateV2
@@ -141,6 +145,7 @@ def initial_graph_state(
         "execution_summary": None,
         "verification_summary": None,
         "finalize_intent": None,
+        "terminal_commit_intent": None,
         "user_interrupt": None,
         "policy_confirmation_receipts": [],
         "retry_budget": {

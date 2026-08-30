@@ -33,8 +33,6 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.application.use_cases.run.complete_write_run import CompleteWriteRunCommand
-from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
@@ -299,28 +297,17 @@ class ArtifactFreshnessMixin:
             reader = unit_of_work.cancel_intents
             return has_durable_cancel_intent(reader, run_id)
 
-    def _complete_write_run_if_verified(
+    def _write_run_completion_ready(
         self,
         plan_id: str,
         run_id: str,
-    ) -> RunTransitionResponse | None:
-        """Return completion outcome instead of swallowing applied=false facts."""
+    ) -> bool:
+        """Read-only readiness projection consumed by TERMINAL_COMMIT."""
         if self._has_persisted_cancel_intent(run_id):
-            return None
+            return False
         actions = self._list_actions(plan_id)
-        if not actions or not all(
+        return bool(actions) and all(
             action.status == ActionStatusV1.VERIFIED.value for action in actions
-        ):
-            return None
-        return self._complete_write_run(
-            CompleteWriteRunCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash(
-                    {"kind": "complete_recovered_write_run", "run_id": run_id}
-                ),
-                run_id=run_id,
-                expected_version=self._current_run_version(run_id),
-            )
         )
 
     def discard_run_transients(self, run_id: str) -> None:

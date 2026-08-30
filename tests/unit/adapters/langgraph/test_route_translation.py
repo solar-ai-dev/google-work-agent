@@ -64,8 +64,8 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.PLANNING_REVISE_PLAN,
-            "planning_entry",
-            "planning_entry",
+            "stage_two",
+            "stage_two",
         ),
         (
             GraphProfile.THREE_STAGE,

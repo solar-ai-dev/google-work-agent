@@ -48,7 +48,9 @@ _COMMON_ROUTES = {
     RESPONSE_SYNTHESIS_TARGET: RouteTranslation("response_synthesis", "response_synthesis"),
     SupervisorTarget.REAUTH.value: RouteTranslation("end", "end"),
     SupervisorTarget.RECOVERY.value: RouteTranslation("recovery", "recovery"),
-    SupervisorTarget.FINALIZE.value: RouteTranslation("finalize", "finalize"),
+    SupervisorTarget.FINALIZE.value: RouteTranslation(
+        "response_synthesis", "response_synthesis"
+    ),
 }
 
 
@@ -106,14 +108,7 @@ _PROFILE_ROUTES = {
         SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation("stage_one", "stage_one"),
         SupervisorTarget.API_ACQUISITION.value: RouteTranslation("stage_one", "stage_two"),
         **{
-            target.value: RouteTranslation(
-                "retrieval_entry"
-                if target is SupervisorTarget.CONTEXT_RETRIEVAL
-                else "planning_entry",
-                "retrieval_entry"
-                if target is SupervisorTarget.CONTEXT_RETRIEVAL
-                else "planning_entry",
-            )
+            target.value: RouteTranslation("stage_two", "stage_two")
             for target in (
                 SupervisorTarget.CONTEXT_RETRIEVAL,
                 SupervisorTarget.WORK_ANALYSIS,

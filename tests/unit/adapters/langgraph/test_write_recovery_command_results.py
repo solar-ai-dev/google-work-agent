@@ -118,7 +118,7 @@ def _coordinator(
             else (lambda _run_id: None)
         ),
         execution_phase=cast(WriteExecutionPhaseCoordinator, phase),
-        complete_write_run_if_verified=completion,
+        write_run_completion_ready=completion,
         plans_for_run=lambda _run_id: (_plan(),),
         list_actions=lambda _plan_id: (action,),
         begin_verification=begin_verification,
@@ -209,15 +209,15 @@ def test_verification_applied_false_stops_completion_and_additional_verification
     assert completion_calls == 0
 
 
-def test_completion_applied_false_is_not_reported_restart_reconciled() -> None:
+def test_completion_not_ready_is_not_reported_restart_reconciled() -> None:
     action = _action(ActionStatusV1.EXECUTED)
     phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0
 
-    def completion(_plan_id: str, _run_id: str) -> RunTransitionResponse:
+    def completion(_plan_id: str, _run_id: str) -> bool:
         nonlocal completion_calls
         completion_calls += 1
-        return _completion_response(applied=False, status=RunStatusV1.RECOVERY_REQUIRED)
+        return False
 
     coordinator = _coordinator(
         phase=phase,
@@ -229,7 +229,7 @@ def test_completion_applied_false_is_not_reported_restart_reconciled() -> None:
     result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
 
     summary = cast(dict, result["execution_summary"])
-    assert summary["result"] == "DOMAIN_RECONCILE"
+    assert summary["result"] == "RECOVERY_NOT_COMPLETABLE"
     assert summary["result"] != "RESTART_RECONCILED"
     assert phase.verify_calls == 1
     assert completion_calls == 1

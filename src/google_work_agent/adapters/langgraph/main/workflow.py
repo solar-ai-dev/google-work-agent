@@ -31,16 +31,24 @@ from google_work_agent.adapters.langgraph.main.nodes.domain_reconcile_node impor
 from google_work_agent.adapters.langgraph.main.nodes.domain_validation_node import (
     domain_validation_node,
 )
+from google_work_agent.adapters.langgraph.main.nodes.finalize_node import finalize_node
 from google_work_agent.adapters.langgraph.main.nodes.initialize_node import initialize_node
 from google_work_agent.adapters.langgraph.main.nodes.planning_entry_node import (
     planning_entry_node,
 )
 from google_work_agent.adapters.langgraph.main.nodes.preflight_node import preflight_node
 from google_work_agent.adapters.langgraph.main.nodes.recovery_node import recovery_node
+from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
+    TerminalCommitIntentV1,
+    response_synthesis_node,
+)
 from google_work_agent.adapters.langgraph.main.nodes.retrieval_entry_node import (
     retrieval_entry_node,
 )
 from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import review_entry_node
+from google_work_agent.adapters.langgraph.main.nodes.terminal_commit_node import (
+    terminal_commit_node,
+)
 from google_work_agent.adapters.langgraph.main.nodes.verification_node import verification_node
 from google_work_agent.adapters.langgraph.main.plan_persistence import (
     _connector_id_for_evidence_handle,
@@ -252,6 +260,7 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
@@ -273,9 +282,16 @@ from google_work_agent.application.use_cases.run.block_run import (
     BlockRunCommand,
     BlockRunHandler,
 )
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+)
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunHandler,
+)
+from google_work_agent.application.use_cases.run.complete_read_only_run import (
+    CompleteReadOnlyRunCommand,
+    CompleteReadOnlyRunHandler,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
@@ -297,14 +313,17 @@ from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationHandler,
 )
 from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
-from google_work_agent.application.use_cases.run.run_terminal import (
-    FailRunCommand,
-    FailRunService,
-    derive_finalize_intent,
-)
 from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
+)
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventCommand,
+    ProjectRunEventHandler,
+)
+from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
+    EmitTraceEventCommand,
+    EmitTraceEventHandler,
 )
 from google_work_agent.application.use_cases.verification.store_verification import (
     StoreVerificationHandler,
@@ -322,9 +341,9 @@ from google_work_agent.domain.execution_attempt.model import (
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
-from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
 from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError, PromptReference
@@ -333,6 +352,11 @@ from google_work_agent.ports.persistence.execution_attempt_repository import act
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
+from google_work_agent.ports.system.contracts.observability import (
+    EventCategory,
+    ObservabilityContext,
+    Severity,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCancelRequest,
     WorkflowInvocationResult,
@@ -341,6 +365,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
 
 JsonObject = dict[str, object]
 
@@ -407,6 +432,9 @@ class WorkflowRuntimeCore:
         default_calendar_id_provider: Callable[[], str | None] | None = None,
         attachment_verifier: Any | None = None,
         resume_target_registry: ResumeTargetRegistry | None = None,
+        sse_event_buffer: SseEventBufferPort | None = None,
+        environment: str = "TEST",
+        release_version: str = "test",
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._tool_catalog = tool_catalog
@@ -443,6 +471,15 @@ class WorkflowRuntimeCore:
         )
         self._get_run_snapshot_handler = GetRunSnapshotHandler(
             unit_of_work_factory=unit_of_work_factory,
+        )
+        self._build_terminal_message = BuildTerminalMessageHandler()
+        self._emit_terminal_trace = EmitTraceEventHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            environment=environment,
+            release_version=release_version,
+        )
+        self._project_terminal_event = (
+            None if sse_event_buffer is None else ProjectRunEventHandler(sse_event_buffer)
         )
         self._begin_retrieval_handler = BeginRetrievalHandler(
             unit_of_work_factory=canonical_uow_factory,
@@ -522,6 +559,11 @@ class WorkflowRuntimeCore:
             now_ms=now_ms,
             message_id_factory=id_factory,
         )
+        self._complete_read_only_run = CompleteReadOnlyRunHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            message_id_factory=id_factory,
+        )
         self._complete_write_run = CompleteWriteRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
@@ -530,10 +572,7 @@ class WorkflowRuntimeCore:
         self._block_run = BlockRunHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
-        )
-        self._fail_run = FailRunService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
+            message_id_factory=id_factory,
         )
         self._save_write_plan = SaveWritePlanService(
             unit_of_work_factory=unit_of_work_factory,
@@ -699,13 +738,11 @@ class WorkflowRuntimeCore:
             execute_read_only_plan=self._execute_read_only_plan,
             execution_phase=self._write_execution_phase,
             has_persisted_cancel_intent=self._has_persisted_cancel_intent,
-            complete_write_run=self._complete_write_run,
-            current_run_version=self._current_run_version,
         )
         self._write_recovery = WriteRecoveryCoordinator(
             latest_unknown_action=self._latest_unknown_action,
             execution_phase=self._write_execution_phase,
-            complete_write_run_if_verified=self._complete_write_run_if_verified,
+            write_run_completion_ready=self._write_run_completion_ready,
             plans_for_run=self._plans_for_run,
             list_actions=self._list_actions,
             begin_verification=lambda run_id: (
@@ -737,7 +774,7 @@ class WorkflowRuntimeCore:
             reconcile_inflight_action=self._reconcile_cancelling_action,
             verify_executed_action=self._verify_cancelling_action,
             resolve_unknown_action=self._resolve_cancelling_unknown_action,
-            finalize_cancel=self._finalize_cancelling_run,
+            finalize_cancel=None,
         )
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
@@ -854,7 +891,6 @@ class WorkflowRuntimeCore:
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 waiting_approval=self._waiting_approval_node,
-                finalize=self._finalize_node,
                 stage_one=self._three_stage_one_subgraph,
                 stage_two=self._three_stage_two_subgraph,
                 stage_three=self._three_stage_review_subgraph,
@@ -960,23 +996,28 @@ class WorkflowRuntimeCore:
             if "ABSOLUTE_LLM_LIMIT_EXHAUSTED" in message
             else "PROFILE_LLM_LIMIT_EXHAUSTED"
         )
-        run_version = self._current_run_version(run_id)
-        self._block_run(
-            BlockRunCommand(
-                command_id=self._phase_command_id(run_id, "llm_budget_block", run_version),
-                request_hash=self._request_hash(
-                    {
-                        "kind": "llm_budget_block",
-                        "run_id": run_id,
-                        "run_version": run_version,
-                        "reason_code": reason_code,
-                    }
-                ),
-                run_id=run_id,
-                expected_version=run_version,
-                reason_code=reason_code,
-            )
+        config = self._config_for_thread(workflow_key)
+        snapshot = self._graph.get_state(config)
+        pending_owner = next(
+            (node for node in snapshot.next if isinstance(node, str) and node != "__start__"),
+            None,
         )
+        if pending_owner is None:
+            raise RuntimeError("LLM budget exhaustion has no resumable graph owner")
+        self._graph.update_state(
+            config,
+            {
+                "__logical_target__": "response_synthesis",
+                "__target__": "response_synthesis",
+                "finalize_intent": {
+                    "schema_version": 1,
+                    "intent": "BLOCKED",
+                    "reason_code": reason_code,
+                },
+            },
+            as_node=pending_owner,
+        )
+        self._graph.invoke(None, config=config)
         return self._invocation.result_from_thread(
             workflow_key=workflow_key,
             run_id=run_id,
@@ -1053,11 +1094,219 @@ class WorkflowRuntimeCore:
                 cancel_resolution_node,
                 continue_cancel_resolution=self._continue_cancel_resolution_for_main,
             ),
+            response_synthesis=partial(
+                response_synthesis_node,
+                read_terminal_facts=self._read_terminal_facts,
+                build_terminal_message=self._build_terminal_message,
+            ),
+            terminal_commit=partial(
+                terminal_commit_node,
+                read_terminal_facts=self._read_terminal_facts,
+                complete_answer_only=self._terminal_complete_answer_only,
+                complete_read_only=self._terminal_complete_read_only,
+                complete_write=self._terminal_complete_write,
+                block_run=self._terminal_block_run,
+                finalize_cancel=self._terminal_finalize_cancel,
+                resolve_recovery=self._terminal_resolve_recovery,
+            ),
+            finalize=partial(
+                finalize_node,
+                read_terminal_facts=self._read_terminal_facts,
+                emit_trace=self._emit_terminal_finalize_trace,
+                project_run_event=self._project_terminal_finalize_event,
+            ),
         )
 
     def _read_durable_run(self, run_id: str) -> Any:
         snapshot = self._get_run_snapshot_handler(GetRunSnapshotQuery(run_id))
         return None if snapshot is None else snapshot.run
+
+    def _read_terminal_facts(self, run_id: str) -> dict[str, object]:
+        snapshot = self._get_run_snapshot_handler(GetRunSnapshotQuery(run_id))
+        if snapshot is None:
+            raise LookupError(f"run not found: {run_id}")
+        return {
+            "run_id": run_id,
+            "conversation_id": snapshot.run.conversation_id,
+            "status": snapshot.run.status,
+            "version": snapshot.run.version,
+            "terminal_result_kind": (
+                None if snapshot.terminal_result_kind == "NONE" else snapshot.terminal_result_kind
+            ),
+            "final_message_count": sum(
+                message.role == "ASSISTANT" for message in snapshot.messages
+            ),
+            "plan_id": (
+                None if snapshot.current_plan is None else snapshot.current_plan.get("plan_id")
+            ),
+            "action_statuses": [action.status for action in snapshot.actions],
+            "action_effect_types": [action.effect_type for action in snapshot.actions],
+        }
+
+    def _terminal_complete_answer_only(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._complete_answer_only(
+            CompleteAnswerOnlyRunCommand(
+                command_id=self._terminal_command_id(payload),
+                conversation_id=cast(str, state["conversation_id"]),
+                run_id=run_id,
+                assistant_message=intent["terminal_message"].content,
+                expected_version=intent["expected_run_version"],
+                request_hash=calculate_canonical_json_hash(payload),
+                result_kind=cast(
+                    Literal["SUCCESS", "PARTIAL"],
+                    intent["terminal_message"].result_kind,
+                ),
+            )
+        )
+
+    def _terminal_complete_read_only(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        facts = self._read_terminal_facts(run_id)
+        plan_id = self._required_string(facts.get("plan_id"), "plan_id")
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._complete_read_only_run(
+            CompleteReadOnlyRunCommand(
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                plan_id=plan_id,
+                expected_version=intent["expected_run_version"],
+            )
+        )
+
+    def _terminal_complete_write(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._complete_write_run(
+            CompleteWriteRunCommand(
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                expected_version=intent["expected_run_version"],
+            )
+        )
+
+    def _terminal_block_run(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._block_run(
+            BlockRunCommand(
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                expected_version=intent["expected_run_version"],
+                reason_code=intent["reason_codes"][0] if intent["reason_codes"] else "BLOCKED",
+            )
+        )
+
+    def _terminal_finalize_cancel(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._finalize_cancel(
+            FinalizeCancelCommand(
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                expected_run_version=intent["expected_run_version"],
+            )
+        )
+
+    def _terminal_resolve_recovery(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        with self._unit_of_work_factory() as unit_of_work:
+            context = unit_of_work.recovery_contexts.load_current_context(run_id)
+        if context is None:
+            raise RuntimeError("terminal recovery requires current RecoveryContextV1")
+        resolution = {
+            "RECOVERY_ACCEPT_PARTIAL": RecoveryResolution.ACCEPT_PARTIAL,
+            "RECOVERY_CANCEL": RecoveryResolution.CANCEL,
+            "RECOVERY_FAIL": RecoveryResolution.FAIL,
+        }.get(intent["kind"])
+        if resolution is None:
+            raise ValueError("terminal recovery kind is invalid")
+        payload = self._terminal_command_payload(run_id, intent)
+        action_id = context.get("action_id")
+        return self._resolve_recovery(
+            ResolveRecoveryCommandV1(
+                run_id=run_id,
+                expected_version=intent["expected_run_version"],
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                recovery_context_version=int(context["version"]),
+                resolution=resolution,
+                target_kind=cast(Literal["RUN", "ACTION"], context["scope"]),
+                target_action_id=None if action_id is None else str(action_id),
+            )
+        )
+
+    def _emit_terminal_finalize_trace(self, facts: Mapping[str, object]) -> object:
+        run_id = cast(str, facts["run_id"])
+        return self._emit_terminal_trace(
+            EmitTraceEventCommand(
+                correlation=ObservabilityContext(
+                    service_instance_id=self._service_instance_id,
+                    run_id=run_id,
+                    conversation_id=cast(str, facts["conversation_id"]),
+                ),
+                event_name="workflow.finalized",
+                event_category=EventCategory.WORKFLOW,
+                occurred_at_ms=self._now_ms(),
+                severity=Severity.INFO,
+                component="langgraph-finalize",
+                attributes={
+                    "run_status": facts["status"],
+                    "run_version": facts["version"],
+                    "result_kind": facts["terminal_result_kind"],
+                },
+                result_code="TERMINAL_COMMITTED",
+                status=cast(str, facts["status"]),
+            )
+        )
+
+    def _project_terminal_finalize_event(self, facts: Mapping[str, object]) -> object:
+        if self._project_terminal_event is None:
+            return None
+        status = cast(str, facts["status"])
+        return self._project_terminal_event(
+            ProjectRunEventCommand(
+                run_id=cast(str, facts["run_id"]),
+                occurred_at_ms=self._now_ms(),
+                event_type="error" if status == "FAILED" else "completed",
+                payload={
+                    "run_status": status,
+                    "run_version": facts["version"],
+                    "result_kind": facts["terminal_result_kind"],
+                },
+            )
+        )
+
+    @staticmethod
+    def _terminal_command_payload(
+        run_id: str, intent: TerminalCommitIntentV1
+    ) -> dict[str, object]:
+        return {
+            "run_id": run_id,
+            "expected_run_version": intent["expected_run_version"],
+            "kind": intent["kind"],
+        }
+
+    @staticmethod
+    def _terminal_command_id(payload: dict[str, object]) -> str:
+        return f"terminal:{calculate_canonical_json_hash(payload)}"
 
     def _prepare_current_persisted_review_state(self, state: Mapping[str, object]) -> GraphState:
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
@@ -1368,7 +1617,11 @@ class WorkflowRuntimeCore:
             RunStatusV1.FAILED.value,
             RunStatusV1.CANCELLED.value,
         }:
-            return {**state, "__target__": "end"}
+            return {
+                **state,
+                "__target__": "response_synthesis",
+                "__logical_target__": "response_synthesis",
+            }
         return {
             **state,
             "__target__": "preflight",
@@ -1618,68 +1871,19 @@ class WorkflowRuntimeCore:
         )
         return result.applied
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
-        finalize_intent = derive_finalize_intent(state=cast(MultiAgentGraphState, state))
-        if finalize_intent is None:
-            return {**state, "__target__": "end", "workflow_phase": WorkflowPhase.FINALIZE.value}
-        run_id = cast(str, state["run_id"])
-        if finalize_intent["intent"] == "COMPLETED" and state.get("answer_draft") is not None:
-            draft = cast(dict[str, object], state["answer_draft"])
-            answer_text = self._required_string(draft.get("answer"), "answer")
-            answer_result_kind: Literal["SUCCESS", "PARTIAL"] = (
-                "PARTIAL" if finalize_intent.get("result_kind") == "PARTIAL" else "SUCCESS"
-            )
-            self._complete_answer_only(
-                CompleteAnswerOnlyRunCommand(
-                    command_id=self._id_factory(),
-                    conversation_id=cast(str, state["conversation_id"]),
-                    run_id=run_id,
-                    assistant_message=answer_text,
-                    expected_version=self._current_run_version(run_id),
-                    request_hash=self._request_hash(
-                        {
-                            "kind": "answer_only",
-                            "run_id": run_id,
-                            "result_kind": answer_result_kind,
-                            "answer_text": answer_text,
-                        }
-                    ),
-                    result_kind=answer_result_kind,
-                )
-            )
-        elif finalize_intent["intent"] == "BLOCKED":
-            self._block_run(
-                BlockRunCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash({"kind": "block", "run_id": run_id}),
-                    run_id=run_id,
-                    expected_version=self._current_run_version(run_id),
-                    reason_code=finalize_intent["reason_code"],
-                )
-            )
-        elif finalize_intent["intent"] == "FAILED":
-            self._fail_run(
-                FailRunCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash({"kind": "fail", "run_id": run_id}),
-                    run_id=run_id,
-                    expected_version=self._current_run_version(run_id),
-                    reason_code=finalize_intent["reason_code"],
-                )
-            )
-        self._evidence_store.discard_run(run_id=run_id)
-        self._read_result_cache.discard_run(run_id=run_id)
-        self._llm_runtime.discard_run(run_id=run_id)
-        return {
-            **state,
-            "__target__": "end",
-            "workflow_phase": WorkflowPhase.FINALIZE.value,
-            "finalize_intent": finalize_intent,
-        }
-
     def _route_next_node(self, state: GraphState) -> str:
         run_id = state.get("run_id")
-        if isinstance(run_id, str) and self._should_stop_for_cancel(run_id):
+        terminal_chain = {
+            "cancel_resolution",
+            "response_synthesis",
+            "terminal_commit",
+            "finalize",
+        }
+        if (
+            isinstance(run_id, str)
+            and self._should_stop_for_cancel(run_id)
+            and state.get("__target__") not in terminal_chain
+        ):
             return "end"
         control = state.get("__workflow_control__")
         if (
@@ -2096,7 +2300,8 @@ class WorkflowRuntimeCore:
             verification_statuses.append(finalized.action_status)
         return {
             **state,
-            "__target__": "finalize",
+            "__target__": "response_synthesis",
+            "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.VERIFICATION.value,
             "execution_summary": {"result": "READ_EXECUTED", "plan_id": plan_id},
             "verification_summary": {"action_statuses": verification_statuses},
@@ -2261,8 +2466,8 @@ class WorkflowRuntimeCore:
 
     def _continue_cancel_resolution_for_main(self, run_id: str) -> dict[str, object]:
         result = self._continue_cancel_resolution(ContinueCancelResolutionCommandV1(1, run_id))
-        if result.outcome == "FINALIZED":
-            target = "finalize"
+        if result.outcome in {"READY_TO_FINALIZE", "FINALIZED"}:
+            target = "response_synthesis"
         elif result.outcome == "PROGRESSED":
             target = "cancel_resolution"
         else:
@@ -2374,17 +2579,6 @@ class WorkflowRuntimeCore:
         )
         return response.applied
 
-    def _finalize_cancelling_run(self, run_id: str, version: int) -> bool:
-        payload = {"run_id": run_id, "expected_run_version": version}
-        return self._finalize_cancel(
-            FinalizeCancelCommand(
-                command_id=f"system:cancel-resolution:finalize:{run_id}:{version}",
-                request_hash=calculate_canonical_json_hash(payload),
-                run_id=run_id,
-                expected_run_version=version,
-            )
-        ).applied
-
     def _action_and_run_id(self, action_id: str) -> tuple[ActionRecord, str]:
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(action_id)
@@ -2456,26 +2650,13 @@ class WorkflowRuntimeCore:
                 marked_any = marked_any or response.applied
         return marked_any
 
-    def _complete_write_run_if_verified(self, plan_id: str, run_id: str) -> None:
+    def _write_run_completion_ready(self, plan_id: str, run_id: str) -> bool:
         if self._has_persisted_cancel_intent(run_id):
-            return
+            return False
         actions = self._list_actions(plan_id)
-        if not actions or not all(
+        return bool(actions) and all(
             action.status == ActionStatusV1.VERIFIED.value for action in actions
-        ):
-            return
-        response = self._complete_write_run(
-            CompleteWriteRunCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash(
-                    {"kind": "complete_recovered_write_run", "run_id": run_id}
-                ),
-                run_id=run_id,
-                expected_version=self._current_run_version(run_id),
-            )
         )
-        if not response.applied and response.result_code != ResultCode.STATE_CONFLICT.value:
-            raise RuntimeError(f"recovered write completion failed: {response.result_code}")
 
     def _should_stop_for_cancel(self, run_id: str) -> bool:
         with self._cancel_signal_lock:

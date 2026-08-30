@@ -4,11 +4,14 @@ import pytest
 
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
+    MainControlNodeBindings,
     WorkflowGraphComposition,
+)
+from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
+    response_synthesis_node,
 )
 from google_work_agent.adapters.langgraph.main.response_synthesis import (
     canonicalize_answer_only_decision,
-    response_synthesis_state,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
@@ -24,6 +27,9 @@ from google_work_agent.application.orchestration.handoff_contracts import Action
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
+)
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
 )
 
 
@@ -83,25 +89,36 @@ def test_plan_ready_review_decision_is_not_rewritten() -> None:
     assert decision["target"] == SupervisorTarget.PLAN_REVIEW_INSPECT.value
 
 
-def test_response_synthesis_materializes_completed_finalize_intent() -> None:
+def test_response_synthesis_materializes_terminal_commit_intent() -> None:
     state = cast(
         GraphState,
         {
+            "run_id": "run-1",
             "answer_draft": _answer(),
             "__target__": "response_synthesis",
             "__logical_target__": "response_synthesis",
         },
     )
 
-    result = response_synthesis_state(state)
-    finalize_intent = cast(dict[str, object], result["finalize_intent"])
+    result = response_synthesis_node(
+        state,
+        read_terminal_facts=lambda _run_id: {
+            "status": "PLANNING",
+            "version": 4,
+            "terminal_result_kind": None,
+            "action_statuses": [],
+            "action_effect_types": [],
+        },
+        build_terminal_message=BuildTerminalMessageHandler(),
+    )
+    terminal_intent = cast(dict[str, object], result["terminal_commit_intent"])
 
     assert result["workflow_phase"] == WorkflowPhase.RESPONSE_SYNTHESIS.value
-    assert result["__target__"] == "finalize"
-    assert result["__logical_target__"] == "finalize"
-    assert finalize_intent["schema_version"] == 1
-    assert finalize_intent["intent"] == "COMPLETED"
-    assert finalize_intent["reason_code"] == "ANSWER_ONLY_RESPONSE_READY"
+    assert result["__target__"] == "terminal_commit"
+    assert result["__logical_target__"] == "terminal_commit"
+    assert terminal_intent["schema_version"] == 1
+    assert terminal_intent["kind"] == "COMPLETE_ANSWER_ONLY"
+    assert terminal_intent["expected_run_version"] == 4
 
 
 @pytest.mark.parametrize(
@@ -116,17 +133,24 @@ def test_response_synthesis_fails_closed_on_invalid_answer(answer_draft: object)
     state = cast(
         GraphState,
         {
+            "run_id": "run-1",
             "answer_draft": answer_draft,
             "__target__": "response_synthesis",
         },
     )
 
-    result = response_synthesis_state(state)
-    execution_summary = cast(dict[str, object], result["execution_summary"])
-
-    assert result["workflow_phase"] == WorkflowPhase.RECOVERY.value
-    assert result["__target__"] == "recovery"
-    assert execution_summary["result"] == "CONTRACT_VIOLATION"
+    with pytest.raises(ValueError, match="authorize terminal synthesis"):
+        response_synthesis_node(
+            state,
+            read_terminal_facts=lambda _run_id: {
+                "status": "PLANNING",
+                "version": 4,
+                "terminal_result_kind": None,
+                "action_statuses": [],
+                "action_effect_types": [],
+            },
+            build_terminal_message=BuildTerminalMessageHandler(),
+        )
 
 
 @pytest.mark.parametrize("profile", list(GraphProfile))
@@ -138,8 +162,8 @@ def test_response_synthesis_target_is_routable_for_every_profile(profile: GraphP
 
 
 def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
-    from google_work_agent.adapters.langgraph.main.graph import MainControlNodeBindings
-
+    response_handler = object()
+    terminal_handler = object()
     finalize_handler = object()
     bindings = GraphNodeBindings(
         request_understanding=object(),
@@ -151,7 +175,6 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
         review=object(),
         single_workflow=object(),
         waiting_approval=object(),
-        finalize=finalize_handler,
         stage_one=object(),
         stage_two=object(),
         stage_three=object(),
@@ -172,10 +195,17 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
             verification=object(),
             recovery=object(),
             cancel_resolution=object(),
+            response_synthesis=response_handler,
+            terminal_commit=terminal_handler,
+            finalize=finalize_handler,
         ),
         route_next_node=lambda _state: "end",
         checkpointer=None,
     )
 
-    assert bindings.for_name("response_synthesis") is finalize_handler
+    assert composition.node_handler("response_synthesis") is response_handler
+    assert composition.node_handler("terminal_commit") is terminal_handler
+    assert composition.node_handler("finalize") is finalize_handler
+    assert len({id(response_handler), id(terminal_handler), id(finalize_handler)}) == 3
     assert composition.edge_map()["response_synthesis"] == "response_synthesis"
+    assert composition.edge_map()["terminal_commit"] == "terminal_commit"

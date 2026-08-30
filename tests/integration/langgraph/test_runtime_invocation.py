@@ -75,6 +75,15 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
+from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError
+
+
+class _BudgetExhaustedLLMRuntime:
+    def invoke_structured(self, **_kwargs: object) -> object:
+        raise LLMInvocationError(
+            LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
+            "PROFILE_LLM_LIMIT_EXHAUSTED",
+        )
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -117,6 +126,39 @@ def test_langgraph_runtime_completes_answer_only_run(
         assert plan_count == 0
     finally:
         connection.close()
+        runtime.close()
+
+
+def test_llm_budget_exhaustion_uses_canonical_terminal_chain(tmp_path: Path) -> None:
+    manifest_path = _runtime_active_manifest_path(tmp_path)
+    database_path = _seed_runtime_database(tmp_path)
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    runtime = _make_runtime_with_llm(
+        database_path=database_path,
+        llm_runtime=_BudgetExhaustedLLMRuntime(),
+        gateway=FakeGoogleGateway(snapshot),
+        checkpoint_database_path=tmp_path / "checkpoints-budget-terminal.db",
+        prompt_manifest_path=manifest_path,
+    )
+
+    try:
+        result = runtime.start(_start_request())
+        assert result.outcome is WorkflowOutcome.COMPLETED
+        assert result.payload["run_status"] == "BLOCKED"
+        assert result.payload["phase"] == "FINALIZE"
+        connection = connect_sqlite(database_path)
+        try:
+            row = connection.execute(
+                "SELECT status, terminal_result_kind FROM runs WHERE id='run-1';"
+            ).fetchone()
+            message_count = connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+            ).fetchone()[0]
+            assert tuple(row) == ("BLOCKED", "BLOCKED")
+            assert message_count == 1
+        finally:
+            connection.close()
+    finally:
         runtime.close()
 
 

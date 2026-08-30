@@ -35,7 +35,7 @@ def domain_reconcile_node(
     if facts.status == "RECOVERY_REQUIRED" or "RESOLVE_RECOVERY" in commands:
         return _route_patch("recovery", "RECOVERY")
     if facts.status in _TERMINAL_STATUSES:
-        return _route_patch("finalize", "FINALIZE")
+        return _route_patch("response_synthesis", "RESPONSE_SYNTHESIS")
     if facts.status in {"REAUTH_REQUIRED", "CANCEL_REQUESTED"}:
         return _suspend_patch(facts.status)
     return _suspend_patch("IN_FLIGHT")

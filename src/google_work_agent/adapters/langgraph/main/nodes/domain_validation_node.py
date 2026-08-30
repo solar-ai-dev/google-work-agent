@@ -9,7 +9,6 @@ _ALLOWED_TARGETS = frozenset(
         "waiting_approval",
         "preflight",
         "response_synthesis",
-        "finalize",
         "domain_reconcile",
         "end",
     }

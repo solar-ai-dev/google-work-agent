@@ -109,13 +109,24 @@ class WorkflowInvocationCoordinator:
                     outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                     payload={"graph_profile": self._graph_profile.value},
                 )
-            if snapshot.next:
-                if request.resume_kind == "CONSUMED_CONTINUATION_RECOVERY":
+            if request.resume_kind == "CONSUMED_CONTINUATION_RECOVERY":
+                if snapshot.next:
                     self._graph.invoke(None, config=config)
-                    return self.result_from_thread(
-                        workflow_key=request.workflow_key,
+                else:
+                    continuation = self._continue_from_domain_facts(
+                        values=cast(GraphState, snapshot.values),
                         run_id=request.run_id,
+                        allow_reauth_resume=False,
                     )
+                    if continuation is not None:
+                        state, owner_node = continuation
+                        self._graph.update_state(config, state, as_node=owner_node)
+                        self._graph.invoke(None, config=config)
+                return self.result_from_thread(
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            if snapshot.next:
                 # A real interrupt() is pending (e.g. WAITING_CONFIRMATION,
                 # PREFLIGHT_REAPPROVAL_REQUIRED) -- Command(resume=...) is the
                 # correct way to feed the user's response back into it.
@@ -130,18 +141,26 @@ class WorkflowInvocationCoordinator:
             # Command(resume=...) is a no-op against a thread with no pending
             # task, so this resume must instead continue from persisted Domain
             # facts -- the same mechanism recover_open_run already uses.
-            state = self._continue_from_domain_facts(
+            continuation = self._continue_from_domain_facts(
                 values=cast(GraphState, snapshot.values),
                 run_id=request.run_id,
                 allow_reauth_resume=request.resume_kind == "REAUTH_COMPLETED",
             )
-            if state is None:
+            if continuation is None:
                 return self.result_from_thread(
                     workflow_key=request.workflow_key,
                     run_id=request.run_id,
                 )
-            return self.workflow_result_from_state(
-                state=state,
+            state, owner_node = continuation
+            if owner_node != "verification":
+                return self.workflow_result_from_state(
+                    state=state,
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            self._graph.update_state(config, state, as_node=owner_node)
+            self._graph.invoke(None, config=config)
+            return self.result_from_thread(
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
@@ -174,18 +193,26 @@ class WorkflowInvocationCoordinator:
                     outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                     payload={"graph_profile": self._graph_profile.value},
                 )
-            state = self._continue_from_domain_facts(
+            continuation = self._continue_from_domain_facts(
                 values=cast(GraphState, snapshot.values),
                 run_id=request.run_id,
                 allow_reauth_resume=False,
             )
-            if state is None:
+            if continuation is None:
                 return self.result_from_thread(
                     workflow_key=request.workflow_key,
                     run_id=request.run_id,
                 )
-            return self.workflow_result_from_state(
-                state=state,
+            state, owner_node = continuation
+            if owner_node != "verification":
+                return self.workflow_result_from_state(
+                    state=state,
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
+            self._graph.update_state(config, state, as_node=owner_node)
+            self._graph.invoke(None, config=config)
+            return self.result_from_thread(
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
@@ -196,7 +223,7 @@ class WorkflowInvocationCoordinator:
         values: GraphState,
         run_id: str,
         allow_reauth_resume: bool = True,
-    ) -> GraphState | None:
+    ) -> tuple[GraphState, str] | None:
         """Resolve the next state from durable facts plus an explicit reauth resume gate.
 
         Unknown-result, already-executed, and stalled-claim facts always take
@@ -205,11 +232,11 @@ class WorkflowInvocationCoordinator:
         for the explicit REAUTH_COMPLETED resume path, never startup recovery.
         """
         if self._latest_unknown_action(run_id) is not None:
-            return self._recovery_node(values)
+            return self._recovery_node(values), "recovery"
         if self._has_executed_action(run_id):
-            return self._recover_executed_actions(values, run_id)
+            return self._recover_executed_actions(values, run_id), "verification"
         if self._mark_stalled_claims_as_unknown(run_id):
-            return self._recovery_node(values)
+            return self._recovery_node(values), "recovery"
         if not allow_reauth_resume:
             return None
         if self._current_run_status(run_id) != RunStatusV1.REAUTH_REQUIRED.value:
@@ -224,7 +251,7 @@ class WorkflowInvocationCoordinator:
             return None
         if self._resume_reauth_execution is None:
             return None
-        return self._resume_reauth_execution(values)
+        return self._resume_reauth_execution(values), "action_execution"
 
     @staticmethod
     def config_for_thread(workflow_key: str) -> dict[str, object]:

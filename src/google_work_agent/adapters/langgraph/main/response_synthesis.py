@@ -34,11 +34,9 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
 )
 from google_work_agent.application.orchestration.contracts import (
-    FinalizeIntent,
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
-    validate_finalize_intent_v1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -194,51 +192,6 @@ def _analysis_requirement(state: GraphState) -> str:
     return cast(str, requirement)
 
 
-def response_synthesis_state(state: GraphState) -> GraphState:
-    """Validate one answer and route it to the durable Finalize boundary."""
-
-    raw_answer_value: object = state.get("answer_draft")
-    if not isinstance(raw_answer_value, Mapping):
-        return _response_contract_violation(state, "ANSWER_DRAFT_MISSING")
-    raw_answer = cast(Mapping[str, object], raw_answer_value)
-    is_v1_answer = raw_answer.get("status") == PlanningResult.ANSWER_ONLY.value
-    is_v2_answer = raw_answer.get("schema_version") == 2 and isinstance(
-        raw_answer.get("meta"), Mapping
-    )
-    if not (is_v1_answer or is_v2_answer):
-        return _response_contract_violation(state, "ANSWER_DRAFT_STATUS_INVALID")
-    answer = raw_answer.get("answer")
-    if not isinstance(answer, str) or not answer.strip():
-        return _response_contract_violation(state, "ANSWER_TEXT_MISSING")
-
-    return {
-        **state,
-        "__logical_target__": "finalize",
-        "__target__": "finalize",
-        "workflow_phase": WorkflowPhase.RESPONSE_SYNTHESIS.value,
-        "finalize_intent": validate_finalize_intent_v1(
-            {
-                "schema_version": 1,
-                "intent": FinalizeIntent.COMPLETED.value,
-                "reason_code": "ANSWER_ONLY_RESPONSE_READY",
-            }
-        ),
-    }
-
-
-def _response_contract_violation(state: GraphState, reason_code: str) -> GraphState:
-    return {
-        **state,
-        "__logical_target__": "recovery",
-        "__target__": "recovery",
-        "workflow_phase": WorkflowPhase.RECOVERY.value,
-        "execution_summary": {
-            "result": "CONTRACT_VIOLATION",
-            "reason_code": reason_code,
-        },
-    }
-
-
 class ResponseSynthesisMixin:
     """Canonical runtime with response synthesis and optional-stage routing."""
 
@@ -285,7 +238,6 @@ class ResponseSynthesisMixin:
                 review=self._review_subgraph,
                 single_workflow=self._single_workflow_subgraph,
                 waiting_approval=self._waiting_approval_node,
-                finalize=self._finalize_node,
                 stage_one=self._three_stage_one_subgraph,
                 stage_two=self._three_stage_two_subgraph,
                 stage_three=self._three_stage_review_subgraph,
@@ -308,15 +260,8 @@ class ResponseSynthesisMixin:
         canonical_decision = canonicalize_answer_only_decision(canonical_decision)
         return super()._merge_decision(state, update, canonical_decision)
 
-    def _finalize_node(self, state: GraphState) -> GraphState:
-        if state.get("__target__") == "response_synthesis":
-            return response_synthesis_state(state)
-        return super()._finalize_node(state)
-
-
 __all__ = [
     "ResponseSynthesisMixin",
     "canonicalize_answer_only_decision",
     "canonicalize_optional_stage_decision",
-    "response_synthesis_state",
 ]

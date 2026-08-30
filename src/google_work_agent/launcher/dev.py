@@ -695,6 +695,7 @@ def build_container(
         record=record_component_call_result,
         now_ms=clock.now_ms,
     )
+    event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
@@ -729,11 +730,13 @@ def build_container(
             ),
             attachment_verifier=attachment_staging,
             resume_target_registry=resume_target_registry,
+            sse_event_buffer=event_publisher,
+            environment="DEVELOPMENT",
+            release_version=RELEASE_VERSION,
         )
     except InactivePromptArtifactError:
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
-    event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
     project_external_llm_transfer_scope = ProjectExternalLlmTransferScopeHandler(
         checkpoint,
         ProjectRunEventHandler(event_publisher),

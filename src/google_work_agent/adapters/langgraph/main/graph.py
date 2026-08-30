@@ -26,7 +26,6 @@ class GraphNodeBindings:
     review: Any
     single_workflow: Any
     waiting_approval: Any
-    finalize: Any
     stage_one: Any
     stage_two: Any
     stage_three: Any
@@ -42,12 +41,6 @@ class GraphNodeBindings:
             "review": self.review,
             "single_workflow": self.single_workflow,
             "waiting_approval": self.waiting_approval,
-            # Response Synthesis is a deterministic pre-finalize boundary.
-            # The canonical runtime's finalize handler distinguishes this
-            # graph target and materializes a FinalizeIntent before the real
-            # finalize node performs durable completion/cleanup.
-            "response_synthesis": self.finalize,
-            "finalize": self.finalize,
             "stage_one": self.stage_one,
             "stage_two": self.stage_two,
             "stage_three": self.stage_three,
@@ -86,6 +79,9 @@ class MainControlNodeBindings:
     verification: Any
     recovery: Any
     cancel_resolution: Any
+    response_synthesis: Any
+    terminal_commit: Any
+    finalize: Any
 
     def for_name(self, name: str) -> Any:
         return {
@@ -100,6 +96,9 @@ class MainControlNodeBindings:
             "verification": self.verification,
             "recovery": self.recovery,
             "cancel_resolution": self.cancel_resolution,
+            "response_synthesis": self.response_synthesis,
+            "terminal_commit": self.terminal_commit,
+            "finalize": self.finalize,
         }[name]
 
 
@@ -143,13 +142,14 @@ class WorkflowGraphComposition:
             "verification",
             "recovery",
             "cancel_resolution",
+            "response_synthesis",
+            "terminal_commit",
+            "finalize",
         ):
             graph.add_node(name, self._control_bindings.for_name(name))
         for name in (
             "tool_route",
             "waiting_approval",
-            "response_synthesis",
-            "finalize",
         ):
             graph.add_node(name, self._bindings.for_name(name))
         graph.add_edge(START, "initialize")
@@ -174,6 +174,7 @@ class WorkflowGraphComposition:
                 "recovery",
                 "cancel_resolution",
                 "response_synthesis",
+                "terminal_commit",
                 "finalize",
             )
         ):
@@ -195,6 +196,7 @@ class WorkflowGraphComposition:
             "recovery": "recovery",
             "cancel_resolution": "cancel_resolution",
             "response_synthesis": "response_synthesis",
+            "terminal_commit": "terminal_commit",
             "finalize": "finalize",
             "end": END,
         }
@@ -215,6 +217,9 @@ class WorkflowGraphComposition:
             "verification",
             "recovery",
             "cancel_resolution",
+            "response_synthesis",
+            "terminal_commit",
+            "finalize",
         }:
             return self._control_bindings.for_name(name)
         return self._bindings.for_name(name)

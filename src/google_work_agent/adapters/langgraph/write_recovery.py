@@ -46,7 +46,7 @@ class WriteRecoveryCoordinator:
         *,
         latest_unknown_action: Callable[[str], tuple[ActionRecord, str, int] | None],
         execution_phase: WriteExecutionPhaseCoordinator,
-        complete_write_run_if_verified: Callable[[str, str], RunTransitionResponse | None],
+        write_run_completion_ready: Callable[[str, str], bool],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
         begin_verification: Callable[[str], BeginVerificationResult | None],
@@ -54,7 +54,7 @@ class WriteRecoveryCoordinator:
     ) -> None:
         self._latest_unknown_action = latest_unknown_action
         self._execution_phase = execution_phase
-        self._complete_write_run_if_verified = complete_write_run_if_verified
+        self._write_run_completion_ready = write_run_completion_ready
         self._plans_for_run = plans_for_run
         self._list_actions = list_actions
         self._begin_verification = begin_verification
@@ -112,23 +112,15 @@ class WriteRecoveryCoordinator:
                 outcome="RECOVERY_NOT_VERIFIED",
             )
 
-        completion = self._complete_write_run_if_verified(action.plan_id, run_id)
-        if completion is not None:
-            if not completion.applied:
-                return self._reconcile_run_response(
-                    state=state,
-                    response=completion,
-                    source="RECOVERY_COMPLETE_WRITE_RUN",
-                )
+        if self._write_run_completion_ready(action.plan_id, run_id):
             return {
                 **state,
-                "__target__": "end",
+                "__target__": "response_synthesis",
+                "__logical_target__": "response_synthesis",
                 "workflow_phase": WorkflowPhase.RECOVERY.value,
                 "execution_summary": {
                     "result": "RECOVERED",
                     "action_id": action.id,
-                    "run_status": completion.run_status,
-                    "run_version": completion.run_version,
                 },
                 "verification_summary": {"action_statuses": [response.action_status]},
             }
@@ -216,8 +208,7 @@ class WriteRecoveryCoordinator:
                 )
             statuses.append(verified.action_status)
 
-        completion = self._complete_write_run_if_verified(latest_plan.id, run_id)
-        if completion is None:
+        if not self._write_run_completion_ready(latest_plan.id, run_id):
             if any(
                 status in {ActionStatusV1.APPROVED.value, ActionStatusV1.PROPOSED.value}
                 for status in statuses
@@ -239,22 +230,14 @@ class WriteRecoveryCoordinator:
                 facts={"plan_id": latest_plan.id, "action_statuses": statuses},
                 verification_statuses=statuses,
             )
-        if not completion.applied:
-            return self._reconcile_run_response(
-                state=state,
-                response=completion,
-                source="COMPLETE_WRITE_RUN",
-                verification_statuses=statuses,
-            )
         return {
             **state,
-            "__target__": "end",
+            "__target__": "response_synthesis",
+            "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
             "execution_summary": {
                 "result": "RESTART_RECONCILED",
                 "plan_id": latest_plan.id,
-                "run_status": completion.run_status,
-                "run_version": completion.run_version,
             },
             "verification_summary": {"action_statuses": statuses},
         }

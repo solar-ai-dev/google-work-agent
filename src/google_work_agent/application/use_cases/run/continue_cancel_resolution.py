@@ -20,7 +20,9 @@ class ContinueCancelResolutionCommandV1:
 @dataclass(frozen=True, slots=True)
 class ContinueCancelResolutionResultV1:
     schema_version: Literal[1]
-    outcome: Literal["FINALIZED", "PROGRESSED", "WAITING_FOR_SETTLEMENT"]
+    outcome: Literal[
+        "READY_TO_FINALIZE", "FINALIZED", "PROGRESSED", "WAITING_FOR_SETTLEMENT"
+    ]
     run_status: str
     progressed_action_id: str | None = None
 
@@ -36,7 +38,7 @@ class ContinueCancelResolutionHandler:
         reconcile_inflight_action: Callable[[str], bool],
         verify_executed_action: Callable[[str], bool],
         resolve_unknown_action: Callable[[str], bool],
-        finalize_cancel: Callable[[str, int], bool],
+        finalize_cancel: Callable[[str, int], bool] | None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._settle_pending_action = settle_pending_action
@@ -93,6 +95,12 @@ class ContinueCancelResolutionHandler:
                 action.id,
             )
 
+        if self._finalize_cancel is None:
+            return ContinueCancelResolutionResultV1(
+                1,
+                "READY_TO_FINALIZE",
+                RunStatusV1.CANCEL_REQUESTED.value,
+            )
         finalized = self._finalize_cancel(command.run_id, run_version)
         return ContinueCancelResolutionResultV1(
             1,

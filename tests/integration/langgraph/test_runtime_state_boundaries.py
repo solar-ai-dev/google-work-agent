@@ -222,7 +222,7 @@ def test_edge_acquisition_failure_never_routes_to_context_as_success(tmp_path: P
         state["request_intent"] = _clear_intent()
         result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
         assert result["acquisition_result"]["status"] == "FAILED"
-        assert result["__target__"] == "finalize"
+        assert result["__target__"] == "response_synthesis"
         assert result["workflow_phase"] == "FINALIZE"
         assert result["context_result"] is None
     finally:
