@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `57f2a65b6ffd228f62f04fbb203b7bc61c76ec9f`
+**Validation HEAD:** `b2ae01acfa2064a6048566d51aa422cb71884e0b`
 
 ## Purpose
 
@@ -511,11 +511,11 @@ Every formal row assigned to this owner is listed once. The table contains only 
 
 # Ports / Connectors / LLM
 
-At production SHA `dc580108f062df653c69ec6812f58f074f8a5f21`, the Boundary scope remains **102/102 COMPLETE** and #109 residual closure is complete. #133 adds exact durable `pre_reauth_status` checkpoint round-trip and makes the existing OperationalCommandReplayPort the sole safe-resume replay boundary. Exact Port callables, adapter bindings, focused behavioral tests and single-authority negative proofs are enforced by the architecture/contract suites.
+At production SHA `b2ae01acfa2064a6048566d51aa422cb71884e0b`, #145 independently revalidated its formal Boundary scope as **91/91 COMPLETE** and the wider mapped Boundary scope remains **102/102 COMPLETE**. All 24 non-persistence Port-to-Adapter bindings are unique and every adapter covers its exact Port callable surface. Application-to-concrete-adapter/provider imports, Connector-runtime-to-Application semantic-registry imports, Port-to-Adapter imports, provider SDK access outside permitted leaves, and duplicate registered boundary symbols are zero. The copied Application `_StructuredProvider`/`_ToolCallingProvider` protocols now reuse the canonical LLM provider contracts, and the duplicate Application/Router `LLMEventRecorder` protocol is merged into the shared observability boundary contract. The connector Port dependency test now scans the real `ports/connector` root instead of a nonexistent plural path. Focused boundary/security/runtime validation passed `487 passed, 5 skipped`; complete repository regression passed `2571 passed, 6 skipped`.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
-| STR-062 | ConnectorReadPort — ports/connector/connector_read_port.py → ConnectorReadPort | exact owner, symbol, callable parity and callers verified | COMPLETE | KEEP |
+| STR-062 | ConnectorReadPort — ports/connector/connector_read_port.py → ConnectorReadPort | exact owner, symbol, callable parity and callers verified; dependency negative proof scans the actual singular `ports/connector` root | COMPLETE | KEEP |
 | STR-063 | McpConnectorReadAdapter — adapters/connectors/runtime/mcp_connector_read.py → McpConnectorReadAdapter | exact adapter; validated binding + runtime registry + MCP client path verified | COMPLETE | KEEP |
 | STR-064 | ConnectorWritePort — ports/connector/connector_write_port.py → ConnectorWritePort | exact owner, symbol, callable parity and callers verified | COMPLETE | KEEP |
 | STR-065 | McpConnectorWriteAdapter — adapters/connectors/runtime/mcp_connector_write.py → McpConnectorWriteAdapter | exact adapter; sole production dispatch caller and MCP-only write path verified | COMPLETE | KEEP |
@@ -524,7 +524,7 @@ At production SHA `dc580108f062df653c69ec6812f58f074f8a5f21`, the Boundary scope
 | STR-068 | OAuthCredentialPort — ports/connector/oauth_credential_port.py → OAuthCredentialPort | exact connector-parameterized callable surface verified | COMPLETE | KEEP |
 | STR-069 | McpOAuthCredentialAdapter — adapters/connectors/runtime/mcp_oauth_credential.py → McpOAuthCredentialAdapter | exact runtime-registry/MCP adapter and reconciliation surface verified | COMPLETE | KEEP |
 | STR-070 | StructuredInferencePort — ports/llm/structured_inference_port.py → StructuredInferencePort | exact infer contract verified | COMPLETE | KEEP |
-| STR-071 | StructuredInferenceRuntimeRouter — adapters/llm/runtime/structured_inference_router.py → StructuredInferenceRuntimeRouter | sole routing/fallback/repair authority verified | COMPLETE | KEEP |
+| STR-071 | StructuredInferenceRuntimeRouter — adapters/llm/runtime/structured_inference_router.py → StructuredInferenceRuntimeRouter | sole routing/fallback/repair authority verified; shared `LLMEventRecorder` boundary contract removes the prior Application/Router shadow protocols | COMPLETE | KEEP |
 | STR-072 | LlmCredentialPort — ports/llm/llm_credential_port.py → LlmCredentialPort | exact provider/operation_ref/reconciliation surface verified | COMPLETE | KEEP |
 | STR-073 | LlmCredentialRouter — adapters/llm/runtime/llm_credential_router.py → LlmCredentialRouter | exact secret-safe router and reconciliation behavior verified | COMPLETE | KEEP |
 | STR-074 | LlmRuntimeStatusPort — ports/llm/llm_runtime_status_port.py → LlmRuntimeStatusPort | exact typed get_status surface verified | COMPLETE | KEEP |
@@ -609,7 +609,7 @@ At production SHA `dc580108f062df653c69ec6812f58f074f8a5f21`, the Boundary scope
 | STR-004 | Repository root / outbound-runtime adapters — adapters/ | root retained; ownership/dependency/single-authority gates pass; zero-caller patch/wrapper authorities removed | COMPLETE | KEEP |
 | STR-303 | Tool Registry implementation mirror / SignedToolRegistryManifestV1 — application/tool_registry/tool_registry_manifest.json | exact Application manifest/loader/registry owner; migration-contract source removed | COMPLETE | KEEP |
 | STR-305 | Connector MCP descriptor projection — installed tool-descriptor-projection-v1.json | exact packaged projection; signed-registry subset parity verified | COMPLETE | KEEP |
-| STR-459 | API-provider structured-inference leaf family — adapters/llm/<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter | Gemini exact leaf; broad api_provider.py authority removed | COMPLETE | KEEP |
+| STR-459 | API-provider structured-inference leaf family — adapters/llm/<provider>/structured_inference.py → <Provider>StructuredInferenceAdapter | Gemini exact leaf; broad api_provider.py authority removed; prompt guard reuses canonical `StructuredLLMProvider`/`ToolCallingLLMProvider` contracts with no copied provider protocol | COMPLETE | KEEP |
 | STR-460 | API-provider credential leaf family — adapters/llm/<provider>/credential.py → <Provider>LlmCredentialAdapter | Gemini exact leaf; router remains sole binding authority | COMPLETE | KEEP |
 | STR-461 | API-provider runtime-status leaf family — adapters/llm/<provider>/runtime_status.py → <Provider>LlmRuntimeStatusAdapter | Gemini exact leaf; router remains sole binding authority | COMPLETE | KEEP |
 | STR-462 | Local Ollama structured-inference leaf — adapters/llm/ollama/structured_inference.py → OllamaStructuredInferenceAdapter | exact leaf; broad ollama.py authority removed | COMPLETE | KEEP |
