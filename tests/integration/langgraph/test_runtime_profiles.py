@@ -129,6 +129,31 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
         runtime.close()
 
 
+def test_retrieval_compiled_edges_use_the_exact_canonical_router_callables(
+    tmp_path: Path,
+) -> None:
+    runtime = _make_runtime(
+        database_path=_seed_runtime_database(tmp_path),
+        llm_payloads=[],
+        gateway=FakeGoogleGateway(
+            ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ),
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-router-authority.db"),
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+    )
+
+    try:
+        branches = runtime._context_subgraph.builder.branches  # noqa: SLF001
+        assess = branches["assess_sufficiency"]["route_after_assess_sufficiency"]
+        finalize = branches["finalize"]["route_after_finalize_retrieval"]
+        assert assess.path.func.__module__.endswith("route_after_assess_sufficiency")
+        assert assess.path.func.__name__ == "route_after_assess_sufficiency"
+        assert finalize.path.func.__module__.endswith("route_after_finalize_retrieval")
+        assert finalize.path.func.__name__ == "route_after_finalize_retrieval"
+    finally:
+        runtime.close()
+
+
 def test_native_profile_runtimes_expose_three_and_single_subgraphs(
     tmp_path: Path,
 ) -> None:

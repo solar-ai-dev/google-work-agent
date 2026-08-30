@@ -152,6 +152,7 @@ from google_work_agent.application.orchestration.retrieval_rounds import (
 )
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
+    RetrievalQueryPlanV2,
 )
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
@@ -393,23 +394,15 @@ class RetrievalSubgraph:
         )
         graph.add_conditional_edges(
             "assess_sufficiency",
-            self._route_after_sufficiency,
+            route_after_assess_sufficiency,
             {"plan_query": "plan_query", "finalize": "finalize"},
         )
         graph.add_conditional_edges(
             "finalize",
-            self._route_after_finalize,
+            route_after_finalize_retrieval,
             {"finalize": "finalize", "end": END},
         )
         return graph.compile(name="retrieval_subgraph")
-
-    @staticmethod
-    def _route_after_finalize(state: ContextRetrievalLocalState) -> str:
-        if state.get("__context_retrieval_retry_confirmation__"):
-            return "finalize"
-        if state.get("retrieval_result") is not None:
-            return route_after_finalize_retrieval({"final_result": state["retrieval_result"]})
-        return "end"
 
     def _initialize_state(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         request = request_from_state(state)
@@ -611,7 +604,7 @@ class RetrievalSubgraph:
         results = self._resolve_cached_results(state, bindings=bindings, handles=handles)
         plans = self._plans_for_cached_results(
             state,
-            plans=cast(list[CanonicalSourceFetchPlanV1], state.get("source_fetch_plans", [])),
+            plans=list(state.get(CONTEXT_CANONICAL_PLANS_KEY, {}).values()),
             bindings=bindings,
             handles=handles,
         )
@@ -912,7 +905,7 @@ class RetrievalSubgraph:
                 },
             )
         )
-        query_plan = patch["query_plan"]
+        query_plan = cast(RetrievalQueryPlanV2, patch["query_plan"])
         revised_retry_budget = cast(RunBudgetV2, patch["retry_budget"])
         return {
             **state,
@@ -925,7 +918,7 @@ class RetrievalSubgraph:
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         plans = cast(
             list[CanonicalSourceFetchPlanV1],
-            list(state.get("source_fetch_plans", [])),
+            list(state.get(CONTEXT_CANONICAL_PLANS_KEY, {}).values()),
         )
         route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         routes = {route["route_id"]: route for route in route_plan["input_plan"]["input_routes"]}
@@ -1132,25 +1125,6 @@ class RetrievalSubgraph:
         remaining["pages"] = max(0, remaining.get("pages", 0) - provider_calls)
         return remaining
 
-    def _route_after_sufficiency(self, state: ContextRetrievalLocalState) -> str:
-        sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
-        if sufficiency["status"] != "NEEDS_MORE_DATA":
-            return "finalize"
-        if state[CONTEXT_CURRENT_ROUND_NO_KEY] >= 2:
-            return "finalize"
-        if state.get("tool_route_plan") is None:
-            return "finalize"
-        # Local continuation is possible only for an already completed read
-        # in the same frozen route.  No parent retry signal is emitted.
-        if not state.get(CONTEXT_READ_RESULT_HANDLES_KEY):
-            return "finalize"
-        return route_after_assess_sufficiency(
-            {
-                "sufficiency": sufficiency,
-                "query_attempts": state.get(CONTEXT_QUERY_ATTEMPTS_KEY, []),
-            }
-        )
-
     def _build_query_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
@@ -1181,7 +1155,6 @@ class RetrievalSubgraph:
             canonical_plans = cast(list[CanonicalSourceFetchPlanV1], patch["source_fetch_plans"])
             return {
                 **state,
-                "source_fetch_plans": canonical_plans,
                 CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
             }
         bindings = cast(Mapping[str, Mapping[str, str]], state.get(CONTEXT_READ_BINDINGS_KEY, {}))
@@ -1217,7 +1190,6 @@ class RetrievalSubgraph:
         if operations == {"NEXT_PAGE"}:
             return {
                 **state,
-                "source_fetch_plans": canonical_plans,
                 CONTEXT_CANONICAL_PLANS_KEY: {
                     **prior_canonical,
                     **{plan["route_id"]: plan for plan in canonical_plans},
@@ -1231,7 +1203,6 @@ class RetrievalSubgraph:
         if operations in ({"SEARCH"}, {"FREEBUSY"}):
             return {
                 **state,
-                "source_fetch_plans": canonical_plans,
                 CONTEXT_CANONICAL_PLANS_KEY: {
                     **prior_canonical,
                     **{plan["route_id"]: plan for plan in canonical_plans},
@@ -1241,7 +1212,6 @@ class RetrievalSubgraph:
         if operations == {"DETAIL_FETCH"}:
             return {
                 **state,
-                "source_fetch_plans": canonical_plans,
                 CONTEXT_CANONICAL_PLANS_KEY: {
                     **prior_canonical,
                     **{plan["route_id"]: plan for plan in canonical_plans},
