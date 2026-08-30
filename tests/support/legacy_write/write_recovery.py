@@ -6,6 +6,7 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
 from tests.support.legacy_write.write_verification import (
     DELETE_TOOL_TARGETS as _DELETE_TOOL_TARGETS,
 )
@@ -59,9 +60,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
     write_action_version_conflict_response as _write_action_version_conflict_response,
-)
-from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
-    WriteResultMaterializer,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
@@ -589,7 +587,7 @@ class RecoverUnknownCreateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -639,7 +637,7 @@ class RecoverUnknownSendActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
     ) -> None:
         self._delegate = RecoverUnknownCreateActionService(
             unit_of_work_factory=unit_of_work_factory,
@@ -668,7 +666,7 @@ class RecoverUnknownDeleteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -749,7 +747,7 @@ class RecoverUnknownUpdateActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

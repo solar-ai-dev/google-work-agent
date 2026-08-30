@@ -6,6 +6,8 @@ from collections.abc import Callable
 from json import dumps, loads
 from typing import cast
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.write_action_arguments import (
     dict_argument as _dict_argument,
@@ -36,9 +38,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
     resolve_snapshot_fallback_resource_id as _resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
-    WriteResultMaterializer,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     VerifyWriteActionCommand,
@@ -141,7 +140,7 @@ class VerifyWriteActionService:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

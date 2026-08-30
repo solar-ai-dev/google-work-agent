@@ -98,6 +98,10 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
 )
+from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
+    ResolveResourceRefHandler,
+    ResolveResourceRefQuery,
+)
 from google_work_agent.application.use_cases.run.begin_verification import (
     BeginVerificationCommand,
     BeginVerificationHandler,
@@ -208,6 +212,7 @@ class WriteExecutionPhaseCoordinator:
         lookup_unknown_result: LookupUnknownResultHandler,
         recover_existing_result: RecoverExistingResultHandler,
         resolve_as_failed: ResolveAsFailedHandler,
+        resolve_resource_ref: ResolveResourceRefHandler,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._id_factory = id_factory
@@ -236,6 +241,7 @@ class WriteExecutionPhaseCoordinator:
         self._lookup_unknown_result = lookup_unknown_result
         self._recover_existing_result = recover_existing_result
         self._resolve_as_failed = resolve_as_failed
+        self._resolve_resource_ref = resolve_resource_ref
 
     def execute(self, request: WriteExecutionPhaseRequest) -> WriteExecutionPhaseResult:
         """Preserve the Application API while keeping preflight and write boundaries explicit."""
@@ -911,9 +917,13 @@ class WriteExecutionPhaseCoordinator:
                 raise LookupError("verification Action/Attempt binding is missing")
             approval = unit_of_work.approval_history.get(attempt.approval_id)
             resource_ref_id = attempt.result_resource_ref_id or action.target_resource_ref_id
-            resource_ref = (
-                None if resource_ref_id is None else unit_of_work.resource_refs.get(resource_ref_id)
-            )
+        resource_ref = (
+            None
+            if resource_ref_id is None
+            else self._resolve_resource_ref(
+                ResolveResourceRefQuery(resource_ref_id)
+            ).resource_ref
+        )
         expected = cast(dict[str, object], loads(action.expected_json))
         if action.effect_type == "SEND" and approval is not None:
             expected = {**expected, "recovery_fingerprint": approval.recovery_fingerprint}

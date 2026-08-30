@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+
 from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.claim.write_execution_integrity import read_claim_token
@@ -16,7 +18,6 @@ from google_work_agent.application.use_cases.execution_attempt.begin_execution_a
 )
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
-    WriteResultMaterializer,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.results import ResultCode
@@ -49,7 +50,7 @@ class ExecuteActionHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: WriteResultMaterializer,
+        connector_execution: LegacyWriteResultMaterializer,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,

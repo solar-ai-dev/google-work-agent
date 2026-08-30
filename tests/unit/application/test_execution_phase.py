@@ -24,6 +24,9 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     WriteActionResponse,
     WriteRunResponse,
 )
+from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
+    ResolveResourceRefHandler,
+)
 from google_work_agent.application.use_cases.verification.verify_effect import (
     VerificationResultV1,
 )
@@ -547,6 +550,9 @@ def _coordinator(
         ),
         recover_existing_result=cast(Any, _RecordedCall(name="recover_existing", calls=calls)),
         resolve_as_failed=cast(Any, _RecordedCall(name="resolve_as_failed", calls=calls)),
+        resolve_resource_ref=ResolveResourceRefHandler(
+            unit_of_work_factory=cast(Any, lambda: uow),
+        ),
     )
 
 

@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps, loads
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.write_action_arguments import (
     dict_argument,
@@ -21,9 +23,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan,
     resolve_existing_action_receipt,
     resolve_snapshot_fallback_resource_id,
-)
-from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
-    WriteResultMaterializer,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
@@ -116,7 +115,7 @@ class VerifyActionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
-        connector_execution: WriteResultMaterializer,
+        connector_execution: LegacyWriteResultMaterializer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms

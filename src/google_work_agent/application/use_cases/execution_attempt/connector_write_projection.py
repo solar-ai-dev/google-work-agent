@@ -14,20 +14,16 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     PreparedWriteDispatch,
-    WriteResultMaterializer,
 )
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 from google_work_agent.ports.connector.contracts.google_workspace import (
-    DeliveryCertainty,
-    GoogleWorkspaceErrorCode,
-    GoogleWorkspaceGatewayError,
     ResourceSnapshot,
     ResourceType,
 )
 
 
-class ConnectorWriteProjection(WriteResultMaterializer):
-    """Preserve broad write callers while all external I/O crosses the exact Port."""
+class ConnectorWriteProjection:
+    """Prepare and materialize the canonical Connector Write dispatch."""
 
     def __init__(
         self,
@@ -58,19 +54,6 @@ class ConnectorWriteProjection(WriteResultMaterializer):
                 recovery_fingerprint=recovery_fingerprint,
             ),
         )
-
-    def execute_write(self, request: AuthorizedWriteDispatch) -> ResourceSnapshot:
-        result = self.dispatch_write(request)
-        if not result.success:
-            certainty = DeliveryCertainty(result.delivery_certainty or "MAY_HAVE_BEEN_SENT")
-            raise GoogleWorkspaceGatewayError(
-                code=_error_code(result.error_code),
-                message=result.error_code or "CONNECTOR_WRITE_FAILED",
-                delivered=certainty is not DeliveryCertainty.NOT_SENT,
-                mutated=certainty is DeliveryCertainty.SENT_RESPONSE_LOST,
-                mcp_request_id=result.provider_request_id,
-            )
-        return self.materialize_success(request, result)
 
     def dispatch_write(self, request: AuthorizedWriteDispatch) -> ConnectorWriteResultV1:
         claim = request.claim_context
@@ -116,34 +99,6 @@ class ConnectorWriteProjection(WriteResultMaterializer):
             ),
             payload=dict(payload) if isinstance(payload, dict) else {},
         )
-
-    def fetch_verification_snapshot(
-        self,
-        *,
-        tool_name: str,
-        arguments: dict[str, object],
-        fallback_resource_id: str | None,
-    ) -> ResourceSnapshot:
-        return self._materialize_success(
-            tool_name=tool_name,
-            arguments=arguments,
-            metadata={} if fallback_resource_id is None else {"resource_id": fallback_resource_id},
-        )
-
-    def search_recovery_candidates(
-        self,
-        *,
-        tool_name: str,
-        recovery_fingerprint: str,
-    ) -> tuple[ResourceSnapshot, ...]:
-        if tool_name.startswith("gmail_"):
-            page = self._reader.search_gmail_threads(
-                query=recovery_fingerprint,
-                page_token=None,
-                page_size=50,
-            )
-            return cast(tuple[ResourceSnapshot, ...], page.items)
-        return ()
 
     def materialize_recovery_candidate(
         self,
@@ -269,15 +224,6 @@ def _parent_id(arguments: dict[str, object]) -> str | None:
         if isinstance(value, str) and value:
             return value
     return None
-
-
-def _error_code(value: str | None) -> GoogleWorkspaceErrorCode:
-    mapping = {
-        "TIMEOUT": GoogleWorkspaceErrorCode.TIMEOUT,
-        "NOT_FOUND": GoogleWorkspaceErrorCode.NOT_FOUND,
-        "PERMISSION_DENIED": GoogleWorkspaceErrorCode.PERMISSION_DENIED,
-    }
-    return mapping.get(value or "", GoogleWorkspaceErrorCode.CONNECTION_CLOSED)
 
 
 __all__ = ["ConnectorWriteProjection"]

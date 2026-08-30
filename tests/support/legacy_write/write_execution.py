@@ -6,6 +6,8 @@ import threading
 from collections.abc import Callable
 from json import dumps, loads
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+
 from google_work_agent.application.use_cases.action.write_action_arguments import (
     coerce_int as _coerce_int,
 )
@@ -17,7 +19,6 @@ from google_work_agent.application.use_cases.execution_attempt.begin_execution_a
 )
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
-    WriteResultMaterializer,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ExecutedWriteActionResult,
@@ -37,7 +38,7 @@ class ExecuteWriteActionService:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        gateway: WriteResultMaterializer,
+        gateway: LegacyWriteResultMaterializer,
         now_ms: Callable[[], int],
         signing_secret: str,
         service_instance_id: str,

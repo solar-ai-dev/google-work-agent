@@ -253,6 +253,9 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
 )
+from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
+    ResolveResourceRefHandler,
+)
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
     BeginPlanningHandler,
@@ -681,6 +684,9 @@ class WorkflowRuntimeCore:
             lookup_unknown_result=self._lookup_unknown_result,
             recover_existing_result=self._recover_existing_result,
             resolve_as_failed=self._resolve_as_failed,
+            resolve_resource_ref=ResolveResourceRefHandler(
+                unit_of_work_factory=unit_of_work_factory,
+            ),
         )
         self._write_execution_node = WriteExecutionNode(
             id_factory=id_factory,

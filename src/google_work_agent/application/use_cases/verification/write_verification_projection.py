@@ -54,16 +54,16 @@ def build_expected_verification_projection(
         return {"payload": expected_payload}
     if tool_name in {"tasks_create_task", "tasks_update_task"}:
         payload = _mapping(args.get("payload"), "payload")
-        expected_payload: dict[str, object] = {}
+        task_expected_payload: dict[str, object] = {}
         for name in ("title", "notes", "status"):
             if name in payload:
-                expected_payload[name] = payload[name]
+                task_expected_payload[name] = payload[name]
         if "scheduled_date" in payload:
-            expected_payload["due"] = payload["scheduled_date"]
-        return {"payload": expected_payload}
+            task_expected_payload["due"] = payload["scheduled_date"]
+        return {"payload": task_expected_payload}
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
         payload = _mapping(args.get("payload"), "payload")
-        expected_payload: dict[str, object] = {}
+        event_expected_payload: dict[str, object] = {}
         # The current Event verification snapshot exposes only title/start/end
         # from the mutable business fields. description/attendees are approved
         # business arguments but are intentionally omitted until the Connector
@@ -71,8 +71,8 @@ def build_expected_verification_projection(
         # would turn every otherwise-correct write into MISMATCH.
         for argument_name in ("title", "start", "end"):
             if argument_name in payload:
-                expected_payload[argument_name] = payload[argument_name]
-        return {"payload": expected_payload}
+                event_expected_payload[argument_name] = payload[argument_name]
+        return {"payload": event_expected_payload}
     raise LookupError(f"unsupported write tool for expected verification: {tool_name}")
 
 

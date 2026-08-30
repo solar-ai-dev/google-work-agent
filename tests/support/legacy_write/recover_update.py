@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from json import loads
 from typing import cast
 
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+
 from google_work_agent.application.use_cases.action.write_persistence import (
     require_action,
     require_approval,
@@ -20,9 +22,6 @@ from google_work_agent.application.use_cases.execution_attempt.recover_existing_
 from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
     ResolveAsFailedCommand,
     ResolveAsFailedResult,
-)
-from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
-    WriteResultMaterializer,
 )
 from google_work_agent.application.use_cases.recovery.source_projection import (
     project_source_resource,
@@ -82,7 +81,7 @@ class RecoverUpdateHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
-        connector_execution: WriteResultMaterializer,
+        connector_execution: LegacyWriteResultMaterializer,
         recover_existing_result: Callable[
             [RecoverExistingResultCommand], RecoverExistingResultResult
         ],

@@ -23,7 +23,8 @@ from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     SaveWritePlanResponse,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    persist_registered_resource_ref,
+    PersistResourceRefCommand,
+    PersistResourceRefHandler,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -490,7 +491,10 @@ def upsert_resource_ref(
     """Persist by the single connector-aware ResourceRef identity."""
     if not resource_ref.connector_id:
         raise ValueError("resource reference connector_id is required")
-    return persist_registered_resource_ref(unit_of_work, resource_ref)
+    return PersistResourceRefHandler.apply_in_unit_of_work(
+        unit_of_work,
+        PersistResourceRefCommand(resource_ref),
+    ).resource_ref
 
 
 def action_response_from_result[CommandType: StrEnum](

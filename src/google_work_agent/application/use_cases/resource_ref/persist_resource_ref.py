@@ -27,9 +27,18 @@ class PersistResourceRefHandler:
 
     def __call__(self, command: PersistResourceRefCommand) -> PersistResourceRefResult:
         with self._unit_of_work_factory() as unit_of_work:
-            persisted = persist_registered_resource_ref(unit_of_work, command.resource_ref)
+            result = self.apply_in_unit_of_work(unit_of_work, command)
             unit_of_work.commit()
-        return PersistResourceRefResult(persisted)
+        return result
+
+    @staticmethod
+    def apply_in_unit_of_work(
+        unit_of_work: UnitOfWork,
+        command: PersistResourceRefCommand,
+    ) -> PersistResourceRefResult:
+        return PersistResourceRefResult(
+            persist_registered_resource_ref(unit_of_work, command.resource_ref)
+        )
 
 
 def persist_registered_resource_ref(

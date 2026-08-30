@@ -129,6 +129,7 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
         lookup_unknown_result=cast(Any, unused),
         recover_existing_result=cast(Any, unused),
         resolve_as_failed=cast(Any, unused),
+        resolve_resource_ref=cast(Any, unused),
     )
 
     result = coordinator.execute(
