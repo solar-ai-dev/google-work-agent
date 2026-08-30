@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `c7e0e8758c6b1b65b2639ad9c8f16a5fe33da54b`
+**Validation HEAD:** `a455aa8aa10ef94cf822a4fe4db8ac32754ffef7`
 
 ## Purpose
 
@@ -24,7 +24,7 @@ Preservation order:
 
 # Domain
 
-At production SHA `dc580108f062df653c69ec6812f58f074f8a5f21`, the formal Domain structural set remains **61/61** = repository root 1 + models 15 + closed vocabularies 6 + lifecycle transitions 39. #128 closes the durable Plan review gate vocabulary to `PASSED|REQUIRED` and makes `(connector_id, resource_type, resource_id)` the sole ResourceRef identity; `ResourceSource` remains projection-only. #132 closes the Recovery reason/scope/reference validator and the single durable-fact resolution eligibility authority. #133 closes the legal `CANCEL_REQUESTED → REAUTH_REQUIRED → CANCEL_REQUESTED` guard round-trip. The required guard artifact set and owner-local test mirror remain **17/17**.
+At production SHA `a455aa8aa10ef94cf822a4fe4db8ac32754ffef7`, #143 independently revalidated the formal Domain structural set as **61/61** = repository root 1 + models 15 + closed vocabularies 6 + lifecycle transitions 39. Exact Ledger realization, owner-local production callers, the **39/39** transition test mirror, the **17/17** required guard test mirror, closed vocabulary sets, recovery resolution eligibility, and legacy/broad/duplicate-authority negative proofs are current and CLEAN. #139's `WAITING_APPROVAL` evidence was independently reconciled: Action approval and Claim guards accept only current Plan `WAITING_APPROVAL`, with Run `WAITING_APPROVAL|VERIFYING`, while Claim remains distinct from `BeginExecutionAttempt`. #143 required no production code correction; focused Domain/architecture/integration validation passed `320 passed, 5 skipped`, and the complete repository validation passed `2569 passed, 6 skipped`. #128 closes the durable Plan review gate vocabulary to `PASSED|REQUIRED` and makes `(connector_id, resource_type, resource_id)` the sole ResourceRef identity; `ResourceSource` remains projection-only. #132 closes the Recovery reason/scope/reference validator and the single durable-fact resolution eligibility authority. #133 closes the legal `CANCEL_REQUESTED → REAUTH_REQUIRED → CANCEL_REQUESTED` guard round-trip.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
