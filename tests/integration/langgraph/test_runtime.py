@@ -126,6 +126,8 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "work_analysis.assess_operational_risks",
     "planning.outline_answer",
     "planning.compose_answer",
+    "planning.draft_action_objective_per_output_route",
+    "planning.compose_arguments_per_output_route",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
     "planning.compose_answer.revise",
@@ -389,6 +391,29 @@ def _synthesize_action_argument_candidate(
     }
 
 
+def _synthesize_action_objective_candidate(
+    prompt_input: Mapping[str, object],
+) -> dict[str, object]:
+    """Project legacy integration fixtures into the exact objective contract."""
+
+    output_route = cast(Mapping[str, object], prompt_input["output_route"])
+    request_intent = cast(Mapping[str, object], prompt_input["request_intent"])
+    evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
+    refs = [
+        cast(str, item.get("evidence_id", item.get("evidence_ref")))
+        for item in evidence
+        if isinstance(item.get("evidence_id", item.get("evidence_ref")), str)
+    ]
+    return {
+        "schema_version": 1,
+        "route_id": output_route["route_id"],
+        "objective": str(request_intent.get("goal", "prepare requested action")),
+        "target_semantics": str(output_route["resource_type"]),
+        "scope_constraints": ["preserve frozen route"],
+        "evidence_refs": refs,
+    }
+
+
 class _QueuedLLMRuntime:
     def __init__(
         self,
@@ -555,6 +580,28 @@ class _QueuedLLMRuntime:
                     ),
                     self._segment_id_aliases,
                 )
+        if getattr(prompt_ref, "prompt_id", None) == (
+            "planning.draft_action_objective_per_output_route"
+        ):
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            return _llm_result(_synthesize_action_objective_candidate(prompt_input))
+        if getattr(prompt_ref, "prompt_id", None) == (
+            "planning.compose_arguments_per_output_route"
+        ):
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            output_route = cast(Mapping[str, object], prompt_input["output_route"])
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, output_route["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
+            )
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             output_route = cast(Mapping[str, object], prompt_input["output_route"])

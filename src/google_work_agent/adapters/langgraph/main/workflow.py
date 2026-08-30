@@ -85,15 +85,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     PlanReviewResultV1,
 )
 from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
-from google_work_agent.application.orchestration.planning_argument_orchestrator import (
-    PlanningArgumentOrchestrator,
-)
-from google_work_agent.application.orchestration.planning_argument_writer import (
-    PlanningArgumentWriter,
-)
-from google_work_agent.application.orchestration.planning_arguments import (
-    DefaultContainerResolver,
-)
 from google_work_agent.application.orchestration.profile_fused import (
     load_profile_single_reason_plan_prompt_reference,
     load_profile_single_request_source_prompt_reference,
@@ -417,24 +408,12 @@ class WorkflowRuntimeCore:
             timezone_provider=timezone_provider or (lambda: "Asia/Seoul"),
         )
         self._evidence_store = RunScopedEvidenceStore()
-        self._planning = SolutionPlanningAgent(
-            llm_runtime=llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
-        # Canonical ACTION Planning: Tool Route already froze output_routes'
-        # connector/resource/effect/tool identity -- the orchestrator only
-        # binds each route's selected business-argument schema and invokes
-        # the per-route Argument Writer, never re-selecting a Tool.
-        self._planning_argument_orchestrator = PlanningArgumentOrchestrator(
-            writer=PlanningArgumentWriter(
+        self._planning: SolutionPlanningAgent | None = None
+        if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
+            self._planning = SolutionPlanningAgent(
                 llm_runtime=llm_runtime,
                 manifest_path=prompt_manifest_path,
-            ),
-            default_container_resolver=DefaultContainerResolver(
-                default_tasklist_id_provider=self._default_tasklist_id_provider,
-                default_calendar_id_provider=self._default_calendar_id_provider,
-            ),
-        )
+            )
         self._review = PlanReviewAgent(
             llm_runtime=llm_runtime,
             manifest_path=prompt_manifest_path,
@@ -469,6 +448,7 @@ class WorkflowRuntimeCore:
         self._three_stage1_prompt_ref: PromptReference | None = None
         self._three_stage2_prompt_ref: PromptReference | None = None
         if self._graph_profile is GraphProfile.THREE_STAGE:
+            assert self._planning is not None
             self._three_stage1_prompt_ref = load_profile_three_stage1_prompt_reference(
                 prompt_manifest_path
             )
@@ -722,7 +702,8 @@ class WorkflowRuntimeCore:
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_planning_inline,
-            argument_orchestrator=self._planning_argument_orchestrator,
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
+            default_calendar_id_provider=self._default_calendar_id_provider,
         ).build()
         self._review_subgraph = RuntimeActiveReviewSubgraph(
             agent=self._review,
@@ -767,6 +748,7 @@ class WorkflowRuntimeCore:
             ).build()
         self._single_workflow_subgraph: Any = None
         if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            assert self._planning is not None
             assert self._single_request_source_prompt_ref is not None
             assert self._single_reason_plan_prompt_ref is not None
             assert self._single_review is not None

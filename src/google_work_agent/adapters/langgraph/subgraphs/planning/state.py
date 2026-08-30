@@ -1,46 +1,37 @@
-"""Planning owner-local LangGraph state."""
+"""Canonical semantic state owned by Planning."""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionDependencyCandidateV1,
+    ActionPlanDraftV2,
+)
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    ActionObjectiveCandidateV1,
+    AnswerDraftCandidateV2,
+    ToolArgumentCandidateV1,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputPlanV1,
+)
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAnalysisResultV2,
+)
+from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
-class PlanningState(TypedDict, total=False):
+
+class PlanningStateV2(TypedDict, total=False):
     user_request: str
-    request_intent: object
-    tool_route_plan: object
-    retrieval_result: object
-    work_analysis_result: object
-    work_analysis: object
-    evidence: object
-    evidence_refs: object
-    confirmation_response: object
-    plan_artifact_id: str
-    plan_revision: int
-    plan_based_on: object
-    action_ids_by_route: object
-    planning_disposition: str
-    answer_outline: object
-    answer_draft: object
-    final_result: object
-    action_objectives: object
-    argument_candidates: object
-    action_seeds: object
-    dependencies: object
-    plan_draft: object
-    validated_plan: object
-    workflow_signal: object
-    run_id: str
-    retry_budget: object
-    trace_context: object
-    prompt_context: object
-    __request__: object
-    __target__: str
-    __logical_target__: str
-    workflow_phase: str
-    planning_result: object
-    user_interrupt: object
-    finalize_intent: object
-    __planning_agent_local__: object
-    planning_confirmation: object
-    __planning_retry_outline__: bool
+    request_intent: RequestIntentV2
+    output_plan: OutputPlanV1
+    work_analysis: WorkAnalysisResultV2
+    evidence_refs: list[str]
+    action_objective_candidates: list[ActionObjectiveCandidateV1]
+    argument_candidates: list[ToolArgumentCandidateV1]
+    dependency_candidates: list[ActionDependencyCandidateV1]
+    final_result: AnswerDraftCandidateV2 | ActionPlanDraftV2
+
+
+__all__ = ["PlanningStateV2"]

@@ -310,8 +310,8 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
         "retrieval.assess_sufficiency",
         "analysis.assess_information_gaps",
         "analysis.assess_operational_risks",
-        "planning.answer_only",
-        "planning.draft_plan",
+        "planning.outline_answer",
+        "planning.compose_arguments_per_output_route",
         "review.inspect",
     } == CONFIRMATION_ORIGIN_TARGETS
     assert CONFIRMATION_RESUME_KIND == "CONFIRMATION"

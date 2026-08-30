@@ -9,6 +9,16 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionDependencyCandidateV1,
+    ActionPlanDraftV2,
+    PlanningActionSeedV1,
+)
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    ActionObjectiveCandidateV1,
+    AnswerOutlineV1,
+    ToolArgumentCandidateV1,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2 as CanonicalRequestIntentV2,
 )
@@ -233,9 +243,24 @@ class WorkAnalysisLocalState(GraphState):
 
 
 class PlanningLocalState(GraphState):
+    user_request: NotRequired[str]
+    output_plan: NotRequired[dict[str, object]]
+    work_analysis: NotRequired[dict[str, object]]
+    evidence: NotRequired[list[EvidenceDraftV1]]
+    evidence_refs: NotRequired[list[str]]
+    confirmation_response: NotRequired[dict[str, object]]
+    answer_outline: NotRequired[AnswerOutlineV1]
+    planning_disposition: NotRequired[str]
+    planning_confirmation: NotRequired[dict[str, object] | None]
+    __planning_retry_outline__: NotRequired[bool]
+    action_objective_candidates: NotRequired[list[ActionObjectiveCandidateV1]]
+    argument_candidates: NotRequired[list[ToolArgumentCandidateV1]]
+    dependency_candidates: NotRequired[list[ActionDependencyCandidateV1]]
+    final_result: NotRequired[dict[str, object]]
+    __planning_action_seeds__: NotRequired[list[PlanningActionSeedV1]]
     __planning_agent_local__: NotRequired[AgentLocalStateV1]
     __planning_mode__: NotRequired[str]
-    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1]
+    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1 | ActionPlanDraftV2]
     # Same purpose as the other native subgraphs' retry markers: routes the
     # self-loop conditional edge back into "finalize" as a fresh task for
     # the next confirmation round.

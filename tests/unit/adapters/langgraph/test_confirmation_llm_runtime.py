@@ -112,12 +112,12 @@ def test_tool_call_path_uses_the_same_bounded_projection() -> None:
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
         run_id="run-1",
-        origin_target="planning.draft_plan",
+        origin_target="planning.compose_arguments_per_output_route",
         response=_response(),  # type: ignore[arg-type]
     )
 
     result = runtime.invoke_tool_call(
-        prompt_ref=_prompt("planning.compose_arguments"),
+        prompt_ref=_prompt("planning.compose_arguments_per_output_route"),
         prompt_input={"output_route": {"route_id": "route-1"}},
         tools=[],
         mapper=lambda value: value,

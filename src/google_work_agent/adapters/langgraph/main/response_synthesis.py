@@ -27,13 +27,11 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.optional_input_subgraphs import (
-    CanonicalOptionalPlanningSubgraph,
     CanonicalOptionalWorkAnalysisSubgraph,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
-    build_production_planning_runtime,
 )
 from google_work_agent.application.orchestration.contracts import (
     FinalizeIntent,
@@ -260,16 +258,7 @@ class ResponseSynthesisMixin:
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_work_analysis_inline,
         ).build()
-        action_delegate = CanonicalOptionalPlanningSubgraph(
-            agent=self._planning,
-            id_factory=self._id_factory,
-            graph_profile=self._graph_profile,
-            merge_decision=self._merge_decision,
-            evidence_store=self._evidence_store,
-            confirm_inline=self._confirm_planning_inline,
-            argument_orchestrator=self._planning_argument_orchestrator,
-        ).build()
-        answer_subgraph = PlanningSubgraph(
+        self._planning_subgraph = PlanningSubgraph(
             llm_runtime=self._confirmation_llm_runtime,
             prompt_manifest_path=manifest_path,
             id_factory=self._id_factory,
@@ -277,11 +266,9 @@ class ResponseSynthesisMixin:
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_planning_inline,
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
+            default_calendar_id_provider=self._default_calendar_id_provider,
         ).build()
-        self._planning_subgraph = build_production_planning_runtime(
-            answer=answer_subgraph,
-            action_delegate=action_delegate,
-        )
         self._rebuild_six_role_graph_with_optional_subgraphs()
 
     def _rebuild_six_role_graph_with_optional_subgraphs(self) -> None:

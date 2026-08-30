@@ -15,8 +15,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from copy import deepcopy
-from typing import Literal, Required, TypedDict, cast
+from typing import cast
 
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    ToolArgumentCandidateV1,
+)
+from google_work_agent.application.agents.planning.resolve_default_container import (
+    BoundSelectedToolSchemaV1,
+    PlanningArgumentBindingError,
+    RequiredContainerUnresolvedError,
+    resolve_default_container,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
 )
@@ -28,54 +37,8 @@ from google_work_agent.application.use_cases.action.validate_action_arguments im
 JsonObject = dict[str, object]
 
 
-class PlanningArgumentBindingError(ValueError):
-    """Raised when a Planning argument candidate escapes its frozen route."""
-
-
-class RequiredContainerUnresolvedError(PlanningArgumentBindingError):
-    """The selected Tool requires a container but no deterministic binding exists."""
-
-    def __init__(self, *, route_id: str, tool_id: str, argument_name: str) -> None:
-        super().__init__(f"{argument_name} is required for selected tool: {tool_id}")
-        self.route_id = route_id
-        self.tool_id = tool_id
-        self.argument_name = argument_name
-
-
-class BoundSelectedToolSchemaV1(TypedDict):
-    """One frozen output route plus its immutable selected Tool schema."""
-
-    schema_version: Required[Literal[1]]
-    route_id: str
-    connector_id: str
-    resource_type: str
-    effect: str
-    selected_tool_id: str
-    argument_schema: JsonObject
-    immutable_arguments: dict[str, object]
-
-
-class ToolArgumentCandidateV1(TypedDict):
-    """Thin LLM-owned business arguments for exactly one output route."""
-
-    schema_version: Required[Literal[1]]
-    route_id: str
-    arguments: dict[str, object]
-    evidence_refs: list[str]
-
-
-_CONTAINER_ARGUMENT_BY_TOOL: dict[str, str] = {
-    "tasks_create_task": "task_list_id",
-    "tasks_update_task": "task_list_id",
-    "tasks_delete_task": "task_list_id",
-    "calendar_create_event": "calendar_id",
-    "calendar_update_event": "calendar_id",
-    "calendar_delete_event": "calendar_id",
-}
-
-
 class DefaultContainerResolver:
-    """Resolve connector container ids without giving that authority to an LLM."""
+    """Legacy fused-profile adapter delegating to the exact CAP-AGT-030 owner."""
 
     def __init__(
         self,
@@ -93,60 +56,13 @@ class DefaultContainerResolver:
         selected_tool_schema: Mapping[str, object],
         explicit_container_id: str | None = None,
     ) -> BoundSelectedToolSchemaV1:
-        """Return a schema whose required container field is immutable/``const``.
-
-        An explicitly selected container wins over the configured default. If
-        the selected Tool requires a container and neither source provides one,
-        the typed unresolved-container error is raised before an Argument Writer
-        can be called.
-        """
-
-        tool_id = route["selected_tool_id"]
-        container_argument = _CONTAINER_ARGUMENT_BY_TOOL.get(tool_id)
-        immutable_arguments: dict[str, object] = {}
-        schema = _mapping_copy(selected_tool_schema, "selected_tool_schema")
-
-        if container_argument is not None:
-            container_id = _normalized_optional_string(explicit_container_id)
-            if container_id is None:
-                container_id = self._configured_default(container_argument)
-            if container_id is None:
-                raise RequiredContainerUnresolvedError(
-                    route_id=route["route_id"],
-                    tool_id=tool_id,
-                    argument_name=container_argument,
-                )
-            schema = _bind_schema_const(
-                schema,
-                argument_name=container_argument,
-                argument_value=container_id,
-            )
-            immutable_arguments[container_argument] = container_id
-
-        return {
-            "schema_version": 1,
-            "route_id": route["route_id"],
-            "connector_id": route["connector_id"],
-            "resource_type": route["resource_type"],
-            "effect": route["effect"],
-            "selected_tool_id": tool_id,
-            "argument_schema": schema,
-            "immutable_arguments": immutable_arguments,
-        }
-
-    def _configured_default(self, argument_name: str) -> str | None:
-        provider: Callable[[], str | None] | None
-        if argument_name == "task_list_id":
-            provider = self._default_tasklist_id_provider
-        elif argument_name == "calendar_id":
-            provider = self._default_calendar_id_provider
-        else:  # pragma: no cover - protected by the static tool mapping above.
-            raise PlanningArgumentBindingError(
-                f"unsupported deterministic container argument: {argument_name}"
-            )
-        if provider is None:
-            return None
-        return _normalized_optional_string(provider())
+        return resolve_default_container(
+            route=route,
+            selected_tool_schema=selected_tool_schema,
+            explicit_container_id=explicit_container_id,
+            default_tasklist_id_provider=self._default_tasklist_id_provider,
+            default_calendar_id_provider=self._default_calendar_id_provider,
+        )
 
 
 def validate_tool_argument_candidate_v1(
@@ -203,40 +119,6 @@ def validate_tool_argument_candidate_v1(
     }
 
 
-def _bind_schema_const(
-    schema: JsonObject,
-    *,
-    argument_name: str,
-    argument_value: str,
-) -> JsonObject:
-    bound = deepcopy(schema)
-    if bound.get("type") != "object":
-        raise PlanningArgumentBindingError("selected Tool argument schema must be an object")
-    properties = bound.get("properties")
-    if not isinstance(properties, dict):
-        raise PlanningArgumentBindingError("selected Tool argument schema must define properties")
-    raw_property = properties.get(argument_name)
-    if not isinstance(raw_property, dict):
-        raise PlanningArgumentBindingError(
-            f"selected Tool schema is missing required container field: {argument_name}"
-        )
-    property_schema = dict(cast(dict[str, object], raw_property))
-    existing_const = property_schema.get("const")
-    if existing_const is not None and existing_const != argument_value:
-        raise PlanningArgumentBindingError(
-            f"selected Tool schema has conflicting const for {argument_name}"
-        )
-    property_schema["const"] = argument_value
-    properties[argument_name] = property_schema
-
-    required = bound.get("required", [])
-    if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
-        raise PlanningArgumentBindingError("selected Tool schema required must be a string list")
-    if argument_name not in required:
-        bound["required"] = [*cast(list[str], required), argument_name]
-    return bound
-
-
 def _mapping_copy(value: Mapping[str, object], path: str) -> JsonObject:
     result: JsonObject = {}
     for key, item in value.items():
@@ -259,13 +141,6 @@ def _require_string_list(value: object, path: str) -> list[str]:
     if len(result) != len(set(result)):
         raise PlanningArgumentBindingError(f"{path} must not contain duplicates")
     return result
-
-
-def _normalized_optional_string(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
 
 
 __all__ = [

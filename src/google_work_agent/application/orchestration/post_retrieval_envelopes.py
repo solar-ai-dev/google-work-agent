@@ -10,11 +10,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+)
 from google_work_agent.application.orchestration.handoff_contracts import SubgraphReturnV2
 from google_work_agent.application.orchestration.inspect_plan_output import (
     validate_plan_review_candidate_v2,
 )
-from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.orchestration.state_artifacts import (
     AnswerDraftV2,
     PlanReviewResultV2,

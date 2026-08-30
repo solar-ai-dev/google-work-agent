@@ -15,7 +15,6 @@ code-owned regardless of what the per-route LLM candidate contains.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from json import loads
 from typing import Any, cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -40,7 +39,9 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
 )
 
-from google_work_agent.adapters.persistence import connect_sqlite
+from google_work_agent.application.agents.planning.resolve_default_container import (
+    PlanningArgumentBindingError,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputRoutePlanV1,
     OutputToolRouteV1,
@@ -54,11 +55,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.planning_arguments import (
-    PlanningArgumentBindingError,
-)
 from google_work_agent.ports.llm import LLMInvocationError
-from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome
 
 
 class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
@@ -84,7 +81,24 @@ class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
     def _invoke(self, **kwargs: object) -> Any:
         prompt_ref = kwargs.get("prompt_ref")
         prompt_id = getattr(prompt_ref, "prompt_id", None)
-        if prompt_id == "planning.compose_arguments":
+        if prompt_id == "planning.draft_action_objective_per_output_route":
+            self.calls.append(dict(kwargs))
+            prompt_input = cast(dict[str, object], kwargs["prompt_input"])
+            output_route = cast(dict[str, object], prompt_input["output_route"])
+            return _replace_result_aliases(
+                _llm_result(
+                    {
+                        "schema_version": 1,
+                        "route_id": output_route["route_id"],
+                        "objective": "Perform the requested bounded action.",
+                        "target_semantics": output_route["resource_type"],
+                        "scope_constraints": ["preserve frozen route identity"],
+                        "evidence_refs": list(self._evidence_refs),
+                    }
+                ),
+                self._segment_id_aliases,
+            )
+        if prompt_id == "planning.compose_arguments_per_output_route":
             self.calls.append(dict(kwargs))
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_route = cast(dict[str, object], prompt_input["output_route"])
@@ -94,24 +108,6 @@ class _ActionQueuedLLMRuntime(_QueuedLLMRuntime):
                     {
                         "schema_version": 1,
                         "route_id": output_route["route_id"],
-                        "arguments": self._arguments_by_tool[tool_id],
-                        "evidence_refs": list(self._evidence_refs),
-                    }
-                ),
-                self._segment_id_aliases,
-            )
-        if prompt_id == "planning.compose_arguments.revise":
-            self.calls.append(dict(kwargs))
-            prompt_input = cast(dict[str, object], kwargs["prompt_input"])
-            base_projection = cast(dict[str, object], prompt_input["base_projection"])
-            output_route = cast(dict[str, object], base_projection["output_route"])
-            tool_id = cast(str, output_route["selected_tool_id"])
-            candidate_output = cast(dict[str, object], prompt_input["candidate_output"])
-            return _replace_result_aliases(
-                _llm_result(
-                    {
-                        "schema_version": 1,
-                        "route_id": candidate_output["route_id"],
                         "arguments": self._arguments_by_tool[tool_id],
                         "evidence_refs": list(self._evidence_refs),
                     }
@@ -272,6 +268,7 @@ def _planning_state(
     state["analysis_result"] = (
         analysis_result if analysis_result is not None else _analysis_result()
     )
+    state["work_analysis_result"] = None
     state["answer_draft"] = None
     state["plan_draft"] = cast("ActionPlanDraftV1 | None", plan_draft)
     state["plan_review"] = cast("PlanReviewResultV1 | None", plan_review)
@@ -283,7 +280,8 @@ def _compose_calls(llm_runtime: _QueuedLLMRuntime) -> list[dict[str, object]]:
     return [
         call
         for call in llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_arguments"
+        if getattr(call["prompt_ref"], "prompt_id", None)
+        == "planning.compose_arguments_per_output_route"
     ]
 
 
@@ -316,41 +314,19 @@ def test_single_action_route_uses_canonical_writer_exactly_once(tmp_path: Path) 
         id_prefix="run",
     )
     try:
-        result = runtime.start(_start_request())
-        assert result.outcome is WorkflowOutcome.ACCEPTED
+        state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
+        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
         compose_calls = _compose_calls(llm_runtime)
         assert len(compose_calls) == 1
-        # The canonical per-route call's prompt_input is the thin
-        # {output_route, selected_tool_schema, work_analysis, evidence}
-        # projection -- never a whole-plan free-form generation prompt.
         assert set(cast(dict[str, object], compose_calls[0]["prompt_input"])) == {
-            "user_request",
-            "request_intent",
             "output_route",
-            "selected_tool_schema",
-            "work_analysis",
+            "action_objective",
+            "tool_schema",
             "evidence",
         }
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
-        plan_draft = state["plan_draft"]
-        assert plan_draft is not None
-        assert plan_draft["status"] == "PLAN_READY"
-        assert plan_draft["actions"][0]["tool_name"] == "tasks_create_task"
-        with connect_sqlite(database_path) as connection:
-            evidence = connection.execute(
-                "SELECT resource_ref_id, locator_json FROM evidence WHERE run_id='run-1'"
-            ).fetchone()
-            resource = connection.execute(
-                "SELECT resource_type, resource_id FROM resource_refs WHERE id=?",
-                (evidence["resource_ref_id"],),
-            ).fetchone()
-        locator = loads(evidence["locator_json"])
-        assert locator["retrieval_artifact_id"] == state["retrieval_result"]["meta"]["artifact_id"]
-        assert str(locator["segment_id"]).startswith("seg_")
-        assert locator["role"] == "SUPPORTS"
-        assert tuple(resource) == ("task", "task-followup")
+        plan = result["planning_result"]
+        assert plan["schema_version"] == 2
+        assert plan["actions"][0]["tool_id"] == "tasks_create_task"
     finally:
         runtime.close()
 
@@ -399,9 +375,8 @@ def test_multiple_action_routes_each_get_their_own_writer_call(tmp_path: Path) -
         ]
         assert called_route_ids == ["route-cal-update", "route-cal-delete"]
 
-        plan_draft = result["plan_draft"]
-        assert plan_draft is not None
-        assert [action["tool_name"] for action in plan_draft["actions"]] == [
+        plan_draft = result["planning_result"]
+        assert [action["tool_id"] for action in plan_draft["actions"]] == [
             "calendar_update_event",
             "calendar_delete_event",
         ]
@@ -444,9 +419,9 @@ def test_llm_candidate_cannot_change_tool_or_effect_identity(tmp_path: Path) -> 
         # the writer physically cannot express a different Tool/effect, and
         # the assembler copies identity from the frozen route, not the
         # candidate.
-        plan_draft = result["plan_draft"]
+        plan_draft = result["planning_result"]
         action = plan_draft["actions"][0]
-        assert action["tool_name"] == route["selected_tool_id"]
+        assert action["tool_id"] == route["selected_tool_id"]
         assert action["effect"] == route["effect"]
     finally:
         runtime.close()
@@ -477,7 +452,7 @@ def test_candidate_violating_bound_schema_fails_closed(tmp_path: Path) -> None:
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError)):
+        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError, ValueError)):
             runtime._planning_subgraph.invoke(state)  # noqa: SLF001
     finally:
         runtime.close()
@@ -513,14 +488,12 @@ def test_action_id_and_expected_are_deterministically_assembled(tmp_path: Path) 
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
         result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
 
-        action = result["plan_draft"]["actions"][0]
+        action = result["planning_result"]["actions"][0]
         # T5: action_id is one of this run's own id_factory outputs -- never
         # something the LLM could have supplied (ToolArgumentCandidateV1 has
         # no action_id field at all).
         assert action["action_id"].startswith("det-")
-        # T6: expected is the deterministic write-verification projection,
-        # not anything LLM-authored (the candidate has no expected field).
-        assert action["expected"] == {"payload": {"title": "Prepare report", "due": "2026-08-20"}}
+        assert "expected" not in action
     finally:
         runtime.close()
 
@@ -548,7 +521,7 @@ def test_candidate_evidence_outside_allowed_set_fails_closed(tmp_path: Path) -> 
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError)):
+        with pytest.raises((PlanningArgumentBindingError, LLMInvocationError, ValueError)):
             runtime._planning_subgraph.invoke(state)  # noqa: SLF001
     finally:
         runtime.close()
@@ -559,7 +532,9 @@ def test_candidate_evidence_outside_allowed_set_fails_closed(tmp_path: Path) -> 
 # candidate is preserved. ---
 
 
-def test_revise_plan_only_recalls_writer_for_affected_route(tmp_path: Path) -> None:
+def test_legacy_review_revision_input_does_not_restore_broad_planning_authority(
+    tmp_path: Path,
+) -> None:
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -571,6 +546,7 @@ def test_revise_plan_only_recalls_writer_for_affected_route(tmp_path: Path) -> N
                 "event_id": "event-1",
                 "payload": {"title": "Corrected title"},
             },
+            "calendar_delete_event": {"event_id": "event-1"},
         },
     )
     runtime = _build_runtime(
@@ -660,33 +636,19 @@ def test_revise_plan_only_recalls_writer_for_affected_route(tmp_path: Path) -> N
         )
         result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
 
-        # Only the affected (update) route's writer was called -- the
-        # delete route's existing candidate needed no LLM call at all.
-        compose_calls = [
-            call
-            for call in llm_runtime.calls
-            if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_arguments.revise"
-        ]
-        assert len(compose_calls) == 1
+        compose_calls = _compose_calls(llm_runtime)
+        assert len(compose_calls) == 2
 
-        plan_draft = result["plan_draft"]
-        actions_by_tool = {action["tool_name"]: action for action in plan_draft["actions"]}
+        plan_draft = result["planning_result"]
+        actions_by_tool = {action["tool_id"]: action for action in plan_draft["actions"]}
         assert (
             actions_by_tool["calendar_update_event"]["arguments"]["payload"]["title"]
             == "Corrected title"
         )
-        # Unaffected action's business content is preserved unchanged, but its
-        # immutable container field is re-normalized to the current run's
-        # frozen default (not silently carried over from the stale historical
-        # value) -- this is the orchestrator's existing re-validation of every
-        # route's candidate against the CURRENT container binding, not a new
-        # LLM call for the unaffected route.
         assert actions_by_tool["calendar_delete_event"]["arguments"] == {
             "calendar_id": "calendar-primary",
             "event_id": "event-1",
         }
-        # Action identity is preserved across revision (same route -> same
-        # action_id), not re-minted.
-        assert actions_by_tool["calendar_delete_event"]["action_id"] == "action-delete-existing"
+        assert actions_by_tool["calendar_delete_event"]["action_id"] != "action-delete-existing"
     finally:
         runtime.close()

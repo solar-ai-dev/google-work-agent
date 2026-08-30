@@ -734,7 +734,7 @@ def test_action_plan_needs_confirmation_or_blocked_do_not_store_actions() -> Non
     assert state_update["plan_draft"] is None
     assert state_update["answer_draft"] is None
     assert "user_interrupt" not in state_update
-    assert clarification["origin_target"] == "planning.draft_plan"
+    assert clarification["origin_target"] == "planning.compose_arguments_per_output_route"
 
     output = _plan_output(PlanningResult.BLOCKED.value, actions=[])
     blocked = validate_action_plan_draft_v1(output, analysis_result=_analysis_result())

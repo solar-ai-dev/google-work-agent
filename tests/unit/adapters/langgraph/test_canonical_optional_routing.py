@@ -97,7 +97,7 @@ def test_answer_without_input_or_analysis_routes_directly_to_planning() -> None:
     assert result["target"] == SupervisorTarget.SOLUTION_PLANNING.value
     assert result["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
     assert result["state_update"]["retrieval_result"] is None
-    assert result["state_update"]["analysis_result"] is None
+    assert result["state_update"]["work_analysis_result"] is None
 
 
 def test_no_input_with_required_analysis_routes_to_work_analysis() -> None:
@@ -138,7 +138,7 @@ def test_retrieval_answer_with_no_analysis_routes_to_planning() -> None:
 
     assert result["target"] == SupervisorTarget.SOLUTION_PLANNING.value
     assert result["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
-    assert result["state_update"]["analysis_result"] is None
+    assert result["state_update"]["work_analysis_result"] is None
 
 
 def test_retrieval_with_required_analysis_stays_work_analysis() -> None:

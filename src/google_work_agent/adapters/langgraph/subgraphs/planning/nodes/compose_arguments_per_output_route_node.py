@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping
+from typing import cast
 
-from google_work_agent.adapters.langgraph.subgraphs.planning.projections.planning_projection import (
-    project_planning_input,
+from google_work_agent.adapters.langgraph.subgraphs.planning.projections import (
+    compose_arguments_per_output_route_projection as arguments_projection,
 )
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     compose_arguments_per_output_route,
@@ -13,40 +14,59 @@ from google_work_agent.application.agents.planning.compose_arguments_per_output_
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.resolve_default_container import (
+    resolve_default_container,
+)
+from google_work_agent.application.orchestration.planning_tool_schemas import (
+    planning_tool_argument_schema,
+)
 
 
 def compose_arguments_per_output_route_node(
-    state: Mapping[str, object], *, invoke: PlanningSemanticInvoker
+    state: Mapping[str, object],
+    *,
+    invoke: PlanningSemanticInvoker,
+    default_tasklist_id_provider: Callable[[], str | None] | None = None,
+    default_calendar_id_provider: Callable[[], str | None] | None = None,
 ) -> dict[str, object]:
-    projected = project_planning_input(state)
-    tool_route_plan = projected.get("tool_route_plan")
-    objectives = projected.get("action_objectives")
-    user_request = projected.get("user_request", "")
-    work_analysis = projected.get("work_analysis_result")
-    evidence = projected.get("evidence", ())
-    if not isinstance(tool_route_plan, Mapping):
-        raise ValueError("tool_route_plan is required")
-    if not isinstance(objectives, Sequence) or isinstance(objectives, (str, bytes)):
-        raise ValueError("action_objectives are required")
-    if not isinstance(user_request, str):
-        raise ValueError("user_request must be a string")
-    if work_analysis is not None and not isinstance(work_analysis, Mapping):
-        raise ValueError("work_analysis_result must be an object")
-    if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
-        raise ValueError("evidence must be a sequence")
-    output_plan = tool_route_plan.get("output_plan")
-    if not isinstance(output_plan, Mapping):
-        raise ValueError("tool_route_plan.output_plan is required")
-    output_routes = output_plan.get("output_routes")
-    if not isinstance(output_routes, Sequence) or isinstance(output_routes, (str, bytes)):
-        raise ValueError("tool_route_plan.output_plan.output_routes is required")
+    projected = arguments_projection.project_compose_arguments_per_output_route_input(state)
+    routes = cast(list[dict[str, object]], projected["output_routes"])
+    confirmation = projected.get("confirmation_response")
+    explicit_container_id: str | None = None
+    if isinstance(confirmation, Mapping):
+        candidate = confirmation.get("selected_option") or confirmation.get("free_text")
+        explicit_container_id = candidate if isinstance(candidate, str) and candidate else None
+    missing = state.get("prompt_context")
+    missing_route_id: str | None = None
+    if isinstance(missing, Mapping) and isinstance(
+        missing.get("planning_missing_container"), Mapping
+    ):
+        raw_route_id = missing["planning_missing_container"].get("route_id")
+        missing_route_id = raw_route_id if isinstance(raw_route_id, str) else None
+    bound_schemas = [
+        resolve_default_container(
+            route=route,  # type: ignore[arg-type]
+            selected_tool_schema=planning_tool_argument_schema(
+                cast(str, route["selected_tool_id"])
+            ),
+            explicit_container_id=(
+                explicit_container_id if route.get("route_id") == missing_route_id else None
+            ),
+            default_tasklist_id_provider=default_tasklist_id_provider,
+            default_calendar_id_provider=default_calendar_id_provider,
+        )
+        for route in routes
+    ]
     return {
-        "argument_candidates": compose_arguments_per_output_route(
-            output_routes,  # type: ignore[arg-type]
-            objectives=objectives,  # type: ignore[arg-type]
-            user_request=user_request,
-            work_analysis=work_analysis,
-            evidence=evidence,  # type: ignore[arg-type]
-            invoke=invoke,
+        "argument_candidates": list(
+            compose_arguments_per_output_route(
+                routes,
+                objectives=projected["objectives"],  # type: ignore[arg-type]
+                bound_tool_schemas=bound_schemas,
+                work_analysis=projected.get("work_analysis"),  # type: ignore[arg-type]
+                evidence=projected["evidence"],  # type: ignore[arg-type]
+                invoke=invoke,
+                confirmation_response=projected.get("confirmation_response"),  # type: ignore[arg-type]
+            )
         )
     }

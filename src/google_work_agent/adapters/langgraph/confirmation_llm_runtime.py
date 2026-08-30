@@ -34,7 +34,9 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "analysis.assess_information_gaps": frozenset({"work_analysis.assess_information_gaps"}),
     "analysis.assess_operational_risks": frozenset({"work_analysis.assess_operational_risks"}),
     "planning.outline_answer": frozenset({"planning.outline_answer", "planning.compose_answer"}),
-    "planning.draft_plan": frozenset({"planning.compose_arguments"}),
+    "planning.compose_arguments_per_output_route": frozenset(
+        {"planning.compose_arguments_per_output_route"}
+    ),
     "review.inspect": frozenset({"review.inspect"}),
 }
 

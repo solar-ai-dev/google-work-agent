@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from google_work_agent.application.orchestration.planning_arguments import (
+from google_work_agent.application.agents.planning.resolve_default_container import (
     PlanningArgumentBindingError,
 )
 

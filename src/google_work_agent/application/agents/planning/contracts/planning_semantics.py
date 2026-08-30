@@ -25,8 +25,11 @@ class AnswerDraftCandidateV2(TypedDict):
 
 
 class ActionObjectiveCandidateV1(TypedDict):
+    schema_version: Required[Literal[1]]
     route_id: str
     objective: str
+    target_semantics: str
+    scope_constraints: list[str]
     evidence_refs: list[str]
 
 

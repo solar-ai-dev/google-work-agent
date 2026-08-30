@@ -54,6 +54,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_write_request,
     _sufficiency_output,
     _synthesize_action_argument_candidate,
+    _synthesize_action_objective_candidate,
     _synthesize_atomic_work_analysis,
     _synthesize_retrieval_query_plan,
     _write_plan_output,
@@ -142,6 +143,27 @@ class _ToolRouteQueuedLLMRuntime:
         )
         if atomic_analysis is not None:
             return atomic_analysis
+        if prompt_id == "planning.draft_action_objective_per_output_route":
+            return _llm_result(
+                _synthesize_action_objective_candidate(
+                    cast(dict[str, object], kwargs["prompt_input"])
+                )
+            )
+        if prompt_id == "planning.compose_arguments_per_output_route":
+            prompt_input = cast(dict[str, object], kwargs["prompt_input"])
+            output_route = cast(dict[str, object], prompt_input["output_route"])
+            return _replace_result_aliases(
+                _llm_result(
+                    _synthesize_action_argument_candidate(
+                        self._queued,
+                        self._pending_plan_actions_state,
+                        route_id=cast(str, output_route["route_id"]),
+                        tool_id=cast(str, output_route["selected_tool_id"]),
+                        effect=cast(str, output_route["effect"]),
+                    )
+                ),
+                self._segment_id_aliases,
+            )
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(dict[str, object], kwargs["prompt_input"])
             output_route = cast(dict[str, object], prompt_input["output_route"])

@@ -38,6 +38,7 @@ def test_assemble_plan_uses_deterministic_dependency_authority() -> None:
         revision=1,
         based_on=[],
         action_seeds=seeds,  # type: ignore[arg-type]
+        dependency_candidates=build_dependencies(seeds),  # type: ignore[arg-type]
     )
     validated = validate_plan(plan)
     assert validated["actions"][1]["depends_on_action_ids"] == ["a1"]

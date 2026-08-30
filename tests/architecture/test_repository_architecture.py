@@ -52,6 +52,7 @@ ROLES = {
         "choose_answer_or_action_from_route",
         "outline_answer",
         "compose_answer",
+        "resolve_default_container",
         "draft_action_objective_per_output_route",
         "compose_arguments_per_output_route",
         "build_dependencies",

@@ -54,30 +54,66 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
     assert calls == ["planning.outline_answer", "planning.compose_answer"]
 
 
-def test_compiled_planning_answer_graph_rejects_action_owned_by_successor() -> None:
+def test_compiled_planning_graph_has_exact_six_runtime_nodes() -> None:
+    graph = PlanningSubgraph(
+        dependencies=PlanningRuntimeDependencies(invoke=lambda _prompt_id, _input: {})
+    ).build()
+    assert set(graph.get_graph().nodes) - {"__start__", "__end__"} == {
+        "outline_answer",
+        "compose_answer",
+        "draft_action_objective_per_output_route",
+        "compose_arguments_per_output_route",
+        "derive_dependencies",
+        "assemble",
+    }
+
+
+def test_compiled_planning_action_executes_exact_four_node_path() -> None:
     route = {
         "route_id": "r1",
-        "resource_type": "TASK",
+        "resource_type": "GMAIL_DRAFT",
         "connector_id": "google_workspace",
-        "effect": "UPDATE",
-        "selected_tool_id": "tasks_update_task",
+        "effect": "CREATE",
+        "selected_tool_id": "gmail_create_draft",
         "reason_codes": ["USER_REQUEST"],
     }
-    graph = PlanningSubgraph(
-        dependencies=PlanningRuntimeDependencies(invoke=lambda _prompt_id, _prompt_input: {})
-    ).build()
-    import pytest
+    calls: list[str] = []
 
-    with pytest.raises(ValueError, match="#118"):
-        graph.invoke(
-            {
-                "user_request": "Update the task",
-                "request_intent": {"goal": "update task"},
-                "tool_route_plan": {
-                    "output_plan": {"output_mode": "ACTION", "output_routes": [route]}
-                },
+    def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        calls.append(prompt_id)
+        if prompt_id.endswith("draft_action_objective_per_output_route"):
+            return {
+                "schema_version": 1,
+                "route_id": "r1",
+                "objective": "Create draft",
+                "target_semantics": "GMAIL_DRAFT",
+                "scope_constraints": ["draft only"],
+                "evidence_refs": ["e1"],
             }
-        )
+        return {
+            "schema_version": 1,
+            "route_id": "r1",
+            "arguments": {"payload": {"to": ["a@example.com"], "subject": "s", "body": "b"}},
+            "evidence_refs": ["e1"],
+        }
+
+    ids = iter(["action-1", "plan-1"])
+    graph = PlanningSubgraph(
+        dependencies=PlanningRuntimeDependencies(invoke=invoke), id_factory=ids.__next__
+    ).build()
+    result = graph.invoke(
+        {
+            "user_request": "Create a draft",
+            "request_intent": {"goal": "create draft"},
+            "tool_route_plan": {"output_plan": {"output_mode": "ACTION", "output_routes": [route]}},
+            "evidence": [{"evidence_ref": "e1"}],
+        }
+    )
+    assert result["final_result"]["actions"][0]["tool_id"] == "gmail_create_draft"
+    assert calls == [
+        "planning.draft_action_objective_per_output_route",
+        "planning.compose_arguments_per_output_route",
+    ]
 
 
 def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_recheck() -> None:

@@ -93,7 +93,7 @@ def test_role_input_projection_does_not_expose_foreign_business_artifacts() -> N
         "request_intent",
         "tool_route_plan",
         "retrieval_result",
-        "analysis_result",
+        "work_analysis_result",
         "answer_draft",
         "plan_draft",
         "plan_review",

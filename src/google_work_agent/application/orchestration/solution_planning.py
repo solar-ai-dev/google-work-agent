@@ -1016,7 +1016,11 @@ def build_solution_planning_clarification_question(
     request_intent: RequestIntentV2,
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
-    origin_target = "planning.answer_only" if "answer" in result else "planning.draft_plan"
+    origin_target = (
+        "planning.outline_answer"
+        if "answer" in result
+        else "planning.compose_arguments_per_output_route"
+    )
     return build_clarification_question_v1(
         origin_target=origin_target,
         question=_require_string(confirmation, "question", "$.confirmation"),
@@ -1152,8 +1156,7 @@ def _validate_action_draft(
                 has_explicit_resource_relation=(
                     target_resource_ref_id is not None
                     or any(
-                        (evidence_ref, resource_ref)
-                        in refs["evidence_resource_relations"]
+                        (evidence_ref, resource_ref) in refs["evidence_resource_relations"]
                         for evidence_ref in evidence_refs
                         for resource_ref in resource_refs
                     )

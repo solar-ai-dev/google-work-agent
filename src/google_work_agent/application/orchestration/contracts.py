@@ -484,7 +484,7 @@ CONFIRMATION_ORIGIN_TARGETS = frozenset(
         "analysis.assess_information_gaps",
         "analysis.assess_operational_risks",
         "planning.outline_answer",
-        "planning.draft_plan",
+        "planning.compose_arguments_per_output_route",
         "review.inspect",
     }
 )
