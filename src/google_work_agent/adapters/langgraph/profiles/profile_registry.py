@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from enum import StrEnum
-from types import MappingProxyType
-from typing import Any, cast
+from typing import Any
 
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -88,9 +87,4 @@ def get_profile_owner_bindings(
         normalized = GraphProfile(profile)
     except ValueError as error:
         raise ValueError(f"unknown graph profile: {profile}") from error
-    return MappingProxyType(
-        cast(
-            dict[SemanticAgentOwnerIdV1, CompiledAgentSubgraphIdV1],
-            bindings[normalized],
-        )
-    )
+    return bindings[normalized]

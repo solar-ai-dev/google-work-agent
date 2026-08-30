@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 
 from google_work_agent.adapters.langgraph.main.graph import (
@@ -17,14 +18,18 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     SemanticAgentOwnerIdV1,
 )
 
-SEMANTIC_OWNER_BINDINGS: dict[SemanticAgentOwnerIdV1, CompiledAgentSubgraphIdV1] = {
-    "REQUEST_UNDERSTANDING": "UNIFIED_AGENT",
-    "TOOL_ROUTE": "UNIFIED_AGENT",
-    "RETRIEVAL": "UNIFIED_AGENT",
-    "WORK_ANALYSIS": "UNIFIED_AGENT",
-    "PLANNING": "UNIFIED_AGENT",
-    "REVIEW": "UNIFIED_AGENT",
-}
+SEMANTIC_OWNER_BINDINGS: Mapping[SemanticAgentOwnerIdV1, CompiledAgentSubgraphIdV1] = (
+    MappingProxyType(
+        {
+            "REQUEST_UNDERSTANDING": "UNIFIED_AGENT",
+            "TOOL_ROUTE": "UNIFIED_AGENT",
+            "RETRIEVAL": "UNIFIED_AGENT",
+            "WORK_ANALYSIS": "UNIFIED_AGENT",
+            "PLANNING": "UNIFIED_AGENT",
+            "REVIEW": "UNIFIED_AGENT",
+        }
+    )
+)
 
 
 def build_single_baseline_graph(
