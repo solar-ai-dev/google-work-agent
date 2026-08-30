@@ -43,6 +43,7 @@ class WorkflowInvocationCoordinator:
         cancel_signals: set[str],
         resume_reauth_execution: Callable[[GraphState], GraphState] | None = None,
         graph_version: str = "v1",
+        now_ms: Callable[[], int] = lambda: 0,
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
@@ -58,6 +59,7 @@ class WorkflowInvocationCoordinator:
         self._resume_reauth_execution = resume_reauth_execution
         self._cancel_signal_lock = cancel_signal_lock
         self._cancel_signals = cancel_signals
+        self._now_ms = now_ms
 
     def prepare_start(self, request: WorkflowStartRequest) -> None:
         """Durably materialize input state without invoking the first owner node."""
@@ -74,7 +76,7 @@ class WorkflowInvocationCoordinator:
         )
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
-        with provider_dispatch_execution_scope():
+        with provider_dispatch_execution_scope(run_id=request.run_id, now_ms=self._now_ms):
             config = self.config_for_thread(request.workflow_key)
             snapshot = self._graph.get_state(config)
             if snapshot.values or snapshot.next:
@@ -94,7 +96,7 @@ class WorkflowInvocationCoordinator:
             )
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
-        with provider_dispatch_execution_scope():
+        with provider_dispatch_execution_scope(run_id=request.run_id, now_ms=self._now_ms):
             config = self.config_for_thread(request.workflow_key)
             snapshot = self._graph.get_state(config)
             if not snapshot.values and not snapshot.next:
@@ -203,7 +205,7 @@ class WorkflowInvocationCoordinator:
         )
 
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
-        with provider_dispatch_execution_scope():
+        with provider_dispatch_execution_scope(run_id=request.run_id, now_ms=self._now_ms):
             config = self.config_for_thread(request.workflow_key)
             snapshot = self._graph.get_state(config)
             if not snapshot.values and not snapshot.next:

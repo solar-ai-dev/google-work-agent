@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -52,6 +52,7 @@ class WorkflowStartRequest:
     request_text: str
     selected_resource_ids: tuple[str, ...]
     correlation: WorkflowCorrelationContext
+    run_budget: dict[str, JsonValue] = field(default_factory=dict)
     selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 

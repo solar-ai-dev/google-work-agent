@@ -230,7 +230,7 @@ def test_retrieval_resume_reuses_completed_read_and_query_plan(tmp_path: Path) -
     # Synthesis") -- Review is never dispatched, so the run completes
     # exactly at the 8-call cap rather than a 9th (review) call being
     # denied. Asserting COMPLETED proves the same ordinary, unchanged
-    # RunBudgetV1 accounting the old exhaustion assertion proved.
+    # RunBudgetV2 accounting the old exhaustion assertion proved.
     llm_runtime._queued.extend(  # noqa: SLF001
         _llm_result(payload)
         for payload in [

@@ -27,7 +27,6 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
-    RunBudgetV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -50,6 +49,10 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
     PlanningResultV2,
 )
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+    validate_run_budget_v2,
+)
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
@@ -192,15 +195,7 @@ def initial_graph_state(
         "terminal_commit_intent": None,
         "user_interrupt": None,
         "policy_confirmation_receipts": [],
-        "retry_budget": {
-            "schema_version": 1,
-            "profile": "NORMAL",
-            "llm_calls_used": 0,
-            "additional_acquisitions_used": 0,
-            "planning_revisions_used": 0,
-            "last_rechecked_planning_revision": 0,
-            "semantic_revision_signatures_used": [],
-        },
+        "retry_budget": validate_run_budget_v2(request.run_budget),
         "prompt_context": {},
         "trace_context": {
             "agent_invocation_count": 0,

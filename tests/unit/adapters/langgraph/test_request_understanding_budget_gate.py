@@ -1,4 +1,4 @@
-"""G3 RunBudgetV1: proves the budget gate is wired into a real production
+"""G3 RunBudgetV2: proves the budget gate is wired into a real production
 node function, not just the isolated helper. request_understanding's
 _classify_node is the simplest of the six SIX_ROLE_BASELINE real-LLM-call
 nodes (adapters/langgraph/subgraphs/{request_understanding,context_retrieval,
@@ -17,13 +17,13 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
-from google_work_agent.application.orchestration.contracts import (
-    NORMAL_MAX_LLM_CALLS,
-    build_default_run_budget,
-)
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
     provider_dispatch_execution_scope,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    NORMAL_MAX_LLM_CALLS,
+    build_default_run_budget,
 )
 from google_work_agent.ports.llm import (
     LLMErrorCode,
@@ -116,6 +116,7 @@ def _state(*, llm_calls_used: int) -> dict[str, object]:
             requested_mode="AUTO",
             request_text="test request",
             selected_resource_ids=(),
+            run_budget=build_default_run_budget(),
             correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
         ),
         "prompt_context": {},

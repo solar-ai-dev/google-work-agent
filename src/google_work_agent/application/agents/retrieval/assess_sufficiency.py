@@ -7,7 +7,6 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
-    RunBudgetV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
@@ -26,6 +25,9 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+)
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
@@ -39,7 +41,7 @@ def assess_sufficiency(
     tool_route_plan: ToolRoutePlanV2 | None,
     acquisition_result: AcquisitionResultV1,
     evidence_drafts: list[EvidenceDraftV1],
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> SufficiencyResultV2:
     """Assess evidence completeness, then apply the deterministic insufficient-data guard."""

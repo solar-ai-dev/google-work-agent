@@ -25,9 +25,7 @@ from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError,
 )
 from google_work_agent.application.orchestration.contracts import (
-    MAX_ADDITIONAL_ACQUISITIONS,
     ContextResult,
-    RunBudgetV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
@@ -47,6 +45,11 @@ from google_work_agent.application.orchestration.insufficient_data import (
     InsufficientDataIssue,
     ResolutionSource,
     decide_insufficient_data,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    MAX_ADDITIONAL_ACQUISITIONS,
+    RunBudgetV2,
+    build_default_run_budget,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition
 
@@ -210,28 +213,20 @@ def _worst_source_status(summaries: list[dict[str, object]]) -> tuple[str, str |
     return worst_status, worst_failure_kind
 
 
-def budget_state_prompt_projection(retry_budget: RunBudgetV1) -> dict[str, object]:
+def budget_state_prompt_projection(retry_budget: RunBudgetV2) -> dict[str, object]:
     """retrieval-sufficiency-input-v1.schema.json ``budget_state``, derived
-    from the official RunBudgetV1/MAX_ADDITIONAL_ACQUISITIONS gate (docs/05
+    from the official RunBudgetV2/MAX_ADDITIONAL_ACQUISITIONS gate (docs/05
     section 13 MAX_ADDITIONAL_RETRIEVAL_ROUNDS=2) -- never a new hardcoded
     number."""
-    used = retry_budget["additional_acquisitions_used"]
+    used = retry_budget["additional_retrieval_rounds_used"]
     return {
         "additional_rounds_used": used,
         "additional_rounds_remaining": max(MAX_ADDITIONAL_ACQUISITIONS - used, 0),
     }
 
 
-def default_run_budget() -> RunBudgetV1:
-    return {
-        "schema_version": 1,
-        "profile": "NORMAL",
-        "llm_calls_used": 0,
-        "additional_acquisitions_used": 0,
-        "planning_revisions_used": 0,
-        "last_rechecked_planning_revision": 0,
-        "semantic_revision_signatures_used": [],
-    }
+def default_run_budget() -> RunBudgetV2:
+    return build_default_run_budget()
 
 
 def validate_sufficiency_result_v2(value: object) -> SufficiencyResultV2:
@@ -292,7 +287,7 @@ def enforce_sufficiency_guard(
     sufficiency_result: SufficiencyResultV2,
     *,
     request_intent: RequestIntentV2,
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     evidence_supported_partial_possible: bool,
 ) -> SufficiencyResultV2:
     """docs/05-context-retrieval.md SS19.2 결정적 종료 Guard: the LLM's

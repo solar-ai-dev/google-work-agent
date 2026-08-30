@@ -7,14 +7,16 @@ from typing import cast
 
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
-    BudgetDecision,
     PromptRef,
-    RunBudgetV1,
-    check_llm_call_budget,
 )
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     bind_provider_dispatch_budget,
     merge_provider_dispatch_usage,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    RunBudgetV2,
+    check_llm_call_budget,
 )
 from google_work_agent.ports.llm import (
     LLMErrorCode,
@@ -135,7 +137,7 @@ def ensure_llm_call_budget(
     dispatch. This binding is ContextVar-scoped, so concurrent graph tasks do
     not share budget authorities.
     """
-    retry_budget = cast(RunBudgetV1, state["retry_budget"])
+    retry_budget = cast(RunBudgetV2, state["retry_budget"])
     decision = check_llm_call_budget(
         retry_budget, provider_calls_requested=provider_calls_requested
     )
@@ -152,7 +154,7 @@ def consume_llm_call_budget(
     state: GraphState,
     *,
     provider_calls_consumed: int = 1,
-) -> RunBudgetV1:
+) -> RunBudgetV2:
     """Checkpoint the usage already consumed at provider dispatch.
 
     ``provider_calls_consumed`` is retained only for source compatibility with
@@ -161,7 +163,7 @@ def consume_llm_call_budget(
     durable budget; it merely remains available for trace/latency reporting.
     """
     del provider_calls_consumed
-    retry_budget = cast(RunBudgetV1, state["retry_budget"])
+    retry_budget = cast(RunBudgetV2, state["retry_budget"])
     return merge_provider_dispatch_usage(retry_budget)
 
 

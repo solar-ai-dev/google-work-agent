@@ -88,7 +88,6 @@ from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    RunBudgetV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -151,6 +150,9 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
 )
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
@@ -474,10 +476,10 @@ class RetrievalSubgraph:
             revision_prompt_ref=self._select_prompt_ref,
             trace_context=_retrieval_trace_context(state, "retrieval.select_evidence"),
             segments=cast(list[Any], segments),
-            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
         )
         selection = cast(Any, patch["evidence_selection"])
-        revised_retry_budget = cast(RunBudgetV1, patch["retry_budget"])
+        revised_retry_budget = cast(RunBudgetV2, patch["retry_budget"])
         updated_local = dict(local_state)
         updated_local["node_state"] = "SELECT_EVIDENCE_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], selection)
@@ -608,7 +610,7 @@ class RetrievalSubgraph:
         state: ContextRetrievalLocalState,
         *,
         confirmation_response: ConfirmationResponseProjectionV1 | None,
-    ) -> tuple[SufficiencyResultV2, dict[str, object], RunBudgetV1]:
+    ) -> tuple[SufficiencyResultV2, dict[str, object], RunBudgetV2]:
         """One ``retrieval.assess_sufficiency`` LLM call. Safe to call again
         for a later confirmation round -- ``select_evidence``/
         deterministic evidence materialization already completed before any
@@ -634,7 +636,7 @@ class RetrievalSubgraph:
                 state["acquisition_result"], "acquisition_result"
             ),
             evidence_drafts=state["evidence_drafts"],
-            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
             confirmation_response=confirmation_response,
         )
         sufficiency_result = cast(SufficiencyResultV2, patch["sufficiency"])
@@ -762,7 +764,7 @@ class RetrievalSubgraph:
             trace_context=_retrieval_trace_context(state, "retrieval.plan_query"),
             frozen_routes=frozen_routes,
             route_policies=route_policies,
-            retry_budget=cast(RunBudgetV1, state["retry_budget"]),
+            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
             validated_container_refs=validated_container_refs,
             detail_candidate_refs=state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
         )

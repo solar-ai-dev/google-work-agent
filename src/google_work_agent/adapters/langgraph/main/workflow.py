@@ -104,14 +104,12 @@ from google_work_agent.application.orchestration.connector_read_projection impor
     ConnectorReadProjection,
 )
 from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
     ConfirmationResponseProjectionV1,
     DomainValidationResult,
     GraphStateUpdateV1,
     MultiAgentGraphState,
     ReviewResult,
     WorkflowPhase,
-    approve_planning_revision,
 )
 from google_work_agent.application.orchestration.domain_output_validation import (
     CanonicalDomainValidationService,
@@ -297,6 +295,10 @@ from google_work_agent.application.use_cases.run.finalize_cancel import (
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    approve_planning_revision,
 )
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationHandler,
@@ -843,6 +845,7 @@ class WorkflowRuntimeCore:
             mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
+            now_ms=now_ms,
         )
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
@@ -1608,7 +1611,7 @@ class WorkflowRuntimeCore:
                 for action in actions
             }
 
-        # G3 RunBudgetV1 (docs/06 SS11, docs/15 SS8.2): mandatory Modify
+        # G3 RunBudgetV2 (docs/06 SS11, docs/15 SS8.2): mandatory Modify
         # Review re-invokes Review with one more real Provider call because
         # the user's edit invalidated the prior PASS -- that re-review call
         # is itself the Domain safety gate Approval cannot proceed without,
@@ -2659,6 +2662,7 @@ class WorkflowRuntimeCore:
             requested_mode=request.requested_mode,
             request_text=request.request_text,
             selected_resource_ids=request.selected_resource_ids,
+            run_budget=dict(request.run_budget),
             correlation=request.correlation,
             selected_resources=request.selected_resources,
         )

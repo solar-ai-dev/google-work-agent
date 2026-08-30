@@ -26,7 +26,6 @@ from google_work_agent.application.orchestration.api_acquisition import (
 from google_work_agent.application.orchestration.connector_read_models import (
     NormalizedConnectorRead,
 )
-from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.application.orchestration.retrieval_read_cache import (
     DetailTargetCacheEntry,
     ReadResultCacheEntry,
@@ -37,6 +36,9 @@ from google_work_agent.application.orchestration.retrieval_read_executor import 
 )
 from google_work_agent.application.orchestration.source_fetch_plan_builder import (
     SourceFetchPlanBuilder,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    build_default_run_budget,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
@@ -443,6 +445,7 @@ def _state() -> dict[str, object]:
             requested_mode="AUTO",
             request_text="test",
             selected_resource_ids=(),
+            run_budget=build_default_run_budget(),
             correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
         ),
         "tool_route_plan": {"input_plan": {"input_routes": [_route()]}},

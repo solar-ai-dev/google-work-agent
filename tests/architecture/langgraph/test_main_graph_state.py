@@ -6,6 +6,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     initial_graph_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
@@ -29,6 +30,7 @@ def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
         requested_mode="AUTO",
         request_text="Summarize my work.",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext("request-1", None, "1"),
     )
 

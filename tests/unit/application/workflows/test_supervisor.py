@@ -9,16 +9,11 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
 )
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
-    BudgetProfile,
-    BudgetReasonCode,
     DomainValidationResult,
     FinalizeIntent,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    RunBudgetV1,
     WorkflowPhase,
-    build_default_run_budget,
-    build_semantic_failure_signature_v1,
     validate_user_interrupt_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -35,6 +30,15 @@ from google_work_agent.application.orchestration.supervisor import (
 )
 from google_work_agent.application.use_cases.action.read_contracts import (
     ReadActionCommandResponse,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RETRIEVAL_HEAVY_MAX_LLM_CALLS,
+    BudgetProfile,
+    BudgetReasonCode,
+    RunBudgetV2,
+    approve_semantic_revision,
+    build_default_run_budget,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.use_cases.run.run_terminal import derive_finalize_intent
 
@@ -528,12 +532,12 @@ def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
     )
     assert first["budget_decision"] is not None
     assert first["budget_decision"]["decision"] == "ALLOW"
-    assert len(first["state_update"]["retry_budget"]["semantic_revision_signatures_used"]) == 1
+    assert len(first["state_update"]["retry_budget"]["semantic_revisions_used_by_failure"]) == 1
 
     state_after_revision = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         answer_draft=_answer_draft("ANSWER_ONLY"),
-        retry_budget=cast(RunBudgetV1, first["state_update"]["retry_budget"]),
+        retry_budget=cast(RunBudgetV2, first["state_update"]["retry_budget"]),
     )
 
     second = route_supervisor(
@@ -567,13 +571,13 @@ def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
         node_id="planning.revise_answer",
         failure_reason_codes=["PLAN_REQUIRED_ACTION_MISSING"],
     )
+    restored_budget = approve_semantic_revision(
+        build_default_run_budget(), signature=restored_signature
+    )["run_budget"]
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         answer_draft=_answer_draft("ANSWER_ONLY"),
-        retry_budget={
-            **build_default_run_budget(),
-            "semantic_revision_signatures_used": [restored_signature],
-        },
+        retry_budget=restored_budget,
     )
 
     decision = route_supervisor(
@@ -626,7 +630,7 @@ def test_revised_answer_routes_to_single_review_recheck() -> None:
 
     assert decision["target"] == SupervisorTarget.PLAN_REVIEW_RECHECK.value
     assert decision["next_phase"] == WorkflowPhase.PLAN_REVIEW.value
-    assert decision["state_update"]["retry_budget"]["last_rechecked_planning_revision"] == 1
+    assert decision["state_update"]["retry_budget"]["review_rechecks_used"] == 1
 
 
 def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -> None:
@@ -635,8 +639,9 @@ def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -
         answer_draft=_answer_draft("ANSWER_ONLY"),
         retry_budget={
             **build_default_run_budget(),
-            "additional_acquisitions_used": 2,
+            "additional_retrieval_rounds_used": 2,
             "profile": BudgetProfile.RETRIEVAL_HEAVY.value,
+            "llm_call_limit": RETRIEVAL_HEAVY_MAX_LLM_CALLS,
         },
     )
     result = _review_result("RETRIEVE_MORE")
@@ -767,8 +772,9 @@ def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_p
         acquisition_result=_acquisition_result("PARTIAL"),
         retry_budget={
             **build_default_run_budget(),
-            "additional_acquisitions_used": 2,
+            "additional_retrieval_rounds_used": 2,
             "profile": BudgetProfile.RETRIEVAL_HEAVY.value,
+            "llm_call_limit": RETRIEVAL_HEAVY_MAX_LLM_CALLS,
         },
     )
 
@@ -834,7 +840,7 @@ def _state(
     plan_draft: ActionPlanDraftV1 | None = None,
     plan_review: PlanReviewResultV2 | None = None,
     approved_plan_id: str | None = None,
-    retry_budget: RunBudgetV1 | None = None,
+    retry_budget: RunBudgetV2 | None = None,
 ) -> MultiAgentGraphState:
     return {
         "schema_version": 1,

@@ -9,16 +9,16 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.application.orchestration.contracts import (
-    approve_semantic_revision,
-    build_default_run_budget,
-    build_semantic_failure_signature_v1,
-)
 from google_work_agent.application.orchestration.retrieval_query_planner import (
     RetrievalQueryPlannerAgent,
 )
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalV2ValidationError,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    approve_semantic_revision,
+    build_default_run_budget,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -112,7 +112,7 @@ def test_plan_query_semantic_revision_dedup_blocks_second_occurrence_after_resum
     already_used_budget = approve_semantic_revision(
         build_default_run_budget(), signature=signature
     )["run_budget"]
-    assert len(already_used_budget["semantic_revision_signatures_used"]) == 1
+    assert len(already_used_budget["semantic_revisions_used_by_failure"]) == 1
 
     runtime = _FakeLLMRuntime()
     runtime.queued.append(_llm_result(_INVALID_PLAN))

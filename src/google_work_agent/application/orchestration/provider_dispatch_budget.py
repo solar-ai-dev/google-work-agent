@@ -1,8 +1,8 @@
-"""RunBudgetV1 accounting at the real LLM provider dispatch boundary.
+"""RunBudgetV2 accounting at the real LLM provider dispatch boundary.
 
 The ContextVar stores only a reference to the currently authoritative
-``RunBudgetV1`` object for this execution context. It is not a second counter:
-``llm_calls_used`` in RunBudgetV1 remains the sole numeric/durable authority.
+``RunBudgetV2`` object for this execution context. It is not a second counter:
+``llm_calls_used`` in RunBudgetV2 remains the sole numeric/durable authority.
 
 Native LangGraph nodes bind their current RunBudget before invoking the LLM
 runtime. ``PromptInputGuardedProvider`` calls :func:`account_provider_dispatch`
@@ -20,29 +20,37 @@ need a narrower boundary can use :func:`provider_dispatch_budget_scope`.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import cast
 
-from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
-    RunBudgetV1,
-    check_llm_call_budget,
-    validate_run_budget_v1,
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    GuardRunBudgetHandler,
+    GuardRunBudgetQueryV1,
+    RunBudgetDeltaV1,
+    RunBudgetV2,
+    consume_llm_provider_calls,
+    validate_run_budget_v2,
 )
 from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
 )
 
-_CURRENT_RUN_BUDGET: ContextVar[RunBudgetV1 | None] = ContextVar(
+_CURRENT_RUN_BUDGET: ContextVar[RunBudgetV2 | None] = ContextVar(
     "google_work_agent_current_provider_dispatch_run_budget",
     default=None,
 )
+_CURRENT_RUN_ID: ContextVar[str | None] = ContextVar(
+    "google_work_agent_current_provider_dispatch_run_id", default=None
+)
+_CURRENT_NOW_MS: ContextVar[Callable[[], int] | None] = ContextVar(
+    "google_work_agent_current_provider_dispatch_clock", default=None
+)
 
 
-def bind_provider_dispatch_budget(run_budget: RunBudgetV1) -> RunBudgetV1:
+def bind_provider_dispatch_budget(run_budget: RunBudgetV2) -> RunBudgetV2:
     """Bind one mutable RunBudget authority to the current execution context.
 
     This compatibility helper deliberately does not own lifecycle. Production
@@ -51,29 +59,41 @@ def bind_provider_dispatch_budget(run_budget: RunBudgetV1) -> RunBudgetV1:
     ``provider_dispatch_budget_scope`` so reset is guaranteed by ``finally``.
     """
 
-    validated = validate_run_budget_v1(run_budget)
-    run_budget.clear()
-    run_budget.update(validated)
+    validated = validate_run_budget_v2(run_budget)
+    mutable = cast(dict[str, object], run_budget)
+    mutable.clear()
+    mutable.update(validated)
     _CURRENT_RUN_BUDGET.set(run_budget)
+    if _CURRENT_RUN_ID.get() is None:
+        _CURRENT_RUN_ID.set("direct-provider-dispatch")
+    if _CURRENT_NOW_MS.get() is None:
+        _CURRENT_NOW_MS.set(lambda: run_budget["started_at_ms"])
     return run_budget
 
 
 @contextmanager
-def provider_dispatch_budget_scope(run_budget: RunBudgetV1) -> Iterator[RunBudgetV1]:
+def provider_dispatch_budget_scope(run_budget: RunBudgetV2) -> Iterator[RunBudgetV2]:
     """Bind one authoritative RunBudget and always restore the prior context."""
 
-    validated = validate_run_budget_v1(run_budget)
-    run_budget.clear()
-    run_budget.update(validated)
+    validated = validate_run_budget_v2(run_budget)
+    mutable = cast(dict[str, object], run_budget)
+    mutable.clear()
+    mutable.update(validated)
     token = _CURRENT_RUN_BUDGET.set(run_budget)
+    run_token = _CURRENT_RUN_ID.set("direct-provider-dispatch")
+    clock_token = _CURRENT_NOW_MS.set(lambda: run_budget["started_at_ms"])
     try:
         yield run_budget
     finally:
+        _CURRENT_NOW_MS.reset(clock_token)
+        _CURRENT_RUN_ID.reset(run_token)
         _CURRENT_RUN_BUDGET.reset(token)
 
 
 @contextmanager
-def provider_dispatch_execution_scope() -> Iterator[None]:
+def provider_dispatch_execution_scope(
+    *, run_id: str = "direct-provider-dispatch", now_ms: Callable[[], int] = lambda: 0
+) -> Iterator[None]:
     """Bound the provider-budget ContextVar to one graph invocation.
 
     ``WorkflowInvocationCoordinator`` is the top-level start/resume/recovery
@@ -89,9 +109,13 @@ def provider_dispatch_execution_scope() -> Iterator[None]:
         # not numeric accounting and does not create a second authority.
         _CURRENT_RUN_BUDGET.set(None)
     token = _CURRENT_RUN_BUDGET.set(None)
+    run_token = _CURRENT_RUN_ID.set(run_id)
+    clock_token = _CURRENT_NOW_MS.set(now_ms)
     try:
         yield
     finally:
+        _CURRENT_NOW_MS.reset(clock_token)
+        _CURRENT_RUN_ID.reset(run_token)
         _CURRENT_RUN_BUDGET.reset(token)
 
 
@@ -102,36 +126,47 @@ def account_provider_dispatch() -> None:
     if run_budget is None:
         # Non-Run diagnostic/connection probes intentionally have no RunBudget.
         return
-    decision = check_llm_call_budget(run_budget, provider_calls_requested=1)
-    if decision["decision"] == BudgetDecision.DENY.value:
+    run_id = _CURRENT_RUN_ID.get()
+    now_ms = _CURRENT_NOW_MS.get()
+    if run_id is None or now_ms is None:
+        raise RuntimeError("provider dispatch budget is missing execution context")
+    decision = GuardRunBudgetHandler()(
+        GuardRunBudgetQueryV1(
+            schema_version=1,
+            run_id=run_id,
+            current_budget=run_budget,
+            requested_delta=RunBudgetDeltaV1(1, "LLM_CALL", 1),
+            now_ms=now_ms(),
+        )
+    )
+    if not decision.allowed:
         raise LLMInvocationError(
             LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
-            f"run LLM call budget exhausted: {decision['budget_reason_code']}",
+            f"run LLM call budget exhausted: {decision.reason_code}",
             retryable=False,
         )
     # This is the sole increment for a real provider dispatch. Do not route it
     # through the historical post-result consumer: calls that raise must count.
-    updated = dict(validate_run_budget_v1(run_budget))
-    updated["llm_calls_used"] = int(updated["llm_calls_used"]) + 1
-    validated = validate_run_budget_v1(updated)
-    run_budget.clear()
-    run_budget.update(validated)
+    validated = consume_llm_provider_calls(run_budget)
+    mutable = cast(dict[str, object], run_budget)
+    mutable.clear()
+    mutable.update(validated)
 
 
-def merge_provider_dispatch_usage(run_budget: RunBudgetV1) -> RunBudgetV1:
+def merge_provider_dispatch_usage(run_budget: RunBudgetV2) -> RunBudgetV2:
     """Merge actual dispatch usage into a derived RunBudget projection."""
 
-    derived = validate_run_budget_v1(run_budget)
+    derived = validate_run_budget_v2(run_budget)
     authority = _CURRENT_RUN_BUDGET.get()
     if authority is None:
         return derived
-    actual = validate_run_budget_v1(authority)
+    actual = validate_run_budget_v2(authority)
     merged = dict(derived)
     merged["llm_calls_used"] = actual["llm_calls_used"]
-    return cast(RunBudgetV1, validate_run_budget_v1(merged))
+    return cast(RunBudgetV2, validate_run_budget_v2(merged))
 
 
-def legacy_post_call_projection(run_budget: RunBudgetV1) -> RunBudgetV1:
+def legacy_post_call_projection(run_budget: RunBudgetV2) -> RunBudgetV2:
     """Bridge Tool Route's pre-Wave-1C post-call ``+1`` caller.
 
     Tool Route still calls the historical deterministic consumer once after a
@@ -139,7 +174,7 @@ def legacy_post_call_projection(run_budget: RunBudgetV1) -> RunBudgetV1:
     work, return a projection whose call count is one below the already-counted
     dispatch total, so the legacy post-call increment preserves -- rather than
     duplicates -- the dispatch-authoritative total. No separate counter exists;
-    this projection is derived solely from RunBudgetV1.
+    this projection is derived solely from RunBudgetV2.
     """
 
     merged = merge_provider_dispatch_usage(run_budget)
@@ -148,10 +183,10 @@ def legacy_post_call_projection(run_budget: RunBudgetV1) -> RunBudgetV1:
         return merged
     projected = dict(merged)
     projected["llm_calls_used"] = used - 1
-    return cast(RunBudgetV1, validate_run_budget_v1(projected))
+    return cast(RunBudgetV2, validate_run_budget_v2(projected))
 
 
-def current_provider_dispatch_budget() -> RunBudgetV1 | None:
+def current_provider_dispatch_budget() -> RunBudgetV2 | None:
     """Return the bound RunBudget authority itself, never a second counter."""
 
     return _CURRENT_RUN_BUDGET.get()

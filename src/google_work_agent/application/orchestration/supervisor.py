@@ -27,9 +27,6 @@ from google_work_agent.application.orchestration.confirmation import (
 )
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
-    BudgetDecision,
-    BudgetDecisionV1,
-    BudgetProfile,
     DomainValidationOutputV1,
     DomainValidationResult,
     FinalizeIntent,
@@ -38,14 +35,7 @@ from google_work_agent.application.orchestration.contracts import (
     PlanningResult,
     RequestUnderstandingResult,
     ReviewResult,
-    RunBudgetV1,
     WorkflowPhase,
-    approve_additional_acquisition,
-    approve_planning_revision,
-    approve_review_recheck,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
-    promote_budget_profile,
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -70,6 +60,18 @@ from google_work_agent.application.orchestration.insufficient_data import (
 )
 from google_work_agent.application.orchestration.solution_planning import (
     build_solution_planning_clarification_question,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    BudgetDecisionV1,
+    BudgetProfile,
+    RunBudgetV2,
+    approve_additional_acquisition,
+    approve_planning_revision,
+    approve_review_recheck,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
+    promote_run_budget_profile,
 )
 
 JsonObject = dict[str, object]
@@ -426,12 +428,10 @@ def _route_source_planning(
     )
 
 
-def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV1:
-    budget = dict(state["retry_budget"])
-    budget["profile"] = promote_budget_profile(
-        budget["profile"], BudgetProfile.RETRIEVAL_HEAVY
-    ).value
-    return cast(RunBudgetV1, budget)
+def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV2:
+    return promote_run_budget_profile(
+        state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY
+    )
 
 
 def _route_api_acquisition(
@@ -707,7 +707,7 @@ def _route_plan_review(
         # Semantic Revision dedup (docs/06 SS10.1, contracts.approve_semantic_revision):
         # same target Planning node + same normalized Review failure signature
         # gets at most one revision attempt per Run, persisted in
-        # retry_budget.semantic_revision_signatures_used so it survives
+        # retry_budget.semantic_revisions_used_by_failure so it survives
         # resume/re-entry/checkpoint restore. Only gated when Review actually
         # reported a failure signature to dedup against -- an issue-free
         # REVISE has nothing to record and falls back to the planning-revision

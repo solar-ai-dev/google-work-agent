@@ -4,15 +4,16 @@ from dataclasses import dataclass
 
 import pytest
 
-from google_work_agent.application.orchestration.contracts import (
-    build_default_run_budget,
-    build_semantic_failure_signature_v1,
-)
 from google_work_agent.application.orchestration.supervise_post_retrieval import (
     RevisionBudgetBlockBoundaryRequired,
     route_planning_return_v2,
     route_review_return_v2,
     route_work_analysis_return_v2,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    approve_semantic_revision,
+    build_default_run_budget,
+    build_semantic_failure_signature_v1,
 )
 
 
@@ -168,11 +169,12 @@ def test_planning_revision_budget_deny_blocks_run_then_finalizes_when_applied() 
 
 def test_semantic_revision_budget_deny_blocks_run_then_finalizes_when_applied() -> None:
     budget = build_default_run_budget()
-    budget["semantic_revision_signatures_used"] = [
-        build_semantic_failure_signature_v1(
+    budget = approve_semantic_revision(
+        budget,
+        signature=build_semantic_failure_signature_v1(
             node_id="planning.revise_plan", failure_reason_codes=["PLAN_WRONG_TARGET"]
-        )
-    ]
+        ),
+    )["run_budget"]
     block_run = _BlockRun(applied=True)
     decision = route_review_return_v2(
         _revise_return(),
@@ -190,11 +192,12 @@ def test_semantic_revision_budget_deny_blocks_run_then_finalizes_when_applied() 
 def test_revision_budget_block_applied_false_routes_domain_reconciliation(semantic: bool) -> None:
     budget = build_default_run_budget()
     if semantic:
-        budget["semantic_revision_signatures_used"] = [
-            build_semantic_failure_signature_v1(
+        budget = approve_semantic_revision(
+            budget,
+            signature=build_semantic_failure_signature_v1(
                 node_id="planning.revise_plan", failure_reason_codes=["PLAN_WRONG_TARGET"]
-            )
-        ]
+            ),
+        )["run_budget"]
     else:
         budget["planning_revisions_used"] = 2
     decision = route_review_return_v2(

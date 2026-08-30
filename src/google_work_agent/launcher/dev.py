@@ -97,6 +97,9 @@ from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
 )
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+)
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
@@ -770,6 +773,7 @@ def build_container(
             requested_mode=context.requested_mode,
             request_text=context.request_text,
             selected_resource_ids=context.selected_resource_ids,
+            run_budget=dict(context.run_budget),
             correlation=WorkflowCorrelationContext(
                 request_id=admission.admission_id,
                 command_id=admission.handoff_id,
@@ -1074,6 +1078,7 @@ def build_container(
 
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
+        settings_port=settings_service,
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -1358,6 +1363,7 @@ def _build_llm_runtime(
         api_provider_name="gemini",
     )
     structured_inference = StructuredInferenceRuntimeRouter(
+        before_provider_dispatch=account_provider_dispatch,
         settings_service=runtime_settings,
         status_service=status_service,
         credential_service=credential_service,
@@ -1387,6 +1393,7 @@ def _build_llm_runtime(
         prompt_manifest_path=prompt_manifest_path,
     )
     llm_runtime = LLMRuntimeService(
+        before_provider_dispatch=account_provider_dispatch,
         settings_service=runtime_settings,
         status_service=structured_inference,
         ollama_provider_factory=structured_inference.ollama_provider_factory,

@@ -13,20 +13,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal, Protocol, TypedDict, cast
 
-from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
-    BudgetDecisionV1,
-    RunBudgetV1,
-    approve_planning_revision,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
-)
 from google_work_agent.application.orchestration.handoff_contracts import SubgraphReturnV2
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
     validate_planning_return_v2,
     validate_review_return_v2,
     validate_work_analysis_return_v2,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    BudgetDecisionV1,
+    RunBudgetV2,
+    approve_planning_revision,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
 )
 
 PostRetrievalTargetV2 = Literal[
@@ -48,7 +48,7 @@ RevisionModeV2 = Literal["ANSWER", "PLAN"]
 class PostRetrievalRouteDecisionV2(TypedDict):
     target: PostRetrievalTargetV2
     reason_code: str
-    retry_budget: RunBudgetV1 | None
+    retry_budget: RunBudgetV2 | None
     budget_decision: BudgetDecisionV1 | None
     revision_mode: RevisionModeV2 | None
 
@@ -119,7 +119,7 @@ def route_review_return_v2(
     value: object,
     *,
     planning_result: PlanningResultV2,
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     block_run: BlockRunExecutor | None = None,
     budget_block_context: RevisionBudgetBlockContextV1 | None = None,
 ) -> PostRetrievalRouteDecisionV2:
@@ -161,7 +161,7 @@ def _route_review_revise(
     envelope: SubgraphReturnV2[object],
     *,
     planning_result: PlanningResultV2,
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     block_run: BlockRunExecutor | None,
     budget_block_context: RevisionBudgetBlockContextV1 | None,
 ) -> PostRetrievalRouteDecisionV2:
@@ -282,7 +282,7 @@ def _decision(
     target: PostRetrievalTargetV2,
     reason_code: str,
     *,
-    retry_budget: RunBudgetV1 | None = None,
+    retry_budget: RunBudgetV2 | None = None,
     budget_decision: BudgetDecisionV1 | None = None,
     revision_mode: RevisionModeV2 | None = None,
 ) -> PostRetrievalRouteDecisionV2:

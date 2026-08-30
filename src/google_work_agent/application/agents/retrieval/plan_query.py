@@ -8,12 +8,6 @@ from google_work_agent.application.agents.retrieval.build_query import RouteCons
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
-    RunBudgetV1,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
-)
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     RetrievalConstraintKindV1,
@@ -23,6 +17,12 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    RunBudgetV2,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
@@ -41,11 +41,11 @@ def plan_query(
     trace_context: ObservabilityContext,
     frozen_routes: Sequence[InputToolRouteV1],
     route_policies: Mapping[str, RouteConstraintPolicy],
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     validated_resource_refs: Mapping[str, Collection[str]] | None = None,
     validated_container_refs: Mapping[str, Collection[str]] | None = None,
     detail_candidate_refs: Collection[str] = (),
-) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
+) -> tuple[RetrievalQueryPlanV2, RunBudgetV2]:
     """Plan provider-neutral retrieval intent against already-frozen input routes."""
     supported_kinds: dict[str, frozenset[RetrievalConstraintKindV1]] = {
         route_id: policy.supported_kinds for route_id, policy in route_policies.items()
@@ -100,8 +100,8 @@ def _revise_plan_once(
     detail_candidate_refs: Collection[str],
     previous_output: object,
     failure_detail: str,
-    retry_budget: RunBudgetV1,
-) -> tuple[RetrievalQueryPlanV2, RunBudgetV1]:
+    retry_budget: RunBudgetV2,
+) -> tuple[RetrievalQueryPlanV2, RunBudgetV2]:
     failure_code = "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID"
     signature = build_semantic_failure_signature_v1(
         node_id="retrieval.plan_query",

@@ -4,10 +4,6 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from google_work_agent.application.orchestration.contracts import (
-    build_default_run_budget,
-    consume_llm_provider_calls,
-)
 from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
     PromptInputGuardedProvider,
 )
@@ -16,6 +12,10 @@ from google_work_agent.application.orchestration.provider_dispatch_budget import
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
     provider_dispatch_execution_scope,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    build_default_run_budget,
+    consume_llm_provider_calls,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,

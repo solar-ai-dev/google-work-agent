@@ -64,6 +64,7 @@ class ApiContainer:
     resume_target_registry: Any | None = None
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
+    settings_port: Any | None = None
     start_authorization_handler: Any | None = None
     get_connection_status_handler: Any | None = None
     revoke_connection_handler: Any | None = None

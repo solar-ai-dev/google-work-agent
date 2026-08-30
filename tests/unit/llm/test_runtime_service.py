@@ -227,9 +227,9 @@ def test_api_only_invokes_external_provider() -> None:
 
 
 def test_discard_run_is_a_harmless_noop() -> None:
-    """G3 RunBudgetV1: LLMRuntimeService no longer owns any per-run LLM call
+    """G3 RunBudgetV2: LLMRuntimeService no longer owns any per-run LLM call
     accounting (that authority moved to the checkpoint-persistent
-    retry_budget/RunBudgetV1, gated by agent_kernel.ensure_llm_call_budget
+    retry_budget/RunBudgetV2, gated by agent_kernel.ensure_llm_call_budget
     at each native subgraph node -- see test_supervisor.py and
     test_agent_kernel_budget.py). discard_run stays on the
     StructuredLLMRuntime Protocol purely for its existing runtime.py caller

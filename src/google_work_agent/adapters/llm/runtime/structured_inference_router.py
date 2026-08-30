@@ -67,6 +67,7 @@ class StructuredInferenceRuntimeRouter:
     schema_repairer: SchemaRepairer | None = None
     prompt_manifest_path: Path | None = None
     checkpoint: CheckpointPort | None = None
+    before_provider_dispatch: Callable[[], None] = lambda: None
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
@@ -341,6 +342,7 @@ class StructuredInferenceRuntimeRouter:
         )
         api_key = None if api_key_bytes is None else api_key_bytes.decode("utf-8")
         try:
+            self.before_provider_dispatch()
             payload = provider.invoke_structured(
                 prompt_ref=prompt_ref,
                 prompt_input=prompt_input,
@@ -431,6 +433,7 @@ class StructuredInferenceRuntimeRouter:
             )
         if provider.runtime is ActualRuntime.API_LLM:
             self._require_external_call(external_transfer_scope)
+        self.before_provider_dispatch()
         repaired = self.schema_repairer.repair(
             provider=provider,
             prompt_ref=prompt_ref,

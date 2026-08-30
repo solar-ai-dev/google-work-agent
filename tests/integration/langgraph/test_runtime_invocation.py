@@ -265,7 +265,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     # Synthesis") -- Review is never dispatched, so the run completes at
     # exactly the 8-call cap instead of a 9th (review) call being denied.
     # The unchanged 7-call count below proves I1 did not silently change
-    # RunBudgetV1 behavior while replacing the resume mechanism.
+    # RunBudgetV2 behavior while replacing the resume mechanism.
     resume_payload = {
         "schema_version": 1,
         "interrupt_id": interrupt_id,

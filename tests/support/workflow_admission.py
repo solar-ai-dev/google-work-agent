@@ -131,6 +131,7 @@ def build_test_admission_callbacks(
             requested_mode=context.requested_mode,
             request_text=context.request_text,
             selected_resource_ids=context.selected_resource_ids,
+            run_budget=dict(context.run_budget),
             correlation=WorkflowCorrelationContext(
                 request_id=admission.admission_id,
                 command_id=admission.handoff_id,

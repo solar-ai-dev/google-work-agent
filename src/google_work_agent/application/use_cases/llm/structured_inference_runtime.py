@@ -131,13 +131,14 @@ class LLMRuntimeService:
     tool_call_schema_repairer: ToolCallSchemaRepairer | None = None
     project_external_scope: ProjectExternalLlmTransferScopeHandler | None = None
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000)
+    before_provider_dispatch: Callable[[], None] = lambda: None
 
     def __post_init__(self) -> None:
         self._semaphore = threading.Semaphore(1)
 
     def discard_run(self, *, run_id: str) -> None:
         # No-op: the authoritative, checkpoint-persistent Run-level LLM call
-        # budget lives in RunBudgetV1 (state["retry_budget"]), gated by each
+        # budget lives in RunBudgetV2 (state["retry_budget"]), gated by each
         # native subgraph node via agent_kernel.ensure_llm_call_budget /
         # consume_llm_call_budget before/after its real Provider call. This
         # service used to keep its own in-memory per-run counter here (reset
@@ -401,6 +402,7 @@ class LLMRuntimeService:
             status="STARTED",
         )
         try:
+            self.before_provider_dispatch()
             response = provider.invoke_tool_call(
                 prompt_ref=prompt_ref,
                 prompt_input=prompt_input,
@@ -531,6 +533,7 @@ class LLMRuntimeService:
             result_code="REPAIR_REQUESTED",
             status="STARTED",
         )
+        self.before_provider_dispatch()
         repaired = self.tool_call_schema_repairer.repair(
             provider=provider,
             prompt_ref=prompt_ref,

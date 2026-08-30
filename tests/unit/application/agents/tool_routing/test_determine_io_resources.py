@@ -6,9 +6,11 @@ from dataclasses import dataclass, field
 from google_work_agent.application.agents.tool_routing.determine_io_resources import (
     determine_io_resources,
 )
-from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    build_default_run_budget,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -96,6 +98,7 @@ def test_task_create_produces_semantic_candidate_without_tool_identity() -> None
         requested_mode="AUTO",
         request_text="태스크 만들어줘",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),
@@ -152,6 +155,7 @@ def test_semantic_revision_reuses_base_slot_and_bounded_failure_envelope() -> No
         requested_mode="AUTO",
         request_text="create task",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),

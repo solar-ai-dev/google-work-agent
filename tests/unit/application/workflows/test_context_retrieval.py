@@ -13,7 +13,6 @@ from typing import Literal, cast
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
-from google_work_agent.application.orchestration.contracts import RunBudgetV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ContextStatusValue,
@@ -22,6 +21,10 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
     SufficiencyIssueV2,
     SufficiencyResultV2,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+    build_default_run_budget,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -136,15 +139,10 @@ def _tool_route_plan(routes: list[dict[str, object]] | None = None) -> ToolRoute
     )
 
 
-def _run_budget(*, used: int) -> RunBudgetV1:
+def _run_budget(*, used: int) -> RunBudgetV2:
     return {
-        "schema_version": 1,
-        "profile": "NORMAL",
-        "llm_calls_used": 0,
-        "additional_acquisitions_used": used,
-        "planning_revisions_used": 0,
-        "last_rechecked_planning_revision": 0,
-        "semantic_revision_signatures_used": [],
+        **build_default_run_budget(),
+        "additional_retrieval_rounds_used": used,
     }
 
 

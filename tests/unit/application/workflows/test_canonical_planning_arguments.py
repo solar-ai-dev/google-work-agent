@@ -34,6 +34,7 @@ from google_work_agent.application.orchestration.planning_arguments import (
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -338,6 +339,7 @@ def _request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="보고서 준비 Task를 만들어줘",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",

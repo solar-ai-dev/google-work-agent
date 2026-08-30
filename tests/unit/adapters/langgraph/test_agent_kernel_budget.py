@@ -1,4 +1,4 @@
-"""G3 RunBudgetV1: ensure_llm_call_budget / consume_llm_call_budget wiring.
+"""G3 RunBudgetV2: ensure_llm_call_budget / consume_llm_call_budget wiring.
 
 These are the shared helpers every native SIX_ROLE_BASELINE subgraph node
 calls immediately before/after its one real Provider LLM call (see
@@ -18,17 +18,17 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+    provider_dispatch_execution_scope,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
     ABSOLUTE_MAX_LLM_CALLS,
     NORMAL_MAX_LLM_CALLS,
     RETRIEVAL_HEAVY_MAX_LLM_CALLS,
     REVISION_HEAVY_MAX_LLM_CALLS,
     BudgetProfile,
     build_default_run_budget,
-)
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    account_provider_dispatch,
-    provider_dispatch_execution_scope,
 )
 from google_work_agent.ports.llm import (
     LLMErrorCode,
@@ -37,10 +37,16 @@ from google_work_agent.ports.llm import (
 
 
 def _state(*, llm_calls_used: int, profile: str = BudgetProfile.NORMAL.value) -> dict[str, object]:
+    llm_call_limit = {
+        BudgetProfile.NORMAL.value: NORMAL_MAX_LLM_CALLS,
+        BudgetProfile.REVISION_HEAVY.value: REVISION_HEAVY_MAX_LLM_CALLS,
+        BudgetProfile.RETRIEVAL_HEAVY.value: RETRIEVAL_HEAVY_MAX_LLM_CALLS,
+    }[profile]
     return {
         "retry_budget": {
             **build_default_run_budget(),
             "profile": profile,
+            "llm_call_limit": llm_call_limit,
             "llm_calls_used": llm_calls_used,
         }
     }
@@ -112,7 +118,7 @@ def test_consume_merges_usage_counted_at_real_dispatches() -> None:
     updated = consume_llm_call_budget(state, provider_calls_consumed=2)
 
     assert updated["llm_calls_used"] == 5
-    # RunBudgetV1 itself is the single mutable dispatch authority.
+    # RunBudgetV2 itself is the single mutable dispatch authority.
     assert state["retry_budget"]["llm_calls_used"] == 5  # type: ignore[index]
 
 

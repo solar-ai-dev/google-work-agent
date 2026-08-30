@@ -18,10 +18,12 @@ from google_work_agent.application.agents.tool_routing.select_tool_if_needed imp
 )
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
-    consume_llm_provider_calls,
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    consume_llm_provider_calls,
 )
 from google_work_agent.ports.llm import PromptReference
 

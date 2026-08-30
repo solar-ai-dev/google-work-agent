@@ -92,7 +92,6 @@ from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     WorkflowPhase,
-    approve_planning_revision,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ClarificationQuestionV1,
@@ -113,6 +112,9 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    approve_planning_revision,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext

@@ -52,7 +52,6 @@ from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
     PolicyConfirmationReceiptV1,
-    RunBudgetV1,
     UserInterruptV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -84,6 +83,9 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as V2SourceFetchPlanV1,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
@@ -101,7 +103,7 @@ class AgentSubgraphInputEnvelope(TypedDict, total=False):
     conversation_id: str
     thread_id: str
     workflow_phase: str
-    retry_budget: RunBudgetV1
+    retry_budget: RunBudgetV2
     prompt_context: dict[str, object]
     trace_context: dict[str, object]
     __request__: WorkflowStartRequest

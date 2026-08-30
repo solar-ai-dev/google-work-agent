@@ -19,7 +19,7 @@ class SqliteRunRepository:
         row = self._connection.execute(
             "SELECT id, conversation_id, entry_mode, status, langgraph_thread_id, "
             "requested_mode, actual_runtime, version, started_at_ms, finished_at_ms, "
-            "terminal_result_kind "
+            "terminal_result_kind, budget_json "
             "FROM runs WHERE id=?;",
             (run_id,),
         ).fetchone()
@@ -41,6 +41,7 @@ class SqliteRunRepository:
                 if row["terminal_result_kind"] is None
                 else TerminalResultKindV1(str(row["terminal_result_kind"]))
             ),
+            budget_json=str(row["budget_json"]),
         )
 
     def get_snapshot(self, run_id: str) -> Run | None:

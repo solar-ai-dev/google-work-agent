@@ -94,6 +94,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
     RequestedRuntimeMode,
@@ -1658,6 +1659,7 @@ def _start_request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="Please handle the follow-up.",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",
@@ -1675,6 +1677,7 @@ def _start_write_request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="Create the follow-up task in Google Tasks.",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",

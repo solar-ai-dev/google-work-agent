@@ -10,10 +10,12 @@ from google_work_agent.application.agents.tool_routing.determine_io_resources im
 from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
-from google_work_agent.application.orchestration.contracts import consume_llm_provider_calls
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    consume_llm_provider_calls,
 )
 from google_work_agent.ports.llm import PromptReference
 

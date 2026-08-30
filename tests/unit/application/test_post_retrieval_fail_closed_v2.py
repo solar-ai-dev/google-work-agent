@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from google_work_agent.application.orchestration.contracts import build_default_run_budget
 from google_work_agent.application.orchestration.supervise_post_retrieval import (
     route_planning_return_v2,
     route_review_return_v2,
     route_work_analysis_return_v2,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    build_default_run_budget,
 )
 
 

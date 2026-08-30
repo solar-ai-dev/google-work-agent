@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
-from google_work_agent.application.orchestration.contracts import build_default_run_budget
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    build_default_run_budget,
+)
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -71,6 +73,7 @@ def _request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="create task",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),

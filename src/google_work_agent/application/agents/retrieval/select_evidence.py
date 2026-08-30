@@ -12,12 +12,6 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     _truncate,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
-from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
-    RunBudgetV1,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
-)
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
@@ -27,6 +21,12 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    RunBudgetV2,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
@@ -79,10 +79,10 @@ def select_evidence(
     request_intent: RequestIntentV2,
     rag_candidates: list[RagCandidateV1],
     segments: list[SourceSegment],
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
     exclusion_obligation_segment_ids: Collection[str] = (),
-) -> tuple[EvidenceSelectionResultV2, RunBudgetV1]:
+) -> tuple[EvidenceSelectionResultV2, RunBudgetV2]:
     """Select evidence only from the bounded ranked segments supplied by RAG."""
     obligations = _stable_unique(exclusion_obligation_segment_ids)
     excluded = set(obligations)

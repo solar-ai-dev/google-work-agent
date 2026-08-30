@@ -33,6 +33,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
 )
+from google_work_agent.ports.system.settings_port import SettingsPort
 from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
@@ -49,6 +50,7 @@ class RunRouteDependencies:
     resume_target_registry: ResumeTargetIssuer
     clock: ClockPort
     id_generator: UUIDPort
+    settings: SettingsPort | None
     operational_command_replay: OperationalCommandReplayPort | None
     continue_cancel_resolution: Callable[
         [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
@@ -122,6 +124,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         resume_target_registry=cast(ResumeTargetIssuer, container.resume_target_registry),
         clock=container.clock,
         id_generator=container.id_generator,
+        settings=cast(SettingsPort | None, getattr(container, "settings_port", None)),
         operational_command_replay=cast(
             OperationalCommandReplayPort | None,
             getattr(container, "operational_command_replay", None),

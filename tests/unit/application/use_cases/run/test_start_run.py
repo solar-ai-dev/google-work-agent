@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from json import loads
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,3 +67,39 @@ def test_start_run_rejects_noncanonical_input_before_any_durable_write(
     with connect_sqlite(database_path) as connection:
         for table in ("command_receipts", "runs", "messages", "workflow_handoffs"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_start_run_freezes_current_settings_into_durable_run_budget(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    handler = StartRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        now_ms=lambda: 1234,
+        id_factory=iter(("run-1", "message-1", "workflow-1", "handoff-1")).__next__,
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="graph-v1",
+        settings_provider=lambda: SimpleNamespace(
+            max_run_execution_ms=60_000,
+            max_connector_calls_per_run=9,
+            max_source_page_calls_per_run=7,
+            max_detail_fetches_per_run=11,
+            max_context_tokens_per_run=4_000,
+            max_retry_attempts_per_run=3,
+        ),
+    )
+
+    result = handler(_command())
+
+    with connect_sqlite(database_path) as connection:
+        budget = loads(
+            connection.execute(
+                "SELECT budget_json FROM runs WHERE id = ?", (result.run_id,)
+            ).fetchone()[0]
+        )
+    assert budget["schema_version"] == 2
+    assert budget["started_at_ms"] == 1234
+    assert budget["max_execution_ms"] == 60_000
+    assert budget["max_connector_calls"] == 9
+    assert budget["max_source_page_calls"] == 7
+    assert budget["max_detail_fetches"] == 11
+    assert budget["max_context_tokens"] == 4_000
+    assert budget["max_retry_attempts"] == 3

@@ -306,7 +306,7 @@ def test_work_analysis_resume_does_not_re_execute_retrieval(tmp_path: Path) -> N
         # dispatched, so the run completes exactly at the 8-call cap rather
         # than a 9th (review) call being denied. Asserting COMPLETED here
         # (with exactly the calls below) proves the same thing the old
-        # exhaustion assertion proved: ordinary, unchanged RunBudgetV1
+        # exhaustion assertion proved: ordinary, unchanged RunBudgetV2
         # accounting across the confirmation boundary -- no call is lost,
         # duplicated, or invented.
         _queue_more(llm_runtime, [_answer_output()])

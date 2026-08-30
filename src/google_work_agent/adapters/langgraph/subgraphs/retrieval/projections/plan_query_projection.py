@@ -5,9 +5,11 @@ from google_work_agent.application.agents.retrieval.build_query import RouteCons
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.contracts import RunBudgetV1
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
@@ -22,7 +24,7 @@ class PlanQueryInput(TypedDict):
     trace_context: ObservabilityContext
     frozen_routes: Sequence[InputToolRouteV1]
     route_policies: Mapping[str, RouteConstraintPolicy]
-    retry_budget: RunBudgetV1
+    retry_budget: RunBudgetV2
     validated_resource_refs: NotRequired[Mapping[str, Collection[str]] | None]
     validated_container_refs: NotRequired[Mapping[str, Collection[str]] | None]
     detail_candidate_refs: NotRequired[Collection[str]]

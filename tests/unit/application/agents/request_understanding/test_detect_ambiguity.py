@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
     detect_ambiguity,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -66,6 +67,7 @@ def test_detect_ambiguity__canonical_call__owns_independent_ambiguity() -> None:
         requested_mode="AUTO",
         request_text="일정을 잡아줘",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),

@@ -9,10 +9,6 @@ import pytest
 from google_work_agent.application.orchestration.context_segmentation import (
     ContextRetrievalValidationError,
 )
-from google_work_agent.application.orchestration.contracts import (
-    MAX_ADDITIONAL_ACQUISITIONS,
-    RunBudgetV1,
-)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionEffectValue,
     RequestIntentV2,
@@ -23,6 +19,11 @@ from google_work_agent.application.orchestration.retrieval_sufficiency import (
     enforce_sufficiency_guard,
     missing_information_projection,
     validate_sufficiency_result_v2,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    MAX_ADDITIONAL_ACQUISITIONS,
+    RunBudgetV2,
+    build_default_run_budget,
 )
 
 
@@ -40,15 +41,10 @@ def _intent(*, effects: list[ActionEffectValue] | None = None) -> RequestIntentV
     }
 
 
-def _run_budget(*, used: int) -> RunBudgetV1:
+def _run_budget(*, used: int) -> RunBudgetV2:
     return {
-        "schema_version": 1,
-        "profile": "NORMAL",
-        "llm_calls_used": 0,
-        "additional_acquisitions_used": used,
-        "planning_revisions_used": 0,
-        "last_rechecked_planning_revision": 0,
-        "semantic_revision_signatures_used": [],
+        **build_default_run_budget(),
+        "additional_retrieval_rounds_used": used,
     }
 
 

@@ -121,6 +121,9 @@ def start_run(
         id_factory=dependencies.id_generator.new_uuid,
         graph_profile=dependencies.graph_profile,
         graph_version=dependencies.graph_version,
+        settings_provider=(
+            None if dependencies.settings is None else dependencies.settings.get_settings
+        ),
     )
     result = handler(
         StartRunCommand(

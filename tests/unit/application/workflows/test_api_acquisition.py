@@ -42,6 +42,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     Weekday,
 )
 from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadResultV1,
     JsonValue,
@@ -1867,6 +1868,7 @@ def _request(
         requested_mode="AUTO",
         request_text=request_text,
         selected_resource_ids=selected_resource_ids,
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",

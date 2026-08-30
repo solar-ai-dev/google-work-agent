@@ -10,6 +10,7 @@ from google_work_agent.application.orchestration.planning_arguments import Defau
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
     PromptReference,
@@ -80,6 +81,7 @@ def _request() -> WorkflowStartRequest:
         requested_mode="API_LLM",
         request_text="Prepare a report task",
         selected_resource_ids=(),
+        run_budget=build_default_run_budget(),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",

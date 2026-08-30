@@ -45,6 +45,7 @@ class Run:
     requested_mode: str = ""
     actual_runtime: str | None = None
     terminal_result_kind: TerminalResultKindV1 | None = None
+    budget_json: str = "{}"
 
 
 @dataclass(frozen=True, slots=True)

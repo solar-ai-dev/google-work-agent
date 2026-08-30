@@ -7,11 +7,7 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
 from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
     ConfirmationResponseProjectionV1,
-    RunBudgetV1,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
@@ -24,6 +20,12 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    RunBudgetV2,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
@@ -56,11 +58,11 @@ def select_tool_if_needed(
     effect: str,
     eligible_tool_ids: tuple[str, ...],
     request: WorkflowStartRequest,
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     prompt_ref: PromptReference | None = None,
     manifest_path: Path | None = None,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
-) -> tuple[str, RunBudgetV1]:
+) -> tuple[str, RunBudgetV2]:
     if len(eligible_tool_ids) == 1:
         return eligible_tool_ids[0], retry_budget
     if not eligible_tool_ids:

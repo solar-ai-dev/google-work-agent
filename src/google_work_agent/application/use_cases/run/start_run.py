@@ -15,6 +15,10 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
 )
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+    build_default_run_budget,
+)
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
@@ -45,6 +49,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
+from google_work_agent.ports.system.settings_port import SettingsViewV1
 
 _REGISTRY_RESOURCE_SOURCES = {
     "gmail_thread": ResourceSource.GMAIL,
@@ -112,12 +117,14 @@ class StartRunHandler:
         id_factory: Callable[[], str],
         graph_profile: GraphProfileIdV1,
         graph_version: str,
+        settings_provider: Callable[[], SettingsViewV1] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._graph_version = graph_version
+        self._settings_provider = settings_provider
 
     def __call__(self, command: StartRunCommand) -> StartRunResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -138,6 +145,7 @@ class StartRunHandler:
     ) -> StartRunResult:
         self._validate_new_run_input(command)
         now_ms = self._now_ms()
+        run_budget = self._build_run_budget(now_ms=now_ms)
         run_id = self._id_factory()
         user_message_id = self._id_factory()
         workflow_key = self._id_factory()
@@ -166,7 +174,7 @@ class StartRunHandler:
                 langgraph_thread_id=workflow_key,
                 requested_mode=command.requested_mode,
                 actual_runtime=None,
-                budget_json="{}",
+                budget_json=dumps(run_budget, sort_keys=True),
                 version=0,
                 started_at_ms=now_ms,
                 finished_at_ms=None,
@@ -308,6 +316,20 @@ class StartRunHandler:
         self._finish_receipt(unit_of_work, command.command_id, response, 0, now_ms)
         unit_of_work.commit()
         return response
+
+    def _build_run_budget(self, *, now_ms: int) -> RunBudgetV2:
+        if self._settings_provider is None:
+            return build_default_run_budget(started_at_ms=now_ms)
+        settings = self._settings_provider()
+        return build_default_run_budget(
+            started_at_ms=now_ms,
+            max_execution_ms=settings.max_run_execution_ms,
+            max_connector_calls=settings.max_connector_calls_per_run,
+            max_source_page_calls=settings.max_source_page_calls_per_run,
+            max_detail_fetches=settings.max_detail_fetches_per_run,
+            max_context_tokens=settings.max_context_tokens_per_run,
+            max_retry_attempts=settings.max_retry_attempts_per_run,
+        )
 
     def _materialize_selected_resources(
         self,

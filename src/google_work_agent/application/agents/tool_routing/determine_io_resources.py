@@ -18,11 +18,7 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
 from google_work_agent.application.orchestration.contracts import (
-    BudgetDecision,
     ConfirmationResponseProjectionV1,
-    RunBudgetV1,
-    approve_semantic_revision,
-    build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
@@ -36,6 +32,12 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
+    RunBudgetV2,
+    approve_semantic_revision,
+    build_semantic_failure_signature_v1,
 )
 from google_work_agent.domain.action.model import EffectType
 from google_work_agent.ports.llm import (
@@ -87,11 +89,11 @@ def determine_io_resources(
     tool_catalog: SignedToolRegistry,
     request_intent: RequestIntentV2,
     request: WorkflowStartRequest,
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     prompt_ref: PromptReference | None = None,
     manifest_path: Path | None = None,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
-) -> tuple[SemanticRouteCandidate, RunBudgetV1]:
+) -> tuple[SemanticRouteCandidate, RunBudgetV2]:
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
         "tool_routing.determine_io_resources",
         manifest_path or default_prompt_manifest_path(),

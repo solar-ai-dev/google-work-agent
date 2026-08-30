@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from json import loads
 
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+    validate_run_budget_v2,
+)
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
@@ -26,6 +31,7 @@ class GetExecutionContextResult:
     version: int
     request_text: str
     selected_resource_ids: tuple[str, ...]
+    run_budget: RunBudgetV2
     selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 
@@ -52,6 +58,7 @@ class GetExecutionContextHandler:
             version=run.version,
             request_text="" if message is None else message.content,
             selected_resource_ids=selected_resource_ids,
+            run_budget=validate_run_budget_v2(loads(run.budget_json)),
             selected_resources=selected_resources,
         )
 

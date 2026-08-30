@@ -77,7 +77,7 @@ def test_fake_workflow_runtime_enforces_run_binding_and_failure_queue() -> None:
             workflow_key="flow-a",
             resume_kind="manual",
             resume_payload={},
-            correlation=WorkflowCorrelationContext(
+                correlation=WorkflowCorrelationContext(
                 request_id="request-2",
                 command_id="resume-2",
                 api_contract_version="1",
@@ -92,7 +92,7 @@ def test_fake_workflow_runtime_enforces_run_binding_and_failure_queue() -> None:
                 workflow_key="flow-b",
                 resume_kind="manual",
                 resume_payload={},
-                correlation=WorkflowCorrelationContext(
+            correlation=WorkflowCorrelationContext(
                     request_id="request-3",
                     command_id="resume-3",
                     api_contract_version="1",

@@ -6,9 +6,11 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     SourceSegment,
 )
 from google_work_agent.application.agents.retrieval.select_evidence import select_evidence
-from google_work_agent.application.orchestration.contracts import RunBudgetV1
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
@@ -27,7 +29,7 @@ def select_evidence_node(
     revision_prompt_ref: PromptReference,
     trace_context: ObservabilityContext,
     segments: list[SourceSegment],
-    retry_budget: RunBudgetV1,
+    retry_budget: RunBudgetV2,
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
 ) -> dict[str, object]:
     projection = project_select_evidence_input(state)
