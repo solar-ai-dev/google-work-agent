@@ -11,12 +11,15 @@ from typing import Any, cast
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    CompiledAgentSubgraphIdV1,
     ConfirmationResumeControlV1,
     ContextAdjustmentControlV1,
     MainControlResumeTargetV2,
+    MainResumeStageIdV1,
     RequestedModeV1,
     RetrievalCacheRestartControlV1,
     RunExecutionRefV1,
+    SemanticAgentOwnerIdV1,
     WorkflowControlEnvelopeV1,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
@@ -475,15 +478,17 @@ def deserialize_resume_target(
     if item["kind"] == "AGENT_NODE":
         return AgentNodeResumeTargetV2(
             kind="AGENT_NODE",
-            semantic_owner_id=str(item["semantic_owner_id"]),
-            compiled_subgraph_id=str(item["compiled_subgraph_id"]),
+            semantic_owner_id=cast(SemanticAgentOwnerIdV1, str(item["semantic_owner_id"])),
+            compiled_subgraph_id=cast(
+                CompiledAgentSubgraphIdV1, str(item["compiled_subgraph_id"])
+            ),
             node_id=str(item["node_id"]),
             graph_profile=profile,
             graph_version=str(item["graph_version"]),
         )
     return MainControlResumeTargetV2(
         kind="MAIN_CONTROL",
-        stage_id=str(item["stage_id"]),
+        stage_id=cast(MainResumeStageIdV1, str(item["stage_id"])),
         graph_profile=profile,
         graph_version=str(item["graph_version"]),
     )
