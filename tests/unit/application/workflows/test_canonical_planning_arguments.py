@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from google_work_agent.application.agents.planning.assemble_plan import (
+    materialize_action_seeds,
+)
+from google_work_agent.application.agents.planning.build_dependencies import (
+    build_dependencies,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
 )
@@ -24,11 +30,6 @@ from google_work_agent.application.orchestration.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
     validate_tool_argument_candidate_v1,
-)
-from google_work_agent.application.orchestration.planning_plan_assembler import (
-    assemble_action_plan_draft_v1_compat,
-    derive_action_dependencies_deterministically,
-    materialize_action_seeds,
 )
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
@@ -217,39 +218,6 @@ def test_argument_revision_uses_only_revision_envelope() -> None:
     }
 
 
-def test_compat_plan_copies_route_authority_and_builds_expected_deterministically() -> None:
-    ids = iter(("plan-1", "action-1"))
-    result = assemble_action_plan_draft_v1_compat(
-        request_intent=_intent(),
-        analysis_result=_analysis(),
-        evidence_drafts=_evidence(),
-        output_routes=(_task_create_route(),),
-        argument_candidates=(
-            {
-                "schema_version": 1,
-                "route_id": "route-task-create",
-                "arguments": {
-                    "task_list_id": "list-default",
-                    "payload": {
-                        "title": "Prepare report",
-                        "scheduled_date": "2026-08-20",
-                    },
-                },
-                "evidence_refs": ["ev-1"],
-            },
-        ),
-        plan_id_factory=lambda: next(ids),
-        action_id_factory=lambda: next(ids),
-    )
-
-    action = result["actions"][0]
-    assert action["tool_name"] == "tasks_create_task"
-    assert action["effect"] == "CREATE"
-    assert action["action_id"] == "action-1"
-    assert action["expected"] == {"payload": {"title": "Prepare report", "due": "2026-08-20"}}
-    assert action["depends_on_action_ids"] == []
-
-
 def test_same_resource_dependency_is_code_derived_and_revision_preserves_action_ids() -> None:
     routes: tuple[OutputToolRouteV1, ...] = (
         {
@@ -293,7 +261,7 @@ def test_same_resource_dependency_is_code_derived_and_revision_preserves_action_
         argument_candidates=candidates,  # type: ignore[arg-type]
         action_id_factory=lambda: next(action_ids),
     )
-    dependencies = derive_action_dependencies_deterministically(seeds)
+    dependencies = build_dependencies(seeds)
 
     assert dependencies == (
         {

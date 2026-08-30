@@ -1465,7 +1465,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         # checks non-READ actions against ``output_routes``, so an all-READ plan
         # skipped that check entirely) -- effectively letting Planning override
         # Tool Route's frozen write decision. Canonical Planning has no such
-        # authority: ``PlanningArgumentOrchestrator``/``planning_plan_assembler``
+        # authority: canonical Planning argument operations and exact plan assembly
         # always produce exactly one action per frozen output route
         # (``materialize_action_seeds`` requires an exact 1:1 route<->candidate
         # pairing), and ``determine_semantic_routes`` never freezes a READ output

@@ -21,13 +21,16 @@ def test_planning_graph_has_no_generic_semantic_binding_authority() -> None:
 
 
 def test_production_has_no_second_planning_answer_authority() -> None:
-    optional_source = _source(
-        "src/google_work_agent/application/orchestration/optional_agent_inputs.py"
+    optional_path = (
+        ROOT / "src/google_work_agent/application/orchestration/optional_agent_inputs.py"
+    )
+    broad_assembler_path = (
+        ROOT / "src/google_work_agent/application/orchestration/planning_plan_assembler.py"
     )
     provider_path = ROOT / "src/google_work_agent/adapters/langgraph/workflow_providers.py"
     response_source = _source("src/google_work_agent/adapters/langgraph/main/response_synthesis.py")
-    assert "CanonicalOptionalInputPlanningAgent" not in optional_source
-    assert "invoke_answer_with_optional_analysis" not in optional_source
+    assert not optional_path.exists()
+    assert not broad_assembler_path.exists()
     assert not provider_path.exists()
     assert "build_production_planning_runtime" not in response_source
     assert "CanonicalOptionalPlanningSubgraph" not in response_source

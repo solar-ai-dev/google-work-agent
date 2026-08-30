@@ -14,6 +14,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+    PlannedActionV2,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
@@ -28,10 +32,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     StateArtifactMetaV1,
     StateArtifactRefV1,
-)
-from google_work_agent.application.orchestration.planning_plan_assembler import (
-    ActionPlanDraftV2,
-    PlannedActionV2,
 )
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,

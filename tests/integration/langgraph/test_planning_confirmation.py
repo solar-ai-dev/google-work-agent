@@ -255,7 +255,7 @@ def test_planning_answer_needs_confirmation_pauses_inside_own_nested_task(
 # --- T2 (superseded by the Canonical Planning Production Migration):
 # ACTION-path NEEDS_CONFIRMATION is no longer reachable in production.
 # ``PlanningArgumentWriter``'s ``ToolArgumentCandidateV1`` schema has no
-# status/confirmation field, and ``assemble_action_plan_draft_v1_compat``
+# status/confirmation field, and the removed V1 compatibility projection
 # always returns ``status="PLAN_READY"`` -- this is a structural,
 # BLOCKED_BY_CANONICAL_GAP consequence documented in
 # ``adapters/langgraph/subgraphs/planning.py``'s module docstring, not a
@@ -667,7 +667,7 @@ def test_planning_answer_only_happy_path_completes(tmp_path: Path) -> None:
 # (``_plan_output(...)``) -- draft_plan now runs the canonical per-route
 # Argument Writer via ``PlanningArgumentOrchestrator``, one call per frozen
 # output route, assembled deterministically into ``ActionPlanDraftV1`` by
-# ``planning_plan_assembler``. This scenario -- a real ``runtime.start()``
+# canonical Planning operations. This scenario -- a real ``runtime.start()``
 # ACTION run reaching ``PLAN_READY`` and then Review -- is covered by
 # ``test_canonical_planning_migration.py``'s
 # ``test_single_action_route_uses_canonical_writer_exactly_once`` (T1),

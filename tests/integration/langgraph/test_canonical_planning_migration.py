@@ -5,7 +5,7 @@ selected-Tool identity before Planning ever runs. These tests prove the
 *production* ``PlanningSubgraph`` (not just the already-covered unit tests in
 ``test_canonical_planning_arguments.py``) actually calls the canonical
 ``PlanningArgumentOrchestrator`` (per-route ``PlanningArgumentWriter`` +
-deterministic ``planning_plan_assembler``) for ``draft_plan``/``revise_plan``,
+deterministic canonical Planning operations) for ``draft_plan``/``revise_plan``,
 never the legacy whole-plan-in-one-call
 ``SolutionPlanningAgent.invoke_draft_plan_llm_from_evidence``: Tool/effect/
 route identity, Action ID, dependency, and Expected verification stay

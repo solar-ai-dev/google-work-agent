@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
@@ -17,7 +20,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
 )
-from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
