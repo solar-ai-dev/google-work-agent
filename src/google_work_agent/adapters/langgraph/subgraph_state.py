@@ -59,7 +59,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextBundleV1,
-    ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
     RequestIntentV2,
@@ -150,7 +149,6 @@ class WorkAnalysisInputState(AgentSubgraphInputEnvelope, total=False):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     retrieval_result: RetrievalResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
@@ -278,32 +276,6 @@ class PlanningLocalState(GraphState):
     __planning_retry_confirmation__: NotRequired[bool]
 
 
-class ReviewLocalState(GraphState):
-    work_analysis: NotRequired[dict[str, object]]
-    review_phase: NotRequired[str]
-    review_artifact_id: NotRequired[str]
-    review_revision: NotRequired[int]
-    review_based_on: NotRequired[list[dict[str, object]]]
-    prior_review_findings: NotRequired[list[dict[str, object]]]
-    affected_dimensions: NotRequired[list[str]]
-    affected_action_ids: NotRequired[list[str]]
-    affected_route_ids: NotRequired[list[str]]
-    goal_evidence_result: NotRequired[dict[str, object]]
-    action_scope_route_result: NotRequired[dict[str, object]]
-    constraints_policy_result: NotRequired[dict[str, object]]
-    affected_dimension_recheck: NotRequired[list[dict[str, object]]]
-    review_result: NotRequired[PlanReviewResultV2]
-    evidence: NotRequired[list[EvidenceDraftV1]]
-    policy_summary: NotRequired[dict[str, object]]
-    confirmation_response: NotRequired[dict[str, object]]
-    __review_agent_local__: NotRequired[AgentLocalStateV1]
-    __review_mode__: NotRequired[str]
-    # Same purpose as the other native subgraphs' retry markers: routes the
-    # self-loop conditional edge back into "finalize" as a fresh task for
-    # the next confirmation round.
-    __review_retry_confirmation__: NotRequired[bool]
-
-
 __all__ = [
     "AcquisitionLocalState",
     "AgentSubgraphInputEnvelope",
@@ -313,7 +285,6 @@ __all__ = [
     "PlanningLocalState",
     "RequestUnderstandingInputState",
     "ReviewInputState",
-    "ReviewLocalState",
     "ToolRoutingInputState",
     "WorkAnalysisInputState",
     "WorkAnalysisLocalState",

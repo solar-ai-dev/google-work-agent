@@ -27,7 +27,6 @@ if TYPE_CHECKING:
         AcquisitionResultV1,
         ActionPlanDraftV1,
         AnswerDraftV1,
-        ContextRetrievalResultV1,
         RequestIntentV2,
         RetrievalResultV1,
         SourceFetchPlanV1,
@@ -52,7 +51,6 @@ class MultiAgentGraphState(TypedDict):
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
@@ -78,7 +76,6 @@ class GraphStateUpdateV1(TypedDict, total=False):
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
-    context_result: ContextRetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None

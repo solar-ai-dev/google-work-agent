@@ -273,7 +273,6 @@ def _route_reconsideration(
             workflow_signal=signal,
             source_fetch_plans=[],
             acquisition_result=None,
-            context_result=None,
             work_analysis_result=None,
             answer_draft=None,
             plan_draft=None,
@@ -1189,25 +1188,27 @@ def _preflight_safe_error_code(result: JsonObject) -> str | None:
 
 
 def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str | None:
-    for candidate in (extra.get("acquisition_result"), extra.get("context_result")):
+    for candidate in (extra.get("acquisition_result"), extra.get("retrieval_result")):
         mapping = _mapping_or_none(candidate)
-        if mapping is not None and mapping.get("status") == "PARTIAL":
+        if mapping is not None and (
+            mapping.get("status") == "PARTIAL" or mapping.get("coverage") == "PARTIAL"
+        ):
             return "PARTIAL"
     acquisition = _mapping_or_none(state.get("acquisition_result"))
     if acquisition is not None and acquisition.get("status") == "PARTIAL":
         return "PARTIAL"
-    context = _mapping_or_none(state.get("context_result"))
-    if context is not None and context.get("status") == "PARTIAL":
+    retrieval = _mapping_or_none(state.get("retrieval_result"))
+    if retrieval is not None and retrieval.get("coverage") == "PARTIAL":
         return "PARTIAL"
     return None
 
 
 def _has_supported_evidence(current_update: Mapping[str, object]) -> bool:
-    for key in ("context_result", "work_analysis_result"):
+    for key in ("retrieval_result", "work_analysis_result"):
         result = _mapping_or_none(current_update.get(key))
         if result is None:
             continue
-        evidence = result.get("evidence_drafts", result.get("evidence_refs"))
+        evidence = result.get("evidence_refs")
         if isinstance(evidence, list) and evidence:
             return True
     return False

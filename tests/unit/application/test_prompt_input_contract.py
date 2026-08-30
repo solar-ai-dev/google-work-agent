@@ -4,13 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.support.legacy_prompt_input_contract import (
-    PromptInputContractError,
-    PromptRuntimeInputContractValidator,
-)
 
 from google_work_agent.application.orchestration.failure_record import (
     build_failure_record_v1,
+)
+from tests.support.legacy_prompt_input_contract import (
+    PromptInputContractError,
+    PromptRuntimeInputContractValidator,
 )
 
 

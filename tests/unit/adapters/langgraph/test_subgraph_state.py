@@ -9,7 +9,6 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     PlanningLocalState,
     RequestUnderstandingInputState,
     ReviewInputState,
-    ReviewLocalState,
     ToolRoutingInputState,
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
@@ -32,7 +31,6 @@ def test_each_local_state_owns_only_its_subgraph_working_fields() -> None:
         (ContextRetrievalLocalState, "__context_agent_local__"),
         (WorkAnalysisLocalState, "__analysis_agent_local__"),
         (PlanningLocalState, "__planning_agent_local__"),
-        (ReviewLocalState, "__review_agent_local__"),
     )
 
     for local_state, owned_field in cases:

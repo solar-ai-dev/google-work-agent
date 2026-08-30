@@ -8,7 +8,6 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
     PlanReviewResultV2,
 )
 from google_work_agent.application.orchestration.contracts import (
-    AdditionalAcquisitionRequestV1,
     DomainValidationResult,
     FinalizeIntent,
     GraphStateUpdateV1,
@@ -21,8 +20,8 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionDraftV1,
     ActionPlanDraftV1,
     AnswerDraftV1,
-    ContextRetrievalResultV1,
     RequestIntentV2,
+    RetrievalResultV1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
@@ -769,7 +768,10 @@ def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_p
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         answer_draft=_answer_draft("ANSWER_ONLY"),
-        acquisition_result=_acquisition_result("PARTIAL"),
+        retrieval_result=cast(
+            RetrievalResultV1,
+            {"coverage": "PARTIAL", "evidence_refs": ["evidence-1"]},
+        ),
         retry_budget={
             **build_default_run_budget(),
             "additional_retrieval_rounds_used": 2,
@@ -835,7 +837,7 @@ def _state(
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
     request_intent: RequestIntentV2 | None = None,
     acquisition_result: AcquisitionResultV1 | None = None,
-    context_result: ContextRetrievalResultV1 | None = None,
+    retrieval_result: RetrievalResultV1 | None = None,
     answer_draft: AnswerDraftV1 | None = None,
     plan_draft: ActionPlanDraftV1 | None = None,
     plan_review: PlanReviewResultV2 | None = None,
@@ -853,7 +855,7 @@ def _state(
         "workflow_signal": None,
         "source_fetch_plans": [],
         "acquisition_result": acquisition_result,
-        "context_result": context_result,
+        "retrieval_result": retrieval_result,
         "work_analysis_result": None,
         "answer_draft": answer_draft,
         "plan_draft": plan_draft,
@@ -919,63 +921,6 @@ def _acquisition_result(
             "candidates": 0,
             "details": 0,
         },
-    }
-
-
-def _context_result(
-    status: Literal["SUFFICIENT", "NEEDS_MORE_DATA", "NEEDS_CONFIRMATION", "PARTIAL", "BLOCKED"],
-) -> ContextRetrievalResultV1:
-    additional_request: AdditionalAcquisitionRequestV1 | None = None
-    ambiguity: dict[str, object] | None = None
-    if status == "NEEDS_MORE_DATA":
-        additional_request = {
-            "schema_version": 1,
-            "origin_phase": WorkflowPhase.CONTEXT_EVALUATION.value,
-            "origin_result": "NEEDS_MORE_DATA",
-            "missing_slots": ["missing-date"],
-            "missing_information": ["Need the missing date."],
-            "evidence_refs": ["evidence-1"],
-            "reason_codes": ["EVIDENCE_GAP"],
-        }
-    if status == "NEEDS_CONFIRMATION":
-        ambiguity = {
-            "question": "Which date should be prioritized?",
-            "reason_code": "MULTIPLE_DATES",
-            "affected_field_paths": ["semantic_constraints.time"],
-            "options": [],
-        }
-    return {
-        "schema_version": 1,
-        "status": status,
-        "context_bundle": {
-            "schema_version": 1,
-            "resource_refs": [{"resource_handle": "message:1"}],
-            "segment_refs": [{"segment_id": "seg-1"}],
-            "evidence_refs": ["evidence-1"],
-            "normalized_context": [],
-            "missing_information": ["Need the missing date."]
-            if status == "NEEDS_MORE_DATA"
-            else [],
-            "ambiguity": ambiguity,
-        },
-        "evidence_drafts": [
-            {
-                "schema_version": 1,
-                "evidence_id": "evidence-1",
-                "resource_handle": "message:1",
-                "segment_id": "seg-1",
-                "kind": "FACT",
-                "excerpt": "Latest update",
-                "locator": None,
-                "reason_codes": ["EVIDENCE_SUPPORTED"],
-            }
-        ],
-        "selected_segment_ids": ["seg-1"],
-        "excluded_resource_handles": [],
-        "missing_slots": ["missing-date"] if status == "NEEDS_MORE_DATA" else [],
-        "additional_acquisition_request": additional_request,
-        "sufficiency": {},
-        "llm_provider_result": {},
     }
 
 

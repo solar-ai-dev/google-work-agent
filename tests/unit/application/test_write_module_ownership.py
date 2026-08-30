@@ -1,16 +1,17 @@
 from pathlib import Path
 
+import google_work_agent.application.use_cases.plan.save_write_plan as write_plan
+import google_work_agent.application.use_cases.plan.write_plan_contracts as write_plan_contracts
 import tests.support.legacy_write.write_actions as write_actions
 import tests.support.legacy_write.write_cancellation as write_cancellation
 import tests.support.legacy_write.write_claim as write_claim
 import tests.support.legacy_write.write_execution as write_execution
 import tests.support.legacy_write.write_recovery as write_recovery
 import tests.support.legacy_write.write_verification as write_verification
-
-import google_work_agent.application.use_cases.execution_attempt.write_execution_contracts as write_execution_contracts
-import google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts as write_recovery_contracts
-import google_work_agent.application.use_cases.plan.save_write_plan as write_plan
-import google_work_agent.application.use_cases.plan.write_plan_contracts as write_plan_contracts
+from google_work_agent.application.use_cases.execution_attempt import (
+    write_execution_contracts,
+    write_recovery_contracts,
+)
 
 
 def test_legacy_write_facade_is_test_only_and_absent_from_production() -> None:

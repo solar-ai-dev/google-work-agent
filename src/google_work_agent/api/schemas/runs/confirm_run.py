@@ -4,8 +4,7 @@ from typing import Literal
 
 from pydantic import model_validator
 
-from google_work_agent.api.schemas.model import ContractVersionedRequest
-from google_work_agent.api.schemas.model import ApiModel
+from google_work_agent.api.schemas.model import ApiModel, ContractVersionedRequest
 
 
 class ConfirmationResponseV1(ContractVersionedRequest):

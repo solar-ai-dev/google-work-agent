@@ -55,7 +55,6 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "source_fetch_plans",
         "acquisition_result",
         "retrieval_result",
-        "context_result",
         "work_analysis_result",
         "answer_draft",
         "plan_draft",
@@ -70,7 +69,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 25
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 24
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:

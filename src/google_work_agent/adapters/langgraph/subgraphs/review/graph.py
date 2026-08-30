@@ -23,7 +23,7 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.langgraph.subgraph_state import ReviewInputState, ReviewLocalState
+from google_work_agent.adapters.langgraph.subgraph_state import ReviewInputState
 from google_work_agent.adapters.langgraph.subgraphs.review.nodes.aggregate_review_findings_node import (
     aggregate_review_findings_node,
 )
@@ -57,11 +57,14 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_i
 from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_recheck_affected_dimensions import (
     route_after_recheck_affected_dimensions,
 )
+from google_work_agent.adapters.langgraph.subgraphs.review.state import ReviewState
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
+    StateArtifactRefV1,
 )
 from google_work_agent.application.agents.review.contracts.review_findings import (
     ReviewDimensionIdV1,
+    ReviewInspectorFindingV1,
     ReviewSemanticInvoker,
     review_recheck_output_schema,
 )
@@ -89,6 +92,7 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
 from google_work_agent.application.orchestration.review_v2_signals import (
     project_review_workflow_signal_v2,
 )
+from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
@@ -105,7 +109,7 @@ from google_work_agent.ports.system.contracts.observability import Observability
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
-    [ReviewLocalState], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
+    [ReviewState], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
 ]
 
 _DIMENSIONS: tuple[ReviewDimensionIdV1, ...] = (
@@ -169,12 +173,12 @@ class ReviewSubgraph:
     def build(self) -> Any:
         graph = (
             StateGraph(
-                ReviewLocalState,
+                ReviewState,
                 input_schema=ReviewInputState,
                 output_schema=MultiAgentGraphStateV2,
             )
             if self._is_production_integration
-            else StateGraph(ReviewLocalState)
+            else StateGraph(ReviewState)
         )
         graph.add_node("inspect_goal_and_evidence", self._inspect_goal_and_evidence_node)
         graph.add_node("inspect_action_scope_route", self._inspect_action_scope_and_route_node)
@@ -224,7 +228,7 @@ class ReviewSubgraph:
         )
         return graph.compile(name="review_subgraph")
 
-    def _route_at_entry(self, state: ReviewLocalState) -> str:
+    def _route_at_entry(self, state: ReviewState) -> str:
         prior = state.get("plan_review")
         context = state.get("prompt_context")
         is_recheck = isinstance(prior, Mapping) and (
@@ -243,7 +247,7 @@ class ReviewSubgraph:
         phase = "RECHECK" if is_recheck else state.get("review_phase", "INITIAL")
         return route_after_entry({"review_phase": phase})
 
-    def _inspect_goal_and_evidence_node(self, state: ReviewLocalState) -> ReviewLocalState:
+    def _inspect_goal_and_evidence_node(self, state: ReviewState) -> ReviewState:
         working = self._project_runtime_inputs(state)
         return self._run_semantic_node(
             state,
@@ -252,7 +256,7 @@ class ReviewSubgraph:
             lambda invoke: inspect_goal_and_evidence_node(working, invoke=invoke),
         )
 
-    def _inspect_action_scope_and_route_node(self, state: ReviewLocalState) -> ReviewLocalState:
+    def _inspect_action_scope_and_route_node(self, state: ReviewState) -> ReviewState:
         return self._run_semantic_node(
             state,
             state,
@@ -261,8 +265,8 @@ class ReviewSubgraph:
         )
 
     def _inspect_constraints_and_policy_summary_node(
-        self, state: ReviewLocalState
-    ) -> ReviewLocalState:
+        self, state: ReviewState
+    ) -> ReviewState:
         return self._run_semantic_node(
             state,
             state,
@@ -270,7 +274,7 @@ class ReviewSubgraph:
             lambda invoke: inspect_constraints_and_policy_summary_node(state, invoke=invoke),
         )
 
-    def _recheck_affected_dimensions_node(self, state: ReviewLocalState) -> ReviewLocalState:
+    def _recheck_affected_dimensions_node(self, state: ReviewState) -> ReviewState:
         working = self._project_runtime_inputs(state)
         if working.get("__target__") == "end":
             return working
@@ -281,10 +285,10 @@ class ReviewSubgraph:
             lambda invoke: recheck_affected_dimensions_node(working, invoke=invoke),
         )
 
-    def _aggregate_review_findings_node(self, state: ReviewLocalState) -> ReviewLocalState:
+    def _aggregate_review_findings_node(self, state: ReviewState) -> ReviewState:
         patch = aggregate_review_findings_node(state)
         if not self._is_production_integration:
-            return cast(ReviewLocalState, patch)
+            return cast(ReviewState, patch)
         result = cast(PlanReviewResultV2, patch["review_result"])
         signal = self._signal(result)
         assert self._merge_decision is not None
@@ -328,20 +332,20 @@ class ReviewSubgraph:
             cast(GraphStateUpdateV1, {**patch, "plan_review": result}),
             decision,
         )
-        return cast(ReviewLocalState, merged)
+        return cast(ReviewState, merged)
 
     def _run_semantic_node(
         self,
-        original: ReviewLocalState,
+        original: ReviewState,
         working: Mapping[str, object],
         node_name: str,
         operation: Callable[[ReviewSemanticInvoker], Mapping[str, object]],
-    ) -> ReviewLocalState:
+    ) -> ReviewState:
         results: list[StructuredLLMResult] = []
         if self._is_production_integration:
             ensure_llm_call_budget(cast(Any, original))
         patch = operation(self.semantic_invoker(working, on_result=results.append))
-        result = cast(ReviewLocalState, {**working, **patch})
+        result = cast(ReviewState, {**working, **patch})
         if self._is_production_integration:
             consumed = sum(item.structured_output_attempts for item in results)
             result["retry_budget"] = consume_llm_call_budget(
@@ -367,8 +371,8 @@ class ReviewSubgraph:
             )
         return result
 
-    def _project_runtime_inputs(self, state: ReviewLocalState) -> ReviewLocalState:
-        working = cast(ReviewLocalState, dict(state))
+    def _project_runtime_inputs(self, state: ReviewState) -> ReviewState:
+        working = cast(ReviewState, dict(state))
         if not self._is_production_integration:
             return working
         prior = state.get("plan_review")
@@ -380,14 +384,16 @@ class ReviewSubgraph:
             assert self._confirm_inline is not None
             confirmation_response, early = self._confirm_inline(state)
             if early is not None:
-                return cast(ReviewLocalState, {**working, **early})
+                return cast(ReviewState, {**working, **early})
             if confirmation_response is None:
                 raise ValueError("Review confirmation response is required")
             context["confirmation_response"] = dict(confirmation_response)
             working["user_interrupt"] = None
         raw_response = context.get("confirmation_response")
         if isinstance(raw_response, Mapping):
-            working["confirmation_response"] = dict(raw_response)
+            working["confirmation_response"] = cast(
+                ConfirmationResponseProjectionV1, dict(raw_response)
+            )
         working["prompt_context"] = context
         raw_planning_result: object = state.get("planning_result")
         if not isinstance(raw_planning_result, Mapping):
@@ -399,8 +405,9 @@ class ReviewSubgraph:
         if "work_analysis" not in working and isinstance(
             state.get("work_analysis_result"), Mapping
         ):
-            working["work_analysis"] = dict(
-                cast(Mapping[str, object], state["work_analysis_result"])
+            working["work_analysis"] = cast(
+                WorkAnalysisResultV2,
+                dict(cast(Mapping[str, object], state["work_analysis_result"])),
             )
         working["evidence"] = self._evidence(state)
         if not isinstance(working.get("policy_summary"), Mapping):
@@ -423,7 +430,9 @@ class ReviewSubgraph:
             stored_findings = context.get("review_prior_findings")
             if not findings and isinstance(stored_findings, list):
                 findings = [
-                    dict(finding) for finding in stored_findings if isinstance(finding, Mapping)
+                    cast(ReviewInspectorFindingV1, dict(finding))
+                    for finding in stored_findings
+                    if isinstance(finding, Mapping)
                 ]
             working["prior_review_findings"] = findings
             working["affected_dimensions"] = self._affected_dimensions_from_result(
@@ -433,7 +442,7 @@ class ReviewSubgraph:
             working["affected_route_ids"] = self._affected_ids(findings, "affected_route_ids")
         return working
 
-    def _evidence(self, state: ReviewLocalState) -> list[Any]:
+    def _evidence(self, state: ReviewState) -> list[Any]:
         direct = state.get("evidence")
         if isinstance(direct, list):
             return list(direct)
@@ -450,7 +459,7 @@ class ReviewSubgraph:
         )
 
     @staticmethod
-    def _based_on(planning_result: Mapping[str, object]) -> list[dict[str, object]]:
+    def _based_on(planning_result: Mapping[str, object]) -> list[StateArtifactRefV1]:
         meta = planning_result.get("meta")
         if not isinstance(meta, Mapping):
             return []
@@ -497,14 +506,16 @@ class ReviewSubgraph:
         }
 
     @staticmethod
-    def _affected_dimensions_from_findings(findings: Sequence[Mapping[str, object]]) -> list[str]:
+    def _affected_dimensions_from_findings(
+        findings: Sequence[Mapping[str, object]],
+    ) -> list[ReviewDimensionIdV1]:
         requested = {item.get("dimension") for item in findings}
         return [dimension for dimension in _DIMENSIONS if dimension in requested]
 
     @classmethod
     def _affected_dimensions_from_result(
         cls, result: PlanReviewResultV2, context: Mapping[str, object]
-    ) -> list[str]:
+    ) -> list[ReviewDimensionIdV1]:
         if result["status"] == "REVISE":
             requested = {
                 dimension
@@ -514,7 +525,7 @@ class ReviewSubgraph:
             return [dimension for dimension in _DIMENSIONS if dimension in requested]
         stored = context.get("review_affected_dimensions")
         if isinstance(stored, list):
-            selected: list[str] = [
+            selected: list[ReviewDimensionIdV1] = [
                 dimension for dimension in _DIMENSIONS if dimension in set(stored)
             ]
             if selected:
@@ -522,20 +533,20 @@ class ReviewSubgraph:
         raise ValueError("Review recheck requires persisted affected dimensions")
 
     @staticmethod
-    def _findings_from_result(result: PlanReviewResultV2) -> list[dict[str, object]]:
+    def _findings_from_result(result: PlanReviewResultV2) -> list[ReviewInspectorFindingV1]:
         if result["status"] != "REVISE":
             return []
         return [
-            {
-                "dimension": dimension,
-                "code": issue["code"],
-                "finding_kind": "ISSUE",
-                "description": issue["description"],
-                "evidence_refs": list(issue["evidence_refs"]),
-                "affected_action_ids": list(issue["affected_action_ids"]),
-                "affected_route_ids": list(issue["affected_route_ids"]),
-                "required_information": [],
-            }
+            ReviewInspectorFindingV1(
+                dimension=dimension,
+                code=issue["code"],
+                finding_kind="ISSUE",
+                description=issue["description"],
+                evidence_refs=list(issue["evidence_refs"]),
+                affected_action_ids=list(issue["affected_action_ids"]),
+                affected_route_ids=list(issue["affected_route_ids"]),
+                required_information=[],
+            )
             for issue in result["issues"]
             for dimension in issue["affected_dimensions"]
         ]

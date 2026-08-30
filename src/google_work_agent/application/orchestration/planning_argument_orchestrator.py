@@ -203,7 +203,8 @@ class PlanningArgumentOrchestrator:
         write_actions = [action for action in plan_draft["actions"] if action["effect"] != "READ"]
         if len(write_actions) != len(output_routes):
             raise ValueError(
-                "planning revision requires exactly one existing write action per frozen output route"
+                "planning revision requires exactly one existing write action "
+                "per frozen output route"
             )
         allowed_evidence_refs = {draft["evidence_id"] for draft in evidence_drafts}
         results: list[RouteArgumentResult] = []
@@ -213,7 +214,8 @@ class PlanningArgumentOrchestrator:
                 or action["effect"] != route["effect"]
             ):
                 raise ValueError(
-                    f"existing plan action no longer aligns with frozen output route: {route['route_id']}"
+                    "existing plan action no longer aligns with frozen output route: "
+                    f"{route['route_id']}"
                 )
             bound_schema = self._bound_schema(route)
             candidate = validate_tool_argument_candidate_v1(

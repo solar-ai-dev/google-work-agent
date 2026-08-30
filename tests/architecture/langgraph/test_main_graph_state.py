@@ -1,5 +1,7 @@
 """Canonical Main Graph state ownership and binding closure."""
 
+from typing import get_type_hints
+
 from google_work_agent.adapters.langgraph.main import state as state_module
 from google_work_agent.adapters.langgraph.main.state import (
     MultiAgentGraphStateV2,
@@ -14,11 +16,16 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 
 
 def test_main_state_has_exact_v2_owner_and_no_retrieval_scratch_fields() -> None:
-    fields = set(MultiAgentGraphStateV2.__annotations__)
+    fields = set(get_type_hints(MultiAgentGraphStateV2))
 
     assert not hasattr(state_module, "ProductionGraphStateV2")
     assert {"graph_profile", "graph_version", "langgraph_thread_id", "run_input"} <= fields
-    assert {"context_bundle", "evidence_drafts", "llm_provider_result"}.isdisjoint(fields)
+    assert {
+        "context_bundle",
+        "context_result",
+        "evidence_drafts",
+        "llm_provider_result",
+    }.isdisjoint(fields)
 
 
 def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
@@ -46,3 +53,4 @@ def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
     assert state["graph_version"] == "graph-v1"
     assert state["langgraph_thread_id"] == "thread-1"
     assert state["run_input"]["user_request"] == "Summarize my work."
+    assert "context_result" not in state

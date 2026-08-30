@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import pytest
+
+from google_work_agent.domain.run.model import Run as RunRecord
+from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 from tests.unit.application.test_start_run_receipt_recovery import (
     _command,
     _handler,
     _received,
     _UnitOfWork,
 )
-
-from google_work_agent.domain.run.model import Run as RunRecord
-from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.run_repository import RunAlreadyOpenConflictError
 
 
 def test_same_command_id_different_hash_is_conflict_without_domain_mutation() -> None:

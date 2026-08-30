@@ -108,16 +108,6 @@ def derive_finalize_intent(
             }
         )
 
-    context_result = _mapping_or_none(state.get("context_result"))
-    if context_result is not None and context_result.get("status") == "BLOCKED":
-        return validate_finalize_intent_v1(
-            {
-                "schema_version": 1,
-                "intent": FinalizeIntent.BLOCKED.value,
-                "reason_code": "CONTEXT_BLOCKED",
-            }
-        )
-
     analysis_result = _mapping_or_none(state.get("analysis_result"))
     if (
         analysis_result is not None
