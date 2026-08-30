@@ -72,6 +72,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SufficiencyResultV2,
     WorkAnalysisResultV1,
 )
+from google_work_agent.application.orchestration.post_retrieval_envelopes import (
+    PlanningResultV2,
+)
 from google_work_agent.application.orchestration.profile_fused import (
     ProfileReasonPlanOutputV1,
     ProfileRequestSourceOutputV1,
@@ -169,6 +172,8 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     retrieval_result: RetrievalResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
+    planning_result: PlanningResultV2 | None
     analysis_result: WorkAnalysisResultV1 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None

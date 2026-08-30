@@ -23,9 +23,13 @@ class ReviewState(TypedDict, total=False):
     affected_dimensions: object
     affected_action_ids: object
     affected_route_ids: object
+    # Legacy aggregate/recheck channels remain until #120's final state cut-over.
     goal_evidence_findings: object
     action_scope_route_findings: object
     constraints_policy_findings: object
+    goal_evidence_result: object
+    action_scope_route_result: object
+    constraints_policy_result: object
     affected_dimension_recheck: object
     aggregated_findings: object
     review_result: object

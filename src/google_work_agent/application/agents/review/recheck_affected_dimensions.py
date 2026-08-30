@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from typing import cast
 
 from google_work_agent.application.agents.review.contracts.review_findings import (
     AtomicReviewFindingV1,
@@ -59,7 +60,7 @@ def recheck_affected_dimensions(
         if (isinstance(action_id, str) and action_id in action_ids) or (
             isinstance(route_id, str) and route_id in route_ids
         ):
-            canonical_dimensions.add(dimension)  # type: ignore[arg-type]
+            canonical_dimensions.add(cast(ReviewDimension, dimension))
 
     if not canonical_dimensions:
         return {"affected_dimensions": (), "findings": ()}
@@ -87,23 +88,79 @@ def recheck_affected_dimensions(
     if set(selected_dimensions) != canonical_dimensions:
         raise ValueError("recheck affected_dimensions must match the canonical affected set")
 
-    common = {
-        "request_intent": request_intent,
-        "tool_route_plan": tool_route_plan,
-        "planning_result": planning_result,
-        "work_analysis": work_analysis,
-        "evidence": evidence,
-        "policy_summary": policy_summary,
-        "invoke": invoke,
-    }
     fresh: list[AtomicReviewFindingV1] = []
     if "GOAL_EVIDENCE" in canonical_dimensions:
-        fresh.extend(inspect_goal_and_evidence(**common))
+        fresh.extend(
+            _legacy_findings(
+                inspect_goal_and_evidence(
+                    request_intent=request_intent,
+                    planning_result=planning_result,
+                    work_analysis=work_analysis,
+                    evidence=evidence,
+                    invoke=invoke,
+                )["findings"],
+                dimension="GOAL_EVIDENCE",
+            )
+        )
     if "ACTION_SCOPE_ROUTE" in canonical_dimensions:
-        fresh.extend(inspect_action_scope_and_route(**common))
+        fresh.extend(
+            _legacy_findings(
+                inspect_action_scope_and_route(
+                    request_intent=request_intent,
+                    tool_route_plan=tool_route_plan,
+                    planning_result=planning_result,
+                    work_analysis=work_analysis,
+                    evidence=evidence,
+                    invoke=invoke,
+                )["findings"],
+                dimension="ACTION_SCOPE_ROUTE",
+            )
+        )
     if "CONSTRAINTS_POLICY" in canonical_dimensions:
-        fresh.extend(inspect_constraints_and_policy_summary(**common))
+        if policy_summary is None:
+            raise ValueError("policy_summary is required for constraints Review recheck")
+        fresh.extend(
+            _legacy_findings(
+                inspect_constraints_and_policy_summary(
+                    request_intent=request_intent,
+                    planning_result=planning_result,
+                    policy_summary=policy_summary,
+                    work_analysis=work_analysis,
+                    evidence=evidence,
+                    invoke=invoke,
+                )["findings"],
+                dimension="CONSTRAINTS_POLICY",
+            )
+        )
     return {"affected_dimensions": ordered_dimensions, "findings": tuple(fresh)}
+
+
+def _legacy_findings(
+    findings: Sequence[Mapping[str, object]],
+    *,
+    dimension: ReviewDimension,
+) -> list[AtomicReviewFindingV1]:
+    """Adapt exact inspector output for the aggregate/recheck migration owned by #120."""
+    result: list[AtomicReviewFindingV1] = []
+    for finding in findings:
+        action_ids = finding.get("affected_action_ids", [])
+        route_ids = finding.get("affected_route_ids", [])
+        required_information = finding.get("required_information", [])
+        if not isinstance(action_ids, list) or not isinstance(route_ids, list):
+            raise ValueError("Review inspector affected identities must be lists")
+        if not isinstance(required_information, list):
+            raise ValueError("Review inspector required_information must be a list")
+        result.append(
+            {
+                "dimension": dimension,
+                "code": str(finding["code"]),
+                "description": str(finding["description"]),
+                "action_id": action_ids[0] if action_ids else None,
+                "route_id": route_ids[0] if route_ids else None,
+                "required_information": [str(item) for item in required_information],
+            }
+        )
+    return result
 
 
 def _normalize_dimensions(dimensions: Iterable[object]) -> tuple[ReviewDimension, ...]:

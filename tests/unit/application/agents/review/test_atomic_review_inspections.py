@@ -39,7 +39,22 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
         prompt_calls.append(prompt_id)
         if prompt_id == "review.recheck_affected_dimensions":
             return {"affected_dimensions": ["ACTION_SCOPE_ROUTE"]}
-        return {"findings": [{"code": "fresh", "description": "fresh result", "route_id": "r1"}]}
+        return {
+            "schema_version": 1,
+            "dimension": prompt_id,
+            "findings": [
+                {
+                    "dimension": prompt_id,
+                    "code": "fresh",
+                    "finding_kind": "ROUTE_ISSUE",
+                    "description": "fresh result",
+                    "evidence_refs": [],
+                    "affected_action_ids": [],
+                    "affected_route_ids": ["r1"],
+                    "required_information": [],
+                }
+            ],
+        }
 
     prior = [
         {

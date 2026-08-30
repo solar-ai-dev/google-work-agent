@@ -1,15 +1,20 @@
-"""Run the ACTION_SCOPE_ROUTE atomic Review inspection."""
+"""Inspect ACTION scope against the frozen Tool Route."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
 from google_work_agent.application.agents.review.contracts.review_findings import (
-    AtomicReviewFindingV1,
+    ReviewDimensionIdV1,
+    ReviewInspectorResultV1,
     ReviewSemanticInvoker,
+    review_inspector_output_schema,
+    validate_review_inspector_result,
 )
 
 PROMPT_ID = "review.inspect_action_scope_and_route"
+DIMENSION: ReviewDimensionIdV1 = "review.inspect_action_scope_and_route"
+REVIEW_INSPECT_ACTION_SCOPE_AND_ROUTE_OUTPUT_SCHEMA = review_inspector_output_schema(DIMENSION)
 
 
 def inspect_action_scope_and_route(
@@ -20,41 +25,24 @@ def inspect_action_scope_and_route(
     evidence: Sequence[Mapping[str, object]],
     invoke: ReviewSemanticInvoker,
     work_analysis: Mapping[str, object] | None = None,
-    policy_summary: Mapping[str, object] | None = None,
-) -> tuple[AtomicReviewFindingV1, ...]:
+    confirmation_response: Mapping[str, object] | None = None,
+) -> ReviewInspectorResultV1:
     prompt_input: dict[str, object] = {
         "request_intent": dict(request_intent),
         "tool_route_plan": dict(tool_route_plan),
         "planning_result": dict(planning_result),
         "evidence": [dict(item) for item in evidence],
-        "work_analysis": dict(work_analysis) if work_analysis is not None else None,
-        "policy_summary": dict(policy_summary) if policy_summary is not None else None,
     }
-    raw = invoke(PROMPT_ID, prompt_input)
-    findings = raw.get("findings")
-    if not isinstance(findings, list):
-        raise ValueError("Review inspection requires findings list")
-    result: list[AtomicReviewFindingV1] = []
-    for item in findings:
-        if not isinstance(item, Mapping):
-            raise ValueError("Review finding must be an object")
-        code = item.get("code")
-        description = item.get("description")
-        if not isinstance(code, str) or not code or not isinstance(description, str):
-            raise ValueError("Review finding code/description are required")
-        required = item.get("required_information", [])
-        if not isinstance(required, list) or not all(isinstance(value, str) for value in required):
-            raise ValueError("required_information must be strings")
-        result.append(
-            {
-                "dimension": "ACTION_SCOPE_ROUTE",
-                "code": code,
-                "description": description,
-                "action_id": item.get("action_id")
-                if isinstance(item.get("action_id"), str)
-                else None,
-                "route_id": item.get("route_id") if isinstance(item.get("route_id"), str) else None,
-                "required_information": list(required),
-            }
-        )
-    return tuple(result)
+    if work_analysis is not None:
+        prompt_input["work_analysis"] = dict(work_analysis)
+    if confirmation_response is not None:
+        prompt_input["confirmation_response"] = dict(confirmation_response)
+    return validate_review_inspector_result(
+        invoke(PROMPT_ID, prompt_input), expected_dimension=DIMENSION
+    )
+
+
+__all__ = [
+    "REVIEW_INSPECT_ACTION_SCOPE_AND_ROUTE_OUTPUT_SCHEMA",
+    "inspect_action_scope_and_route",
+]

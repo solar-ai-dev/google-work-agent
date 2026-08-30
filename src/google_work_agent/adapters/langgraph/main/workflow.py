@@ -696,17 +696,20 @@ class WorkflowRuntimeCore:
             confirm_inline=self._confirm_work_analysis_inline,
         ).build()
         self._planning_subgraph = PlanningSubgraph(
-            agent=self._planning,
+            llm_runtime=self._llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
-            merge_decision=self._merge_decision,
+            merge_decision=cast(Any, self._merge_decision),
             evidence_store=self._evidence_store,
-            confirm_inline=self._confirm_planning_inline,
+            confirm_inline=cast(Any, self._confirm_planning_inline),
             default_tasklist_id_provider=self._default_tasklist_id_provider,
             default_calendar_id_provider=self._default_calendar_id_provider,
         ).build()
         self._review_subgraph = RuntimeActiveReviewSubgraph(
             agent=self._review,
+            llm_runtime=self._llm_runtime,
+            prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
@@ -732,7 +735,7 @@ class WorkflowRuntimeCore:
             ).build()
             self._three_stage_two_subgraph = ThreeStageTwoSubgraph(
                 llm_runtime=self._llm_runtime,
-                planning_agent=self._planning,
+                planning_agent=cast(SolutionPlanningAgent, self._planning),
                 evidence_store=self._evidence_store,
                 prompt_ref=self._three_stage2_prompt_ref,
                 id_factory=id_factory,
