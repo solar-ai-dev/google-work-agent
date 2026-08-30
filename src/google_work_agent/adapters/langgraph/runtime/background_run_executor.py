@@ -111,6 +111,12 @@ class BackgroundRunExecutorAdapter:
                 )
             finally:
                 with self._lock:
+                    # The durable handoff keeps the same admission when a
+                    # failure happens before settlement.  Live reconciliation
+                    # must be able to submit that admission again in this
+                    # process; this set only fences duplicate queue entries
+                    # while the current worker attempt is active.
+                    self._accepted_admission_ids.discard(admission.admission_id)
                     self._active_run_admissions.pop(admission.effective_binding.run_id, None)
                 self._queue.task_done()
 

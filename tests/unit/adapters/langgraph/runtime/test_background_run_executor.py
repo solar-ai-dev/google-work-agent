@@ -67,6 +67,29 @@ def test_different_admission_for_active_run_is_not_accepted(tmp_path: Path) -> N
         checkpoint.close()
 
 
+def test_failed_pre_settlement_admission_can_be_redriven_in_same_process(
+    tmp_path: Path,
+) -> None:
+    executed = Event()
+    adapter, _, checkpoint = _adapter(
+        tmp_path,
+        lambda _admission, _handoff: executed.set(),
+        fail_materialize_once=True,
+    )
+    try:
+        submission = WorkflowExecutionSubmissionV2(2, _admission("a-1", "r-1"))
+        assert adapter.submit(submission).accepted
+        assert adapter.await_drained(1000)
+        assert not executed.is_set()
+
+        assert adapter.submit(submission).accepted
+        assert executed.wait(1)
+        assert adapter.await_drained(1000)
+    finally:
+        adapter.close()
+        checkpoint.close()
+
+
 def test_stale_admission_is_retired_before_semantic_owner_io(tmp_path: Path) -> None:
     owner_io = Event()
     adapter, database_path, checkpoint = _adapter(
@@ -121,6 +144,7 @@ def _adapter(
     execute,
     *,
     stale_on_checkpoint_store: bool = False,
+    fail_materialize_once: bool = False,
 ) -> tuple[BackgroundRunExecutorAdapter, Path, SqliteCheckpointAdapter]:
     database_path = tmp_path / "domain.db"
     with connect_sqlite(database_path) as connection:
@@ -177,7 +201,13 @@ def _adapter(
         "v1",
     )
 
+    materialize_failed = False
+
     def materialize(value: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1):
+        nonlocal materialize_failed
+        if fail_materialize_once and not materialize_failed:
+            materialize_failed = True
+            raise RuntimeError("transient checkpoint failure")
         with checkpoint.execution_scope(
             value,
             applied_handoff_id=value.handoff_id,
