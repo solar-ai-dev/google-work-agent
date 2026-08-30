@@ -17,7 +17,6 @@ from tests.integration.langgraph.test_runtime import (
     InactivePromptArtifactError,
     Path,
     ProductFixtureSnapshotLoader,
-    _action_required_intent,
     _ambiguous_intent,
     _analysis_output,
     _answer_output,
@@ -25,7 +24,6 @@ from tests.integration.langgraph.test_runtime import (
     _make_runtime,
     _make_runtime_with_llm,
     _plan,
-    _planning_mode_runtime,
     _QueuedLLMRuntime,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -82,10 +80,13 @@ def test_planning_mode_answer_only_semantic_cases_ignore_request_text(
     tmp_path: Path, case_id: str, request_text: str
 ) -> None:
     del case_id
-    runtime = _planning_mode_runtime(tmp_path)
-    intent = _clear_intent()
-    assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
-    runtime.close()
+    from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
+        planning_answer_path_selected,
+    )
+
+    assert planning_answer_path_selected(
+        {"tool_route_plan": {"output_plan": {"output_mode": "ANSWER"}}}
+    )
 
 
 @pytest.mark.parametrize(
@@ -97,24 +98,32 @@ def test_planning_mode_action_required_semantic_cases_ignore_request_text(
     tmp_path: Path, case_id: str, request_text: str
 ) -> None:
     del case_id
-    runtime = _planning_mode_runtime(tmp_path)
-    intent = _action_required_intent()
-    assert runtime._planning_mode_from_request_intent(intent) == "draft_plan"
-    runtime.close()
+    from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
+        planning_answer_path_selected,
+    )
+
+    assert not planning_answer_path_selected(
+        {"tool_route_plan": {"output_plan": {"output_mode": "ACTION"}}}
+    )
 
 
-def test_planning_mode_falls_back_to_answer_only_when_no_write_effect_hint_present(
+def test_action_route_with_not_required_analysis_finishes_as_answer_without_route_reselection(
     tmp_path: Path,
 ) -> None:
     """A classify output with no write effect hint (requested_effect_hints
     has no CREATE/UPDATE/SEND/DELETE) never fabricates an Action Plan the
     user did not ask for -- it falls back to answer_only rather than
     guessing."""
-    runtime = _planning_mode_runtime(tmp_path)
-    intent = _clear_intent()
-    intent["requested_effect_hints"] = []
-    assert runtime._planning_mode_from_request_intent(intent) == "answer_only"
-    runtime.close()
+    from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
+        planning_answer_path_selected,
+    )
+
+    assert planning_answer_path_selected(
+        {
+            "tool_route_plan": {"output_plan": {"output_mode": "ACTION"}},
+            "work_analysis_result": {"action_necessity": "NOT_REQUIRED"},
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -318,7 +327,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
 
         analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
         assert analysis["__target__"] == "planning"
-        assert analysis["analysis_result"]["findings"][0]["finding_id"] == "finding-1"
+        assert analysis["work_analysis_result"]["work_facts"]
 
         planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
         assert planned["__target__"] == "response_synthesis"
@@ -329,7 +338,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
             if getattr(call["prompt_ref"], "prompt_id", None) == "planning.compose_answer"
         )
         assert isinstance(planning_input, dict)
-        assert planning_input["work_analysis"]["findings"][0]["finding_id"] == "finding-1"
+        assert planning_input["work_analysis"] == analysis["work_analysis_result"]
     finally:
         runtime.close()
 
@@ -359,7 +368,9 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
 
     try:
         result = start_with_admission(runtime, database_path, _start_request())
-        assert result.payload["user_interrupt"]["origin_target"] == "analysis.validate_relations"
+        assert (
+            result.payload["user_interrupt"]["origin_target"] == "analysis.assess_information_gaps"
+        )
         snapshot = runtime._graph.get_state(  # noqa: SLF001
             runtime._config_for_thread("thread-1"),  # noqa: SLF001
             subgraphs=True,

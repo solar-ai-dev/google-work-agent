@@ -34,7 +34,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     _frozen_output_routes,
     _frozen_read_tool_ids,
     _real_llm_results,
-    planning_mode_from_request_intent,
+    planning_answer_path_selected,
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning.runtime_active_graph import (
     RuntimeActivePlanningSubgraph,
@@ -50,14 +50,12 @@ from google_work_agent.application.orchestration.contracts import (
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
-    AnswerDraftV1,
     EvidenceDraftV1,
     ReviewIssueV1,
+    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.optional_agent_inputs import (
-    CanonicalOptionalInputPlanningAgent,
     assemble_plan_with_optional_analysis,
-    validate_answer_with_optional_analysis,
     validate_plan_with_optional_analysis,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
@@ -77,20 +75,36 @@ class CanonicalOptionalWorkAnalysisSubgraph(WorkAnalysisSubgraph):
 
 
 class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
-    """Planning that accepts Canonical optional Retrieval/Work Analysis inputs."""
+    """Temporary #118 ACTION-only delegate with optional upstream inputs."""
 
     def _init_node(self, state: PlanningLocalState) -> PlanningLocalState:
+        if state.get("analysis_result") is None and isinstance(
+            state.get("work_analysis_result"), dict
+        ):
+            compatibility = _temporary_action_analysis_projection(
+                cast(dict[str, object], state["work_analysis_result"]),
+                self._evidence_drafts(state),
+            )
+            prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
+            prompt_context["temporary_action_analysis_projection"] = compatibility
+            state = cast(
+                PlanningLocalState,
+                {
+                    **state,
+                    "analysis_result": compatibility,
+                    "prompt_context": prompt_context,
+                },
+            )
         invocation_id = self._id_factory()
         review = state.get("plan_review")
         request_intent = _require_state_value(state["request_intent"], "request_intent")
-        tool_route_plan = state.get("tool_route_plan")
-        mode = planning_mode_from_request_intent(request_intent, tool_route_plan)
+        if planning_answer_path_selected(cast(dict[str, object], state)):
+            raise ValueError("ANSWER Planning must use the canonical two-node runtime")
+        mode = "draft_plan"
         if review is not None and review.get("status") == "REVISE":
-            mode = "revise_answer" if state.get("answer_draft") is not None else "revise_plan"
+            mode = "revise_plan"
         prompt_ref = {
-            "answer_only": self._agent.answer_only_prompt_ref,
             "draft_plan": self._argument_orchestrator.prompt_ref,
-            "revise_answer": self._agent.revise_answer_prompt_ref,
             "revise_plan": self._argument_orchestrator.revise_prompt_ref,
         }[mode]
         local_state = build_agent_local_state(
@@ -140,11 +154,8 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
         *,
         mode: str,
         confirmation_response: ConfirmationResponseProjectionV1 | None,
-    ) -> tuple[AnswerDraftV1 | ActionPlanDraftV1, list[StructuredLLMResult]]:
+    ) -> tuple[ActionPlanDraftV1, list[StructuredLLMResult]]:
         analysis_result = state.get("analysis_result")
-        if not isinstance(self._agent, CanonicalOptionalInputPlanningAgent):
-            raise TypeError("optional Planning requires canonical optional-input agent")
-
         request = request_from_state(state)
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         evidence_drafts = self._evidence_drafts(state)
@@ -154,29 +165,6 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
         if review_state is not None:
             review_issues = [cast(ReviewIssueV1, dict(issue)) for issue in review_state["issues"]]
             review_summary = review_state.get("summary")
-
-        if mode == "answer_only":
-            ensure_llm_call_budget(state)
-            llm_result = self._agent.invoke_answer_with_optional_analysis(
-                request_intent=request_intent,
-                evidence_drafts=evidence_drafts,
-                analysis_result=analysis_result,
-                request=request,
-                confirmation_response=confirmation_response,
-            )
-            result: AnswerDraftV1 | ActionPlanDraftV1 = (
-                self._agent.build_answer_with_optional_analysis(
-                    llm_result,
-                    analysis_result=analysis_result,
-                    evidence_drafts=evidence_drafts,
-                )
-            )
-            return result, [llm_result]
-
-        if mode == "revise_answer":
-            raise ValueError(
-                "ANSWER_ONLY bypasses Review; optional-input revise_answer is unreachable"
-            )
 
         frozen_routes = _require_state_value(_frozen_output_routes(state), "frozen_output_routes")
         ensure_llm_call_budget(state, provider_calls_requested=len(frozen_routes))
@@ -218,28 +206,20 @@ class CanonicalOptionalPlanningSubgraph(RuntimeActivePlanningSubgraph):
         self,
         state: PlanningLocalState,
         *,
-        result: AnswerDraftV1 | ActionPlanDraftV1,
+        result: ActionPlanDraftV1,
     ) -> PlanningLocalState:
         analysis_result = state.get("analysis_result")
         evidence_drafts = self._evidence_drafts(state)
         local_state = cast(AgentLocalStateV1, state[PLANNING_AGENT_LOCAL_KEY])
         mode = state[PLANNING_MODE_KEY]
-        if "answer" in result:
-            answer_result = validate_answer_with_optional_analysis(
-                result,
-                analysis_result=analysis_result,
-                evidence_drafts=evidence_drafts,
-            )
-            state_update = self._agent.build_answer_state_update(answer_result)
-        else:
-            plan_result = validate_plan_with_optional_analysis(
-                result,
-                analysis_result=analysis_result,
-                evidence_drafts=evidence_drafts,
-                frozen_output_routes=_frozen_output_routes(state),
-                frozen_read_tool_ids=_frozen_read_tool_ids(state),
-            )
-            state_update = self._agent.build_plan_state_update(plan_result)
+        plan_result = validate_plan_with_optional_analysis(
+            result,
+            analysis_result=analysis_result,
+            evidence_drafts=evidence_drafts,
+            frozen_output_routes=_frozen_output_routes(state),
+            frozen_read_tool_ids=_frozen_read_tool_ids(state),
+        )
+        state_update = self._agent.build_plan_state_update(plan_result)
 
         decision = route_supervisor(
             phase=WorkflowPhase.SOLUTION_PLANNING,
@@ -283,3 +263,58 @@ __all__ = [
     "CanonicalOptionalPlanningSubgraph",
     "CanonicalOptionalWorkAnalysisSubgraph",
 ]
+
+
+def _temporary_action_analysis_projection(
+    result: dict[str, object], evidence: list[EvidenceDraftV1]
+) -> WorkAnalysisResultV1:
+    """#118-only bridge; ANSWER never consumes this legacy V1 projection."""
+    facts = cast(list[dict[str, object]], result.get("work_facts", []))
+    evidence_refs = cast(list[str], result.get("evidence_refs", []))
+    resources = [
+        {"resource_handle": draft["resource_handle"]}
+        for draft in evidence
+        if draft.get("resource_handle")
+    ]
+    resource_handles = [cast(str, item["resource_handle"]) for item in resources]
+    segments = [
+        {
+            "segment_id": draft["segment_id"],
+            "resource_handle": draft["resource_handle"],
+        }
+        for draft in evidence
+        if draft.get("segment_id") and draft.get("resource_handle")
+    ]
+    ambiguities = cast(list[dict[str, object]], result.get("ambiguities", []))
+    return cast(
+        WorkAnalysisResultV1,
+        {
+            "schema_version": 1,
+            "status": "COMPLETE",
+            "summary": str(result.get("action_necessity_reason") or "Work analysis complete."),
+            "findings": [
+                {
+                    "schema_version": 1,
+                    "finding_id": fact.get("fact_id", f"fact-{index}"),
+                    "kind": "RELATIONSHIP",
+                    "statement": str(fact.get("value", fact.get("subject", "fact"))),
+                    "evidence_refs": list(cast(list[str], fact.get("evidence_refs", []))),
+                    "resource_refs": list(resource_handles),
+                    "segment_refs": [],
+                    "related_resource_handles": list(resource_handles),
+                    "reason_codes": ["EVIDENCE_SUPPORTED"],
+                }
+                for index, fact in enumerate(facts, start=1)
+            ],
+            "missing_information": [
+                str(item.get("description"))
+                for item in ambiguities
+                if item.get("requires_confirmation") and item.get("description")
+            ],
+            "confirmation": None,
+            "blockers": [],
+            "evidence_refs": list(evidence_refs),
+            "resource_refs": resources,
+            "segment_refs": segments,
+        },
+    )

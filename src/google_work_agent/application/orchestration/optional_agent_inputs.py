@@ -23,10 +23,8 @@ import google_work_agent.application.orchestration.work_analysis_result_v1_valid
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
 )
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
-    AnswerDraftV1,
     EvidenceDraftV1,
     RequestIntentV2,
     WorkAnalysisResultV1,
@@ -35,71 +33,9 @@ from google_work_agent.application.orchestration.planning_plan_assembler import 
     assemble_action_plan_draft_v2,
     materialize_action_seeds,
 )
-from google_work_agent.application.orchestration.solution_planning import (
-    ANSWER_DRAFT_OUTPUT_SCHEMA,
-    SolutionPlanningAgent,
-)
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
-from google_work_agent.ports.llm import StructuredLLMResult
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
-from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
-
-
-class CanonicalOptionalInputPlanningAgent(SolutionPlanningAgent):
-    """Planning answer entry point with optional Work Analysis."""
-
-    def invoke_answer_with_optional_analysis(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        evidence_drafts: list[EvidenceDraftV1],
-        analysis_result: WorkAnalysisResultV1 | None,
-        request: WorkflowStartRequest,
-        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
-    ) -> StructuredLLMResult:
-        prompt_input: dict[str, object] = {
-            "user_request": request.request_text,
-            "request_intent": request_intent,
-            "work_analysis": analysis_result,
-            "evidence": planning_evidence_projection(evidence_drafts),
-        }
-        if confirmation_response is not None:
-            prompt_input["confirmation_response"] = dict(confirmation_response)
-        return self._llm_runtime.invoke_structured(
-            prompt_ref=self.answer_only_prompt_ref,
-            prompt_input=prompt_input,
-            output_schema=ANSWER_DRAFT_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:planning.answer_only",
-            ),
-            semantic_validate=lambda candidate: validate_answer_with_optional_analysis(
-                candidate,
-                analysis_result=analysis_result,
-                evidence_drafts=evidence_drafts,
-            ),
-        )
-
-    @staticmethod
-    def build_answer_with_optional_analysis(
-        llm_result: StructuredLLMResult,
-        *,
-        analysis_result: WorkAnalysisResultV1 | None,
-        evidence_drafts: list[EvidenceDraftV1],
-    ) -> AnswerDraftV1:
-        result = validate_answer_with_optional_analysis(
-            llm_result.structured_output,
-            analysis_result=analysis_result,
-            evidence_drafts=evidence_drafts,
-        )
-        result["llm_provider_result"] = _planning._provider_summary(llm_result)
-        return result
 
 
 def validate_work_analysis_without_retrieval(value: object) -> WorkAnalysisResultV1:
@@ -113,71 +49,6 @@ def validate_work_analysis_without_retrieval(value: object) -> WorkAnalysisResul
             "segment_ids": set(),
         },
     )
-
-
-def validate_answer_with_optional_analysis(
-    value: object,
-    *,
-    analysis_result: WorkAnalysisResultV1 | None,
-    evidence_drafts: list[EvidenceDraftV1],
-) -> AnswerDraftV1:
-    """Validate an answer against supplied evidence plus optional analysis refs."""
-
-    root = _planning._require_mapping(value, "$")
-    _planning._require_allowed_keys(
-        root,
-        "$",
-        required={
-            "schema_version",
-            "status",
-            "answer",
-            "evidence_refs",
-            "resource_refs",
-            "reason_codes",
-            "confirmation",
-            "blockers",
-        },
-        optional={"llm_provider_result"},
-    )
-    _planning._require_schema_version(root, "$", _planning.ANSWER_DRAFT_SCHEMA_VERSION)
-
-    evidence_ids = {draft["evidence_id"] for draft in evidence_drafts}
-    resource_handles = {
-        draft["resource_handle"]
-        for draft in evidence_drafts
-        if isinstance(draft.get("resource_handle"), str) and draft["resource_handle"]
-    }
-    if analysis_result is not None:
-        evidence_ids.update(analysis_result["evidence_refs"])
-        resource_handles.update(
-            str(ref["resource_handle"])
-            for ref in analysis_result["resource_refs"]
-            if isinstance(ref.get("resource_handle"), str)
-        )
-    refs: _planning._ReferenceSpace = {
-        "evidence_ids": evidence_ids,
-        "resource_handles": resource_handles,
-    }
-
-    status = _planning._require_string(root, "status", "$")
-    if status not in _planning._ANSWER_RESULT_VALUES:
-        raise _planning.SolutionPlanningValidationError("$.status is invalid")
-    result: AnswerDraftV1 = {
-        "schema_version": _planning.ANSWER_DRAFT_SCHEMA_VERSION,
-        "status": cast(_planning.AnswerDraftStatusValue, status),
-        "answer": _planning._require_string(root, "answer", "$"),
-        "evidence_refs": _planning._validated_evidence_refs(root["evidence_refs"], refs),
-        "resource_refs": _planning._validated_resource_ref_objects(root["resource_refs"], refs),
-        "reason_codes": _planning._require_string_list(root["reason_codes"], "$.reason_codes"),
-        "confirmation": _planning._nullable_mapping(root["confirmation"], "$.confirmation"),
-        "blockers": _planning._require_string_list(root["blockers"], "$.blockers"),
-    }
-    if "llm_provider_result" in root:
-        result["llm_provider_result"] = _planning._require_mapping(
-            root["llm_provider_result"], "$.llm_provider_result"
-        )
-    _planning._validate_answer_draft_invariant(result)
-    return result
 
 
 def assemble_plan_with_optional_analysis(
@@ -356,30 +227,6 @@ def validate_plan_with_optional_analysis(
     return value
 
 
-def planning_evidence_projection(
-    evidence_drafts: list[EvidenceDraftV1],
-) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    for draft in evidence_drafts:
-        role = next(
-            (
-                code
-                for code in draft["reason_codes"]
-                if code in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
-            ),
-            "CONTEXT",
-        )
-        result.append(
-            {
-                "evidence_ref": draft["evidence_id"],
-                "excerpt": draft["excerpt"],
-                "role": role,
-                "resource_ref": draft["resource_handle"],
-            }
-        )
-    return result
-
-
 def _planning_plan_with_analysis(**kwargs: object) -> ActionPlanDraftV1:
     from google_work_agent.application.orchestration.planning_plan_assembler import (
         assemble_action_plan_draft_v1_compat,
@@ -401,10 +248,7 @@ def _stable_unique(values: Iterable[object]) -> list[str]:
 
 
 __all__ = [
-    "CanonicalOptionalInputPlanningAgent",
     "assemble_plan_with_optional_analysis",
-    "planning_evidence_projection",
-    "validate_answer_with_optional_analysis",
     "validate_plan_with_optional_analysis",
     "validate_work_analysis_without_retrieval",
 ]

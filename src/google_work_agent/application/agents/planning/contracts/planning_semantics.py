@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, Protocol, TypedDict
+from typing import Literal, Protocol, Required, TypedDict
 
 
 class AnswerOutlineV1(TypedDict):
@@ -11,7 +11,15 @@ class AnswerOutlineV1(TypedDict):
     evidence_refs: list[str]
 
 
+class PlanningAnswerConfirmationV1(TypedDict):
+    disposition: Required[Literal["NEEDS_CONFIRMATION"]]
+    question: str
+    options: list[str]
+    reason_codes: list[str]
+
+
 class AnswerDraftCandidateV2(TypedDict):
+    schema_version: Required[Literal[2]]
     answer: str
     evidence_refs: list[str]
 

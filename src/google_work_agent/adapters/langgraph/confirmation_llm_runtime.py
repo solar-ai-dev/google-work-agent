@@ -33,7 +33,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "retrieval.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
     "analysis.assess_information_gaps": frozenset({"work_analysis.assess_information_gaps"}),
     "analysis.assess_operational_risks": frozenset({"work_analysis.assess_operational_risks"}),
-    "planning.answer_only": frozenset({"planning.compose_answer"}),
+    "planning.outline_answer": frozenset({"planning.outline_answer", "planning.compose_answer"}),
     "planning.draft_plan": frozenset({"planning.compose_arguments"}),
     "review.inspect": frozenset({"review.inspect"}),
 }

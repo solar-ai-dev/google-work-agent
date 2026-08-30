@@ -2,29 +2,29 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
-from google_work_agent.adapters.langgraph.subgraphs.planning.projections.planning_projection import (
-    project_planning_input,
+from google_work_agent.adapters.langgraph.subgraphs.planning.projections import (
+    outline_answer_projection,
+)
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    PlanningSemanticInvoker,
 )
 from google_work_agent.application.agents.planning.outline_answer import outline_answer
 
 
-def outline_answer_node(state: Mapping[str, object]) -> dict[str, object]:
-    projected = project_planning_input(state)
-    request_intent = projected.get("request_intent")
-    evidence = projected.get("evidence", ())
-    work_analysis = projected.get("work_analysis_result")
-    if not isinstance(request_intent, Mapping):
-        raise ValueError("request_intent is required")
-    if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
-        raise ValueError("evidence must be a sequence")
-    if work_analysis is not None and not isinstance(work_analysis, Mapping):
-        raise ValueError("work_analysis_result must be an object")
-    return {
-        "answer_outline": outline_answer(
-            request_intent=request_intent,
-            work_analysis=work_analysis,
-            evidence=evidence,  # type: ignore[arg-type]
-        )
-    }
+def outline_answer_node(
+    state: Mapping[str, object], *, invoke: PlanningSemanticInvoker
+) -> dict[str, object]:
+    projected = outline_answer_projection.project_outline_answer_input(state)
+    result = outline_answer(
+        user_request=projected["user_request"],  # type: ignore[arg-type]
+        request_intent=projected["request_intent"],  # type: ignore[arg-type]
+        work_analysis=projected.get("work_analysis"),  # type: ignore[arg-type]
+        evidence=projected["evidence"],  # type: ignore[arg-type]
+        invoke=invoke,
+        confirmation_response=projected.get("confirmation_response"),  # type: ignore[arg-type]
+    )
+    if result.get("disposition") == "NEEDS_CONFIRMATION":
+        return {"planning_confirmation": result}
+    return {"answer_outline": result}

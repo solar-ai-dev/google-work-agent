@@ -124,6 +124,7 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "work_analysis.detect_duplicate_conflict_candidates",
     "work_analysis.assess_information_gaps",
     "work_analysis.assess_operational_risks",
+    "planning.outline_answer",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
@@ -505,6 +506,55 @@ class _QueuedLLMRuntime:
         )
         if atomic_analysis is not None:
             return atomic_analysis
+        if getattr(prompt_ref, "prompt_id", None) == "planning.outline_answer":
+            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            if self._queued and isinstance(self._queued[0].structured_output, Mapping):
+                pending = cast(Mapping[str, object], self._queued[0].structured_output)
+                if pending.get("status") == "NEEDS_CONFIRMATION":
+                    self._queued.popleft()
+                    confirmation = cast(Mapping[str, object], pending.get("confirmation", {}))
+                    reason = confirmation.get("reason_code", "PLANNING_NEEDS_CONFIRMATION")
+                    return _llm_result(
+                        {
+                            "disposition": "NEEDS_CONFIRMATION",
+                            "question": confirmation.get("question", "Please clarify the answer."),
+                            "options": [],
+                            "reason_codes": [reason],
+                        }
+                    )
+            request_intent = cast(Mapping[str, object], prompt_input["request_intent"])
+            evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
+            refs = [
+                cast(str, item.get("evidence_id", item.get("evidence_ref")))
+                for item in evidence
+                if isinstance(item.get("evidence_id", item.get("evidence_ref")), str)
+            ]
+            return _llm_result(
+                {
+                    "sections": [str(request_intent.get("goal", "direct answer"))],
+                    "evidence_refs": refs,
+                }
+            )
+        if getattr(prompt_ref, "prompt_id", None) == "planning.compose_answer":
+            output_schema = kwargs.get("output_schema")
+            if getattr(output_schema, "schema_version", None) == "planning-answer-draft-v2":
+                if not self._queued:
+                    raise RuntimeError("no queued Planning answer result")
+                payload = self._queued.popleft().structured_output
+                if not isinstance(payload, Mapping):
+                    raise RuntimeError("Planning answer fixture must be an object")
+                return _replace_result_aliases(
+                    _llm_result(
+                        {
+                            "schema_version": 2,
+                            "answer": payload.get("answer", ""),
+                            "evidence_refs": list(
+                                cast(list[str], payload.get("evidence_refs", []))
+                            ),
+                        }
+                    ),
+                    self._segment_id_aliases,
+                )
         if getattr(prompt_ref, "prompt_id", None) == "planning.compose_arguments":
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
             output_route = cast(Mapping[str, object], prompt_input["output_route"])
@@ -1475,6 +1525,7 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "work_analysis.detect_duplicate_conflict_candidates",
     "work_analysis.assess_information_gaps",
     "work_analysis.assess_operational_risks",
+    "planning.outline_answer",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",

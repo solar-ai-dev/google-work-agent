@@ -172,7 +172,7 @@ class RuntimeActiveReviewSubgraph:
             llm_result = self._agent.invoke_recheck_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 evidence_drafts=evidence_drafts,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                analysis_result=self._action_analysis_result(state),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
@@ -180,7 +180,7 @@ class RuntimeActiveReviewSubgraph:
             )
             result = self._agent.build_output_from_llm_result(
                 llm_result,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                analysis_result=self._action_analysis_result(state),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 allowed_statuses=frozenset({ReviewResult.PASS.value, ReviewResult.BLOCK.value}),
@@ -189,7 +189,7 @@ class RuntimeActiveReviewSubgraph:
             llm_result = self._agent.invoke_inspect_llm_from_evidence(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 evidence_drafts=evidence_drafts,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                analysis_result=self._action_analysis_result(state),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
                 request=request,
@@ -198,11 +198,23 @@ class RuntimeActiveReviewSubgraph:
             )
             result = self._agent.build_output_from_llm_result(
                 llm_result,
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+                analysis_result=self._action_analysis_result(state),
                 answer_draft=state["answer_draft"],
                 plan_draft=state["plan_draft"],
             )
         return result, llm_result
+
+    @staticmethod
+    def _action_analysis_result(state: ReviewLocalState) -> Any:
+        value = state.get("analysis_result")
+        if value is None:
+            context = state.get("prompt_context")
+            value = (
+                context.get("temporary_action_analysis_projection")
+                if isinstance(context, Mapping)
+                else None
+            )
+        return _require_state_value(value, "analysis_result")
 
     def _review_node(self, state: ReviewLocalState) -> ReviewLocalState:
         request = request_from_state(state)

@@ -31,15 +31,16 @@ from google_work_agent.adapters.langgraph.optional_input_subgraphs import (
     CanonicalOptionalWorkAnalysisSubgraph,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
+    PlanningSubgraph,
+    build_production_planning_runtime,
+)
 from google_work_agent.application.orchestration.contracts import (
     FinalizeIntent,
     GraphStateUpdateV1,
     PlanningResult,
     WorkflowPhase,
     validate_finalize_intent_v1,
-)
-from google_work_agent.application.orchestration.optional_agent_inputs import (
-    CanonicalOptionalInputPlanningAgent,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -198,10 +199,15 @@ def _analysis_requirement(state: GraphState) -> str:
 def response_synthesis_state(state: GraphState) -> GraphState:
     """Validate one answer and route it to the durable Finalize boundary."""
 
-    raw_answer = state.get("answer_draft")
-    if not isinstance(raw_answer, Mapping):
+    raw_answer_value: object = state.get("answer_draft")
+    if not isinstance(raw_answer_value, Mapping):
         return _response_contract_violation(state, "ANSWER_DRAFT_MISSING")
-    if raw_answer.get("status") != PlanningResult.ANSWER_ONLY.value:
+    raw_answer = cast(Mapping[str, object], raw_answer_value)
+    is_v1_answer = raw_answer.get("status") == PlanningResult.ANSWER_ONLY.value
+    is_v2_answer = raw_answer.get("schema_version") == 2 and isinstance(
+        raw_answer.get("meta"), Mapping
+    )
+    if not (is_v1_answer or is_v2_answer):
         return _response_contract_violation(state, "ANSWER_DRAFT_STATUS_INVALID")
     answer = raw_answer.get("answer")
     if not isinstance(answer, str) or not answer.strip():
@@ -244,11 +250,6 @@ class ResponseSynthesisMixin:
         if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
             return
 
-        optional_planning_agent = CanonicalOptionalInputPlanningAgent(
-            llm_runtime=self._confirmation_llm_runtime,
-            manifest_path=manifest_path,
-        )
-        self._planning = optional_planning_agent
         self._analysis_subgraph = CanonicalOptionalWorkAnalysisSubgraph(
             llm_runtime=self._confirmation_llm_runtime,
             prompt_manifest_path=manifest_path,
@@ -259,8 +260,8 @@ class ResponseSynthesisMixin:
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_work_analysis_inline,
         ).build()
-        self._planning_subgraph = CanonicalOptionalPlanningSubgraph(
-            agent=optional_planning_agent,
+        action_delegate = CanonicalOptionalPlanningSubgraph(
+            agent=self._planning,
             id_factory=self._id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
@@ -268,6 +269,19 @@ class ResponseSynthesisMixin:
             confirm_inline=self._confirm_planning_inline,
             argument_orchestrator=self._planning_argument_orchestrator,
         ).build()
+        answer_subgraph = PlanningSubgraph(
+            llm_runtime=self._confirmation_llm_runtime,
+            prompt_manifest_path=manifest_path,
+            id_factory=self._id_factory,
+            graph_profile=self._graph_profile,
+            merge_decision=self._merge_decision,
+            evidence_store=self._evidence_store,
+            confirm_inline=self._confirm_planning_inline,
+        ).build()
+        self._planning_subgraph = build_production_planning_runtime(
+            answer=answer_subgraph,
+            action_delegate=action_delegate,
+        )
         self._rebuild_six_role_graph_with_optional_subgraphs()
 
     def _rebuild_six_role_graph_with_optional_subgraphs(self) -> None:

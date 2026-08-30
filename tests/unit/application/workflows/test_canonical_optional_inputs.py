@@ -1,18 +1,9 @@
-"""Regression coverage for canonical_optional_inputs import wiring.
+"""Negative proof for retired broad Planning ANSWER helpers."""
 
-``ConfirmationResponseProjectionV1`` is defined in ``application.orchestration.contracts``,
-not ``application.orchestration.handoff_contracts``. Importing it from the wrong
-module breaks ``adapters.langgraph`` package import entirely (this module is
-pulled in transitively by ``canonical_optional_subgraphs`` /
-``canonical_response_runtime``).
-"""
-
-import google_work_agent.application.orchestration.optional_agent_inputs as canonical_optional_inputs
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
+import google_work_agent.application.orchestration.optional_agent_inputs as optional_inputs
 
 
-def test_confirmation_response_projection_v1_is_imported_from_contracts() -> None:
-    assert (
-        canonical_optional_inputs.ConfirmationResponseProjectionV1
-        is ConfirmationResponseProjectionV1
-    )
+def test_broad_optional_input_answer_authority_is_absent() -> None:
+    assert not hasattr(optional_inputs, "CanonicalOptionalInputPlanningAgent")
+    assert not hasattr(optional_inputs, "validate_answer_with_optional_analysis")
+    assert not hasattr(optional_inputs, "planning_evidence_projection")

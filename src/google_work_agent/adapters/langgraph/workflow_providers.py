@@ -12,9 +12,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from google_work_agent.application.orchestration.assemble_planning_answer import (
-    ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA,
-)
 from google_work_agent.application.orchestration.handoff_contracts import (
     EvidenceDraftV1,
     RequestIntentV2,
@@ -31,50 +28,6 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
-
-
-class ProductionPlanningAnswerV2CandidateProvider:
-    """ANSWER semantic producer; AnswerDraftV2 ownership remains deterministic."""
-
-    def __init__(
-        self,
-        *,
-        llm_runtime: StructuredLLMRuntime,
-        prompt_ref: PromptReference | None = None,
-        manifest_path: Path | None = None,
-    ) -> None:
-        self._llm_runtime = llm_runtime
-        self._prompt_ref = prompt_ref or load_prompt_reference(
-            "planning.compose_answer", manifest_path
-        )
-
-    def draft_answer(
-        self,
-        *,
-        request: WorkflowStartRequest,
-        request_intent: RequestIntentV2,
-        work_analysis_result: WorkAnalysisResultV2,
-        evidence_drafts: Sequence[EvidenceDraftV1],
-    ) -> object:
-        result = self._llm_runtime.invoke_structured(
-            prompt_ref=self._prompt_ref,
-            prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "work_analysis": work_analysis_result,
-                "evidence": [dict(item) for item in evidence_drafts],
-            },
-            output_schema=ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:planning.compose_answer.v2",
-            ),
-        )
-        return result.structured_output
 
 
 class ProductionReviewV2CandidateProvider:
@@ -123,6 +76,5 @@ class ProductionReviewV2CandidateProvider:
 
 
 __all__ = [
-    "ProductionPlanningAnswerV2CandidateProvider",
     "ProductionReviewV2CandidateProvider",
 ]

@@ -70,6 +70,9 @@ class ParentGraphState(MultiAgentGraphState):
     context_bundle: NotRequired[ContextBundleV1]
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
+    # Temporary #118 ACTION-delegate projection. Canonical ANSWER never
+    # reads or writes this V1 compatibility channel.
+    analysis_result: NotRequired[WorkAnalysisResultV1 | None]
 
 
 class ProductionGraphStateV2(ParentGraphState, total=False):

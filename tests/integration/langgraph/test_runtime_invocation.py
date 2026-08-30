@@ -75,7 +75,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
-from google_work_agent.ports.llm import LLMInvocationError
 
 
 def test_langgraph_runtime_completes_answer_only_run(
@@ -238,7 +237,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
     assert resumed is not None
     result = cast(Any, resumed)
     assert result.outcome is WorkflowOutcome.COMPLETED
-    assert len(resumed_llm_runtime.calls) == 11
+    assert len(resumed_llm_runtime.calls) == 14
 
     # The same-owner checkpoint reruns exactly the two independent Request
     # Understanding responsibilities before continuing downstream.
@@ -414,7 +413,7 @@ def _materialize_resume_target(runtime: LangGraphWorkflowRuntime, admission: obj
     return materialized
 
 
-def test_langgraph_runtime_fails_closed_when_consecutive_confirmation_exhausts_normal_budget(
+def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_budget(
     tmp_path: Path,
 ) -> None:
     """I1 follow-up: a resolved-but-still-ambiguous confirmation answer must
@@ -527,24 +526,25 @@ def test_langgraph_runtime_fails_closed_when_consecutive_confirmation_exhausts_n
         default_tasklist_id="task-list-default",
         id_prefix="round3",
     )
-    # The two prior Request Understanding rounds consumed four calls. The
-    # resolved round reaches all four exact Work Analysis prompts at the
-    # NORMAL=14 ceiling, then Planning must fail closed instead of exceeding
-    # the profile budget.
-    with pytest.raises(LLMInvocationError, match="PROFILE_LLM_LIMIT_EXHAUSTED"):
-        _resume_through_application(
-            runtime=round3_runtime,
-            database_path=database_path,
-            resume_payload={
-                "schema_version": 1,
-                "interrupt_id": round2_interrupt_id,
-                "response_kind": "FREE_TEXT",
-                "selected_option": None,
-                "free_text": "round-2 answer, resolves it.",
-            },
-            resume_kind="CONFIRMATION",
-            command_id="command-3",
-        )
+    # Confirmation resume selects the monotonic REVISION_HEAVY profile, so
+    # the exact six Work Analysis plus two Planning responsibilities fit
+    # without resetting any already-consumed calls.
+    application_result, resolved = _resume_through_application(
+        runtime=round3_runtime,
+        database_path=database_path,
+        resume_payload={
+            "schema_version": 1,
+            "interrupt_id": round2_interrupt_id,
+            "response_kind": "FREE_TEXT",
+            "selected_option": None,
+            "free_text": "round-2 answer, resolves it.",
+        },
+        resume_kind="CONFIRMATION",
+        command_id="command-3",
+    )
+    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert resolved is not None
+    assert resolved.outcome is WorkflowOutcome.COMPLETED
     assert (
         len(
             [
@@ -553,7 +553,7 @@ def test_langgraph_runtime_fails_closed_when_consecutive_confirmation_exhausts_n
                 if getattr(call["prompt_ref"], "prompt_id", "").startswith("work_analysis.")
             ]
         )
-        == 4
+        == 6
     )
 
     round2_reclassify_input = cast(dict[str, object], round3_llm_runtime.calls[0]["prompt_input"])
@@ -567,7 +567,7 @@ def test_langgraph_runtime_fails_closed_when_consecutive_confirmation_exhausts_n
         run_row = connection.execute(
             "SELECT status, langgraph_thread_id FROM runs WHERE id = 'run-1';"
         ).fetchone()
-        assert run_row[0] == "PLANNING"
+        assert run_row[0] == "COMPLETED"
         assert run_row[1] == "thread-1"
     finally:
         connection.close()

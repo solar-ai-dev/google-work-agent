@@ -17,6 +17,14 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
         calls.append(prompt_id)
+        if prompt_id == "planning.outline_answer":
+            assert set(prompt_input) == {
+                "user_request",
+                "request_intent",
+                "work_analysis",
+                "evidence",
+            }
+            return {"sections": ["summary"], "evidence_refs": ["e1"]}
         assert set(prompt_input) == {
             "user_request",
             "request_intent",
@@ -24,7 +32,7 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
             "work_analysis",
             "evidence",
         }
-        return {"answer": "done", "evidence_refs": ["e1"]}
+        return {"schema_version": 2, "answer": "done", "evidence_refs": ["e1"]}
 
     graph = PlanningSubgraph(dependencies=PlanningRuntimeDependencies(invoke=invoke)).build()
     result = graph.invoke(
@@ -38,29 +46,15 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
     )
     assert result["planning_disposition"] == "ANSWER"
     assert result["answer_outline"] == {"sections": ["summary"], "evidence_refs": ["e1"]}
-    assert result["answer_draft"] == {"answer": "done", "evidence_refs": ["e1"]}
-    assert calls == ["planning.compose_answer"]
+    assert result["answer_draft"] == {
+        "schema_version": 2,
+        "answer": "done",
+        "evidence_refs": ["e1"],
+    }
+    assert calls == ["planning.outline_answer", "planning.compose_answer"]
 
 
-def test_compiled_planning_action_executes_all_canonical_action_stages() -> None:
-    calls: list[str] = []
-
-    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
-        calls.append(prompt_id)
-        route = prompt_input["output_route"]
-        assert isinstance(route, Mapping)
-        route_id = route["route_id"]
-        if prompt_id == "planning.draft_action_objective_per_output_route":
-            return {"route_id": route_id, "objective": "update task", "evidence_refs": ["e1"]}
-        if prompt_id == "planning.compose_arguments_per_output_route":
-            return {
-                "schema_version": 1,
-                "route_id": route_id,
-                "arguments": {"task_list_id": "l1", "task_id": "t1", "title": "updated"},
-                "evidence_refs": ["e1"],
-            }
-        raise AssertionError(prompt_id)
-
+def test_compiled_planning_answer_graph_rejects_action_owned_by_successor() -> None:
     route = {
         "route_id": "r1",
         "resource_type": "TASK",
@@ -69,29 +63,21 @@ def test_compiled_planning_action_executes_all_canonical_action_stages() -> None
         "selected_tool_id": "tasks_update_task",
         "reason_codes": ["USER_REQUEST"],
     }
-    graph = PlanningSubgraph(dependencies=PlanningRuntimeDependencies(invoke=invoke)).build()
-    result = graph.invoke(
-        {
-            "user_request": "Update the task",
-            "request_intent": {"goal": "update task"},
-            "tool_route_plan": {"output_plan": {"output_mode": "ACTION", "output_routes": [route]}},
-            "work_analysis": {},
-            "evidence": [{"evidence_ref": "e1"}],
-            "action_ids_by_route": {"r1": "a1"},
-            "plan_artifact_id": "p1",
-            "plan_revision": 1,
-            "plan_based_on": [],
-        }
-    )
-    assert result["planning_disposition"] == "ACTION"
-    assert result["dependencies"] == ()
-    assert result["action_seeds"][0]["action_id"] == "a1"
-    assert result["validated_plan"]["actions"][0]["tool_id"] == "tasks_update_task"
-    assert result["validated_plan"]["actions"][0]["depends_on_action_ids"] == []
-    assert calls == [
-        "planning.draft_action_objective_per_output_route",
-        "planning.compose_arguments_per_output_route",
-    ]
+    graph = PlanningSubgraph(
+        dependencies=PlanningRuntimeDependencies(invoke=lambda _prompt_id, _prompt_input: {})
+    ).build()
+    import pytest
+
+    with pytest.raises(ValueError, match="#118"):
+        graph.invoke(
+            {
+                "user_request": "Update the task",
+                "request_intent": {"goal": "update task"},
+                "tool_route_plan": {
+                    "output_plan": {"output_mode": "ACTION", "output_routes": [route]}
+                },
+            }
+        )
 
 
 def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_recheck() -> None:
@@ -197,9 +183,7 @@ def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
     ]
 
 
-def test_compiled_review_recheck_uses_public_revision_context_and_refreshes_only_affected_dimensions() -> (
-    None
-):
+def test_compiled_review_recheck_refreshes_only_affected_dimensions() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:

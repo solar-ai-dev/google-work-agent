@@ -1,4 +1,4 @@
-"""Build the bounded answer outline consumed by compose_answer."""
+"""Build the bounded answer outline through its canonical Product Prompt."""
 
 from __future__ import annotations
 
@@ -6,26 +6,113 @@ from collections.abc import Mapping, Sequence
 
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     AnswerOutlineV1,
+    PlanningAnswerConfirmationV1,
+    PlanningSemanticInvoker,
+)
+from google_work_agent.ports.llm import OutputSchemaDefinition
+
+PROMPT_ID = "planning.outline_answer"
+
+ANSWER_OUTLINE_OUTPUT_SCHEMA = OutputSchemaDefinition(
+    schema_version="planning-answer-outline-v1",
+    json_schema={
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["sections", "evidence_refs"],
+                "properties": {
+                    "sections": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "evidence_refs": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["disposition", "question", "options", "reason_codes"],
+                "properties": {
+                    "disposition": {"const": "NEEDS_CONFIRMATION"},
+                    "question": {"type": "string", "minLength": 1},
+                    "options": {"type": "array", "items": {"type": "string"}},
+                    "reason_codes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        ]
+    },
 )
 
 
 def outline_answer(
     *,
+    user_request: str,
     request_intent: Mapping[str, object],
     work_analysis: Mapping[str, object] | None,
     evidence: Sequence[Mapping[str, object]],
-) -> AnswerOutlineV1:
-    """Deterministically expose answer dimensions without inventing facts."""
-    goal = request_intent.get("goal") or request_intent.get("canonical_goal")
-    sections = [str(goal)] if isinstance(goal, str) and goal.strip() else ["direct_answer"]
-    if work_analysis:
-        for key in ("missing_information", "operational_risks"):
-            value = work_analysis.get(key)
-            if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and value:
-                sections.append(key)
-    evidence_refs: list[str] = []
+    invoke: PlanningSemanticInvoker,
+    confirmation_response: Mapping[str, object] | None = None,
+) -> AnswerOutlineV1 | PlanningAnswerConfirmationV1:
+    """Return an evidence-bounded outline without assuming policy or action authority."""
+    if not user_request.strip():
+        raise ValueError("user_request is required")
+    allowed_refs: set[str] = set()
     for item in evidence:
         ref = item.get("evidence_ref") or item.get("evidence_id") or item.get("id")
-        if isinstance(ref, str) and ref and ref not in evidence_refs:
-            evidence_refs.append(ref)
-    return {"sections": sections, "evidence_refs": evidence_refs}
+        if isinstance(ref, str) and ref:
+            allowed_refs.add(ref)
+    prompt_input: dict[str, object] = {
+        "user_request": user_request,
+        "request_intent": dict(request_intent),
+        "evidence": [dict(item) for item in evidence],
+    }
+    if work_analysis is not None:
+        prompt_input["work_analysis"] = dict(work_analysis)
+    if confirmation_response is not None:
+        prompt_input["confirmation_response"] = dict(confirmation_response)
+    candidate = invoke(PROMPT_ID, prompt_input)
+    if candidate.get("disposition") == "NEEDS_CONFIRMATION":
+        question = candidate.get("question")
+        options = candidate.get("options")
+        reason_codes = candidate.get("reason_codes")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("outline_answer confirmation requires question")
+        if not isinstance(options, list) or not all(isinstance(item, str) for item in options):
+            raise ValueError("outline_answer confirmation requires options")
+        if (
+            not isinstance(reason_codes, list)
+            or not reason_codes
+            or not all(isinstance(item, str) and item for item in reason_codes)
+        ):
+            raise ValueError("outline_answer confirmation requires reason_codes")
+        return {
+            "disposition": "NEEDS_CONFIRMATION",
+            "question": question,
+            "options": list(options),
+            "reason_codes": list(reason_codes),
+        }
+    sections = candidate.get("sections")
+    refs = candidate.get("evidence_refs")
+    if (
+        not isinstance(sections, list)
+        or not sections
+        or not all(isinstance(item, str) and item.strip() for item in sections)
+    ):
+        raise ValueError("outline_answer output requires non-empty sections")
+    if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
+        raise ValueError("outline_answer output requires evidence_refs")
+    if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_refs):
+        raise ValueError("outline_answer referenced evidence outside its projection")
+    return {"sections": list(sections), "evidence_refs": list(refs)}
+
+
+__all__ = ["ANSWER_OUTLINE_OUTPUT_SCHEMA", "outline_answer"]

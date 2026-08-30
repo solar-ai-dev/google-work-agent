@@ -14,8 +14,26 @@ def test_planning_graph_has_no_generic_semantic_binding_authority() -> None:
     assert "PlanningNodeBindings" not in source
     assert "operation=bindings." not in source
     assert "PlanningRuntimeDependencies" in source
-    assert "invoke=self._dependencies.invoke" in source
-    assert "route_after_disposition" in source
+    assert "_inactive_invoke" not in source
+    assert "choose_answer_or_action_from_route_node" not in source
+    assert "route_after_outline_answer" in source
+    assert "route_after_compose_answer" in source
+
+
+def test_production_has_no_second_planning_answer_authority() -> None:
+    optional_source = _source(
+        "src/google_work_agent/application/orchestration/optional_agent_inputs.py"
+    )
+    provider_source = _source(
+        "src/google_work_agent/adapters/langgraph/workflow_providers.py"
+    )
+    response_source = _source(
+        "src/google_work_agent/adapters/langgraph/main/response_synthesis.py"
+    )
+    assert "CanonicalOptionalInputPlanningAgent" not in optional_source
+    assert "invoke_answer_with_optional_analysis" not in optional_source
+    assert "ProductionPlanningAnswerV2CandidateProvider" not in provider_source
+    assert "build_production_planning_runtime" in response_source
 
 
 def test_review_graph_has_no_generic_semantic_binding_authority() -> None:
@@ -31,14 +49,8 @@ def test_review_graph_has_no_generic_semantic_binding_authority() -> None:
 def test_nodes_import_canonical_application_operations_directly() -> None:
     expected = {
         "planning": (
-            "choose_answer_or_action_from_route",
             "outline_answer",
             "compose_answer",
-            "draft_action_objective_per_output_route",
-            "compose_arguments_per_output_route",
-            "build_dependencies",
-            "assemble_plan",
-            "validate_plan",
         ),
         "review": (
             "inspect_goal_and_evidence",

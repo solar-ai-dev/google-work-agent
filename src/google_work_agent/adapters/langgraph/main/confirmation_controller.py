@@ -18,10 +18,13 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
+    BudgetProfile,
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
     PolicyConfirmationReceiptV1,
+    promote_budget_profile,
     validate_confirmation_response_projection_v1,
+    validate_run_budget_v1,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorDecisionV1
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
@@ -79,6 +82,11 @@ class ConfirmationControllerMixin:
         next_prompt_context.pop("confirmation_response", None)
         next_prompt_context.pop("confirmation_interrupt", None)
         merged["prompt_context"] = next_prompt_context
+        budget = dict(validate_run_budget_v1(merged["retry_budget"]))
+        budget["profile"] = promote_budget_profile(
+            budget["profile"], BudgetProfile.REVISION_HEAVY
+        ).value
+        merged["retry_budget"] = validate_run_budget_v1(budget)
         return merged
 
     def _confirm_request_understanding_inline(
@@ -174,6 +182,13 @@ class ConfirmationControllerMixin:
                 "execution_summary": {"result": "CONFIRMATION_RESUME_CONFLICT"},
             }
         self._materialize_policy_receipt_projection(state, raw_resume)
+        # A resumed Product Prompt is a revision-heavy route. Promotion is
+        # monotonic and preserves every already-consumed call/counter.
+        budget = dict(validate_run_budget_v1(state["retry_budget"]))
+        budget["profile"] = promote_budget_profile(
+            budget["profile"], BudgetProfile.REVISION_HEAVY
+        ).value
+        state["retry_budget"] = validate_run_budget_v1(budget)
         origin_target = self._required_string(raw_interrupt.get("origin_target"), "origin_target")
         self._confirmation_llm_runtime.register(
             run_id=request.run_id,

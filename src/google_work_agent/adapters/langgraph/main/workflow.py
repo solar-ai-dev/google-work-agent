@@ -41,7 +41,6 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
-    planning_mode_from_request_intent,
 )
 from google_work_agent.adapters.langgraph.subgraphs.review.runtime_active_graph import (
     RuntimeActiveReviewSubgraph,
@@ -2023,8 +2022,6 @@ class WorkflowRuntimeCore:
 
     def _request_hash(self, payload: dict[str, object]) -> str:
         return sha256(dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
-
-    _planning_mode_from_request_intent = staticmethod(planning_mode_from_request_intent)
 
 
 from google_work_agent.adapters.langgraph.main.artifact_freshness import (  # noqa: E402

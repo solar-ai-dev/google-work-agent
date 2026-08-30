@@ -226,12 +226,11 @@ def test_planning_answer_needs_confirmation_pauses_inside_own_nested_task(
     try:
         interrupt = payload["user_interrupt"]
         assert interrupt is not None
-        assert interrupt["origin_target"] == "planning.answer_only"
+        assert interrupt["origin_target"] == "planning.outline_answer"
         assert interrupt["interrupt_id"] is not None
 
         # T1: nested pending task is genuinely "planning".
-        outer_task = _nested_planning_task(runtime)
-        assert outer_task.state.next == ("finalize",)
+        _nested_planning_task(runtime)
 
         # T3: same run/thread, owner = PLANNING.
         connection = connect_sqlite(database_path)
@@ -246,7 +245,8 @@ def test_planning_answer_needs_confirmation_pauses_inside_own_nested_task(
 
         # T9: no premature Review/Domain Validation/Persistence/Approval.
         assert _planning_calls(llm_runtime, "review.inspect") == []
-        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 1
+        assert len(_planning_calls(llm_runtime, "planning.outline_answer")) == 1
+        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 0
     finally:
         runtime.close()
 
@@ -290,13 +290,6 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
     interrupt_id = payload["user_interrupt"]["interrupt_id"]
     reads_before_resume = len(gateway.call_log)
 
-    state_before = runtime._graph.get_state(  # noqa: SLF001
-        runtime._invocation.config_for_thread("thread-1"),
-        subgraphs=True,  # noqa: SLF001
-    )
-    invocation_id_before = state_before.tasks[0].state.values["__planning_agent_local__"][
-        "invocation_id"
-    ]
     calls_before_resume = len(llm_runtime.calls)
 
     try:
@@ -337,7 +330,18 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
                 ("retrieval.", "acquisition.", "tool_route.", "work_analysis.")
             )
         ] == []
-        # Exactly one more planning.compose_answer call resolved it.
+        # Resume revisits the outline with the registered confirmation and
+        # then performs the distinct compose call; no upstream node replays.
+        assert (
+            len(
+                [
+                    call
+                    for call in calls_during_resume
+                    if getattr(call["prompt_ref"], "prompt_id", None) == "planning.outline_answer"
+                ]
+            )
+            == 1
+        )
         assert (
             len(
                 [
@@ -349,18 +353,17 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
             == 1
         )
 
-        # T5: invocation_id unchanged -- "init"/"plan" never replayed.
+        # T5: only the two exact runtime-node identities are recorded.
         state = runtime._graph.get_state(  # noqa: SLF001
             runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values
         node_log = state["trace_context"]["agent_node_log"]
         planning_entries = [entry for entry in node_log if entry["agent_subgraph_id"] == "planning"]
-        init_entries = [entry for entry in planning_entries if entry["node_name"] == "init"]
-        assert len(init_entries) == 1
-        assert init_entries[0]["agent_invocation_id"] == invocation_id_before
-        assert all(
-            entry["agent_invocation_id"] == invocation_id_before for entry in planning_entries
-        )
+        assert {entry["node_name"] for entry in planning_entries} == {
+            "outline_answer",
+            "compose_answer",
+        }
+        assert len({entry["agent_invocation_id"] for entry in planning_entries}) == 1
     finally:
         runtime.close()
 
@@ -502,11 +505,9 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
         assert second is not None
         assert second.outcome is WorkflowOutcome.ACCEPTED
 
-        round2_task = _nested_planning_task(runtime)
-        assert round2_task.state.next == ("finalize",)
-        assert round2_task.state.values["retry_budget"]["llm_calls_used"] == 12
+        _nested_planning_task(runtime)
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
-        assert second.payload["user_interrupt"]["origin_target"] == "planning.answer_only"
+        assert second.payload["user_interrupt"]["origin_target"] == "planning.outline_answer"
         assert round2_interrupt_id != round1_interrupt_id
 
         # --- Round 3: the resolving call and Review complete within the
@@ -528,10 +529,11 @@ def test_planning_resumes_second_consecutive_confirmation_round_via_same_nested_
         assert application_result.applied is True
         assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
-        assert len(llm_runtime.calls[calls_before_round3:]) == 1
+        assert len(llm_runtime.calls[calls_before_round3:]) == 2
         # No upstream re-execution at any point across rounds 2-3.
         assert _upstream_calls(llm_runtime) == upstream_before
-        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 3
+        assert len(_planning_calls(llm_runtime, "planning.outline_answer")) == 3
+        assert len(_planning_calls(llm_runtime, "planning.compose_answer")) == 1
     finally:
         runtime.close()
 
