@@ -45,6 +45,28 @@ def test_production_retrieval_uses_exact_eight_node_boundaries() -> None:
     assert "resolve_availability(" in source
     assert 'graph.add_node("resolve_availability"' not in source
 
+    for node_symbol in (
+        "plan_query_node",
+        "build_query_node",
+        "execute_read_node",
+        "normalize_segments_node",
+        "rag_retrieve_rerank_node",
+        "select_evidence_node",
+        "assess_sufficiency_node",
+        "finalize_retrieval_node",
+    ):
+        assert f"nodes.{node_symbol.removesuffix('_node')}_node import" in source
+        assert f"{node_symbol}(" in source
+
+    for operation in (
+        "plan_query",
+        "build_query",
+        "execute_read",
+        "normalize_segments",
+        "rag_retrieve_rerank",
+    ):
+        assert re.search(rf"(?<![\w]){operation}\(", source) is None
+
     composition = (
         root / "src/google_work_agent/adapters/langgraph/pre_analysis_composition.py"
     ).read_text()

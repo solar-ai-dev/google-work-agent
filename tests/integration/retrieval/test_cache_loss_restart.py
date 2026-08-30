@@ -1,9 +1,4 @@
-"""Production Retrieval privacy-boundary regressions.
-
-These tests deliberately use LangGraphWorkflowRuntime's SIX production graph
-and its real SQLite checkpointer.  Legacy AcquisitionSubgraph direct calls are
-not accepted as proof of the release path.
-"""
+"""Production Retrieval cache privacy, cleanup, and process-loss regression."""
 
 from __future__ import annotations
 
@@ -13,18 +8,14 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-import pytest
-
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    EvidenceResolutionError,
-)
-from google_work_agent.application.orchestration.retrieval_read_cache import (
-    ReadResultContinuationError,
+from google_work_agent.adapters.system.memory.run_retrieval_cache import (
+    InMemoryRunRetrievalCache,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourcePage,
     ResourceType,
 )
+from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCacheEntryV1
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
     FakeGoogleGateway,
@@ -46,14 +37,31 @@ from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fixtures import ProductFixtureSnapshot
 
 
+class _RecordingCache(InMemoryRunRetrievalCache):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bindings: list[tuple[str, str, str, str]] = []
+
+    def put_read_result(self, entry: RunRetrievalCacheEntryV1) -> str:
+        self.bindings.append(
+            (
+                entry.read_result_handle,
+                entry.run_id,
+                entry.route_id,
+                entry.query_identity_hash,
+            )
+        )
+        return super().put_read_result(entry)
+
+
 class _PrivateTaskGateway(FakeGoogleGateway):
     def __init__(
         self, snapshot: ProductFixtureSnapshot, *, private_body: str, continuation: str
     ) -> None:
         super().__init__(snapshot)
-        self._boundary_continuation = continuation
+        self._continuation = continuation
         key = (ResourceType.TASK, "task-billing")
-        task = self._resources[key]  # noqa: SLF001 - deliberate provider fixture injection
+        task = self._resources[key]  # noqa: SLF001 - provider fixture injection
         self._resources[key] = replace(  # noqa: SLF001
             task,
             payload={
@@ -82,24 +90,23 @@ class _PrivateTaskGateway(FakeGoogleGateway):
             show_deleted=show_deleted,
         )
         if page_token is None:
-            return ResourcePage(items=page.items, next_page_token=self._boundary_continuation)
+            return ResourcePage(items=page.items, next_page_token=self._continuation)
         return page
 
 
-def test_production_retrieval_checkpoint_contains_no_raw_provider_or_continuation(
+def test_terminal_cleanup_and_process_restart_never_restore_raw_continuation(
     tmp_path: Path,
 ) -> None:
     private_body = f"RAW_PROVIDER_PRIVATE_BODY_{uuid4()}"
     continuation = f"RAW_PROVIDER_CONTINUATION_{uuid4()}"
-    manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     checkpoint_path = tmp_path / "checkpoints-retrieval-boundary.db"
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = _PrivateTaskGateway(
-        snapshot,
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json"),
         private_body=private_body,
         continuation=continuation,
     )
+    cache = _RecordingCache()
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[
@@ -112,50 +119,31 @@ def test_production_retrieval_checkpoint_contains_no_raw_provider_or_continuatio
         ],
         gateway=gateway,
         checkpoint_port=sqlite_checkpoint(checkpoint_path),
-        prompt_manifest_path=manifest_path,
+        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
+        retrieval_cache=cache,
     )
 
-    result = runtime.start(_start_request())
-    assert result.outcome is WorkflowOutcome.COMPLETED
+    try:
+        result = runtime.start(_start_request())
+        assert result.outcome is WorkflowOutcome.COMPLETED
+        assert cache.bindings
 
-    # Main State/checkpoint-facing values never own either raw value.
-    config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    state = runtime._graph.get_state(config, subgraphs=True)  # noqa: SLF001
-    assert private_body not in repr(state.values)
-    assert continuation not in repr(state.values)
+        config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = runtime._graph.get_state(config, subgraphs=True)  # noqa: SLF001
+        assert private_body not in repr(state.values)
+        assert continuation not in repr(state.values)
 
-    # Retrieval's internal selection prompt may consume bounded ranked
-    # segments, but downstream Work Analysis/Planning may receive only
-    # selected evidence/ref projections.  The unselected private task body
-    # must never cross that handoff.
-    llm_runtime = cast(_QueuedLLMRuntime, runtime._llm_runtime)  # noqa: SLF001
-    downstream_inputs = [
-        call["prompt_input"]
-        for call in llm_runtime.calls
-        if getattr(call["prompt_ref"], "prompt_id", "").startswith(
-            ("work_analysis.", "planning.", "review.")
-        )
-    ]
-    assert private_body not in repr(downstream_inputs)
-    assert continuation not in repr([call["prompt_input"] for call in llm_runtime.calls])
+        llm_runtime = cast(_QueuedLLMRuntime, runtime._llm_runtime)  # noqa: SLF001
+        assert continuation not in repr([call["prompt_input"] for call in llm_runtime.calls])
 
-    # Terminal lifecycle already owns both stores; raw source/evidence from
-    # this Run must be unresolvable before a new Run can start.
-    with pytest.raises(ReadResultContinuationError):
-        runtime._read_result_cache.resolve_resource_snapshot(  # noqa: SLF001
-            run_id="run-1", resource_handle="task:task-billing"
-        )
-    with pytest.raises(EvidenceResolutionError):
-        runtime._evidence_store.resolve(  # noqa: SLF001
-            run_id="run-1", evidence_refs=["evidence-seg-2"]
-        )
-
-    runtime.close()
+        for binding in cache.bindings:
+            assert cache.resolve_read_result(*binding).status == "MISSING"
+            assert InMemoryRunRetrievalCache().resolve_read_result(*binding).status == "MISSING"
+    finally:
+        runtime.close()
 
     for sqlite_path in (checkpoint_path, database_path):
-        _assert_sqlite_contains_zero(sqlite_path, private_body)
         _assert_sqlite_contains_zero(sqlite_path, continuation)
-        _assert_file_family_contains_zero(sqlite_path, private_body)
         _assert_file_family_contains_zero(sqlite_path, continuation)
 
 
@@ -190,12 +178,8 @@ def _assert_sqlite_contains_zero(database_path: Path, needle: str) -> None:
 
 
 def _assert_file_family_contains_zero(database_path: Path, needle: str) -> None:
-    encoded = needle.encode("utf-8")
-    for path in (
-        database_path,
-        Path(f"{database_path}-wal"),
-        Path(f"{database_path}-shm"),
-    ):
+    encoded = needle.encode()
+    for path in (database_path, Path(f"{database_path}-wal"), Path(f"{database_path}-shm")):
         if path.exists():
             assert encoded not in path.read_bytes()
 

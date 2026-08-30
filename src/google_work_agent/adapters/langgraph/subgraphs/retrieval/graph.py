@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
@@ -24,6 +25,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_NEXT_PAGE_HANDLES_KEY,
     CONTEXT_QUERY_ATTEMPTS_KEY,
     CONTEXT_RAG_CANDIDATES_KEY,
+    CONTEXT_READ_BINDINGS_KEY,
     CONTEXT_READ_RESULT_HANDLES_KEY,
     CONTEXT_SEGMENT_HANDLES_KEY,
     CONTEXT_SELECTION_OUTPUT_KEY,
@@ -40,11 +42,32 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.assess_sufficiency_node import (
     assess_sufficiency_node,
 )
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.build_query_node import (
+    build_query_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.execute_read_node import (
+    execute_read_node,
+)
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.finalize_retrieval_node import (
     finalize_retrieval_node,
 )
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.normalize_segments_node import (
+    normalize_segments_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.plan_query_node import (
+    plan_query_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.rag_retrieve_rerank_node import (  # noqa: E501
+    rag_retrieve_rerank_node,
+)
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.select_evidence_node import (
     select_evidence_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.execute_read_projection import (  # noqa: E501
+    find_detail_resource,
+    project_acquisition_result,
+    project_connector_call,
+    sanitize_acquisition_result,
 )
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_assess_sufficiency import (  # noqa: E501
     route_after_assess_sufficiency,
@@ -59,11 +82,9 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import Retri
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     StateArtifactRefV1,
 )
+from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
-from google_work_agent.application.agents.retrieval.normalize_segments import normalize_segments
-from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
-    rag_retrieve_rerank,
-)
+from google_work_agent.application.agents.retrieval.execute_read import RetrievalReadBindingError
 from google_work_agent.application.agents.retrieval.resolve_availability import (
     AvailableIntervalV1,
     BusyIntervalV1,
@@ -77,9 +98,7 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
-    allowed_read_tool_ids,
 )
-from google_work_agent.application.orchestration.api_acquisition import retrieval_query_hash
 from google_work_agent.application.orchestration.confirmation import (
     build_user_interrupt_v1,
 )
@@ -102,26 +121,16 @@ from google_work_agent.application.orchestration.retrieval_attempts import (
     build_query_attempt,
     followup_planner_projection,
 )
-from google_work_agent.application.orchestration.retrieval_data_boundary import (
-    hydrate_acquisition_for_segmentation,
-    sanitize_acquisition_result,
-)
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
 from google_work_agent.application.orchestration.retrieval_planner_input import (
+    DEFAULT_RETRIEVAL_BUDGET,
     followup_retrieval_planner_input,
     initial_retrieval_planner_input,
 )
-from google_work_agent.application.orchestration.retrieval_query_planner import (
-    RetrievalQueryPlannerAgent,
-)
-from google_work_agent.application.orchestration.retrieval_read_cache import (
-    ReadResultContinuationError,
-    RunScopedReadResultCache,
-)
-from google_work_agent.application.orchestration.retrieval_read_executor import (
-    RetrievalReadExecutor,
+from google_work_agent.application.orchestration.retrieval_query_plan_schema import (
+    RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
 )
 from google_work_agent.application.orchestration.retrieval_rounds import (
     initialize_current_round_no,
@@ -132,13 +141,6 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
     SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
 )
-from google_work_agent.application.orchestration.source_fetch_plan_builder import (
-    RouteConstraintPolicy,
-    SourceFetchPlanBuilder,
-)
-from google_work_agent.application.orchestration.source_fetch_plan_execution_projection import (
-    project_for_legacy_read_executor,
-)
 from google_work_agent.application.orchestration.supervisor import (
     RetrievalRouteResultV1,
     SupervisorDecisionV1,
@@ -148,13 +150,16 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
@@ -169,26 +174,27 @@ def _resolve_availability_from_reads(
     canonical_plans: Mapping[str, CanonicalSourceFetchPlanV1],
 ) -> list[AvailableIntervalV1]:
     """Project FreeBusy reads into provider-neutral availability Local State."""
-    timezones = {
-        str(constraint["timezone"])
-        for plan in canonical_plans.values()
-        if plan["resource_type"].startswith("CALENDAR")
-        for constraint in plan["effective_constraints"]
-        if constraint["kind"] == "TEMPORAL_RANGE"
-    }
     freebusy_resources = [
-        resource
+        (str(summary.get("route_id", "")), resource)
         for summary in acquisition_result["source_summaries"]
         for resource in cast(list[dict[str, object]], summary.get("resources", []))
         if resource.get("resource_type") == "calendar_freebusy"
     ]
     if not freebusy_resources:
         return []
-    if len(timezones) != 1:
-        raise ValueError("FreeBusy availability requires one frozen calendar timezone")
-    timezone = next(iter(timezones))
     results: list[AvailableIntervalV1] = []
-    for resource in freebusy_resources:
+    for route_id, resource in freebusy_resources:
+        plan = canonical_plans.get(route_id)
+        if plan is None:
+            raise ValueError("FreeBusy result has no canonical source plan")
+        timezones = {
+            str(constraint["timezone"])
+            for constraint in plan["effective_constraints"]
+            if constraint["kind"] == "TEMPORAL_RANGE"
+        }
+        if len(timezones) != 1:
+            raise ValueError("FreeBusy availability requires one frozen calendar timezone")
+        timezone = next(iter(timezones))
         handle = resource.get("resource_handle")
         payload = resource.get("payload")
         if not isinstance(handle, str) or not isinstance(payload, Mapping):
@@ -254,6 +260,7 @@ def _runtime_route_constraint_policies(
             required_kinds=(
                 frozenset({"KEYWORD"})
                 if coarse_resource_category(route["resource_type"]) == "EMAIL"
+                and "gmail_search_threads" in route["allowed_read_tool_ids"]
                 else frozenset()
             ),
         )
@@ -289,16 +296,16 @@ class RetrievalSubgraph:
         transition_run: Callable[[str, str], None],
         merge_decision: MergeDecision,
         evidence_store: RunScopedEvidenceStore,
-        acquisition_agent: Any,
-        retrieval_query_planner: RetrievalQueryPlannerAgent,
-        source_fetch_plan_builder: SourceFetchPlanBuilder,
-        read_result_cache: RunScopedReadResultCache,
-        retrieval_read_executor: RetrievalReadExecutor,
+        connector_reader: ConnectorReadPort,
+        tool_catalog: SignedToolRegistry,
+        read_result_cache: RunRetrievalCachePort,
         confirm_inline: ConfirmInline,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
+        default_calendar_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._llm_runtime = llm_runtime
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
+        self._plan_query_prompt_ref = load_prompt_reference("retrieval.plan_query", manifest_path)
         self._select_prompt_ref = load_prompt_reference("retrieval.select_evidence", manifest_path)
         self._sufficiency_prompt_ref = load_prompt_reference(
             "retrieval.assess_sufficiency", manifest_path
@@ -308,11 +315,9 @@ class RetrievalSubgraph:
         self._transition_run = transition_run
         self._merge_decision = merge_decision
         self._evidence_store = evidence_store
-        self._acquisition_agent = acquisition_agent
-        self._retrieval_query_planner = retrieval_query_planner
-        self._source_fetch_plan_builder = source_fetch_plan_builder
+        self._connector_reader = connector_reader
+        self._tool_catalog = tool_catalog
         self._read_result_cache = read_result_cache
-        self._retrieval_read_executor = retrieval_read_executor
         self._confirm_inline = confirm_inline
         # Pre-Prompt Runtime Closure: TASK routes' only supported semantic
         # constraint kind is CONTAINER_REF (_runtime_route_constraint_policies
@@ -324,6 +329,7 @@ class RetrievalSubgraph:
         # discovery Port/authority. When unset, TASK routes keep today's
         # existing (pre-existing, unrelated to this change) behavior.
         self._default_tasklist_id_provider = default_tasklist_id_provider
+        self._default_calendar_id_provider = default_calendar_id_provider
 
     def build(self) -> Any:
         graph = StateGraph(
@@ -412,6 +418,7 @@ class RetrievalSubgraph:
             CONTEXT_AGENT_LOCAL_KEY: local_state,
             CONTEXT_CURRENT_ROUND_NO_KEY: current_round_no,
             CONTEXT_READ_RESULT_HANDLES_KEY: [],
+            CONTEXT_READ_BINDINGS_KEY: {},
             CONTEXT_SEGMENT_HANDLES_KEY: [],
             CONTEXT_QUERY_ATTEMPTS_KEY: [],
             "trace_context": merge_trace_context(
@@ -518,7 +525,17 @@ class RetrievalSubgraph:
         acquisition_result = _require_state_value(
             working_state["acquisition_result"], "acquisition_result"
         )
-        segments = cast(list[Any], normalize_segments(acquisition_result=acquisition_result))
+        patch = normalize_segments_node(
+            cast(
+                Any,
+                {
+                    "operation_inputs": {
+                        "normalize_segments": {"acquisition_result": acquisition_result}
+                    }
+                },
+            )
+        )
+        segments = cast(list[Any], patch["normalized_segments"])
         return cast(
             ContextRetrievalLocalState,
             {
@@ -538,7 +555,17 @@ class RetrievalSubgraph:
         acquisition_result = _require_state_value(
             working_state["acquisition_result"], "acquisition_result"
         )
-        segments = cast(list[Any], normalize_segments(acquisition_result=acquisition_result))
+        patch = normalize_segments_node(
+            cast(
+                Any,
+                {
+                    "operation_inputs": {
+                        "normalize_segments": {"acquisition_result": acquisition_result}
+                    }
+                },
+            )
+        )
+        segments = cast(list[Any], patch["normalized_segments"])
         expected_ids = state.get("segments")
         actual_ids = [segment.segment_id for segment in segments]
         if expected_ids is not None and actual_ids != expected_ids:
@@ -546,18 +573,22 @@ class RetrievalSubgraph:
         return segments
 
     def _ephemeral_raw_state(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
-        acquisition = state.get("acquisition_result")
-        if acquisition is None:
+        handles = cast(list[str], state.get(CONTEXT_READ_RESULT_HANDLES_KEY, []))
+        bindings = cast(Mapping[str, object], state.get(CONTEXT_READ_BINDINGS_KEY, {}))
+        if not handles:
             return state
-        safe = sanitize_acquisition_result(cast(AcquisitionResultV1, acquisition))
-        if state.get(CONTEXT_READ_RESULT_HANDLES_KEY):
-            hydrated = hydrate_acquisition_for_segmentation(
-                run_id=state["run_id"],
-                result=safe,
-                read_result_cache=self._read_result_cache,
-            )
-        else:
-            hydrated = safe
+        results = self._resolve_cached_results(state, bindings=bindings, handles=handles)
+        plans = self._plans_for_cached_results(
+            state,
+            plans=cast(list[CanonicalSourceFetchPlanV1], state.get("source_fetch_plans", [])),
+            bindings=bindings,
+            handles=handles,
+        )
+        safe = cast(AcquisitionResultV1, state.get("acquisition_result"))
+        hydrated = project_acquisition_result(
+            list(zip(plans, results, strict=True)),
+            remaining_budget=dict(safe["remaining_budget"]),
+        )
         return cast(
             ContextRetrievalLocalState,
             {**state, "acquisition_result": hydrated},
@@ -566,11 +597,21 @@ class RetrievalSubgraph:
     def _rag_retrieve_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         request_intent = _require_state_value(state["request_intent"], "request_intent")
         segments = self._normalized_segments(state)
-        candidates = rag_retrieve_rerank(
-            cast(list[Any], segments),
-            request_intent=request_intent,
-            top_k=24,
+        patch = rag_retrieve_rerank_node(
+            cast(
+                Any,
+                {
+                    "operation_inputs": {
+                        "rag_retrieve_rerank": {
+                            "segments": cast(list[Any], segments),
+                            "request_intent": request_intent,
+                            "top_k": 24,
+                        }
+                    }
+                },
+            )
         )
+        candidates = cast(list[Any], patch["rag_candidates"])
         return {
             **state,
             "ranked_segments": candidates,
@@ -711,7 +752,7 @@ class RetrievalSubgraph:
             else "execute_read"
         )
 
-    def _validated_task_container_refs(
+    def _validated_container_refs(
         self, frozen_routes: list[InputToolRouteV1]
     ) -> dict[str, list[str]]:
         """TASK routes' only supported semantic constraint kind, resolved.
@@ -723,16 +764,77 @@ class RetrievalSubgraph:
         provider is unset or returns ``None`` -- a TASK route then simply
         stays unable to satisfy CONTAINER_REF, exactly as before this fix.
         """
-        if self._default_tasklist_id_provider is None:
-            return {}
-        default_tasklist_id = self._default_tasklist_id_provider()
-        if not default_tasklist_id:
-            return {}
-        return {
-            route["route_id"]: [default_tasklist_id]
-            for route in frozen_routes
-            if coarse_resource_category(route["resource_type"]) == "TASK"
+        tasklist_id = (
+            None
+            if self._default_tasklist_id_provider is None
+            else self._default_tasklist_id_provider()
+        )
+        calendar_id = (
+            None
+            if self._default_calendar_id_provider is None
+            else self._default_calendar_id_provider()
+        )
+        result: dict[str, list[str]] = {}
+        for route in frozen_routes:
+            category = coarse_resource_category(route["resource_type"])
+            if category == "TASK" and tasklist_id:
+                result[route["route_id"]] = [tasklist_id]
+            elif category == "CALENDAR" and calendar_id:
+                result[route["route_id"]] = [calendar_id]
+        return result
+
+    @staticmethod
+    def _validated_resource_refs(
+        state: ContextRetrievalLocalState,
+        frozen_routes: list[InputToolRouteV1],
+    ) -> dict[str, list[str]]:
+        """Bind current-Run selected identities only to exact direct-read routes."""
+        selected_refs = request_from_state(state).selected_resources
+        direct_read_tools = {
+            "gmail_get_thread",
+            "gmail_get_message",
+            "gmail_get_draft",
+            "gmail_get_attachment",
+            "tasks_get_task",
+            "calendar_get_event",
         }
+        result: dict[str, list[str]] = {}
+        for route in frozen_routes:
+            if not direct_read_tools.intersection(route["allowed_read_tool_ids"]):
+                continue
+            route_type = route["resource_type"].upper()
+            refs: list[str] = []
+            for item in selected_refs:
+                selected_type = f"{item.source}_{item.resource_type}".upper()
+                selected_type = {
+                    "TASKS_TASK": "TASK",
+                    "TASKS_TASK_LIST": "TASK_LIST",
+                    "CALENDAR_CALENDAR": "CALENDAR",
+                    "CALENDAR_EVENT": "CALENDAR_EVENT",
+                    "CALENDAR_FREEBUSY": "CALENDAR_FREEBUSY",
+                }.get(selected_type, selected_type)
+                if selected_type == route_type:
+                    refs.append(f"{route_type.lower()}:{item.resource_id}")
+            if refs:
+                result[route["route_id"]] = refs
+        return result
+
+    @staticmethod
+    def _selected_detail_resource(
+        state: ContextRetrievalLocalState,
+        *,
+        resource_type: str,
+        resource_ref: str,
+    ) -> Mapping[str, object] | None:
+        for item in request_from_state(state).selected_resources:
+            if resource_ref != f"{resource_type.lower()}:{item.resource_id}":
+                continue
+            return {
+                "resource_type": resource_type.lower(),
+                "resource_id": item.resource_id,
+                "parent_id": item.parent_resource_id,
+            }
+        return None
 
     def _plan_query_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         if CONTEXT_AGENT_LOCAL_KEY not in state:
@@ -740,34 +842,55 @@ class RetrievalSubgraph:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
         route_policies = _runtime_route_constraint_policies(frozen_routes)
-        validated_container_refs = self._validated_task_container_refs(frozen_routes)
+        validated_resource_refs = self._validated_resource_refs(state, frozen_routes)
+        validated_container_refs = self._validated_container_refs(frozen_routes)
         followup = state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY)
         prompt_input = (
             initial_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 input_routes=frozen_routes,
-                retrieval_budget=self._acquisition_agent.retrieval_budget,
+                retrieval_budget=DEFAULT_RETRIEVAL_BUDGET,
+                validated_resource_refs=validated_resource_refs,
                 validated_container_refs=validated_container_refs,
             )
             if followup is None
             else followup_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 input_routes=frozen_routes,
-                retrieval_budget=self._acquisition_agent.retrieval_budget,
+                retrieval_budget=DEFAULT_RETRIEVAL_BUDGET,
                 followup=followup,
+                validated_resource_refs=validated_resource_refs,
                 validated_container_refs=validated_container_refs,
             )
         )
         ensure_llm_call_budget(state)
-        query_plan, revised_retry_budget = self._retrieval_query_planner.plan(
-            prompt_input=prompt_input,
-            trace_context=_retrieval_trace_context(state, "retrieval.plan_query"),
-            frozen_routes=frozen_routes,
-            route_policies=route_policies,
-            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
-            validated_container_refs=validated_container_refs,
-            detail_candidate_refs=state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
+        patch = plan_query_node(
+            cast(
+                Any,
+                {
+                    "operation_inputs": {
+                        "plan_query": {
+                            "llm_runtime": self._llm_runtime,
+                            "prompt_ref": self._plan_query_prompt_ref,
+                            "revision_prompt_ref": self._plan_query_prompt_ref,
+                            "output_schema": RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+                            "prompt_input": prompt_input,
+                            "trace_context": _retrieval_trace_context(
+                                state, "retrieval.plan_query"
+                            ),
+                            "frozen_routes": frozen_routes,
+                            "route_policies": route_policies,
+                            "retry_budget": cast(RunBudgetV2, state["retry_budget"]),
+                            "validated_resource_refs": validated_resource_refs,
+                            "validated_container_refs": validated_container_refs,
+                            "detail_candidate_refs": state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
+                        }
+                    }
+                },
+            )
         )
+        query_plan = patch["query_plan"]
+        revised_retry_budget = cast(RunBudgetV2, patch["retry_budget"])
         return {
             **state,
             "query_plan": query_plan,
@@ -777,104 +900,214 @@ class RetrievalSubgraph:
         }
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
-        operation = state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)
-        if operation == "NEXT_PAGE":
-            result = self._execute_next_page_node(state)
-        elif operation == "DETAIL_FETCH":
-            result = self._execute_detail_node(state)
-        elif state.get("acquisition_result") is not None:
-            result = self._execute_followup_search_node(state)
-        else:
-            result = self._execute_initial_read_node(state)
+        plans = cast(
+            list[CanonicalSourceFetchPlanV1],
+            list(state.get("source_fetch_plans", [])),
+        )
+        route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
+        routes = {route["route_id"]: route for route in route_plan["input_plan"]["input_routes"]}
+        bindings = dict(cast(Mapping[str, object], state.get(CONTEXT_READ_BINDINGS_KEY, {})))
+        prior_results = self._resolve_cached_results(state, bindings=bindings)
+        new_handles: list[str] = []
+        attempts = list(cast(list[QueryAttemptV1], state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])))
+        for plan in plans:
+            route = routes.get(plan["route_id"])
+            if route is None:
+                raise RetrievalReadBindingError("retrieval plan route is not frozen")
+            detail_resource = None
+            candidate_ref = plan["detail_candidate_ref"]
+            if candidate_ref is not None:
+                detail_resource = find_detail_resource(candidate_ref, prior_results)
+                if detail_resource is None:
+                    raise RetrievalReadBindingError("DETAIL_FETCH candidate is not cache-bound")
+            resource_refs = [
+                ref
+                for constraint in plan["effective_constraints"]
+                if constraint["kind"] == "RESOURCE_REF"
+                for ref in constraint["resource_refs"]
+            ]
+            if resource_refs:
+                if len(resource_refs) != 1:
+                    raise RetrievalReadBindingError(
+                        "direct selected-resource read requires exactly one resource ref"
+                    )
+                detail_resource = self._selected_detail_resource(
+                    state,
+                    resource_type=plan["resource_type"],
+                    resource_ref=resource_refs[0],
+                )
+                if detail_resource is None:
+                    raise RetrievalReadBindingError("selected resource is not current-Run bound")
+            tool_id, arguments = project_connector_call(
+                plan,
+                route=route,
+                page_size=DEFAULT_RETRIEVAL_BUDGET.max_page_size,
+                detail_resource=detail_resource,
+            )
+            binding = self._tool_catalog.bind_required(plan["connector_id"], tool_id, "READ")
+            read_handle = self._id_factory()
+            patch = execute_read_node(
+                cast(
+                    Any,
+                    {
+                        "operation_inputs": {
+                            "execute_read": {
+                                "plan": plan,
+                                "run_id": state["run_id"],
+                                "binding": binding,
+                                "tool_arguments": arguments,
+                                "connector_reader": self._connector_reader,
+                                "read_result_cache": self._read_result_cache,
+                                "read_result_handle": read_handle,
+                            }
+                        }
+                    },
+                )
+            )
+            execution = cast(Any, patch["read_execution"])
+            effective_handle = execution.read_result_handle
+            if execution.status == "COMPLETE":
+                bindings[effective_handle] = {
+                    "route_id": plan["route_id"],
+                    "query_identity_hash": plan["query_identity_hash"],
+                }
+                new_handles.append(effective_handle)
+            token = None
+            resolution = self._read_result_cache.resolve_read_result(
+                effective_handle,
+                state["run_id"],
+                plan["route_id"],
+                plan["query_identity_hash"],
+            )
+            if resolution.entry is not None:
+                token = resolution.entry.read_result.next_page_token
+            attempts.append(
+                build_query_attempt(
+                    query_attempt_id=self._id_factory(),
+                    run_id=state["run_id"],
+                    plan=plan,
+                    round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
+                    attempt_no=len(attempts),
+                    tool_id=tool_id,
+                    canonical_arguments=arguments,
+                    previous_query_hash=(
+                        None
+                        if plan["prior_read_result_handle"] is None
+                        else plan["query_identity_hash"]
+                    ),
+                    page_state_hash=(None if token is None else sha256(token.encode()).hexdigest()),
+                    candidate_count=execution.total_count,
+                    stop_reason=execution.status,
+                )
+            )
+        all_handles = [
+            *cast(list[str], state.get(CONTEXT_READ_RESULT_HANDLES_KEY, [])),
+            *new_handles,
+        ]
+        raw_results = self._resolve_cached_results(
+            state,
+            bindings=bindings,
+            handles=all_handles,
+        )
+        plan_by_binding = self._plans_for_cached_results(
+            state, plans=plans, bindings=bindings, handles=all_handles
+        )
+        acquisition = project_acquisition_result(
+            list(zip(plan_by_binding, raw_results, strict=True)),
+            remaining_budget=self._remaining_retrieval_budget(state, len(new_handles)),
+        )
+        prior_round = state[CONTEXT_CURRENT_ROUND_NO_KEY]
+        round_no = prior_round + (1 if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) else 0)
+        safe_acquisition = self._bounded_acquisition(acquisition)
         return cast(
             ContextRetrievalLocalState,
             {
-                **result,
-                "read_result_handles": list(result.get(CONTEXT_READ_RESULT_HANDLES_KEY, [])),
-                "segment_handles": list(result.get(CONTEXT_SEGMENT_HANDLES_KEY, [])),
-                "query_attempts": list(result.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])),
+                **state,
+                "acquisition_result": safe_acquisition,
+                CONTEXT_CURRENT_ROUND_NO_KEY: round_no,
+                CONTEXT_READ_RESULT_HANDLES_KEY: all_handles,
+                CONTEXT_SEGMENT_HANDLES_KEY: list(acquisition["resource_handles"]),
+                CONTEXT_QUERY_ATTEMPTS_KEY: attempts,
+                CONTEXT_READ_BINDINGS_KEY: bindings,
+                "read_result_handles": all_handles,
+                "segment_handles": list(acquisition["resource_handles"]),
+                "query_attempts": attempts,
             },
         )
 
-    def _execute_initial_read_node(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalLocalState:
-        result = self._acquisition_agent.acquire(
-            plans=state["source_fetch_plans"],
-            request=request_from_state(state),
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            tool_route_plan=_require_state_value(state.get("tool_route_plan"), "tool_route_plan"),
-            read_result_cache=self._read_result_cache,
-            read_handle_factory=self._id_factory,
-        )
-        next_state = {
-            **state,
-            "acquisition_result": result,
-            CONTEXT_READ_RESULT_HANDLES_KEY: self._latest_read_handles(
-                state, state["source_fetch_plans"]
-            ),
-            CONTEXT_SEGMENT_HANDLES_KEY: list(result["resource_handles"]),
-            CONTEXT_QUERY_ATTEMPTS_KEY: self._append_read_attempts(
-                state=state,
-                result=result,
-                plans=state["source_fetch_plans"],
-                operation_kind="SEARCH",
-                previous_query_hash=None,
-            ),
-        }
-        return cast(ContextRetrievalLocalState, next_state)
+    def _resolve_cached_results(
+        self,
+        state: ContextRetrievalLocalState,
+        *,
+        bindings: Mapping[str, object],
+        handles: list[str] | None = None,
+    ) -> list[Any]:
+        resolved = []
+        for handle in handles or cast(list[str], state.get(CONTEXT_READ_RESULT_HANDLES_KEY, [])):
+            raw = bindings.get(handle)
+            if not isinstance(raw, Mapping):
+                raise RetrievalReadBindingError("read-result handle has no local binding")
+            route_id = raw.get("route_id")
+            query_hash = raw.get("query_identity_hash")
+            if not isinstance(route_id, str) or not isinstance(query_hash, str):
+                raise RetrievalReadBindingError("read-result binding is malformed")
+            resolution = self._read_result_cache.resolve_read_result(
+                handle, state["run_id"], route_id, query_hash
+            )
+            if resolution.status not in {"FOUND", "EXHAUSTED"} or resolution.entry is None:
+                raise RetrievalReadBindingError(
+                    f"invalid retrieval cache dependency: {resolution.status}"
+                )
+            resolved.append(resolution.entry.read_result)
+        return resolved
 
-    def _execute_followup_search_node(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalLocalState:
-        """Publish a changed SEARCH only after its complete read is materialized."""
-        previous = _require_state_value(state["acquisition_result"], "acquisition_result")
-        result = self._acquisition_agent.acquire(
-            plans=state["source_fetch_plans"],
-            request=request_from_state(state),
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            tool_route_plan=_require_state_value(state.get("tool_route_plan"), "tool_route_plan"),
-            read_result_cache=self._read_result_cache,
-            read_handle_factory=self._id_factory,
+    @staticmethod
+    def _plans_for_cached_results(
+        state: ContextRetrievalLocalState,
+        *,
+        plans: list[CanonicalSourceFetchPlanV1],
+        bindings: Mapping[str, object],
+        handles: list[str],
+    ) -> list[CanonicalSourceFetchPlanV1]:
+        prior = cast(
+            Mapping[str, CanonicalSourceFetchPlanV1],
+            state.get(CONTEXT_CANONICAL_PLANS_KEY, {}),
         )
-        if result["status"] not in {"COMPLETE", "PARTIAL"}:
-            return state
-        combined = {
+        by_route = {**prior, **{plan["route_id"]: plan for plan in plans}}
+        result = []
+        for handle in handles:
+            raw = bindings.get(handle)
+            if not isinstance(raw, Mapping) or not isinstance(raw.get("route_id"), str):
+                raise RetrievalReadBindingError("read-result binding is malformed")
+            route_id = cast(str, raw["route_id"])
+            plan = by_route.get(route_id)
+            if plan is None:
+                raise RetrievalReadBindingError("cached read has no canonical source plan")
+            result.append(plan)
+        return result
+
+    @staticmethod
+    def _bounded_acquisition(result: AcquisitionResultV1) -> AcquisitionResultV1:
+        return {
             **result,
-            "resource_handles": cast(list[str], previous["resource_handles"])
-            + cast(list[str], result["resource_handles"]),
-            "source_summaries": cast(list[dict[str, object]], previous["source_summaries"])
-            + cast(list[dict[str, object]], result["source_summaries"]),
-        }
-        # Q2-HANDOFF: reached via init->plan_query (external RetrievalRequiredV1
-        # re-entry) rather than the local loop's assess_sufficiency->
-        # plan_followup, _init_node already set CONTEXT_CURRENT_ROUND_NO_KEY to
-        # this invocation's own round -- CONTEXT_FOLLOWUP_OPERATION_KEY (only
-        # ever set by _plan_followup_node) distinguishes the two paths, so the
-        # round is not double-counted.
-        round_no = state[CONTEXT_CURRENT_ROUND_NO_KEY]
-        if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) is not None:
-            round_no += 1
-        published_state = {
-            **state,
-            "acquisition_result": cast(Any, combined),
-            CONTEXT_CURRENT_ROUND_NO_KEY: round_no,
-            CONTEXT_READ_RESULT_HANDLES_KEY: self._latest_read_handles(
-                state, state["source_fetch_plans"]
-            ),
-            CONTEXT_SEGMENT_HANDLES_KEY: [
-                *state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
-                *result["resource_handles"],
+            "source_summaries": [
+                {key: value for key, value in summary.items() if key != "resources"}
+                for summary in result["source_summaries"]
             ],
         }
-        published_state[CONTEXT_QUERY_ATTEMPTS_KEY] = self._append_read_attempts(
-            state=cast(ContextRetrievalLocalState, published_state),
-            result=result,
-            plans=state["source_fetch_plans"],
-            operation_kind="SEARCH",
-            previous_query_hash=None,
+
+    @staticmethod
+    def _remaining_retrieval_budget(
+        state: ContextRetrievalLocalState, provider_calls: int
+    ) -> dict[str, int]:
+        prior = state.get("acquisition_result")
+        remaining = (
+            DEFAULT_RETRIEVAL_BUDGET.as_remaining()
+            if not isinstance(prior, Mapping)
+            else dict(cast(Mapping[str, int], prior.get("remaining_budget", {})))
         )
-        return cast(ContextRetrievalLocalState, published_state)
+        remaining["pages"] = max(0, remaining.get("pages", 0) - provider_calls)
+        return remaining
 
     def _route_after_sufficiency(self, state: ContextRetrievalLocalState) -> str:
         sufficiency = state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]
@@ -886,74 +1119,86 @@ class RetrievalSubgraph:
             return "finalize"
         # Local continuation is possible only for an already completed read
         # in the same frozen route.  No parent retry signal is emitted.
-        for plan in state.get("source_fetch_plans", []):
-            route_id = _route_id_for_plan(state, plan)
-            handle = self._read_result_cache.latest_handle(
-                run_id=state["run_id"], route_id=route_id, query_hash=retrieval_query_hash(plan)
-            )
-            if handle is not None:
-                return route_after_assess_sufficiency(
-                    {
-                        "sufficiency": sufficiency,
-                        "query_attempts": state.get(CONTEXT_QUERY_ATTEMPTS_KEY, []),
-                    }
-                )
-        return "finalize"
+        if not state.get(CONTEXT_READ_RESULT_HANDLES_KEY):
+            return "finalize"
+        return route_after_assess_sufficiency(
+            {
+                "sufficiency": sufficiency,
+                "query_attempts": state.get(CONTEXT_QUERY_ATTEMPTS_KEY, []),
+            }
+        )
 
     def _build_query_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         tool_route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
         frozen_routes = tool_route_plan["input_plan"]["input_routes"]
         route_policies = _runtime_route_constraint_policies(frozen_routes)
-        validated_container_refs = self._validated_task_container_refs(frozen_routes)
+        validated_resource_refs = self._validated_resource_refs(state, frozen_routes)
+        validated_container_refs = self._validated_container_refs(frozen_routes)
         query_plan = _require_state_value(state.get("query_plan"), "query plan")
         detail_candidate_refs = state.get(CONTEXT_SEGMENT_HANDLES_KEY, [])
         prior_canonical = state.get(CONTEXT_CANONICAL_PLANS_KEY, {})
-        prior_legacy = cast(list[Any], state.get("source_fetch_plans", []))
         if not prior_canonical:
-            canonical_plans = self._source_fetch_plan_builder.build(
-                query_plan,
-                frozen_routes=frozen_routes,
-                route_policies=route_policies,
-                validated_container_refs=validated_container_refs,
-                detail_candidate_refs=detail_candidate_refs,
-            )
-            return {
-                **state,
-                "source_fetch_plans": project_for_legacy_read_executor(
-                    canonical_plans,
-                    frozen_routes=frozen_routes,
-                    retrieval_budget=self._acquisition_agent.retrieval_budget,
-                ),
-                CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
-            }
-        handles = {
-            _route_id_for_plan(state, plan): handle
-            for plan in prior_legacy
-            if (
-                handle := self._read_result_cache.latest_handle(
-                    run_id=state["run_id"],
-                    route_id=_route_id_for_plan(state, plan),
-                    query_hash=retrieval_query_hash(plan),
+            patch = build_query_node(
+                cast(
+                    Any,
+                    {
+                        "operation_inputs": {
+                            "build_query": {
+                                "plan": query_plan,
+                                "frozen_routes": frozen_routes,
+                                "route_policies": route_policies,
+                                "validated_resource_refs": validated_resource_refs,
+                                "validated_container_refs": validated_container_refs,
+                                "detail_candidate_refs": detail_candidate_refs,
+                            }
+                        }
+                    },
                 )
             )
-            is not None
+            canonical_plans = cast(list[CanonicalSourceFetchPlanV1], patch["source_fetch_plans"])
+            return {
+                **state,
+                "source_fetch_plans": canonical_plans,
+                CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
+            }
+        bindings = cast(Mapping[str, Mapping[str, str]], state.get(CONTEXT_READ_BINDINGS_KEY, {}))
+        handles = {
+            value["route_id"]: handle
+            for handle, value in bindings.items()
+            if value["route_id"] in prior_canonical
         }
         try:
-            canonical_plans = self._source_fetch_plan_builder.build(
-                query_plan,
-                frozen_routes=frozen_routes,
-                route_policies=route_policies,
-                prior_plans=prior_canonical,
-                prior_read_result_handles=handles,
-                validated_container_refs=validated_container_refs,
-                detail_candidate_refs=detail_candidate_refs,
+            patch = build_query_node(
+                cast(
+                    Any,
+                    {
+                        "operation_inputs": {
+                            "build_query": {
+                                "plan": query_plan,
+                                "frozen_routes": frozen_routes,
+                                "route_policies": route_policies,
+                                "prior_plans": prior_canonical,
+                                "prior_read_result_handles": handles,
+                                "validated_resource_refs": validated_resource_refs,
+                                "validated_container_refs": validated_container_refs,
+                                "detail_candidate_refs": detail_candidate_refs,
+                            }
+                        }
+                    },
+                )
             )
+            canonical_plans = cast(list[CanonicalSourceFetchPlanV1], patch["source_fetch_plans"])
         except Exception:
             return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
         operations = {plan["operation_kind"] for plan in canonical_plans}
         if operations == {"NEXT_PAGE"}:
             return {
                 **state,
+                "source_fetch_plans": canonical_plans,
+                CONTEXT_CANONICAL_PLANS_KEY: {
+                    **prior_canonical,
+                    **{plan["route_id"]: plan for plan in canonical_plans},
+                },
                 CONTEXT_FOLLOWUP_OPERATION_KEY: "NEXT_PAGE",
                 CONTEXT_NEXT_PAGE_HANDLES_KEY: {
                     plan["route_id"]: cast(str, plan["prior_read_result_handle"])
@@ -961,23 +1206,23 @@ class RetrievalSubgraph:
                 },
             }
         if operations in ({"SEARCH"}, {"FREEBUSY"}):
-            try:
-                legacy_plans = project_for_legacy_read_executor(
-                    canonical_plans,
-                    frozen_routes=frozen_routes,
-                    retrieval_budget=self._acquisition_agent.retrieval_budget,
-                )
-            except Exception:
-                return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
             return {
                 **state,
-                "source_fetch_plans": legacy_plans,
-                CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
+                "source_fetch_plans": canonical_plans,
+                CONTEXT_CANONICAL_PLANS_KEY: {
+                    **prior_canonical,
+                    **{plan["route_id"]: plan for plan in canonical_plans},
+                },
                 CONTEXT_FOLLOWUP_OPERATION_KEY: "SEARCH",
             }
         if operations == {"DETAIL_FETCH"}:
             return {
                 **state,
+                "source_fetch_plans": canonical_plans,
+                CONTEXT_CANONICAL_PLANS_KEY: {
+                    **prior_canonical,
+                    **{plan["route_id"]: plan for plan in canonical_plans},
+                },
                 CONTEXT_FOLLOWUP_OPERATION_KEY: "DETAIL_FETCH",
                 CONTEXT_DETAIL_CANDIDATES_KEY: {
                     plan["route_id"]: cast(str, plan["detail_candidate_ref"])
@@ -996,164 +1241,6 @@ class RetrievalSubgraph:
         if operation == "DETAIL_FETCH":
             return "execute_detail"
         return "finalize"
-
-    def _execute_detail_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
-        candidates = state.get(CONTEXT_DETAIL_CANDIDATES_KEY, {})
-        for plan in state.get("source_fetch_plans", []):
-            route_id = _route_id_for_plan(state, plan)
-            candidate = candidates.get(route_id)
-            if candidate is None:
-                continue
-            try:
-                target = self._read_result_cache.resolve_detail_target(
-                    run_id=state["run_id"], route_id=route_id, resource_handle=candidate
-                )
-                previous = _require_state_value(state["acquisition_result"], "acquisition_result")
-                read_result = self._retrieval_read_executor.execute_detail(
-                    plan=plan,
-                    target=target,
-                    context=self._retrieval_read_executor.build_context(
-                        remaining_budget=dict(previous["remaining_budget"]),
-                        allowed_read_tool_ids=allowed_read_tool_ids(
-                            _require_state_value(state["tool_route_plan"], "tool_route_plan"),
-                            source=plan["source"],
-                        ),
-                    ),
-                )
-                materialized = self._acquisition_agent.materialize_retrieval_read(
-                    plan=plan,
-                    request=request_from_state(state),
-                    tool_route_plan=_require_state_value(
-                        state["tool_route_plan"], "tool_route_plan"
-                    ),
-                    read_result=read_result,
-                    read_result_cache=self._read_result_cache,
-                    read_handle_factory=self._id_factory,
-                )
-            except (ReadResultContinuationError, PermissionError):
-                return state
-            except Exception:
-                return state
-            if not materialized.segment_handles:
-                return state
-            self._read_result_cache.mark_detail_complete(
-                run_id=state["run_id"], route_id=route_id, resource_handle=candidate
-            )
-            followup = {
-                "schema_version": 1,
-                "status": "COMPLETE",
-                "resource_handles": list(materialized.segment_handles),
-                "source_summaries": [materialized.source_summary],
-                "missing_slots": [],
-                "remaining_budget": previous["remaining_budget"],
-            }
-            published = {
-                **state,
-                "acquisition_result": {
-                    **followup,
-                    "resource_handles": [
-                        *cast(list[str], previous["resource_handles"]),
-                        *cast(list[str], followup["resource_handles"]),
-                    ],
-                    "source_summaries": [
-                        *cast(list[dict[str, object]], previous["source_summaries"]),
-                        *cast(list[dict[str, object]], followup["source_summaries"]),
-                    ],
-                },
-                CONTEXT_CURRENT_ROUND_NO_KEY: state[CONTEXT_CURRENT_ROUND_NO_KEY] + 1,
-            }
-            published[CONTEXT_QUERY_ATTEMPTS_KEY] = self._append_read_attempts(
-                state=cast(ContextRetrievalLocalState, published),
-                result=followup,
-                plans=[plan],
-                operation_kind="DETAIL_FETCH",
-                previous_query_hash=None,
-            )
-            return cast(ContextRetrievalLocalState, published)
-        return state
-
-    def _execute_next_page_node(
-        self, state: ContextRetrievalLocalState
-    ) -> ContextRetrievalLocalState:
-        for plan in state.get("source_fetch_plans", []):
-            route_id = _route_id_for_plan(state, plan)
-            query_hash = retrieval_query_hash(plan)
-            handle = state.get(CONTEXT_NEXT_PAGE_HANDLES_KEY, {}).get(route_id)
-            if handle is None:
-                continue
-            try:
-                previous = _require_state_value(state["acquisition_result"], "acquisition_result")
-                read_result = self._retrieval_read_executor.execute_next_page(
-                    plan=plan,
-                    run_id=state["run_id"],
-                    route_id=route_id,
-                    query_hash=query_hash,
-                    read_result_handle=handle,
-                    context=self._retrieval_read_executor.build_context(
-                        remaining_budget=dict(previous["remaining_budget"]),
-                        allowed_read_tool_ids=allowed_read_tool_ids(
-                            _require_state_value(state["tool_route_plan"], "tool_route_plan"),
-                            source=plan["source"],
-                        ),
-                    ),
-                )
-                if read_result.error_code is not None:
-                    return state
-                materialized = self._acquisition_agent.materialize_retrieval_read(
-                    plan=plan,
-                    request=request_from_state(state),
-                    tool_route_plan=_require_state_value(
-                        state["tool_route_plan"], "tool_route_plan"
-                    ),
-                    read_result=read_result,
-                    read_result_cache=self._read_result_cache,
-                    read_handle_factory=self._id_factory,
-                )
-            except ReadResultContinuationError:
-                continue
-            except Exception:
-                # A provider read has no rollback.  Nothing semantic is
-                # published unless the following materialization succeeded.
-                return state
-            if not materialized.segment_handles:
-                return state
-            followup = {
-                "schema_version": 1,
-                "status": "COMPLETE",
-                "resource_handles": list(materialized.segment_handles),
-                "source_summaries": [materialized.source_summary],
-                "missing_slots": [],
-                "remaining_budget": cast(dict[str, int], previous["remaining_budget"]),
-            }
-            combined = {
-                **followup,
-                "resource_handles": cast(list[str], previous["resource_handles"])
-                + cast(list[str], followup["resource_handles"]),
-                "source_summaries": cast(list[dict[str, object]], previous["source_summaries"])
-                + cast(list[dict[str, object]], followup["source_summaries"]),
-            }
-            published_state = {
-                **state,
-                "acquisition_result": cast(Any, combined),
-                CONTEXT_CURRENT_ROUND_NO_KEY: state[CONTEXT_CURRENT_ROUND_NO_KEY] + 1,
-                CONTEXT_READ_RESULT_HANDLES_KEY: [
-                    *state.get(CONTEXT_READ_RESULT_HANDLES_KEY, []),
-                    materialized.read_result_handle,
-                ],
-                CONTEXT_SEGMENT_HANDLES_KEY: [
-                    *state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
-                    *materialized.segment_handles,
-                ],
-            }
-            published_state[CONTEXT_QUERY_ATTEMPTS_KEY] = self._append_read_attempts(
-                state=cast(ContextRetrievalLocalState, published_state),
-                result=followup,
-                plans=[plan],
-                operation_kind="NEXT_PAGE",
-                previous_query_hash=query_hash,
-            )
-            return cast(ContextRetrievalLocalState, published_state)
-        return state
 
     def _materialize_confirmation_interrupt(
         self, *, result: SufficiencyResultV2, request_intent: RequestIntentV2
@@ -1386,6 +1473,7 @@ class RetrievalSubgraph:
         merged.pop(CONTEXT_FOLLOWUP_OPERATION_KEY, None)
         merged.pop(CONTEXT_NEXT_PAGE_HANDLES_KEY, None)
         merged.pop(CONTEXT_DETAIL_CANDIDATES_KEY, None)
+        merged.pop(CONTEXT_READ_BINDINGS_KEY, None)
         merged.pop("query_plan", None)
         merged.pop("query_attempts", None)
         merged.pop("source_statuses", None)
@@ -1406,95 +1494,42 @@ class RetrievalSubgraph:
         merged.pop("acquisition_result", None)
         return cast(ContextRetrievalLocalState, merged)
 
-    def _append_read_attempts(
-        self,
-        *,
-        state: ContextRetrievalLocalState,
-        result: Any,
-        plans: list[Any],
-        operation_kind: str,
-        previous_query_hash: str | None,
-    ) -> list[QueryAttemptV1]:
-        attempts = cast(list[QueryAttemptV1], list(state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])))
-        summaries = result["source_summaries"]
-        for plan, summary in zip(plans, summaries, strict=False):
-            route_id = _route_id_for_plan(state, plan)
-            query_hash = retrieval_query_hash(plan)
-            handle = self._read_result_cache.latest_handle(
-                run_id=state["run_id"], route_id=route_id, query_hash=query_hash
-            )
-            page_state_hash = None
-            if handle is not None:
-                page_state_hash = self._read_result_cache.bounded_summary(
-                    run_id=state["run_id"], handle=handle
-                )["page_state_hash"]
-            attempts.append(
-                build_query_attempt(
-                    query_attempt_id=self._id_factory(),
-                    run_id=state["run_id"],
-                    route_id=route_id,
-                    round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
-                    attempt_no=len(attempts),
-                    plan=plan,
-                    connector_id=_connector_id_for_route(state, route_id),
-                    operation_kind=cast(Any, operation_kind),
-                    query_hash=query_hash,
-                    previous_query_hash=previous_query_hash,
-                    page_state_hash=cast(str | None, page_state_hash),
-                    candidate_count=cast(int, summary["resource_count"]),
-                    stop_reason="READ_COMPLETE",
-                )
-            )
-        return attempts
-
-    def _latest_read_handles(
-        self, state: ContextRetrievalLocalState, plans: list[Any]
-    ) -> list[str]:
-        handles: list[str] = []
-        for plan in plans:
-            handle = self._read_result_cache.latest_handle(
-                run_id=state["run_id"],
-                route_id=_route_id_for_plan(state, plan),
-                query_hash=retrieval_query_hash(plan),
-            )
-            if handle is not None:
-                handles.append(handle)
-        return handles
-
     def _bounded_read_result_summaries(
         self, state: ContextRetrievalLocalState
     ) -> list[dict[str, object]]:
         summaries: list[dict[str, object]] = []
-        for plan in state.get("source_fetch_plans", []):
-            route_id = _route_id_for_plan(state, plan)
-            handle = self._read_result_cache.latest_handle(
-                run_id=state["run_id"],
-                route_id=route_id,
-                query_hash=retrieval_query_hash(plan),
+        bindings = cast(Mapping[str, object], state.get(CONTEXT_READ_BINDINGS_KEY, {}))
+        for handle in cast(list[str], state.get(CONTEXT_READ_RESULT_HANDLES_KEY, [])):
+            raw = bindings.get(handle)
+            if not isinstance(raw, Mapping):
+                continue
+            route_id = raw.get("route_id")
+            query_hash = raw.get("query_identity_hash")
+            if not isinstance(route_id, str) or not isinstance(query_hash, str):
+                continue
+            resolution = self._read_result_cache.resolve_read_result(
+                handle, state["run_id"], route_id, query_hash
             )
-            if handle is not None:
-                summaries.append(
-                    self._read_result_cache.bounded_summary(run_id=state["run_id"], handle=handle)
-                )
+            if resolution.entry is None:
+                continue
+            token = resolution.entry.read_result.next_page_token
+            output = resolution.entry.read_result.output
+            raw_items = output.get("items", [])
+            count = len(raw_items) if isinstance(raw_items, list) else 1 if "item" in output else 0
+            summaries.append(
+                {
+                    "read_result_handle": handle,
+                    "route_id": route_id,
+                    "query_identity_hash": query_hash,
+                    "has_next_page": token is not None,
+                    "exhausted": resolution.status == "EXHAUSTED",
+                    "result_count": count,
+                    "page_state_hash": None
+                    if token is None
+                    else sha256(token.encode()).hexdigest(),
+                }
+            )
         return summaries
-
-
-def _route_id_for_plan(state: ContextRetrievalLocalState, plan: Any) -> str:
-    route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
-    source = cast(str, plan["source"])
-    category = {"GMAIL": "GMAIL", "TASKS": "TASK", "CALENDAR": "CALENDAR"}[source]
-    for route in route_plan["input_plan"]["input_routes"]:
-        if category in route["resource_type"]:
-            return route["route_id"]
-    raise ValueError("source is outside frozen input route")
-
-
-def _connector_id_for_route(state: ContextRetrievalLocalState, route_id: str) -> str:
-    route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
-    for route in route_plan["input_plan"]["input_routes"]:
-        if route["route_id"] == route_id:
-            return route["connector_id"]
-    raise ValueError("input route is missing")
 
 
 def _retrieval_required_signal(signal: object) -> RetrievalRequiredV1 | None:

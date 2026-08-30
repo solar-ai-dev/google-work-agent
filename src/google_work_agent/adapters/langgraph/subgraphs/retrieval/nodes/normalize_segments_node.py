@@ -6,4 +6,7 @@ from ..state import RetrievalState
 
 def normalize_segments_node(state: RetrievalState) -> dict[str, object]:
     segments = normalize_segments(**project_normalize_segments_input(state))
-    return {"segment_handles": [segment.segment_id for segment in segments]}
+    return {
+        "normalized_segments": segments,
+        "segment_handles": [segment.segment_id for segment in segments],
+    }

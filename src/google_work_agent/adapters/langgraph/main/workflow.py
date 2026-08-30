@@ -93,12 +93,11 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
+from google_work_agent.adapters.system.memory.run_retrieval_cache import (
+    InMemoryRunRetrievalCache,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
-)
-from google_work_agent.application.orchestration.api_acquisition import (
-    ApiDiscoveryAcquisitionAgent,
-    load_acquisition_plan_sources_prompt_reference,
 )
 from google_work_agent.application.orchestration.connector_read_projection import (
     ConnectorReadProjection,
@@ -125,18 +124,6 @@ from google_work_agent.application.orchestration.persist_planning_output import 
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
-)
-from google_work_agent.application.orchestration.retrieval_query_plan_schema import (
-    RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
-)
-from google_work_agent.application.orchestration.retrieval_query_planner import (
-    RetrievalQueryPlannerAgent,
-)
-from google_work_agent.application.orchestration.retrieval_read_cache import (
-    RunScopedReadResultCache,
-)
-from google_work_agent.application.orchestration.retrieval_read_executor import (
-    RetrievalReadExecutor,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -416,6 +403,7 @@ class WorkflowRuntimeCore:
         signing_secret: str,
         service_instance_id: str,
         checkpoint_port: CheckpointPort,
+        retrieval_cache: InMemoryRunRetrievalCache | None = None,
         claim_context_signer: Callable[[dict[str, object]], str] | None = None,
         mcp_process_instance_id: Callable[[], str] | None = None,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
@@ -484,26 +472,7 @@ class WorkflowRuntimeCore:
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
         )
-        self._read_result_cache = RunScopedReadResultCache()
-        self._acquisition = ApiDiscoveryAcquisitionAgent(
-            llm_runtime=llm_runtime,
-            connector_reader=connector_reader,
-            manifest_path=prompt_manifest_path,
-            now_ms=now_ms,
-            timezone_provider=timezone_provider,
-        )
-        self._retrieval_query_planner = RetrievalQueryPlannerAgent(
-            llm_runtime=llm_runtime,
-            prompt_ref=load_acquisition_plan_sources_prompt_reference(prompt_manifest_path),
-            output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
-            manifest_path=prompt_manifest_path,
-        )
-        self._retrieval_read_executor = RetrievalReadExecutor(
-            connector_reader=connector_reader,
-            read_result_cache=self._read_result_cache,
-            now_ms=now_ms,
-            timezone_provider=timezone_provider or (lambda: "Asia/Seoul"),
-        )
+        self._read_result_cache = retrieval_cache or InMemoryRunRetrievalCache()
         self._evidence_store = RunScopedEvidenceStore()
         self._canonical_domain_validation = CanonicalDomainValidationService(
             tool_registry=tool_catalog,
@@ -737,8 +706,7 @@ class WorkflowRuntimeCore:
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
-            acquisition_agent=self._acquisition,
-            retrieval_query_planner=self._retrieval_query_planner,
+            connector_reader=connector_reader.connector_reader,
             tool_catalog=tool_catalog,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
@@ -749,8 +717,8 @@ class WorkflowRuntimeCore:
             confirm_context_retrieval_inline=self._confirm_context_retrieval_inline,
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
-            retrieval_read_executor=self._retrieval_read_executor,
             default_tasklist_id_provider=self._default_tasklist_id_provider,
+            default_calendar_id_provider=self._default_calendar_id_provider,
         )
         self._request_subgraph = entry_subgraphs.request_understanding
         self._tool_route_subgraph = entry_subgraphs.tool_route
@@ -1260,9 +1228,7 @@ class WorkflowRuntimeCore:
         )
 
     @staticmethod
-    def _terminal_command_payload(
-        run_id: str, intent: TerminalCommitIntentV1
-    ) -> dict[str, object]:
+    def _terminal_command_payload(run_id: str, intent: TerminalCommitIntentV1) -> dict[str, object]:
         return {
             "run_id": run_id,
             "expected_run_version": intent["expected_run_version"],
@@ -1337,74 +1303,70 @@ class WorkflowRuntimeCore:
             with self._unit_of_work_factory() as unit_of_work:
                 resource_refs = {
                     _resource_handle_for_ref(item): item
-                    for item in unit_of_work.resource_refs.list_for_run_bounded(
-                        run_id, limit=1000
-                    )
+                    for item in unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000)
                 }
             acquisition_result = typed_state.get("acquisition_result")
             for draft in evidence_drafts:
-                    handle = draft.get("resource_handle")
-                    if not isinstance(handle, str) or handle in resource_refs:
+                handle = draft.get("resource_handle")
+                if not isinstance(handle, str) or handle in resource_refs:
+                    continue
+                acquired = (
+                    _acquired_resource_by_handle(
+                        acquisition_result=cast(Any, acquisition_result),
+                        resource_handle=handle,
+                    )
+                    if isinstance(acquisition_result, Mapping)
+                    else None
+                )
+                if acquired is None:
+                    resource_type, separator, resource_id = handle.partition(":")
+                    if not separator or not resource_id:
                         continue
-                    acquired = (
-                        _acquired_resource_by_handle(
-                            acquisition_result=cast(Any, acquisition_result),
-                            resource_handle=handle,
-                        )
-                        if isinstance(acquisition_result, Mapping)
-                        else None
-                    )
-                    if acquired is None:
-                        resource_type, separator, resource_id = handle.partition(":")
-                        if not separator or not resource_id:
+                    parent_id: str | None = None
+                    raw_actions = cast(Mapping[str, object], planning_result).get("actions", [])
+                    for action in cast(list[Mapping[str, object]], raw_actions):
+                        if draft.get("evidence_id") not in cast(
+                            list[object], action.get("evidence_refs", [])
+                        ):
                             continue
-                        parent_id: str | None = None
-                        raw_actions = cast(Mapping[str, object], planning_result).get("actions", [])
-                        for action in cast(list[Mapping[str, object]], raw_actions):
-                            if draft.get("evidence_id") not in cast(
-                                list[object], action.get("evidence_refs", [])
-                            ):
-                                continue
-                            arguments = action.get("arguments")
-                            if isinstance(arguments, Mapping):
-                                parent_field = (
-                                    "task_list_id"
-                                    if resource_type == "task"
-                                    else "calendar_id"
-                                    if resource_type == "calendar_event"
-                                    else None
-                                )
-                                if parent_field is not None:
-                                    parent_id = cast(str | None, arguments.get(parent_field))
-                            break
-                        acquired = {
-                            "resource_type": resource_type,
-                            "resource_id": resource_id,
-                            "parent_id": parent_id,
-                            "payload": {},
-                        }
-                    payload = cast(dict[str, object], acquired["payload"])
-                    resource_refs[handle] = ResourceRefRecord(
-                        id=f"projection-{run_id}-{handle.replace(':', '-')}",
-                        run_id=run_id,
-                        connector_id=_connector_id_for_evidence_handle(
-                            state=typed_state,
-                            resource_handle=handle,
-                        ),
-                        resource_type=str(acquired["resource_type"]),
-                        resource_id=str(acquired["resource_id"]),
-                        parent_resource_id=cast(str | None, acquired.get("parent_id")),
-                        canonical_url=None,
-                        title=str(
-                            payload.get("subject")
-                            or payload.get("title")
-                            or acquired["resource_id"]
-                        )[:200],
-                        event_time_ms=None,
-                        version_token=cast(str | None, acquired.get("version")),
-                        metadata_json=dumps(payload, sort_keys=True),
-                        captured_at_ms=self._now_ms(),
-                    )
+                        arguments = action.get("arguments")
+                        if isinstance(arguments, Mapping):
+                            parent_field = (
+                                "task_list_id"
+                                if resource_type == "task"
+                                else "calendar_id"
+                                if resource_type == "calendar_event"
+                                else None
+                            )
+                            if parent_field is not None:
+                                parent_id = cast(str | None, arguments.get(parent_field))
+                        break
+                    acquired = {
+                        "resource_type": resource_type,
+                        "resource_id": resource_id,
+                        "parent_id": parent_id,
+                        "payload": {},
+                    }
+                payload = cast(dict[str, object], acquired["payload"])
+                resource_refs[handle] = ResourceRefRecord(
+                    id=f"projection-{run_id}-{handle.replace(':', '-')}",
+                    run_id=run_id,
+                    connector_id=_connector_id_for_evidence_handle(
+                        state=typed_state,
+                        resource_handle=handle,
+                    ),
+                    resource_type=str(acquired["resource_type"]),
+                    resource_id=str(acquired["resource_id"]),
+                    parent_resource_id=cast(str | None, acquired.get("parent_id")),
+                    canonical_url=None,
+                    title=str(
+                        payload.get("subject") or payload.get("title") or acquired["resource_id"]
+                    )[:200],
+                    event_time_ms=None,
+                    version_token=cast(str | None, acquired.get("version")),
+                    metadata_json=dumps(payload, sort_keys=True),
+                    captured_at_ms=self._now_ms(),
+                )
             plan_review = _require_state_value(typed_state.get("plan_review"), "plan_review")
             result = self._canonical_domain_validation(
                 run_id=run_id,
@@ -1412,9 +1374,7 @@ class WorkflowRuntimeCore:
                 plan_review=cast(PlanReviewResultV2, plan_review),
                 work_analysis_result=typed_state.get("work_analysis_result"),
                 evidence_drafts=evidence_drafts,
-                policy_confirmation_receipts=typed_state.get(
-                    "policy_confirmation_receipts", []
-                ),
+                policy_confirmation_receipts=typed_state.get("policy_confirmation_receipts", []),
                 resource_identity_reader=_ResourceIdentityProjection(resource_refs),
             )
             if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
@@ -1720,16 +1680,12 @@ class WorkflowRuntimeCore:
                     "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
                 }
             reviewed = cast(GraphState, dict(reviewed))
-            reviewed["__replan_from_plan_id__"] = cast(
-                str, reviewed["__modify_review_plan_id__"]
-            )
+            reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
             reviewed["__modify_review_plan_id__"] = None
             reviewed["__modify_review_version__"] = None
             reviewed["__modify_review_risks__"] = None
             reviewed["__target__"] = "end"
-            reviewed["execution_summary"] = {
-                "result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"
-            }
+            reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
             return reviewed
         if not self._store_modify_review_result(
             reviewed,
@@ -2057,9 +2013,7 @@ class WorkflowRuntimeCore:
         )
         feasibility = evidence_feasibility_risk(
             arguments=arguments,
-            analysis_result=cast(
-                Mapping[str, object], state.get("work_analysis_result") or {}
-            ),
+            analysis_result=cast(Mapping[str, object], state.get("work_analysis_result") or {}),
             acquisition_result=acquisition,
             checked_at_ms=checked_at_ms,
             work_hours=self._work_hours_provider(),

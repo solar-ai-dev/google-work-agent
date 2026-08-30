@@ -131,6 +131,7 @@ CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
 CONTEXT_SUFFICIENCY_OUTPUT_KEY: Final = "__context_sufficiency_output__"
 CONTEXT_CURRENT_ROUND_NO_KEY: Final = "__context_current_round_no__"
 CONTEXT_READ_RESULT_HANDLES_KEY: Final = "__context_read_result_handles__"
+CONTEXT_READ_BINDINGS_KEY: Final = "__context_read_bindings__"
 CONTEXT_SEGMENT_HANDLES_KEY: Final = "__context_segment_handles__"
 CONTEXT_QUERY_ATTEMPTS_KEY: Final = "__context_query_attempts__"
 CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY: Final = "__context_followup_planner_input__"
@@ -172,9 +173,7 @@ def initial_graph_state(
                 }
                 for item in request.selected_resources
             ],
-            "requested_mode": cast(
-                Literal["AUTO", "LOCAL_GPU", "API_LLM"], request.requested_mode
-            ),
+            "requested_mode": cast(Literal["AUTO", "LOCAL_GPU", "API_LLM"], request.requested_mode),
         },
         "workflow_phase": WorkflowPhase.INITIALIZE.value,
         "request_intent": None,

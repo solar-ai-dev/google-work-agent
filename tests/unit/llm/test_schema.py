@@ -9,9 +9,6 @@ Audit) -- these tests lock in the corrected behavior.
 from __future__ import annotations
 
 from google_work_agent.adapters.llm.schema import validate_output_schema
-from google_work_agent.application.orchestration.api_acquisition import (
-    SOURCE_FETCH_PLAN_OUTPUT_SCHEMA,
-)
 
 
 def test_type_union_accepts_either_listed_type() -> None:
@@ -76,7 +73,7 @@ def test_object_or_null_union_rejects_non_object_non_null() -> None:
 # several JSON Schema keywords the shared validator did not previously
 # enforce at all (declared but silently unchecked). Each keyword below is
 # one actually used somewhere in this repository's schemas -- see
-# planning_tool_schemas.py, planning_argument_writer.py, api_acquisition.py,
+# planning_tool_schemas.py, planning_argument_writer.py, Retrieval schemas,
 # tool_route_semantic.py, request_understanding.py, solution_planning.py.
 
 
@@ -179,36 +176,3 @@ def test_min_properties_rejects_too_few_properties() -> None:
     schema = {"type": "object", "minProperties": 1}
     assert validate_output_schema({"a": 1}, schema) == []
     assert validate_output_schema({}, schema) == ["$ must have at least 1 properties"]
-
-
-def _source_fetch_plan_item(**overrides: object) -> dict[str, object]:
-    item: dict[str, object] = {
-        "schema_version": 2,
-        "source": "GMAIL",
-        "priority": 1,
-        "reason_codes": ["USER_REQUEST"],
-        "constraints": {},
-        "page_size": 10,
-        "max_pages": 1,
-        "max_candidates": 10,
-        "detail_limit": 1,
-        "required": True,
-        "calendar_read_mode": None,
-        "temporal_query": None,
-    }
-    item.update(overrides)
-    return item
-
-
-def test_source_fetch_plan_schema_enforces_calendar_allof_if_then_rules() -> None:
-    """Real production schema (api_acquisition.py) -- the ``allOf``/``if``/
-    ``then`` cross-field rule requiring GMAIL/TASKS items to leave
-    calendar-only fields null was declared but silently unenforced before
-    Batch B (docs/05 section 8 Calendar Typed Query contract)."""
-    json_schema = SOURCE_FETCH_PLAN_OUTPUT_SCHEMA.json_schema
-
-    assert validate_output_schema([_source_fetch_plan_item()], json_schema) == []
-
-    violating = [_source_fetch_plan_item(calendar_read_mode="EVENTS_ONLY")]
-    errors = validate_output_schema(violating, json_schema)
-    assert errors == ["$[0].calendar_read_mode must equal None"]

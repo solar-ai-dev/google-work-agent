@@ -122,7 +122,7 @@ def test_api_planning_result_values_match_workflow_document() -> None:
     )
 
 
-def test_api_acquisition_result_values_match_workflow_document() -> None:
+def test_retrieval_acquisition_result_values_match_workflow_document() -> None:
     assert _values(ApiAcquisitionResult) == (
         "COMPLETE",
         "PARTIAL",

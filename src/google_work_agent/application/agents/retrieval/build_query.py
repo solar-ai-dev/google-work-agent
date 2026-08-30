@@ -95,8 +95,10 @@ def _build_one(
         "resource_type": resource_type,
         "operation_kind": operation,
         "effective_constraints": normalized,
-        "query_identity_hash": _query_identity(
-            route, operation, normalized, query["detail_candidate_ref"]
+        "query_identity_hash": (
+            prior_plan["query_identity_hash"]
+            if operation == "NEXT_PAGE" and prior_plan is not None
+            else _query_identity(route, operation, normalized, query["detail_candidate_ref"])
         ),
         "prior_read_result_handle": prior_read_result_handle,
         "detail_candidate_ref": query["detail_candidate_ref"],

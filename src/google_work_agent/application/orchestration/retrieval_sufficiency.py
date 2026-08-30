@@ -173,7 +173,7 @@ def source_statuses_prompt_projection(
     route_id), COMPLETE/PARTIAL/FAILED/NOT_ATTEMPTED joined from
     AcquisitionResultV1.source_summaries -- never the raw Provider/MCP
     response. tool_route_plan may be absent the same way
-    api_acquisition._plan_query_prompt_input treats it defensively."""
+    The canonical plan_query prompt projection treats it defensively."""
     routes = () if tool_route_plan is None else tool_route_plan["input_plan"]["input_routes"]
     summaries_by_source: dict[str, list[dict[str, object]]] = {}
     for summary in acquisition_result["source_summaries"]:

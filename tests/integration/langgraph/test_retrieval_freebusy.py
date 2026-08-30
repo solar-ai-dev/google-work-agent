@@ -48,7 +48,11 @@ def _freebusy_plan_query(route_ids: list[str]) -> dict[str, object]:
                             "start_local": "2026-11-01T00:00:00",
                             "end_local": "2026-11-02T00:00:00",
                             "timezone": "America/Los_Angeles",
-                        }
+                        },
+                        {
+                            "kind": "CONTAINER_REF",
+                            "container_refs": ["calendar-primary"],
+                        },
                     ],
                 },
                 "detail_candidate_ref": None,
@@ -94,7 +98,12 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
             "CALENDAR_EVENT",
             "CALENDAR_FREEBUSY",
         }
-        route_ids = [route["route_id"] for route in input_routes]
+        route_ids = [
+            route["route_id"]
+            for route in input_routes
+            if "calendar_query_freebusy" in route["allowed_read_tool_ids"]
+        ]
+        assert len(route_ids) == 1
 
         # The FREEBUSY route_ids are only known once Tool Route actually
         # froze the routes, so the queue is populated after that call rather

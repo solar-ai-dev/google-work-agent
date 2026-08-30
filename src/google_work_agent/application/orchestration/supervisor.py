@@ -18,10 +18,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRouteDisposition,
     ToolRouteResultV1,
 )
-from google_work_agent.application.orchestration.api_acquisition import (
-    build_source_planning_clarification_question,
-)
 from google_work_agent.application.orchestration.confirmation import (
+    build_clarification_question_v1,
     build_user_interrupt_v1,
     validate_clarification_question_v1,
 )
@@ -75,6 +73,28 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 
 JsonObject = dict[str, object]
+
+
+def _source_planning_clarification(
+    output: SourcePlanningOutputV1, request_intent: RequestIntentV2
+) -> ClarificationQuestionV1:
+    raw = output.get("clarification")
+    if not isinstance(raw, Mapping):
+        raise ValueError("source-planning clarification is required")
+    question = raw.get("question")
+    reason_code = raw.get("reason_code")
+    if not isinstance(question, str) or not isinstance(reason_code, str):
+        raise ValueError("source-planning clarification is malformed")
+    affected = raw.get("affected_field_paths", [])
+    options = raw.get("options", [])
+    return build_clarification_question_v1(
+        origin_target="acquisition.plan_sources",
+        question=question,
+        reason_code=reason_code,
+        known_context_summary=request_intent["goal"],
+        affected_field_paths=(list(affected) if isinstance(affected, list) else []),
+        options=(list(options) if isinstance(options, list) else []),
+    )
 
 
 class SupervisorTarget(StrEnum):
@@ -152,7 +172,7 @@ def route_supervisor(
             output=cast(SourcePlanningOutputV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.API_ACQUISITION:
-        return _route_api_acquisition(
+        return _route_acquisition_result(
             state=state, result=cast(AcquisitionResultV1, _require_mapping(result, "result"))
         )
     if current_phase in {
@@ -405,10 +425,7 @@ def _route_source_planning(
             reason_code=result,
         )
     if result == "NEEDS_CONFIRMATION":
-        question = build_source_planning_clarification_question(
-            output=output,
-            request_intent=_request_intent_from_state(state),
-        )
+        question = _source_planning_clarification(output, _request_intent_from_state(state))
         return _decision(
             target=SupervisorTarget.WAITING_CONFIRMATION,
             next_phase=WorkflowPhase.WAITING_CONFIRMATION,
@@ -429,12 +446,10 @@ def _route_source_planning(
 
 
 def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV2:
-    return promote_run_budget_profile(
-        state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY
-    )
+    return promote_run_budget_profile(state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY)
 
 
-def _route_api_acquisition(
+def _route_acquisition_result(
     *,
     state: MultiAgentGraphState,
     result: AcquisitionResultV1,

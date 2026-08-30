@@ -1,7 +1,7 @@
 """Shared JSON-shape validation helpers for LangGraph agent output parsing.
 
 Each agent module (``work_analysis``, ``solution_planning``, ``request_understanding``,
-``api_acquisition``, ``context_retrieval``, ``plan_review``) previously defined an
+Retrieval, Planning, and Review modules previously defined an
 identical copy of these helpers, differing only in which module-local
 ``ValueError`` subclass they raised. To preserve that per-module exception
 identity (existing tests assert on the specific exception type), every

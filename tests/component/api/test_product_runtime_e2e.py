@@ -54,6 +54,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 from google_work_agent.adapters.readiness.composite import (
     StaticReadinessAggregator,
 )
+from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
@@ -440,6 +441,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
         checkpoint=checkpoint,
+        retrieval_cache=InMemoryRunRetrievalCache(),
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
         resume_target_registry=resume_target_registry,
@@ -640,9 +642,7 @@ def _seed_product_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def _create_conversation_and_run(
-    client: TestClient, *, selection_handle: str | None = None
-) -> str:
+def _create_conversation_and_run(client: TestClient, *, selection_handle: str | None = None) -> str:
     conversation = client.post(
         "/api/v1/conversations",
         json={

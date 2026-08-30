@@ -215,6 +215,7 @@ class ContextRetrievalLocalState(GraphState):
     __context_sufficiency_output__: NotRequired[SufficiencyResultV2]
     __context_current_round_no__: NotRequired[int]
     __context_read_result_handles__: NotRequired[list[str]]
+    __context_read_bindings__: NotRequired[dict[str, dict[str, str]]]
     __context_segment_handles__: NotRequired[list[str]]
     __context_query_attempts__: NotRequired[list[QueryAttemptV1]]
     __context_followup_planner_input__: NotRequired[dict[str, object]]

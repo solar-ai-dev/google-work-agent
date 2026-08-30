@@ -159,6 +159,7 @@ def build_production_runtime(
     unit_of_work_factory: Callable[[], UnitOfWork],
     id_factory: Callable[[], str],
     checkpoint: SqliteCheckpointAdapter,
+    retrieval_cache: RunRetrievalCachePort,
     materialize_admission_checkpoint: Callable[
         [WorkflowExecutionAdmissionV1, WorkflowHandoffV1], GraphCheckpointEnvelopeV1
     ],
@@ -200,7 +201,6 @@ def build_production_runtime(
         now_ms=now_ms,
         resume_target_registry=resume_target_registry,
     )
-    retrieval_cache = InMemoryRunRetrievalCache()
     reconcile_retrieval_cache_restart = ReconcileRetrievalCacheRestartHandler(
         unit_of_work_factory=unit_of_work_factory,
         checkpoint=checkpoint,

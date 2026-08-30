@@ -6,4 +6,4 @@ from ..state import RetrievalState
 
 def execute_read_node(state: RetrievalState) -> dict[str, object]:
     result = execute_read(**project_execute_read_input(state))
-    return {"read_result_handles": [result.read_result_handle]}
+    return {"read_execution": result}

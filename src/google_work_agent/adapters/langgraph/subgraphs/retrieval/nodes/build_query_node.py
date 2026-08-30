@@ -5,4 +5,4 @@ from ..state import RetrievalState
 
 
 def build_query_node(state: RetrievalState) -> dict[str, object]:
-    return {"fetch_plan": build_query(**project_build_query_input(state))}
+    return {"source_fetch_plans": build_query(**project_build_query_input(state))}

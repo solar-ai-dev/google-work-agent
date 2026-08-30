@@ -13,10 +13,10 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     _estimate_tokens,
     _strip_email_quote_and_signature,
 )
-from google_work_agent.application.orchestration.api_acquisition import AcquisitionResultV1
 from google_work_agent.application.orchestration.context_segmentation import (
     _segments_from_acquisition,
 )
+from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
 
 DEFAULT_BUDGET = ContextBudget()
 

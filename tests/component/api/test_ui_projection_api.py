@@ -31,6 +31,7 @@ from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
+from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
@@ -206,6 +207,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
         checkpoint=checkpoint,
+        retrieval_cache=InMemoryRunRetrievalCache(),
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
         resume_target_registry=resume_target_registry,

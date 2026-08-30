@@ -36,7 +36,6 @@ from tests.support.prompt_manifests import (
     write_manifest_with_overrides,
     write_runtime_active_manifest,
 )
-from tests.unit.application.workflows.test_api_acquisition import _plan
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
@@ -49,6 +48,9 @@ from google_work_agent.adapters.persistence import (
     apply_migrations,
     connect_sqlite,
     sqlite_unit_of_work_factory,
+)
+from google_work_agent.adapters.system.memory.run_retrieval_cache import (
+    InMemoryRunRetrievalCache,
 )
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
@@ -107,6 +109,25 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
+
+
+def _plan(source: str, constraints: dict[str, object]) -> dict[str, object]:
+    """Legacy-shaped fixture value retained only for parent-state test setup."""
+    return {
+        "schema_version": 2,
+        "source": source,
+        "priority": 1,
+        "reason_codes": ["SOURCE_REQUIRED"],
+        "constraints": constraints,
+        "page_size": 10,
+        "max_pages": 1,
+        "max_candidates": 10,
+        "detail_limit": 5,
+        "required": True,
+        "calendar_read_mode": "EVENTS_ONLY" if source == "CALENDAR" else None,
+        "temporal_query": None,
+    }
+
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
 _SYNTHESIZE_RETRIEVAL_QUERY_PLAN = object()
@@ -269,10 +290,14 @@ def _legacy_review_findings(payload: Mapping[str, object]) -> list[dict[str, obj
         "BLOCK": "BLOCKER",
     }.get(status, "ISSUE")
     issues = payload.get("issues")
-    source = next(
-        (dict(item) for item in issues if isinstance(item, Mapping)),
-        {},
-    ) if isinstance(issues, list) else {}
+    source = (
+        next(
+            (dict(item) for item in issues if isinstance(item, Mapping)),
+            {},
+        )
+        if isinstance(issues, list)
+        else {}
+    )
     confirmation = payload.get("confirmation")
     if status == "CONFIRM" and isinstance(confirmation, Mapping):
         source = dict(confirmation)
@@ -626,7 +651,7 @@ class _QueuedLLMRuntime:
             # prompt_input (request_intent/input_routes/retrieval_budget),
             # so neither prompt_id nor prompt_input alone can distinguish
             # the two callers. Their output_schema differs though --
-            # RetrievalQueryPlannerAgent uses
+            # retrieval.plan_query uses
             # RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA ("retrieval-query-plan-v2"),
             # legacy plan_sources uses SOURCE_FETCH_PLAN_OUTPUT_SCHEMA
             # ("source-fetch-plan-v2-list") -- a bare prompt_id match would
@@ -636,6 +661,9 @@ class _QueuedLLMRuntime:
             output_schema = kwargs.get("output_schema")
             schema_version = getattr(output_schema, "schema_version", None)
             is_v2_plan_call = schema_version == "retrieval-query-plan-v2"
+            if is_v2_plan_call and "base_projection" in prompt_input:
+                base_projection = cast(Mapping[str, object], prompt_input["base_projection"])
+                return _llm_result(_synthesize_retrieval_query_plan(base_projection))
             if is_v2_plan_call and "current_round_no" not in prompt_input:
                 return _llm_result(_synthesize_retrieval_query_plan(prompt_input))
             if (
@@ -792,12 +820,23 @@ def _legacy_selection_aliases(prompt_input: object) -> dict[str, str]:
         (item for item in ranked if isinstance(item, Mapping)),
         key=lambda item: _legacy_resource_order(str(item.get("resource_ref", ""))),
     )
-    stable_ids = [item.get("segment_id") for item in ordered]
-    return {
-        f"seg-{index}": value
-        for index, value in enumerate(stable_ids, start=1)
-        if isinstance(value, str)
+    fixture_aliases = {
+        "gmail_thread:thread-project": "seg-3",
+        "gmail_message:message-project-1": "seg-3",
+        "gmail_draft:draft-followup": "seg-1",
+        "task:task-followup": "seg-2",
+        "calendar_event:event-focus": "seg-1",
     }
+    result = {
+        fixture_aliases[resource_ref]: segment_id
+        for item in ordered
+        if (resource_ref := item.get("resource_ref")) in fixture_aliases
+        and isinstance(segment_id := item.get("segment_id"), str)
+    }
+    stable_ids = [item.get("segment_id") for item in ordered]
+    for index, value in enumerate(stable_ids, start=1):
+        result.setdefault(f"seg-{index}", value)
+    return result
 
 
 def _replace_result_aliases(
@@ -879,9 +918,23 @@ def _synthesize_retrieval_query_plan(prompt_input: Mapping[str, object]) -> dict
     of the fixture's queue.
     """
     input_routes = cast(list[dict[str, object]], prompt_input["input_routes"])
+    discovery_tools = {
+        "gmail_search_threads",
+        "tasks_list_tasklists",
+        "tasks_list_tasks",
+        "calendar_list_calendars",
+        "calendar_list_events",
+        "calendar_query_freebusy",
+    }
+    input_routes = [
+        route
+        for route in input_routes
+        if discovery_tools.intersection(cast(list[str], route["allowed_read_tool_ids"]))
+        or route.get("resource_refs")
+    ]
     route_ids = [route["route_id"] for route in input_routes]
 
-    def _constraint(route: dict[str, object]) -> dict[str, object]:
+    def _constraints(route: dict[str, object]) -> list[dict[str, object]]:
         # ``route["resource_type"]`` here is already the prompt-facing
         # coarse EMAIL/TASK/CALENDAR value (``_prompt_route`` in
         # retrieval_planner_input.py already coarsens it) -- it must be
@@ -889,22 +942,35 @@ def _synthesize_retrieval_query_plan(prompt_input: Mapping[str, object]) -> dict
         # only accepts fine-grained Registry types (e.g. "GMAIL_THREAD") and
         # raises for an already-coarse "EMAIL".
         resource_type = route.get("resource_type")
+        if resource_refs := route.get("resource_refs"):
+            return [{"kind": "RESOURCE_REF", "resource_refs": resource_refs}]
         if resource_type == "CALENDAR":
-            return {
-                "kind": "TEMPORAL_RANGE",
-                "axis": "EVENT_TIME",
-                "start_local": "2026-11-01T00:00:00",
-                "end_local": "2026-11-02T00:00:00",
-                "timezone": "UTC",
-            }
+            constraints = [
+                {
+                    "kind": "TEMPORAL_RANGE",
+                    "axis": "EVENT_TIME",
+                    "start_local": "2026-11-01T00:00:00",
+                    "end_local": "2026-11-02T00:00:00",
+                    "timezone": "UTC",
+                }
+            ]
+            if container_refs := route.get("container_refs"):
+                constraints.append({"kind": "CONTAINER_REF", "container_refs": container_refs})
+            return constraints
         if resource_type == "TASK":
             container_refs = route.get("container_refs") or ["synthesized-container"]
-            return {"kind": "CONTAINER_REF", "container_refs": container_refs}
+            return [{"kind": "CONTAINER_REF", "container_refs": container_refs}]
         # FakeGoogleGateway.search_gmail_threads special-cases this exact
         # query as "match everything in the default fixture inbox" -- a
         # synthesized EMAIL SEARCH constraint value shouldn't assume any
         # particular fixture participant/subject content is present.
-        return {"kind": "KEYWORD", "terms": ["in:inbox category:primary"], "match_mode": "ANY"}
+        return [
+            {
+                "kind": "KEYWORD",
+                "terms": ["in:inbox category:primary"],
+                "match_mode": "ANY",
+            }
+        ]
 
     return {
         "schema_version": 2,
@@ -915,7 +981,7 @@ def _synthesize_retrieval_query_plan(prompt_input: Mapping[str, object]) -> dict
                 "reason_codes": ["REQUIRED"],
                 "search_spec": {
                     "mode": "INITIAL",
-                    "constraints": [_constraint(route)],
+                    "constraints": _constraints(route),
                 },
                 "detail_candidate_ref": None,
             }
@@ -1487,6 +1553,7 @@ def _make_runtime(
     default_tasklist_id: str | None = "task-list-default",
     default_calendar_id: str | None = "calendar-primary",
     id_prefix: str = "runtime",
+    retrieval_cache: InMemoryRunRetrievalCache | None = None,
 ) -> LangGraphWorkflowRuntime:
     return _make_runtime_with_llm(
         database_path=database_path,
@@ -1499,6 +1566,7 @@ def _make_runtime(
         default_tasklist_id=default_tasklist_id,
         default_calendar_id=default_calendar_id,
         id_prefix=id_prefix,
+        retrieval_cache=retrieval_cache,
     )
 
 
@@ -1513,6 +1581,7 @@ def _make_runtime_with_llm(
     default_tasklist_id: str | None = "task-list-default",
     default_calendar_id: str | None = "calendar-primary",
     id_prefix: str = "runtime",
+    retrieval_cache: InMemoryRunRetrievalCache | None = None,
 ) -> LangGraphWorkflowRuntime:
     clock = FakeClockPort(1000)
     ids = DeterministicUUID(prefix=id_prefix)
@@ -1547,6 +1616,7 @@ def _make_runtime_with_llm(
         default_calendar_id_provider=(
             None if default_calendar_id is None else (lambda: default_calendar_id)
         ),
+        retrieval_cache=retrieval_cache,
     )
 
 

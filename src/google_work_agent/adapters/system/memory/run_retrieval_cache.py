@@ -54,11 +54,7 @@ def _result(
     status: Literal["FOUND", "MISSING", "CROSS_RUN", "BINDING_MISMATCH", "EXHAUSTED"],
     entry: RunRetrievalCacheEntryV1 | None,
 ) -> RunRetrievalCacheResolveResultV1:
-    return RunRetrievalCacheResolveResultV1(
-        schema_version=1,
-        status=status,
-        entry=entry,
-    )
+    return RunRetrievalCacheResolveResultV1(schema_version=1, status=status, entry=entry)
 
 
 __all__ = ["InMemoryRunRetrievalCache"]

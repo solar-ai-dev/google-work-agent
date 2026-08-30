@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
+)
 from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
@@ -105,7 +108,9 @@ def _validate_binding(
         raise RetrievalReadBindingError("retrieval can execute READ bindings only")
     if binding.connector_id != plan["connector_id"]:
         raise RetrievalReadBindingError("connector binding differs from frozen route")
-    if binding.resource_type != plan["resource_type"]:
+    if coarse_resource_category(binding.resource_type) != coarse_resource_category(
+        plan["resource_type"]
+    ):
         raise RetrievalReadBindingError("resource binding differs from frozen route")
 
 

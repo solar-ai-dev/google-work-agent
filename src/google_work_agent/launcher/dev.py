@@ -77,6 +77,7 @@ from google_work_agent.adapters.system.filesystem_operational_command_replay imp
     FilesystemOperationalCommandReplayAdapter,
 )
 from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
+from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.process_component_circuit_state import (
     ProcessComponentCircuitStateAdapter,
@@ -719,6 +720,7 @@ def build_container(
         now_ms=clock.now_ms,
     )
     event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
+    retrieval_cache = InMemoryRunRetrievalCache()
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
             unit_of_work_factory=unit_of_work_factory,
@@ -736,6 +738,7 @@ def build_container(
                 or (_ for _ in ()).throw(RuntimeError("MCP process identity is unavailable"))
             ),
             checkpoint_port=checkpoint,
+            retrieval_cache=retrieval_cache,
             prompt_manifest_path=prompt_manifest_path,
             timezone_provider=lambda: settings_service.get_settings().timezone,
             work_hours_provider=lambda: CalendarWorkHours(
@@ -945,6 +948,7 @@ def build_container(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.new_uuid,
         checkpoint=checkpoint,
+        retrieval_cache=retrieval_cache,
         materialize_admission_checkpoint=_materialize_admission_checkpoint,
         invoke_semantic_owner=_invoke_semantic_owner,
         resume_target_registry=resume_target_registry,
@@ -1214,9 +1218,7 @@ def build_container(
             ),
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
-        project_recovery_options_handler=ProjectRecoveryOptionsHandler(
-            read_unit_of_work_factory
-        ),
+        project_recovery_options_handler=ProjectRecoveryOptionsHandler(read_unit_of_work_factory),
         project_error_actions_handler=ProjectErrorActionsHandler(
             unit_of_work_factory=read_unit_of_work_factory,
             resume_target_registry=resume_target_registry,

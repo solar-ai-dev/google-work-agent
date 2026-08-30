@@ -17,34 +17,18 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.graph import (
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
     build_tool_routing_subgraph,
 )
-from google_work_agent.application.orchestration.api_acquisition import (
-    ApiDiscoveryAcquisitionAgent,
-)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.application.orchestration.retrieval_data_boundary import (
-    CheckpointSafeAcquisitionFacade,
-)
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
-)
-from google_work_agent.application.orchestration.retrieval_query_planner import (
-    RetrievalQueryPlannerAgent,
-)
-from google_work_agent.application.orchestration.retrieval_read_cache import (
-    RunScopedReadResultCache,
-)
-from google_work_agent.application.orchestration.retrieval_read_executor import (
-    RetrievalReadExecutor,
-)
-from google_work_agent.application.orchestration.source_fetch_plan_builder import (
-    SourceFetchPlanBuilder,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
+from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
+from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +42,7 @@ def build_pre_analysis_subgraphs(
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_manifest_path: Path | None,
-    acquisition_agent: ApiDiscoveryAcquisitionAgent,
-    retrieval_query_planner: RetrievalQueryPlannerAgent,
+    connector_reader: ConnectorReadPort,
     tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
     graph_profile: GraphProfile,
@@ -75,16 +58,12 @@ def build_pre_analysis_subgraphs(
         [Any], tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]
     ],
     evidence_store: RunScopedEvidenceStore,
-    read_result_cache: RunScopedReadResultCache,
-    retrieval_read_executor: RetrievalReadExecutor,
+    read_result_cache: RunRetrievalCachePort,
     default_tasklist_id_provider: Callable[[], str | None] | None = None,
+    default_calendar_id_provider: Callable[[], str | None] | None = None,
 ) -> PreAnalysisSubgraphs:
     """Create nodes only; workflow policy remains in their Application owners."""
 
-    checkpoint_safe_acquisition = CheckpointSafeAcquisitionFacade(
-        agent=acquisition_agent,
-        read_result_cache=read_result_cache,
-    )
     return PreAnalysisSubgraphs(
         request_understanding=RequestUnderstandingSubgraph(
             llm_runtime=llm_runtime,
@@ -112,13 +91,12 @@ def build_pre_analysis_subgraphs(
             transition_run=transition_run,
             merge_decision=merge_decision,
             evidence_store=evidence_store,
-            acquisition_agent=checkpoint_safe_acquisition,
-            retrieval_query_planner=retrieval_query_planner,
-            source_fetch_plan_builder=SourceFetchPlanBuilder(),
+            connector_reader=connector_reader,
+            tool_catalog=tool_catalog,
             read_result_cache=read_result_cache,
-            retrieval_read_executor=retrieval_read_executor,
             confirm_inline=confirm_context_retrieval_inline,
             default_tasklist_id_provider=default_tasklist_id_provider,
+            default_calendar_id_provider=default_calendar_id_provider,
         ).build(),
     )
 
