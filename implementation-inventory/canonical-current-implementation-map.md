@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `3a430e337dfdbae1dbe0d5e39ba51e64f48eacd0`
+**Validation HEAD:** `499b3811e3db7d01ff3ff2d90095186489076aaa`
 
 ## Purpose
 
@@ -18,6 +18,19 @@ Canonical documents remain the design authority.
 Preservation order:
 
 `KEEP → MOVE / RENAME / MOVE_RENAME → SPLIT / MERGE → TARGETED_CORRECTION → REWRITE only if preservation is unsafe → DELETE only after caller cut-over → CREATE only after repository-wide proof that reusable implementation is absent`
+
+---
+
+
+# Cross-feature Core closure
+
+At production SHA `499b3811e3db7d01ff3ff2d90095186489076aaa`, #152 independently reconciled the complete Core Request-to-Terminal integration and the formal implementation universe: **CAP 142/142**, **STR 473/473**, and **NPA 85/85** (700/700), with no missing or extra Ledger/Map identifier. The canonical producer chain is RunInput -> RequestIntent -> ToolRoutePlan -> RetrievalResult -> WorkAnalysisResult -> AnswerDraft/ActionPlanDraft -> PlanReviewResult -> durable Plan/Action/Approval/Claim/ExecutionAttempt/Verification-or-Recovery -> terminal Run result and final Assistant Message. Current artifact identity, revision/based-on binding, stale rejection, transaction/checkpoint boundaries, and restart/replay behavior are covered by the integrated persistence, LangGraph, retrieval, recovery, profile, and terminal suites.
+
+The audit found and corrected two cross-scope authority defects. The stale Main `context_result` business channel and its Supervisor/terminal consumers were removed; `retrieval_result` is now the only live parent Retrieval artifact and carries PARTIAL/evidence semantics into downstream decisions. Review composition now uses the single owner-local, concretely typed `subgraphs/review/state.py::ReviewState`; the broad duplicate `subgraph_state.py::ReviewLocalState` was retired after graph caller cut-over. Review inspector findings, closed dimensions, artifact references, planning/work-analysis inputs, confirmation projection, and parent output filtering are type-bound. The remaining historical `ContextRetrievalResultV1` material is bounded to V1 validation/evaluation compatibility and has no Product Main-state or production graph authority.
+
+All material consolidated Agent-graph findings are disposed on current code: M-1/W-2 and V-1 were corrected above; R-1/R-2/R-3/R-4 and W-1 remain already closed by exact Retrieval/Work Analysis wiring; V-2 is closed by deterministic `output_schema=MultiAgentGraphStateV2` parent filtering; V-3 is a legitimate thin entry composition helper delegating the registered exact router, not a second semantic routing authority. Final live same-semantic and execution authority duplication is zero, forbidden Core dependency directions remain zero, and legacy Core production callers/imports/exports are zero.
+
+Complete validation at this production SHA passed **2506 tests with 6 skipped**; the dedicated scenario matrix passed **106 tests**; architecture/negative proof passed **342 tests with 5 skipped**; Ruff passed; and scoped Review-state/graph MyPy passed. Prompt artifacts NPA-057..077 remain truthfully `DRAFT`; external release activation evidence remains separate-owner work and is not represented as active Product Prompt release.
 
 ---
 
