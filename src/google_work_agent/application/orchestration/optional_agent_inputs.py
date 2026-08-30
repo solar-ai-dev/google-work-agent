@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable
 from typing import cast
 
 import google_work_agent.application.orchestration.solution_planning as _planning
-import google_work_agent.application.orchestration.work_analysis as _analysis
+import google_work_agent.application.orchestration.work_analysis_result_v1_validation as _analysis
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
 )

@@ -22,7 +22,7 @@ def compose_arguments_per_output_route_node(
     tool_route_plan = projected.get("tool_route_plan")
     objectives = projected.get("action_objectives")
     user_request = projected.get("user_request", "")
-    work_analysis = projected.get("work_analysis")
+    work_analysis = projected.get("work_analysis_result")
     evidence = projected.get("evidence", ())
     if not isinstance(tool_route_plan, Mapping):
         raise ValueError("tool_route_plan is required")
@@ -31,7 +31,7 @@ def compose_arguments_per_output_route_node(
     if not isinstance(user_request, str):
         raise ValueError("user_request must be a string")
     if work_analysis is not None and not isinstance(work_analysis, Mapping):
-        raise ValueError("work_analysis must be an object")
+        raise ValueError("work_analysis_result must be an object")
     if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
         raise ValueError("evidence must be a sequence")
     output_plan = tool_route_plan.get("output_plan")

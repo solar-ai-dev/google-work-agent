@@ -51,7 +51,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     RouteReconsiderationRequiredV1,
     SourcePlanningOutputV1,
-    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.insufficient_data import (
     InsufficientDataContext,
@@ -66,9 +65,6 @@ from google_work_agent.application.orchestration.plan_review import (
 )
 from google_work_agent.application.orchestration.solution_planning import (
     build_solution_planning_clarification_question,
-)
-from google_work_agent.application.orchestration.work_analysis import (
-    build_work_analysis_clarification_question,
 )
 
 JsonObject = dict[str, object]
@@ -128,6 +124,8 @@ def route_supervisor(
     result: object | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
+    if current_phase is WorkflowPhase.WORK_ANALYSIS:
+        raise ValueError("Work Analysis routing is owned by its canonical eight-node subgraph")
     reconsideration = _route_reconsideration(current_phase, result)
     if reconsideration is not None:
         return reconsideration
@@ -157,11 +155,6 @@ def route_supervisor(
         return _route_retrieval(
             state=state,
             retrieval_return=cast(RetrievalRouteResultV1, _require_mapping(result, "result")),
-        )
-    if current_phase is WorkflowPhase.WORK_ANALYSIS:
-        return _route_analysis(
-            state=state,
-            result=cast(WorkAnalysisResultV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.SOLUTION_PLANNING:
         return _route_solution_planning(
@@ -226,7 +219,6 @@ def _route_reconsideration(
         else []
     )
     signal: RouteReconsiderationRequiredV1 = {
-        "schema_version": 1,
         "kind": "ROUTE_RECONSIDERATION_REQUIRED",
         "reason_codes": reason_codes or ["ROUTE_RECONSIDERATION_REQUIRED"],
     }
@@ -239,7 +231,7 @@ def _route_reconsideration(
             source_fetch_plans=[],
             acquisition_result=None,
             context_result=None,
-            analysis_result=None,
+            work_analysis_result=None,
             answer_draft=None,
             plan_draft=None,
             plan_review=None,
@@ -561,7 +553,6 @@ def _route_retrieval_required(
         # channel is _route_reconsideration, above).
         guard_reason_codes = ["RETRIEVAL_INPUT_ROUTE_UNAVAILABLE", *reason_codes]
         route_signal: RouteReconsiderationRequiredV1 = {
-            "schema_version": 1,
             "kind": "ROUTE_RECONSIDERATION_REQUIRED",
             "reason_codes": guard_reason_codes,
         }
@@ -597,51 +588,6 @@ def _route_retrieval_required(
         ),
         reason_code=reason_codes[0],
         budget_decision=budget,
-    )
-
-
-def _route_analysis(
-    *,
-    state: MultiAgentGraphState,
-    result: WorkAnalysisResultV1,
-) -> SupervisorDecisionV1:
-    status = str(result["status"])
-    if status == "COMPLETE":
-        return _decision(
-            target=SupervisorTarget.SOLUTION_PLANNING,
-            next_phase=WorkflowPhase.SOLUTION_PLANNING,
-            state_update=_base_state_update(
-                WorkflowPhase.SOLUTION_PLANNING,
-                analysis_result=result,
-            ),
-            reason_code=status,
-        )
-    if status == "NEEDS_MORE_DATA":
-        return _route_retrieval_required(
-            state=state,
-            reason_code="WORK_ANALYSIS_NEEDS_MORE_DATA",
-            current_update={"analysis_result": result},
-            request=result["additional_acquisition_request"],
-        )
-    if status == "NEEDS_CONFIRMATION":
-        question = build_work_analysis_clarification_question(
-            result=result,
-            request_intent=_request_intent_from_state(state),
-        )
-        return _decision(
-            target=SupervisorTarget.WAITING_CONFIRMATION,
-            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
-            state_update=_confirmation_state_update(
-                question=question,
-                analysis_result=result,
-            ),
-            reason_code=question["reason_code"],
-        )
-    return _finalize(
-        state=state,
-        intent=FinalizeIntent.BLOCKED.value,
-        reason_code="WORK_ANALYSIS_BLOCKED",
-        analysis_result=result,
     )
 
 
@@ -826,7 +772,7 @@ def _route_domain_validation(
         reason_code=_domain_validation_reason_code(result, default="DOMAIN_VALIDATION_BLOCKED"),
         plan_draft=state.get("plan_draft"),
         plan_review=state.get("plan_review"),
-        analysis_result=state.get("analysis_result"),
+        work_analysis_result=state.get("work_analysis_result"),
     )
 
 
@@ -1180,7 +1126,7 @@ def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str 
 
 
 def _has_supported_evidence(current_update: Mapping[str, object]) -> bool:
-    for key in ("context_result", "analysis_result"):
+    for key in ("context_result", "work_analysis_result"):
         result = _mapping_or_none(current_update.get(key))
         if result is None:
             continue

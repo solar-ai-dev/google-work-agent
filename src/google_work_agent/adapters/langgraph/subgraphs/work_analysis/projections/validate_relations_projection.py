@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     CurrentSourceRelationV1,
     WorkRelationCandidateV1,
@@ -19,7 +19,7 @@ class ValidateRelationsInput(TypedDict):
     allowed_evidence_refs: set[str]
 
 
-def project_validate_relations_input(state: WorkAnalysisStateV2) -> ValidateRelationsInput:
+def project_validate_relations_input(state: WorkAnalysisLocalState) -> ValidateRelationsInput:
     required = (
         "fact_candidates",
         "entity_relation_candidates",

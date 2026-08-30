@@ -1,4 +1,4 @@
-"""Canonical Work Analysis runtime for the #115 atomic relation slice."""
+"""Canonical eight-node Work Analysis production runtime."""
 
 # ruff: noqa: E501
 
@@ -27,6 +27,15 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
 )
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assemble_work_analysis_node import (
+    assemble_work_analysis_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assess_information_gaps_node import (
+    assess_information_gaps_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assess_operational_risks_node import (
+    assess_operational_risks_node,
+)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.detect_duplicate_conflict_candidates_node import (
     detect_duplicate_conflict_candidates_node,
 )
@@ -41,6 +50,12 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.resolve_
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.validate_relations_node import (
     validate_relations_node,
+)
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assess_information_gaps import (
+    route_after_assess_information_gaps,
+)
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assess_operational_risks import (
+    route_after_assess_operational_risks,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_detect_duplicate_conflict_candidates import (
     route_after_detect_duplicate_conflict_candidates,
@@ -57,22 +72,25 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_validate_relations import (
     route_after_validate_relations,
 )
+from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
+    required_override_confirmation_kind,
+)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
-    WorkAmbiguityV1,
-    WorkFactV1,
-    WorkRelationV1,
+    StateArtifactRefV1,
+    WorkAnalysisResultV2,
 )
 from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
+    PolicyConfirmationReceiptV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
     ClarificationQuestionV1,
     EvidenceDraftV1,
-    WorkAnalysisResultV1,
+    RetrievalRequiredV1,
+    RouteReconsiderationRequiredV1,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -80,7 +98,7 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
-    route_supervisor,
+    SupervisorTarget,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -101,7 +119,7 @@ ConfirmInline = Callable[
 
 
 class WorkAnalysisSubgraph:
-    """Run the four atomic Prompt operations and deterministic relation authority."""
+    """Run six atomic Prompt operations and two deterministic runtime nodes."""
 
     def __init__(
         self,
@@ -130,6 +148,12 @@ class WorkAnalysisSubgraph:
             "detect_duplicate_conflict_candidates": load_prompt_reference(
                 "work_analysis.detect_duplicate_conflict_candidates", manifest
             ),
+            "assess_information_gaps": load_prompt_reference(
+                "work_analysis.assess_information_gaps", manifest
+            ),
+            "assess_operational_risks": load_prompt_reference(
+                "work_analysis.assess_operational_risks", manifest
+            ),
         }
         self._id_factory = id_factory
         self._graph_profile = graph_profile
@@ -151,7 +175,8 @@ class WorkAnalysisSubgraph:
             "detect_duplicate_conflict_candidates", self._detect_duplicate_conflict_candidates_node
         )
         graph.add_node("validate_relations", self._validate_relations_node)
-        graph.add_node("compatibility_projection", self._compatibility_projection_node)
+        graph.add_node("assess_information_gaps", self._assess_information_gaps_node)
+        graph.add_node("assess_operational_risks", self._assess_operational_risks_node)
         graph.add_node("finalize", self._finalize_node)
         graph.add_edge(START, "extract_work_facts")
         graph.add_conditional_edges(
@@ -177,13 +202,29 @@ class WorkAnalysisSubgraph:
         graph.add_conditional_edges(
             "validate_relations",
             route_after_validate_relations,
-            {"compatibility_projection": "compatibility_projection"},
+            {"assess_information_gaps": "assess_information_gaps"},
         )
-        graph.add_edge("compatibility_projection", "finalize")
+        graph.add_conditional_edges(
+            "assess_information_gaps",
+            route_after_assess_information_gaps,
+            {
+                "assess_operational_risks": "assess_operational_risks",
+                "finalize": "finalize",
+            },
+        )
+        graph.add_conditional_edges(
+            "assess_operational_risks",
+            route_after_assess_operational_risks,
+            {"finalize": "finalize"},
+        )
         graph.add_conditional_edges(
             "finalize",
             self._route_after_finalize,
-            {"finalize": "finalize", "end": END},
+            {
+                "assess_operational_risks": "assess_operational_risks",
+                "finalize": "finalize",
+                "end": END,
+            },
         )
         return graph.compile(name="work_analysis_subgraph")
 
@@ -222,7 +263,7 @@ class WorkAnalysisSubgraph:
             prompt_ref=self._prompt_refs["extract_work_facts"],
             trace_context=self._llm_trace(working, "extract_facts"),
         )
-        owner_inputs = {
+        owner_inputs: dict[str, object] = {
             "user_request": working["user_request"],
             "request_intent": working["request_intent"],
             "evidence": working["evidence"],
@@ -334,85 +375,171 @@ class WorkAnalysisSubgraph:
             {**patch, "trace_context": self._trace(state, "validate_relations")},
         )
 
-    def _compatibility_projection_node(
+    def _assess_information_gaps_node(
         self, state: WorkAnalysisLocalState
     ) -> WorkAnalysisLocalState:
-        result = _project_legacy_parent_result(
-            facts=cast(list[WorkFactV1], state.get("fact_candidates", [])),
-            relations=cast(list[WorkRelationV1], state.get("validated_relations", [])),
-            ambiguities=cast(
-                list[WorkAmbiguityV1], state.get("relation_validation_ambiguities", [])
-            ),
-            evidence=cast(list[EvidenceDraftV1], state.get("evidence", [])),
+        working = cast(WorkAnalysisLocalState, dict(state))
+        confirmation_response = self._confirmation_response(state)
+        if confirmation_response is not None:
+            working["confirmation_response"] = confirmation_response
+        ensure_llm_call_budget(working)
+        patch = assess_information_gaps_node(
+            cast(Any, working),
+            llm_runtime=self._llm_runtime,
+            prompt_ref=self._prompt_refs["assess_information_gaps"],
+            trace_context=self._llm_trace(state, "assess_information_gaps"),
         )
-        patch: WorkAnalysisLocalState = {
-            "analysis_result": result,
-            "trace_context": self._trace(state, "compatibility_projection"),
-        }
-        if result["status"] == "NEEDS_CONFIRMATION":
-            question = _clarification_question(result)
-            interrupt_id = self._id_factory()
-            patch["workflow_phase"] = WorkflowPhase.WAITING_CONFIRMATION.value
-            patch["user_interrupt"] = cast(
-                Any, {**build_user_interrupt_v1(question), "interrupt_id": interrupt_id}
+        assessment = patch.get("__analysis_information_gap_assessment__")
+        if (
+            isinstance(assessment, Mapping)
+            and assessment.get("disposition") == "NEEDS_CONFIRMATION"
+        ):
+            reason_codes = cast(list[str], assessment.get("reason_codes", []))
+            cast(dict[str, Any], patch).update(
+                self._confirmation_patch(
+                    state,
+                    origin_target="analysis.assess_information_gaps",
+                    question=cast(str, assessment.get("question")),
+                    reason_code=(
+                        reason_codes[0] if reason_codes else "WORK_ANALYSIS_NEEDS_CONFIRMATION"
+                    ),
+                    options=[
+                        {"option_id": value, "label": value}
+                        for value in cast(list[str], assessment.get("options", []))
+                    ],
+                )
             )
-            patch["prompt_context"] = {
-                **cast(dict[str, object], state.get("prompt_context", {})),
-                "confirmation_interrupt": {
-                    "schema_version": 1,
-                    "interrupt_id": interrupt_id,
-                    "semantic_owner_id": "WORK_ANALYSIS",
-                    "origin_target": question["origin_target"],
-                },
-            }
-        return patch
+        return cast(
+            WorkAnalysisLocalState,
+            {
+                **patch,
+                "retry_budget": consume_llm_call_budget(working),
+                "trace_context": self._trace(
+                    state,
+                    "assess_information_gaps",
+                    self._prompt_refs["assess_information_gaps"],
+                ),
+            },
+        )
+
+    def _assess_operational_risks_node(
+        self, state: WorkAnalysisLocalState
+    ) -> WorkAnalysisLocalState:
+        ensure_llm_call_budget(state)
+        patch = assess_operational_risks_node(
+            cast(Any, state),
+            llm_runtime=self._llm_runtime,
+            prompt_ref=self._prompt_refs["assess_operational_risks"],
+            trace_context=self._llm_trace(state, "assess_operational_risks"),
+        )
+        assessment = patch.get("__analysis_operational_risk_assessment__")
+        if isinstance(assessment, Mapping):
+            override_kind = required_override_confirmation_kind(
+                validated_relations=cast(list[Any], state.get("validated_relations", [])),
+                action_necessity_candidate=cast(Any, assessment["action_necessity_candidate"]),
+                policy_confirmation_receipts=cast(
+                    list[PolicyConfirmationReceiptV1],
+                    state.get("policy_confirmation_receipts", []),
+                ),
+                based_on=self._based_on(state),
+            )
+            if override_kind is not None:
+                cast(dict[str, Any], patch).update(
+                    self._confirmation_patch(
+                        state,
+                        origin_target="analysis.assess_operational_risks",
+                        question=(
+                            "The current evidence indicates an existing duplicate or conflict. "
+                            "Do you approve proceeding with the requested action?"
+                        ),
+                        reason_code=f"{override_kind}_REQUIRED",
+                        options=[
+                            {"option_id": "APPROVED", "label": "Proceed"},
+                            {"option_id": "DECLINED", "label": "Do not proceed"},
+                        ],
+                        policy_confirmation={
+                            "confirmation_kind": override_kind,
+                            "based_on": self._based_on(state),
+                        },
+                    )
+                )
+        return cast(
+            WorkAnalysisLocalState,
+            {
+                **patch,
+                "retry_budget": consume_llm_call_budget(state),
+                "trace_context": self._trace(
+                    state,
+                    "assess_operational_risks",
+                    self._prompt_refs["assess_operational_risks"],
+                ),
+            },
+        )
 
     def _finalize_node(self, state: WorkAnalysisLocalState) -> WorkAnalysisLocalState:
-        result = _require_state_value(state.get("analysis_result"), "analysis_result")
-        if result["status"] == "NEEDS_CONFIRMATION":
-            response, early = self._confirm_inline(state)
-            if early is not None:
-                return cast(
-                    WorkAnalysisLocalState, {**early, "__work_analysis_retry_confirmation__": False}
-                )
-            if response is None:
-                raise ValueError("Work Analysis confirmation response is required")
-            context = dict(cast(dict[str, object], state.get("prompt_context", {})))
-            context.pop("confirmation_interrupt", None)
-            context["confirmation_response"] = dict(response)
-            acknowledged = [
-                {**item, "requires_confirmation": False}
-                for item in cast(
-                    list[WorkAmbiguityV1], state.get("relation_validation_ambiguities", [])
-                )
-            ]
-            completed = _project_legacy_parent_result(
-                facts=cast(list[WorkFactV1], state.get("fact_candidates", [])),
-                relations=cast(list[WorkRelationV1], state.get("validated_relations", [])),
-                ambiguities=cast(list[WorkAmbiguityV1], acknowledged),
-                evidence=cast(list[EvidenceDraftV1], state.get("evidence", [])),
-            )
-            return {
-                "analysis_result": completed,
-                "relation_validation_ambiguities": acknowledged,
-                "user_interrupt": None,
-                "prompt_context": context,
-                "__work_analysis_retry_confirmation__": True,
-                "trace_context": self._trace(state, "finalize"),
-            }
-        decision = route_supervisor(
-            phase=WorkflowPhase.WORK_ANALYSIS,
-            state=cast(MultiAgentGraphState, state),
-            result=result,
+        gap_assessment = state.get("__analysis_information_gap_assessment__")
+        if isinstance(gap_assessment, Mapping) and gap_assessment.get("disposition") != "COMPLETE":
+            return self._resolve_gap_disposition(state, gap_assessment)
+
+        risk_assessment = _require_state_value(
+            state.get("__analysis_operational_risk_assessment__"),
+            "operational risk assessment",
         )
+        based_on = self._based_on(state)
+        override_kind = required_override_confirmation_kind(
+            validated_relations=cast(list[Any], state.get("validated_relations", [])),
+            action_necessity_candidate=cast(Any, risk_assessment["action_necessity_candidate"]),
+            policy_confirmation_receipts=cast(
+                list[PolicyConfirmationReceiptV1],
+                state.get("policy_confirmation_receipts", []),
+            ),
+            based_on=based_on,
+        )
+        if override_kind is not None:
+            return self._resolve_confirmation(
+                state,
+                origin_target="analysis.assess_operational_risks",
+                question=(
+                    "The current evidence indicates an existing duplicate or conflict. "
+                    "Do you approve proceeding with the requested action?"
+                ),
+                reason_code=f"{override_kind}_REQUIRED",
+                options=[
+                    {"option_id": "APPROVED", "label": "Proceed"},
+                    {"option_id": "DECLINED", "label": "Do not proceed"},
+                ],
+                policy_confirmation={
+                    "confirmation_kind": override_kind,
+                    "based_on": based_on,
+                },
+            )
+
+        patch = assemble_work_analysis_node(
+            cast(dict[str, object], state),
+            artifact_id=self._id_factory(),
+        )
+        result = cast(WorkAnalysisResultV2, patch["final_analysis"])
+        decision: SupervisorDecisionV1 = {
+            "target": SupervisorTarget.SOLUTION_PLANNING.value,
+            "next_phase": WorkflowPhase.SOLUTION_PLANNING.value,
+            "state_update": {
+                "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
+                "work_analysis_result": result,
+                "workflow_signal": None,
+                "user_interrupt": None,
+                "finalize_intent": None,
+            },
+            "reason_code": "WORK_ANALYSIS_COMPLETE",
+            "budget_decision": None,
+        }
         merged = self._merge_decision(
             state,
             {
-                "analysis_result": result,
-                "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
+                "work_analysis_result": result,
                 "trace_context": {
-                    "analysis_result": result["status"],
-                    "finding_count": len(result["findings"]),
+                    "work_analysis_result": "COMPLETE",
+                    "fact_count": len(result["work_facts"]),
+                    "relation_count": len(result["relations"]),
                 },
             },
             decision,
@@ -424,14 +551,253 @@ class WorkAnalysisSubgraph:
 
     @staticmethod
     def _route_after_finalize(state: WorkAnalysisLocalState) -> str:
-        return "finalize" if state.get("__work_analysis_retry_confirmation__") else "end"
+        if not state.get("__work_analysis_retry_confirmation__"):
+            return "end"
+        return "assess_operational_risks"
+
+    def _resolve_gap_disposition(
+        self,
+        state: WorkAnalysisLocalState,
+        assessment: Mapping[str, object],
+    ) -> WorkAnalysisLocalState:
+        disposition = assessment.get("disposition")
+        reason_codes = [
+            item
+            for item in cast(list[object], assessment.get("reason_codes", []))
+            if isinstance(item, str) and item
+        ] or [f"WORK_ANALYSIS_{disposition or 'BLOCKED'}"]
+        if disposition == "NEEDS_CONFIRMATION":
+            return self._resolve_confirmation(
+                state,
+                origin_target="analysis.assess_information_gaps",
+                question=cast(
+                    str,
+                    assessment.get("question")
+                    or "Please clarify the missing information required for this analysis.",
+                ),
+                reason_code=reason_codes[0],
+                options=[
+                    {"option_id": value, "label": value}
+                    for value in cast(list[str], assessment.get("options", []))
+                    if isinstance(value, str) and value
+                ],
+            )
+        if disposition == "NEEDS_MORE_DATA":
+            signal: RetrievalRequiredV1 | RouteReconsiderationRequiredV1
+            target: SupervisorTarget
+            phase: WorkflowPhase
+            if self._has_usable_input_route(state):
+                signal = {
+                    "kind": "RETRIEVAL_REQUIRED",
+                    "reason_codes": reason_codes,
+                    "needs": list(cast(list[Any], state.get("retrieval_needs", []))),
+                }
+                target = SupervisorTarget.CONTEXT_RETRIEVAL
+                phase = WorkflowPhase.CONTEXT_RETRIEVAL
+            else:
+                signal = {
+                    "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+                    "reason_codes": reason_codes,
+                }
+                target = SupervisorTarget.TOOL_ROUTE
+                phase = WorkflowPhase.TOOL_ROUTING
+            return self._finish_with_signal(state, signal=signal, target=target, phase=phase)
+        if disposition == "ROUTE_RECONSIDERATION_REQUIRED":
+            return self._finish_with_signal(
+                state,
+                signal={
+                    "kind": "ROUTE_RECONSIDERATION_REQUIRED",
+                    "reason_codes": reason_codes,
+                },
+                target=SupervisorTarget.TOOL_ROUTE,
+                phase=WorkflowPhase.TOOL_ROUTING,
+            )
+        decision: SupervisorDecisionV1 = {
+            "target": SupervisorTarget.FINALIZE.value,
+            "next_phase": WorkflowPhase.FINALIZE.value,
+            "state_update": {
+                "workflow_phase": WorkflowPhase.FINALIZE.value,
+                "workflow_signal": None,
+                "finalize_intent": {
+                    "schema_version": 1,
+                    "intent": "BLOCKED",
+                    "reason_code": reason_codes[0],
+                },
+            },
+            "reason_code": reason_codes[0],
+            "budget_decision": None,
+        }
+        return cast(
+            WorkAnalysisLocalState,
+            {
+                **self._merge_decision(state, {}, decision),
+                "__work_analysis_retry_confirmation__": False,
+            },
+        )
+
+    def _finish_with_signal(
+        self,
+        state: WorkAnalysisLocalState,
+        *,
+        signal: RetrievalRequiredV1 | RouteReconsiderationRequiredV1,
+        target: SupervisorTarget,
+        phase: WorkflowPhase,
+    ) -> WorkAnalysisLocalState:
+        reason_codes = signal["reason_codes"]
+        decision: SupervisorDecisionV1 = {
+            "target": target.value,
+            "next_phase": phase.value,
+            "state_update": {
+                "workflow_phase": phase.value,
+                "workflow_signal": signal,
+                "user_interrupt": None,
+            },
+            "reason_code": reason_codes[0],
+            "budget_decision": None,
+        }
+        merged = self._merge_decision(state, {}, decision)
+        merged.pop(ANALYSIS_AGENT_LOCAL_KEY, None)
+        return cast(
+            WorkAnalysisLocalState,
+            {**merged, "__work_analysis_retry_confirmation__": False},
+        )
+
+    def _resolve_confirmation(
+        self,
+        state: WorkAnalysisLocalState,
+        *,
+        origin_target: str,
+        question: str,
+        reason_code: str,
+        options: list[dict[str, str]],
+        policy_confirmation: dict[str, object] | None = None,
+    ) -> WorkAnalysisLocalState:
+        del question, reason_code, options, policy_confirmation
+        working = cast(WorkAnalysisLocalState, dict(state))
+        if not isinstance(working.get("user_interrupt"), Mapping):
+            raise ValueError("Work Analysis confirmation must be checkpointed by its producer node")
+        response, early = self._confirm_inline(working)
+        if early is not None:
+            return cast(
+                WorkAnalysisLocalState,
+                {**early, "__work_analysis_retry_confirmation__": False},
+            )
+        if response is None:
+            raise ValueError("Work Analysis confirmation response is required")
+        context = dict(cast(Mapping[str, object], working.get("prompt_context", {})))
+        context.pop("confirmation_interrupt", None)
+        context["confirmation_response"] = dict(response)
+        patch: dict[str, Any] = {}
+        if origin_target == "analysis.assess_information_gaps":
+            acknowledged = [
+                {**item, "requires_confirmation": False}
+                for item in cast(list[dict[str, object]], working.get("ambiguity_candidates", []))
+            ]
+            patch.update(
+                {
+                    "ambiguity_candidates": cast(Any, acknowledged),
+                    "relation_validation_ambiguities": cast(Any, acknowledged),
+                    "__analysis_information_gap_assessment__": {
+                        "disposition": "COMPLETE",
+                        "ambiguities": acknowledged,
+                        "retrieval_needs": [],
+                        "evidence_refs": list(working.get("evidence_refs", [])),
+                    },
+                    "__analysis_noncomplete_disposition__": "RESUME_RISKS",
+                }
+            )
+        else:
+            patch["__analysis_noncomplete_disposition__"] = "RESUME_FINALIZE"
+        return cast(
+            WorkAnalysisLocalState,
+            {
+                **patch,
+                "user_interrupt": None,
+                "prompt_context": context,
+                "policy_confirmation_receipts": list(
+                    working.get("policy_confirmation_receipts", [])
+                ),
+                "__work_analysis_retry_confirmation__": True,
+                "trace_context": self._trace(working, "finalize"),
+            },
+        )
+
+    def _confirmation_patch(
+        self,
+        state: WorkAnalysisLocalState,
+        *,
+        origin_target: str,
+        question: str,
+        reason_code: str,
+        options: list[dict[str, str]],
+        policy_confirmation: dict[str, object] | None = None,
+    ) -> WorkAnalysisLocalState:
+        request_intent = cast(Mapping[str, object], state.get("request_intent", {}))
+        clarification: ClarificationQuestionV1 = {
+            "schema_version": 1,
+            "origin_target": origin_target,
+            "question": question,
+            "affected_field_paths": [],
+            "reason_code": reason_code,
+            "known_context_summary": str(request_intent.get("goal", "Work analysis")),
+            "options": cast(Any, options),
+        }
+        interrupt_id = self._id_factory()
+        raw_interrupt: dict[str, object] = {
+            **build_user_interrupt_v1(clarification),
+            "interrupt_id": interrupt_id,
+        }
+        if policy_confirmation is not None:
+            raw_interrupt["policy_confirmation"] = policy_confirmation
+        context = dict(cast(Mapping[str, object], state.get("prompt_context", {})))
+        context.pop("confirmation_response", None)
+        context["confirmation_interrupt"] = {
+            "schema_version": 1,
+            "interrupt_id": interrupt_id,
+            "semantic_owner_id": "WORK_ANALYSIS",
+            "origin_target": origin_target,
+        }
+        return cast(
+            WorkAnalysisLocalState,
+            {
+                "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
+                "user_interrupt": cast(Any, raw_interrupt),
+                "prompt_context": context,
+            },
+        )
+
+    @staticmethod
+    def _has_usable_input_route(state: WorkAnalysisLocalState) -> bool:
+        plan = state.get("tool_route_plan")
+        if not isinstance(plan, Mapping):
+            return False
+        input_plan = plan.get("input_plan")
+        return isinstance(input_plan, Mapping) and bool(input_plan.get("input_routes"))
+
+    @staticmethod
+    def _based_on(state: WorkAnalysisLocalState) -> list[StateArtifactRefV1]:
+        result: list[StateArtifactRefV1] = []
+        for key in ("request_intent", "tool_route_plan", "retrieval_result"):
+            artifact = state.get(key)
+            meta = artifact.get("meta") if isinstance(artifact, Mapping) else None
+            if not isinstance(meta, Mapping):
+                continue
+            artifact_id, revision = meta.get("artifact_id"), meta.get("revision")
+            if isinstance(artifact_id, str) and isinstance(revision, int):
+                result.append({"artifact_id": artifact_id, "revision": revision})
+        return result
 
     def _evidence(self, state: WorkAnalysisLocalState) -> list[EvidenceDraftV1]:
         retrieval_result = state.get("retrieval_result")
         if retrieval_result is None:
             return []
-        return resolve_evidence_projection(
-            store=self._evidence_store, run_id=state["run_id"], retrieval_result=retrieval_result
+        return cast(
+            list[EvidenceDraftV1],
+            resolve_evidence_projection(
+                store=self._evidence_store,
+                run_id=state["run_id"],
+                retrieval_result=retrieval_result,
+            ),
         )
 
     @staticmethod
@@ -458,18 +824,21 @@ class WorkAnalysisSubgraph:
         prompt_ref: PromptReference | None = None,
         first: bool = False,
     ) -> dict[str, object]:
-        return merge_trace_context(
-            state,
-            graph_profile=self._graph_profile.value,
-            agent_subgraph_id="work_analysis",
-            agent_role="work_analysis",
-            agent_invocation_id=self._invocation_id(state),
-            subgraph_namespace="analysis",
-            node_name=node,
-            llm_call_id=(f"{state['run_id']}:analysis.{node}" if prompt_ref else None),
-            prompt_ref=prompt_ref,
-            agent_invocation_increment=1 if first else 0,
-            llm_call_increment=1 if prompt_ref else 0,
+        return cast(
+            dict[str, object],
+            merge_trace_context(
+                state,
+                graph_profile=self._graph_profile.value,
+                agent_subgraph_id="work_analysis",
+                agent_role="work_analysis",
+                agent_invocation_id=self._invocation_id(state),
+                subgraph_namespace="analysis",
+                node_name=node,
+                llm_call_id=(f"{state['run_id']}:analysis.{node}" if prompt_ref else None),
+                prompt_ref=prompt_ref,
+                agent_invocation_increment=1 if first else 0,
+                llm_call_increment=1 if prompt_ref else 0,
+            ),
         )
 
     def _invocation_id(self, state: WorkAnalysisLocalState) -> str:
@@ -482,124 +851,14 @@ class WorkAnalysisSubgraph:
         if isinstance(log, list):
             for item in reversed(log):
                 if isinstance(item, Mapping) and item.get("agent_subgraph_id") == "work_analysis":
-                    value = item.get("agent_invocation_id")
-                    if isinstance(value, str) and value:
-                        return value
+                    log_invocation_id = item.get("agent_invocation_id")
+                    if isinstance(log_invocation_id, str) and log_invocation_id:
+                        return log_invocation_id
         return self._id_factory()
 
     @staticmethod
     def _has_invocation(state: WorkAnalysisLocalState) -> bool:
         return isinstance(state.get(ANALYSIS_AGENT_LOCAL_KEY), Mapping)
-
-
-def _project_legacy_parent_result(
-    *,
-    facts: list[WorkFactV1],
-    relations: list[WorkRelationV1],
-    ambiguities: list[WorkAmbiguityV1],
-    evidence: list[EvidenceDraftV1],
-) -> WorkAnalysisResultV1:
-    by_id = {item["evidence_id"]: item for item in evidence}
-    findings: list[dict[str, object]] = []
-    for fact in facts:
-        selected = [by_id[ref] for ref in fact["evidence_refs"] if ref in by_id]
-        resource_handles = list(dict.fromkeys(item["resource_handle"] for item in selected))
-        findings.append(
-            {
-                "schema_version": 1,
-                "finding_id": fact["fact_id"],
-                "kind": "FACT",
-                "statement": f"{fact['subject']}: {fact['value']}",
-                "evidence_refs": list(fact["evidence_refs"]),
-                "resource_refs": resource_handles,
-                "segment_refs": list(dict.fromkeys(item["segment_id"] for item in selected)),
-                "related_resource_handles": resource_handles,
-                "reason_codes": [],
-            }
-        )
-    facts_by_id = {fact["fact_id"]: fact for fact in facts}
-    for relation in relations:
-        source = facts_by_id[relation["source_fact_id"]]
-        target = facts_by_id[relation["target_fact_id"]]
-        selected = [by_id[ref] for ref in relation["evidence_refs"] if ref in by_id]
-        resource_handles = list(dict.fromkeys(item["resource_handle"] for item in selected))
-        kind = (
-            "CONFLICT"
-            if relation["kind"] == "CONFLICTS_WITH"
-            else ("DUPLICATE_CANDIDATE" if relation["kind"] == "DUPLICATES" else "RELATIONSHIP")
-        )
-        findings.append(
-            {
-                "schema_version": 1,
-                "finding_id": relation["relation_id"],
-                "kind": kind,
-                "statement": f"{source['subject']} {relation['kind']} {target['subject']}",
-                "evidence_refs": list(relation["evidence_refs"]),
-                "resource_refs": resource_handles,
-                "segment_refs": list(dict.fromkeys(item["segment_id"] for item in selected)),
-                "related_resource_handles": resource_handles,
-                "reason_codes": [],
-            }
-        )
-    requiring = [item for item in ambiguities if item["requires_confirmation"]]
-    refs = list(dict.fromkeys(ref for fact in facts for ref in fact["evidence_refs"]))
-    return cast(
-        WorkAnalysisResultV1,
-        {
-            "schema_version": 1,
-            "status": "NEEDS_CONFIRMATION" if requiring else "COMPLETE",
-            "summary": f"Validated {len(facts)} work facts and {len(relations)} relations.",
-            "findings": findings,
-            "missing_information": [item["description"] for item in ambiguities],
-            "confirmation": (
-                None
-                if not requiring
-                else {
-                    "question": requiring[0]["description"],
-                    "reason_code": requiring[0]["code"],
-                    "affected_field_paths": [],
-                    "options": [],
-                }
-            ),
-            "blockers": [],
-            "evidence_refs": refs,
-            "resource_refs": [
-                _resource_ref_from_handle(item["resource_handle"]) for item in evidence
-            ],
-            "segment_refs": [
-                {
-                    "segment_id": item["segment_id"],
-                    "resource_handle": item["resource_handle"],
-                }
-                for item in evidence
-            ],
-            "additional_acquisition_request": None,
-        },
-    )
-
-
-def _resource_ref_from_handle(handle: str) -> dict[str, str]:
-    resource_type, separator, resource_id = handle.partition(":")
-    if not separator or not resource_type or not resource_id:
-        return {"resource_handle": handle}
-    return {
-        "resource_handle": handle,
-        "resource_type": resource_type,
-        "resource_id": resource_id,
-    }
-
-
-def _clarification_question(result: WorkAnalysisResultV1) -> ClarificationQuestionV1:
-    confirmation = cast(dict[str, object], result["confirmation"])
-    return {
-        "schema_version": 1,
-        "origin_target": "analysis.validate_relations",
-        "question": cast(str, confirmation["question"]),
-        "affected_field_paths": [],
-        "reason_code": cast(str, confirmation["reason_code"]),
-        "known_context_summary": result["summary"],
-        "options": [],
-    }
 
 
 __all__ = ["WorkAnalysisSubgraph"]

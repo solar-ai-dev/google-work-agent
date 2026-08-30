@@ -20,7 +20,7 @@ def compose_answer_node(
     user_request = projected.get("user_request")
     request_intent = projected.get("request_intent")
     answer_outline = projected.get("answer_outline")
-    work_analysis = projected.get("work_analysis")
+    work_analysis = projected.get("work_analysis_result")
     evidence = projected.get("evidence", ())
     confirmation_response = projected.get("confirmation_response")
     if not isinstance(user_request, str):
@@ -28,7 +28,7 @@ def compose_answer_node(
     if not isinstance(request_intent, Mapping) or not isinstance(answer_outline, Mapping):
         raise ValueError("request_intent and answer_outline are required")
     if work_analysis is not None and not isinstance(work_analysis, Mapping):
-        raise ValueError("work_analysis must be an object")
+        raise ValueError("work_analysis_result must be an object")
     if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
         raise ValueError("evidence must be a sequence")
     if confirmation_response is not None and not isinstance(confirmation_response, Mapping):

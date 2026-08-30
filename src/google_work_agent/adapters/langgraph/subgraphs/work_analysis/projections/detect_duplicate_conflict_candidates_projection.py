@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     WorkRelationCandidateV1,
 )
@@ -18,7 +18,7 @@ class DetectDuplicateConflictCandidatesInput(TypedDict):
 
 
 def project_detect_duplicate_conflict_candidates_input(
-    state: WorkAnalysisStateV2,
+    state: WorkAnalysisLocalState,
 ) -> DetectDuplicateConflictCandidatesInput:
     required = ("fact_candidates", "entity_relation_candidates", "evidence", "evidence_refs")
     if any(key not in state for key in required):

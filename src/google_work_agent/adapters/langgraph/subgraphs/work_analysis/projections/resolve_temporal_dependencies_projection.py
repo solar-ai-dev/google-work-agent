@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
 )
@@ -14,7 +14,7 @@ class ResolveTemporalDependenciesInput(TypedDict):
 
 
 def project_resolve_temporal_dependencies_input(
-    state: WorkAnalysisStateV2,
+    state: WorkAnalysisLocalState,
 ) -> ResolveTemporalDependenciesInput:
     if "fact_candidates" not in state or "evidence" not in state or "evidence_refs" not in state:
         raise ValueError(

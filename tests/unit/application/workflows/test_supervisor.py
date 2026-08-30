@@ -27,7 +27,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     PlanReviewResultV1,
     RequestIntentV2,
     ReviewIssueV1,
-    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
@@ -143,7 +142,6 @@ def test_downstream_route_reconsideration_returns_to_tool_route_owner() -> None:
 
     assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
     assert decision["state_update"]["workflow_signal"] == {
-        "schema_version": 1,
         "kind": "ROUTE_RECONSIDERATION_REQUIRED",
         "reason_codes": ["NEW_RESOURCE_ROUTE_REQUIRED"],
     }
@@ -231,77 +229,15 @@ def test_context_needs_confirmation_becomes_user_interrupt() -> None:
         )
 
 
-def test_analysis_complete_routes_to_solution_planning() -> None:
+def test_work_analysis_routing_is_owned_by_canonical_subgraph() -> None:
     state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
 
-    decision = route_supervisor(
-        phase=WorkflowPhase.WORK_ANALYSIS,
-        state=state,
-        result=_analysis_result("COMPLETE"),
-    )
-
-    assert decision["target"] == SupervisorTarget.SOLUTION_PLANNING.value
-    assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
-    assert decision["state_update"]["analysis_result"] is not None
-    assert decision["state_update"]["analysis_result"]["status"] == "COMPLETE"
-
-
-def test_analysis_needs_more_data_with_frozen_route_becomes_retrieval_required() -> None:
-    """Q2-HANDOFF: WorkAnalysis NEEDS_MORE_DATA -> RetrievalRequiredV1 -> Retrieval,
-    only when a frozen IN Route already exists to retry within."""
-    plan = _tool_route_plan()
-    plan["input_plan"]["input_routes"] = [
-        {
-            "route_id": "route-1",
-            "resource_type": "TASK",
-            "connector_id": "google_workspace",
-            "allowed_read_tool_ids": ["tasks.list_tasks"],
-            "required": True,
-            "reason_codes": ["REQUIRED"],
-        }
-    ]
-    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
-    state["tool_route_plan"] = plan
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.WORK_ANALYSIS,
-        state=state,
-        result=_analysis_result("NEEDS_MORE_DATA"),
-    )
-
-    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
-    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
-    signal = decision["state_update"]["workflow_signal"]
-    assert signal is not None
-    assert signal["kind"] == "RETRIEVAL_REQUIRED"
-    assert signal["needs"] == [
-        {"required_information": "Need the due date.", "reason_codes": ["EVIDENCE_GAP"]}
-    ]
-    assert decision["state_update"]["retry_budget"]["additional_acquisitions_used"] == 1
-
-
-def test_analysis_needs_more_data_without_frozen_route_becomes_route_reconsideration() -> None:
-    """Q2-HANDOFF: WorkAnalysis NEEDS_MORE_DATA with no frozen IN Route to retry
-    within -> RouteReconsiderationRequiredV1 -> Tool Route, not RetrievalRequiredV1."""
-    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
-    state["tool_route_plan"] = _tool_route_plan()  # input_routes == []
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.WORK_ANALYSIS,
-        state=state,
-        result=_analysis_result("NEEDS_MORE_DATA"),
-    )
-
-    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
-    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
-    signal = decision["state_update"]["workflow_signal"]
-    assert signal is not None
-    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
-    # Leading marker distinguishes this fail-closed executability-guard
-    # fallback from an official ROUTE_RECONSIDERATION_REQUIRED disposition
-    # (that channel is _route_reconsideration, tested separately above).
-    assert signal["reason_codes"] == ["RETRIEVAL_INPUT_ROUTE_UNAVAILABLE", "EVIDENCE_GAP"]
-    assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
+    with pytest.raises(ValueError, match="canonical eight-node subgraph"):
+        route_supervisor(
+            phase=WorkflowPhase.WORK_ANALYSIS,
+            state=state,
+            result={},
+        )
 
 
 def test_solution_planning_answer_only_routes_to_review_inspect() -> None:
@@ -781,27 +717,6 @@ def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration
     assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
 
 
-def test_work_analysis_route_reconsideration_required_routes_to_tool_route() -> None:
-    """Pre-Prompt Output Contract Alignment: WorkAnalysis's own official
-    ROUTE_RECONSIDERATION_REQUIRED disposition is intercepted by
-    _route_reconsideration before _route_analysis ever runs -- distinct from
-    the NEEDS_MORE_DATA executability-guard fallback tested above."""
-    state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.WORK_ANALYSIS,
-        state=state,
-        result=_analysis_result("ROUTE_RECONSIDERATION_REQUIRED"),
-    )
-
-    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
-    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
-    signal = decision["state_update"]["workflow_signal"]
-    assert signal is not None
-    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
-    assert decision["state_update"]["analysis_result"] is None
-
-
 def test_solution_planning_route_reconsideration_required_routes_to_tool_route() -> None:
     state = _state(workflow_phase=WorkflowPhase.SOLUTION_PLANNING)
     result = _answer_draft("ANSWER_ONLY")
@@ -914,7 +829,6 @@ def _state(
     request_intent: RequestIntentV2 | None = None,
     acquisition_result: AcquisitionResultV1 | None = None,
     context_result: ContextRetrievalResultV1 | None = None,
-    analysis_result: WorkAnalysisResultV1 | None = None,
     answer_draft: AnswerDraftV1 | None = None,
     plan_draft: ActionPlanDraftV1 | None = None,
     plan_review: PlanReviewResultV1 | None = None,
@@ -933,7 +847,7 @@ def _state(
         "source_fetch_plans": [],
         "acquisition_result": acquisition_result,
         "context_result": context_result,
-        "analysis_result": analysis_result,
+        "work_analysis_result": None,
         "answer_draft": answer_draft,
         "plan_draft": plan_draft,
         "plan_review": plan_review,
@@ -1054,66 +968,6 @@ def _context_result(
         "missing_slots": ["missing-date"] if status == "NEEDS_MORE_DATA" else [],
         "additional_acquisition_request": additional_request,
         "sufficiency": {},
-        "llm_provider_result": {},
-    }
-
-
-def _analysis_result(
-    status: Literal[
-        "COMPLETE",
-        "NEEDS_MORE_DATA",
-        "NEEDS_CONFIRMATION",
-        "ROUTE_RECONSIDERATION_REQUIRED",
-        "BLOCKED",
-    ],
-) -> WorkAnalysisResultV1:
-    additional_request: AdditionalAcquisitionRequestV1 | None = None
-    confirmation: dict[str, object] | None = None
-    missing_information: list[str] = []
-    if status == "NEEDS_MORE_DATA":
-        missing_information = ["Need the due date."]
-        additional_request = {
-            "schema_version": 1,
-            "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
-            "origin_result": "NEEDS_MORE_DATA",
-            "missing_slots": [],
-            "missing_information": ["Need the due date."],
-            "evidence_refs": ["evidence-1"],
-            "reason_codes": ["EVIDENCE_GAP"],
-        }
-    if status == "ROUTE_RECONSIDERATION_REQUIRED":
-        missing_information = ["Requires a resource outside the current route."]
-    if status == "NEEDS_CONFIRMATION":
-        confirmation = {
-            "question": "Should we focus on only this week?",
-            "reason_code": "TIME_SCOPE_CONFIRMATION",
-            "affected_field_paths": ["semantic_constraints.time"],
-            "options": [],
-        }
-    return {
-        "schema_version": 1,
-        "status": status,
-        "summary": "Analysis summary",
-        "findings": [
-            {
-                "schema_version": 1,
-                "finding_id": "finding-1",
-                "kind": "FACT",
-                "statement": "A fact",
-                "evidence_refs": ["evidence-1"],
-                "resource_refs": ["message:1"],
-                "segment_refs": ["seg-1"],
-                "related_resource_handles": ["message:1"],
-                "reason_codes": ["EVIDENCE_SUPPORTED"],
-            }
-        ],
-        "missing_information": missing_information,
-        "confirmation": confirmation,
-        "blockers": ["unsupported"] if status == "BLOCKED" else [],
-        "evidence_refs": ["evidence-1"],
-        "resource_refs": [{"resource_handle": "message:1"}],
-        "segment_refs": [{"segment_id": "seg-1"}],
-        "additional_acquisition_request": additional_request,
         "llm_provider_result": {},
     }
 

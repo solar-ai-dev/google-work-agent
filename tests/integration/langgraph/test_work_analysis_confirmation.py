@@ -2,7 +2,7 @@
 integration tests.
 
 Work Analysis's NEEDS_CONFIRMATION trigger is deterministic guarded-relation validation
-(``WorkAnalysisAgent.invoke_analyze_llm_from_retrieval_result``) returning
+(the pre-migration broad Work Analysis operation) returning
 ``status="NEEDS_CONFIRMATION"`` -- the single LLM step in this subgraph, run
 only after Retrieval has already produced a SUFFICIENT/PARTIAL
 ``RetrievalResultV1`` and populated the run's ``RunScopedEvidenceStore``.
@@ -245,7 +245,7 @@ def test_work_analysis_needs_confirmation_pauses_inside_own_nested_task(tmp_path
     try:
         interrupt = payload["user_interrupt"]
         assert interrupt is not None
-        assert interrupt["origin_target"] == "analysis.validate_relations"
+        assert interrupt["origin_target"] == "analysis.assess_information_gaps"
         interrupt_id = interrupt["interrupt_id"]
         assert interrupt_id is not None
 
@@ -533,7 +533,10 @@ def _obsolete_second_consecutive_confirmation_round_via_same_nested_checkpoint(
         round2_task = _nested_work_analysis_task(runtime)
         assert round2_task.state.next == ("finalize",)
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
-        assert second.payload["user_interrupt"]["origin_target"] == "analysis.validate_relations"
+        assert (
+            second.payload["user_interrupt"]["origin_target"]
+            == "analysis.assess_information_gaps"
+        )
         assert round2_interrupt_id != round1_interrupt_id
 
         # --- Round 3: resolved -- Work Analysis and the downstream ANSWER
@@ -582,8 +585,8 @@ def _obsolete_second_consecutive_confirmation_round_via_same_nested_checkpoint(
         state = runtime._graph.get_state(  # noqa: SLF001
             runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
         ).values
-        assert state["analysis_result"] is not None
-        assert state["analysis_result"]["status"] == "COMPLETE"
+        assert state["work_analysis_result"] is not None
+        assert state["work_analysis_result"]["schema_version"] == 2
     finally:
         runtime.close()
 

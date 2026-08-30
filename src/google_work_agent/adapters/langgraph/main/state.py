@@ -133,7 +133,7 @@ def initial_graph_state(
         "acquisition_result": None,
         "retrieval_result": None,
         "context_result": None,
-        "analysis_result": None,
+        "work_analysis_result": None,
         "answer_draft": None,
         "plan_draft": None,
         "plan_review": None,

@@ -1,5 +1,6 @@
 # ruff: noqa: E501
 
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.detect_duplicate_conflict_candidates_projection import (
     project_detect_duplicate_conflict_candidates_input,
 )
@@ -15,7 +16,7 @@ from google_work_agent.ports.system.contracts.observability import Observability
 
 
 def detect_duplicate_conflict_candidates_node(
-    state: WorkAnalysisStateV2,
+    state: WorkAnalysisLocalState,
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_ref: PromptReference,

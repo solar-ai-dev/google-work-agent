@@ -31,14 +31,8 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
         }
     ),
     "retrieval.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
-    "analysis.validate_relations": frozenset(
-        {
-            "work_analysis.extract_work_facts",
-            "work_analysis.resolve_entity_relations",
-            "work_analysis.resolve_temporal_dependencies",
-            "work_analysis.detect_duplicate_conflict_candidates",
-        }
-    ),
+    "analysis.assess_information_gaps": frozenset({"work_analysis.assess_information_gaps"}),
+    "analysis.assess_operational_risks": frozenset({"work_analysis.assess_operational_risks"}),
     "planning.answer_only": frozenset({"planning.compose_answer"}),
     "planning.draft_plan": frozenset({"planning.compose_arguments"}),
     "review.inspect": frozenset({"review.inspect"}),

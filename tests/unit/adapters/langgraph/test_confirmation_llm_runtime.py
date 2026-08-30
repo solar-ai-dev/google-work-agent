@@ -83,11 +83,11 @@ def test_confirmation_is_scoped_by_run_id() -> None:
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
         run_id="run-1",
-        origin_target="analysis.validate_relations",
+        origin_target="analysis.assess_information_gaps",
         response=_response(),  # type: ignore[arg-type]
     )
 
-    _call(runtime, "work_analysis.extract_work_facts", run_id="run-2")
+    _call(runtime, "work_analysis.assess_information_gaps", run_id="run-2")
 
     assert "confirmation_response" not in delegate.calls[0]["prompt_input"]
 

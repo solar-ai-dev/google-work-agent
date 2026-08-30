@@ -1,4 +1,4 @@
-"""Work analysis workflow node implementation."""
+"""Historical profile/evaluation WorkAnalysisResultV1 contract validation."""
 
 from __future__ import annotations
 
@@ -15,8 +15,6 @@ from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
     AnalysisResult,
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
 )
@@ -32,25 +30,16 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RetrievalResultV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.planning_argument_writer import (
-    _planning_evidence_projection,
-)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
-    StructuredLLMResult,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
-from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
 WORK_ANALYSIS_SCHEMA_VERSION = 1
@@ -204,168 +193,6 @@ _PROHIBITED_REASON_CODES = {"ANALYSIS_UNSUPPORTED_INFERENCE"}
 
 class WorkAnalysisValidationError(ValueError):
     """Raised when work analysis structured output is invalid."""
-
-
-class WorkAnalysisAgent:
-    """Analyze Stage 6 context without planning, execution, or external calls."""
-
-    def __init__(
-        self,
-        *,
-        llm_runtime: StructuredLLMRuntime,
-        analyze_prompt_ref: PromptReference | None = None,
-        manifest_path: Path | None = None,
-    ) -> None:
-        self._llm_runtime = llm_runtime
-        self._analyze_prompt_ref = (
-            analyze_prompt_ref or load_work_analysis_analyze_prompt_reference(manifest_path)
-        )
-
-    @property
-    def analyze_prompt_ref(self) -> PromptReference:
-        return self._analyze_prompt_ref
-
-    def analyze(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        request: WorkflowStartRequest,
-    ) -> WorkAnalysisResultV1:
-        llm_result = self.invoke_analyze_llm(
-            request_intent=request_intent,
-            context_result=context_result,
-            request=request,
-        )
-        return self.build_output_from_llm_result(llm_result, context_result=context_result)
-
-    def invoke_analyze_llm(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        request: WorkflowStartRequest,
-    ) -> StructuredLLMResult:
-        return self._llm_runtime.invoke_structured(
-            prompt_ref=self._analyze_prompt_ref,
-            prompt_input={
-                "user_request": request.request_text,
-                "request_intent": request_intent,
-                "evidence": _planning_evidence_projection(context_result["evidence_drafts"]),
-                "availability_results": [],
-                "policy_confirmation_receipt_refs": [],
-            },
-            output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:analysis.analyze",
-            ),
-            semantic_validate=lambda candidate: validate_work_analysis_result_v1(
-                candidate, context_result=context_result
-            ),
-        )
-
-    def build_output_from_llm_result(
-        self,
-        llm_result: StructuredLLMResult,
-        *,
-        context_result: ContextRetrievalResultV1,
-    ) -> WorkAnalysisResultV1:
-        result = validate_work_analysis_result_v1(
-            llm_result.structured_output,
-            context_result=context_result,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
-
-    def invoke_analyze_llm_from_retrieval_result(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        retrieval_result: RetrievalResultV1,
-        evidence_drafts: list[EvidenceDraftV1],
-        request: WorkflowStartRequest,
-        policy_confirmation_receipt_refs: list[str],
-        confirmation_response: ConfirmationResponseProjectionV1 | None = None,
-    ) -> StructuredLLMResult:
-        """SIX_ROLE_BASELINE product runtime entry point (Q2-HANDOFF cleanup).
-
-        Feeds ``analyze.md`` from ``RetrievalResultV1`` + the run's resolved
-        ``RunScopedEvidenceStore`` projection directly -- no ``ContextRetrievalResultV1``
-        is constructed or received here. ``invoke_analyze_llm`` (above) stays the
-        entry point for THREE_STAGE/SINGLE_BASELINE/Evaluation-harness callers,
-        which have their own real, LLM-fused or replay-derived
-        ``ContextRetrievalResultV1`` and are out of this migration's scope.
-
-        ``confirmation_response`` is only present on a same-owner nested-checkpoint
-        resume (C4) -- this is the one Product Prompt NEEDS_CONFIRMATION actually
-        originates from, so it is the only one that needs to see the bounded answer.
-        """
-        prompt_input: dict[str, object] = {
-            "user_request": request.request_text,
-            "request_intent": request_intent,
-            "evidence": _planning_evidence_projection(evidence_drafts),
-            "availability_results": [],
-            "policy_confirmation_receipt_refs": list(policy_confirmation_receipt_refs),
-        }
-        if confirmation_response is not None:
-            prompt_input["confirmation_response"] = dict(confirmation_response)
-        return self._llm_runtime.invoke_structured(
-            prompt_ref=self._analyze_prompt_ref,
-            prompt_input=prompt_input,
-            output_schema=WORK_ANALYSIS_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:analysis.analyze",
-            ),
-            semantic_validate=(
-                lambda candidate: validate_work_analysis_result_v1_from_retrieval_result(
-                    candidate,
-                    retrieval_result=retrieval_result,
-                    evidence_drafts=evidence_drafts,
-                )
-            ),
-        )
-
-    def build_output_from_llm_result_from_retrieval_result(
-        self,
-        llm_result: StructuredLLMResult,
-        *,
-        retrieval_result: RetrievalResultV1,
-        evidence_drafts: list[EvidenceDraftV1],
-    ) -> WorkAnalysisResultV1:
-        result = validate_work_analysis_result_v1_from_retrieval_result(
-            llm_result.structured_output,
-            retrieval_result=retrieval_result,
-            evidence_drafts=evidence_drafts,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
-
-    def build_state_update(self, result: WorkAnalysisResultV1) -> GraphStateUpdateV1:
-        phase = (
-            WorkflowPhase.SOLUTION_PLANNING
-            if AnalysisResult(result["status"]) is AnalysisResult.COMPLETE
-            else WorkflowPhase.WORK_ANALYSIS
-        )
-        return {
-            "analysis_result": result,
-            "workflow_phase": phase.value,
-            "trace_context": {
-                "analysis_result": result["status"],
-                "finding_count": len(result["findings"]),
-                "missing_information_count": len(result["missing_information"]),
-                "blocker_count": len(result["blockers"]),
-            },
-        }
 
 
 def validate_work_analysis_result_v1(
@@ -805,7 +632,6 @@ __all__ = [
     "WORK_ANALYSIS_SCHEMA_VERSION",
     "AnalysisFindingV1",
     "build_work_analysis_clarification_question",
-    "WorkAnalysisAgent",
     "WorkAnalysisResultV1",
     "WorkAnalysisValidationError",
     "load_work_analysis_analyze_prompt_reference",

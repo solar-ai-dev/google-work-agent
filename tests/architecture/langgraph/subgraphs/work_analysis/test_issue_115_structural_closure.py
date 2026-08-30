@@ -5,7 +5,7 @@ SRC = ROOT / "src/google_work_agent"
 OWNER = SRC / "adapters/langgraph/subgraphs/work_analysis"
 
 
-def test_production_graph_uses_four_exact_prompts_and_no_broad_prompt() -> None:
+def test_production_graph_preserves_predecessor_prompts_and_no_broad_prompt() -> None:
     graph = (OWNER / "graph.py").read_text(encoding="utf-8")
     prompt_ids = (
         "work_analysis.extract_work_facts",
@@ -27,17 +27,7 @@ def test_validate_relations_is_deterministic_and_not_in_successor_projection() -
     )
     for forbidden in ("StructuredLLMRuntime", "PromptReference", "load_prompt_reference"):
         assert forbidden not in validator
-    successor_projection = (OWNER / "projections/work_analysis_operation_projection.py").read_text(
-        encoding="utf-8"
-    )
-    for owned_operation in (
-        "extract_work_facts",
-        "resolve_entity_relations",
-        "resolve_temporal_dependencies",
-        "detect_duplicate_conflict_candidates",
-        "validate_relations",
-    ):
-        assert f'"{owned_operation}"' not in successor_projection
+    assert not (OWNER / "projections/work_analysis_operation_projection.py").exists()
 
 
 def test_broad_runtime_path_is_only_a_nonsemantic_exact_graph_delegator() -> None:

@@ -9,12 +9,18 @@ from typing import Literal, Protocol, cast
 from google_work_agent.application.agents.request_understanding.validate_intent import (
     validate_intent,
 )
+from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
+    work_analysis_confirmation_context_hash,
+)
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     PolicyConfirmationReceiptV1,
     validate_confirmation_response_projection_v1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
+from google_work_agent.application.orchestration.handoff_contracts import (
+    RequestIntentV2,
+    StateArtifactRefV1,
+)
 from google_work_agent.application.orchestration.scope_expansion import (
     build_policy_confirmation_receipt,
 )
@@ -173,7 +179,56 @@ class ConfirmRunHandler:
         raw = authority.get("policy_confirmation")
         if raw is None:
             return None
-        if not isinstance(raw, Mapping) or raw.get("confirmation_kind") != "SCOPE_EXPANSION":
+        if not isinstance(raw, Mapping):
+            raise ValueError("pending policy confirmation authority is invalid")
+        confirmation_kind = raw.get("confirmation_kind")
+        if confirmation_kind in {"DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"}:
+            raw_based_on = raw.get("based_on")
+            if not isinstance(raw_based_on, list):
+                raise ValueError("Work Analysis confirmation lineage is invalid")
+            based_on: list[dict[str, object]] = []
+            for item in raw_based_on:
+                if not isinstance(item, Mapping) or set(item) != {"artifact_id", "revision"}:
+                    raise ValueError("Work Analysis confirmation lineage is invalid")
+                artifact_id, revision = item.get("artifact_id"), item.get("revision")
+                if (
+                    not isinstance(artifact_id, str)
+                    or not artifact_id
+                    or not isinstance(revision, int)
+                    or isinstance(revision, bool)
+                    or revision < 1
+                ):
+                    raise ValueError("Work Analysis confirmation lineage is invalid")
+                based_on.append({"artifact_id": artifact_id, "revision": revision})
+            interrupt_id = _required_string(authority, "interrupt_id")
+            override_decision: Literal["APPROVED", "DECLINED"] = (
+                "APPROVED"
+                if projection["response_kind"] == "OPTION"
+                and projection["selected_option"] == "APPROVED"
+                else "DECLINED"
+            )
+            return {
+                "schema_version": 1,
+                "meta": {
+                    "artifact_id": self._id_factory(),
+                    "revision": 1,
+                    "based_on": cast(list[StateArtifactRefV1], based_on),
+                },
+                "interrupt_id": interrupt_id,
+                "confirmation_kind": cast(
+                    Literal["DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"], confirmation_kind
+                ),
+                "decision": override_decision,
+                "semantic_owner_id": "WORK_ANALYSIS",
+                "decision_context_hash": work_analysis_confirmation_context_hash(
+                    confirmation_kind=confirmation_kind,
+                    interrupt_id=interrupt_id,
+                    based_on=cast(list[StateArtifactRefV1], based_on),
+                ),
+                "affected_route_ids": [],
+                "affected_resource_refs": [],
+            }
+        if confirmation_kind != "SCOPE_EXPANSION":
             raise ValueError("pending policy confirmation authority is invalid")
         request_intent = validate_intent(raw.get("request_intent"), require_meta=True)
         required_resource_types = _string_tuple(raw, "required_resource_types")

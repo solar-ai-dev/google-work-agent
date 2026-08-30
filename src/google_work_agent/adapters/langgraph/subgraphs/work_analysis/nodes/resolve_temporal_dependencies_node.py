@@ -1,5 +1,6 @@
 # ruff: noqa: E501
 
+from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.resolve_temporal_dependencies_projection import (
     project_resolve_temporal_dependencies_input,
 )
@@ -15,7 +16,7 @@ from google_work_agent.ports.system.contracts.observability import Observability
 
 
 def resolve_temporal_dependencies_node(
-    state: WorkAnalysisStateV2,
+    state: WorkAnalysisLocalState,
     *,
     llm_runtime: StructuredLLMRuntime,
     prompt_ref: PromptReference,

@@ -53,8 +53,14 @@ class WorkAmbiguityV1(TypedDict):
 
 
 class WorkRiskV1(TypedDict):
-    code: str
-    severity: Literal["INFO", "WARNING", "BLOCKING"]
+    kind: Literal[
+        "SCHEDULE_CONFLICT",
+        "DEADLINE_RISK",
+        "DUPLICATE_RISK",
+        "MISSING_INFORMATION",
+        "OTHER",
+    ]
+    severity: Literal["LOW", "MEDIUM", "HIGH"]
     description: str
     evidence_refs: list[str]
 
@@ -68,4 +74,5 @@ class WorkAnalysisResultV2(TypedDict):
     risks: list[WorkRiskV1]
     evidence_refs: list[str]
     policy_confirmation_receipt_refs: list[StateArtifactRefV1]
-    action_necessity: Literal["REQUIRED", "NOT_REQUIRED"]
+    action_necessity: Literal["REQUIRED", "NOT_REQUIRED", "UNDETERMINED"]
+    action_necessity_reason: str | None

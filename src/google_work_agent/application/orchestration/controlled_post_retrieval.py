@@ -35,7 +35,7 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.work_analysis import (
+from google_work_agent.application.orchestration.work_analysis_result_v1_validation import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,

@@ -10,7 +10,7 @@ class PlanningState(TypedDict, total=False):
     request_intent: object
     tool_route_plan: object
     retrieval_result: object
-    work_analysis: object
+    work_analysis_result: object
     evidence: object
     confirmation_response: object
     plan_artifact_id: str

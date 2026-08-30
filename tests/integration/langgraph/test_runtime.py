@@ -68,7 +68,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
-from google_work_agent.application.orchestration.work_analysis import (
+from google_work_agent.application.orchestration.work_analysis_result_v1_validation import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
@@ -122,6 +122,8 @@ _RUNTIME_ACTIVE_PROMPT_IDS = {
     "work_analysis.resolve_entity_relations",
     "work_analysis.resolve_temporal_dependencies",
     "work_analysis.detect_duplicate_conflict_candidates",
+    "work_analysis.assess_information_gaps",
+    "work_analysis.assess_operational_risks",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",
@@ -174,7 +176,7 @@ class _PendingPlanActionsState:
 
 
 class _PendingLegacyAnalysisState:
-    """Carry one legacy whole-analysis fixture across four atomic calls."""
+    """Carry one legacy whole-analysis fixture across six atomic calls."""
 
     def __init__(self) -> None:
         self.payload: Mapping[str, object] | None = None
@@ -188,7 +190,7 @@ def _synthesize_atomic_work_analysis(
     queued: "deque[StructuredLLMResult]",
     state: _PendingLegacyAnalysisState,
 ) -> StructuredLLMResult | None:
-    """Adapt pre-migration integration fixtures to the four exact prompts."""
+    """Adapt pre-migration integration fixtures to the six exact prompts."""
 
     if prompt_id == "work_analysis.extract_work_facts":
         if not queued:
@@ -292,9 +294,43 @@ def _synthesize_atomic_work_analysis(
                     "evidence_refs": list(cast(list[str], state.facts[0]["evidence_refs"])),
                 }
             )
+        return _llm_result({"relation_candidates": candidates})
+
+    if prompt_id == "work_analysis.assess_information_gaps":
+        refs = list(
+            dict.fromkeys(
+                ref
+                for fact in state.facts
+                for ref in cast(list[str], fact.get("evidence_refs", []))
+            )
+        )
+        return _llm_result(
+            {
+                "disposition": "COMPLETE",
+                "ambiguities": [],
+                "retrieval_needs": [],
+                "evidence_refs": refs,
+            }
+        )
+
+    if prompt_id == "work_analysis.assess_operational_risks":
+        refs = list(
+            dict.fromkeys(
+                ref
+                for fact in state.facts
+                for ref in cast(list[str], fact.get("evidence_refs", []))
+            )
+        )
         state.payload = None
         state.facts = []
-        return _llm_result({"relation_candidates": candidates})
+        return _llm_result(
+            {
+                "risks": [],
+                "action_necessity_candidate": "REQUIRED",
+                "action_necessity_reason": "REQUEST_REQUIRES_ACTION",
+                "evidence_refs": refs,
+            }
+        )
 
     return None
 
@@ -1437,6 +1473,8 @@ _SIX_ROLE_BASELINE_PROMPT_IDS = {
     "work_analysis.resolve_entity_relations",
     "work_analysis.resolve_temporal_dependencies",
     "work_analysis.detect_duplicate_conflict_candidates",
+    "work_analysis.assess_information_gaps",
+    "work_analysis.assess_operational_risks",
     "planning.compose_answer",
     "planning.compose_arguments",
     "planning.compose_arguments.revise",

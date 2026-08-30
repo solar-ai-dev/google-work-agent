@@ -24,12 +24,16 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     CurrentSourceRelationV1,
+    InformationGapAssessmentV1,
+    OperationalRiskAssessmentV1,
     WorkRelationCandidateV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAmbiguityV1,
+    WorkAnalysisResultV2,
     WorkFactV1,
     WorkRelationV1,
+    WorkRiskV1,
 )
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
@@ -133,6 +137,7 @@ class WorkAnalysisInputState(AgentSubgraphInputEnvelope, total=False):
     tool_route_plan: ToolRoutePlanV2 | None
     retrieval_result: RetrievalResultV1 | None
     context_result: ContextRetrievalResultV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
 class PlanningInputState(AgentSubgraphInputEnvelope, total=False):
@@ -141,7 +146,7 @@ class PlanningInputState(AgentSubgraphInputEnvelope, total=False):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     retrieval_result: RetrievalResultV1 | None
-    analysis_result: WorkAnalysisResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV1 | None
@@ -214,6 +219,13 @@ class WorkAnalysisLocalState(GraphState):
     duplicate_conflict_candidates: NotRequired[list[WorkRelationCandidateV1]]
     validated_relations: NotRequired[list[WorkRelationV1]]
     relation_validation_ambiguities: NotRequired[list[WorkAmbiguityV1]]
+    ambiguity_candidates: NotRequired[list[WorkAmbiguityV1]]
+    retrieval_needs: NotRequired[list[RetrievalNeedV1]]
+    operational_risk_candidates: NotRequired[list[WorkRiskV1]]
+    final_analysis: NotRequired[WorkAnalysisResultV2 | None]
+    __analysis_information_gap_assessment__: NotRequired[InformationGapAssessmentV1]
+    __analysis_operational_risk_assessment__: NotRequired[OperationalRiskAssessmentV1]
+    __analysis_noncomplete_disposition__: NotRequired[str]
     __analysis_agent_local__: NotRequired[AgentLocalStateV1]
     # Same purpose as ContextRetrievalLocalState's retry marker: routes the
     # self-loop back into "finalize" as a fresh task.

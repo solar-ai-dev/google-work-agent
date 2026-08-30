@@ -10,6 +10,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
+from google_work_agent.application.orchestration.handoff_contracts import RetrievalNeedV1
 
 WorkRelationCandidateV1 = WorkRelationV1
 
@@ -41,8 +42,8 @@ class InformationGapAssessmentV1(TypedDict):
         "BLOCKED",
     ]
     ambiguities: list[WorkAmbiguityV1]
+    retrieval_needs: list[RetrievalNeedV1]
     evidence_refs: list[str]
-    needs: NotRequired[list[dict[str, object]]]
     question: NotRequired[str]
     options: NotRequired[list[str]]
     reason_codes: NotRequired[list[str]]
@@ -50,6 +51,8 @@ class InformationGapAssessmentV1(TypedDict):
 
 class OperationalRiskAssessmentV1(TypedDict):
     risks: list[WorkRiskV1]
+    action_necessity_candidate: Literal["REQUIRED", "NOT_REQUIRED", "UNDETERMINED"]
+    action_necessity_reason: str | None
     evidence_refs: list[str]
 
 

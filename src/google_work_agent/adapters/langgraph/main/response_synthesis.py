@@ -121,7 +121,7 @@ def canonicalize_optional_stage_decision(
                 "workflow_phase": next_phase.value,
                 "retrieval_result": None,
                 "context_result": None,
-                "analysis_result": None,
+                "work_analysis_result": None,
                 "answer_draft": None,
                 "plan_draft": None,
                 "plan_review": None,
@@ -145,7 +145,7 @@ def canonicalize_optional_stage_decision(
         state_update.update(
             {
                 "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
-                "analysis_result": None,
+                "work_analysis_result": None,
                 "answer_draft": None,
                 "plan_draft": None,
                 "plan_review": None,

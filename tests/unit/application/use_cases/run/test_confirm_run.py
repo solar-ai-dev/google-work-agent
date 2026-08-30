@@ -7,6 +7,9 @@ from pathlib import Path
 
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
+    work_analysis_confirmation_context_hash,
+)
 from google_work_agent.application.use_cases.run.confirm_run import (
     ConfirmRunCommand,
     ConfirmRunHandler,
@@ -20,6 +23,51 @@ from google_work_agent.domain.results import ResultCode
 
 def test_canonical_application_owner_is_importable() -> None:
     assert import_module("google_work_agent.application.use_cases.run.confirm_run") is not None
+
+
+def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> None:
+    handler = ConfirmRunHandler(
+        resolve_pending_confirmation=lambda _run_id: None,
+        resume_confirmation=object(),  # type: ignore[arg-type]
+        resume_target_registry=object(),  # type: ignore[arg-type]
+        schedule_run_execution=lambda _command: (_ for _ in ()).throw(
+            AssertionError("not used")
+        ),
+        id_factory=lambda: "receipt-1",
+    )
+    based_on = [{"artifact_id": "candidate-1", "revision": 2}]
+    authority = {
+        "interrupt_id": "interrupt-1",
+        "policy_confirmation": {
+            "confirmation_kind": "DUPLICATE_OVERRIDE",
+            "based_on": based_on,
+        },
+    }
+
+    receipt = handler._policy_receipt(  # noqa: SLF001 - exact owner contract test
+        authority,
+        {
+            "schema_version": 1,
+            "response_kind": "OPTION",
+            "selected_option": "APPROVED",
+            "free_text": None,
+        },
+    )
+
+    assert receipt is not None
+    assert receipt["confirmation_kind"] == "DUPLICATE_OVERRIDE"
+    assert receipt["decision"] == "APPROVED"
+    assert receipt["semantic_owner_id"] == "WORK_ANALYSIS"
+    assert receipt["meta"] == {
+        "artifact_id": "receipt-1",
+        "revision": 1,
+        "based_on": based_on,
+    }
+    assert receipt["decision_context_hash"] == work_analysis_confirmation_context_hash(
+        confirmation_kind="DUPLICATE_OVERRIDE",
+        interrupt_id="interrupt-1",
+        based_on=based_on,  # type: ignore[arg-type]
+    )
 
 
 def test_prior_confirmation_receipt_replays_before_live_interrupt_lookup() -> None:

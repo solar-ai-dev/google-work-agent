@@ -10,6 +10,9 @@ if TYPE_CHECKING:
         ScopeExpansionRequiredV1,
         ToolRoutePlanV2,
     )
+    from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+        WorkAnalysisResultV2,
+    )
     from google_work_agent.application.orchestration.handoff_contracts import (
         AcquisitionResultV1,
         ActionPlanDraftV1,
@@ -22,7 +25,6 @@ if TYPE_CHECKING:
         RouteReconsiderationRequiredV1,
         SourceFetchPlanV1,
         StateArtifactMetaV1,
-        WorkAnalysisResultV1,
     )
 
 
@@ -132,7 +134,7 @@ class MultiAgentGraphState(TypedDict):
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     context_result: ContextRetrievalResultV1 | None
-    analysis_result: WorkAnalysisResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV1 | None
@@ -160,7 +162,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     context_result: ContextRetrievalResultV1 | None
-    analysis_result: WorkAnalysisResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV1 | None
@@ -479,7 +481,8 @@ CONFIRMATION_ORIGIN_TARGETS = frozenset(
         "tool_route.finalize",
         "acquisition.plan_sources",
         "retrieval.assess_sufficiency",
-        "analysis.validate_relations",
+        "analysis.assess_information_gaps",
+        "analysis.assess_operational_risks",
         "planning.answer_only",
         "planning.draft_plan",
         "review.inspect",

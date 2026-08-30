@@ -9,7 +9,7 @@ _ALLOWED = (
     "request_intent",
     "tool_route_plan",
     "retrieval_result",
-    "work_analysis",
+    "work_analysis_result",
     "evidence",
     "confirmation_response",
     "plan_artifact_id",

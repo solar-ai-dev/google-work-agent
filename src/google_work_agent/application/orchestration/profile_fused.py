@@ -30,7 +30,7 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.work_analysis import (
+from google_work_agent.application.orchestration.work_analysis_result_v1_validation import (
     validate_work_analysis_result_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
