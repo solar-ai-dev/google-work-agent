@@ -38,40 +38,27 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
     def invoke(prompt_id: str, _input: dict[str, object]) -> dict[str, object]:
         prompt_calls.append(prompt_id)
         if prompt_id == "review.recheck_affected_dimensions":
-            return {"affected_dimensions": ["ACTION_SCOPE_ROUTE"]}
-        return {
-            "schema_version": 1,
-            "dimension": prompt_id,
-            "findings": [
-                {
-                    "dimension": prompt_id,
-                    "code": "fresh",
-                    "finding_kind": "ROUTE_ISSUE",
-                    "description": "fresh result",
-                    "evidence_refs": [],
-                    "affected_action_ids": [],
-                    "affected_route_ids": ["r1"],
-                    "required_information": [],
-                }
-            ],
-        }
+            return {
+                "schema_version": 1,
+                "affected_dimensions": ["review.inspect_action_scope_and_route"],
+                "findings": [
+                    {
+                        "dimension": "review.inspect_action_scope_and_route",
+                        "code": "fresh",
+                        "finding_kind": "ROUTE_ISSUE",
+                        "description": "fresh result",
+                        "evidence_refs": [],
+                        "affected_action_ids": [],
+                        "affected_route_ids": ["r1"],
+                        "required_information": [],
+                    }
+                ],
+            }
+        raise AssertionError(f"unexpected Prompt call: {prompt_id}")
 
-    prior = [
-        {
-            "dimension": "ACTION_SCOPE_ROUTE",
-            "code": "stale",
-            "description": "old",
-            "route_id": "r1",
-        },
-        {
-            "dimension": "CONSTRAINTS_POLICY",
-            "code": "unaffected",
-            "description": "old",
-            "route_id": "r2",
-        },
-    ]
     result = recheck_affected_dimensions(
-        prior,
+        affected_dimensions=["review.inspect_action_scope_and_route"],
+        affected_action_ids=[],
         affected_route_ids=["r1"],
         request_intent={},
         tool_route_plan={},
@@ -82,11 +69,9 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
 
     assert prompt_calls == [
         "review.recheck_affected_dimensions",
-        "review.inspect_action_scope_and_route",
     ]
-    assert result["affected_dimensions"] == ("ACTION_SCOPE_ROUTE",)
+    assert result["affected_dimensions"] == ("review.inspect_action_scope_and_route",)
     assert result["findings"] and result["findings"][0]["code"] == "fresh"
-    assert all(item["code"] != "stale" for item in result["findings"])
     assert "review.inspect_constraints_and_policy_summary" not in prompt_calls
     assert "review.inspect_goal_and_evidence" not in prompt_calls
 

@@ -42,15 +42,12 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.runtime_active_graph import (
-    RuntimeActiveReviewSubgraph,
-)
+from google_work_agent.adapters.langgraph.subgraphs.review.graph import ReviewSubgraph
 from google_work_agent.adapters.langgraph.subgraphs.single_workflow import (
     SingleWorkflowSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.three_stage import (
     ThreeStageOneSubgraph,
-    ThreeStageReviewSubgraph,
     ThreeStageTwoSubgraph,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
@@ -59,6 +56,9 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
 from google_work_agent.application.orchestration.api_acquisition import (
     ApiDiscoveryAcquisitionAgent,
     load_acquisition_plan_sources_prompt_reference,
@@ -82,14 +82,10 @@ from google_work_agent.application.orchestration.domain_validation import (
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
-    PlanReviewResultV1,
 )
-from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
 from google_work_agent.application.orchestration.profile_fused import (
     load_profile_single_reason_plan_prompt_reference,
     load_profile_single_request_source_prompt_reference,
-    load_profile_single_self_review_prompt_reference,
-    load_profile_single_self_review_recheck_prompt_reference,
     load_profile_three_stage1_prompt_reference,
     load_profile_three_stage2_prompt_reference,
 )
@@ -414,10 +410,6 @@ class WorkflowRuntimeCore:
                 llm_runtime=llm_runtime,
                 manifest_path=prompt_manifest_path,
             )
-        self._review = PlanReviewAgent(
-            llm_runtime=llm_runtime,
-            manifest_path=prompt_manifest_path,
-        )
         # Each non-default graph_profile (SINGLE_BASELINE, THREE_STAGE) is an
         # E06-A architecture-candidate under comparison, not a feature that
         # ships alongside SIX_ROLE_BASELINE (docs/06-agent-workflow.md 1.1,
@@ -427,23 +419,12 @@ class WorkflowRuntimeCore:
         # prompts from blocking the product (SIX_ROLE_BASELINE) runtime.
         self._single_request_source_prompt_ref: PromptReference | None = None
         self._single_reason_plan_prompt_ref: PromptReference | None = None
-        self._single_review: PlanReviewAgent | None = None
         if self._graph_profile is GraphProfile.SINGLE_BASELINE:
             self._single_request_source_prompt_ref = (
                 load_profile_single_request_source_prompt_reference(prompt_manifest_path)
             )
             self._single_reason_plan_prompt_ref = load_profile_single_reason_plan_prompt_reference(
                 prompt_manifest_path
-            )
-            self._single_review = PlanReviewAgent(
-                llm_runtime=llm_runtime,
-                inspect_prompt_ref=load_profile_single_self_review_prompt_reference(
-                    prompt_manifest_path
-                ),
-                recheck_prompt_ref=load_profile_single_self_review_recheck_prompt_reference(
-                    prompt_manifest_path
-                ),
-                manifest_path=prompt_manifest_path,
             )
         self._three_stage1_prompt_ref: PromptReference | None = None
         self._three_stage2_prompt_ref: PromptReference | None = None
@@ -706,8 +687,7 @@ class WorkflowRuntimeCore:
             default_tasklist_id_provider=self._default_tasklist_id_provider,
             default_calendar_id_provider=self._default_calendar_id_provider,
         ).build()
-        self._review_subgraph = RuntimeActiveReviewSubgraph(
-            agent=self._review,
+        self._review_subgraph = ReviewSubgraph(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
             id_factory=id_factory,
@@ -715,6 +695,7 @@ class WorkflowRuntimeCore:
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
             confirm_inline=self._confirm_review_inline,
+            resume_target_registry=self._resume_target_registry,
         ).build()
         self._three_stage_one_subgraph: Any = None
         self._three_stage_two_subgraph: Any = None
@@ -743,23 +724,17 @@ class WorkflowRuntimeCore:
                 transition_run=self._transition_run,
                 merge_decision=self._merge_decision,
             ).build()
-            self._three_stage_review_subgraph = ThreeStageReviewSubgraph(
-                agent=self._review,
-                id_factory=id_factory,
-                graph_profile=self._graph_profile,
-                merge_decision=self._merge_decision,
-            ).build()
+            self._three_stage_review_subgraph = self._review_subgraph
         self._single_workflow_subgraph: Any = None
         if self._graph_profile is GraphProfile.SINGLE_BASELINE:
             assert self._planning is not None
             assert self._single_request_source_prompt_ref is not None
             assert self._single_reason_plan_prompt_ref is not None
-            assert self._single_review is not None
             self._single_workflow_subgraph = SingleWorkflowSubgraph(
                 llm_runtime=self._llm_runtime,
                 acquisition_agent=self._acquisition,
                 planning_agent=self._planning,
-                review_agent=self._single_review,
+                review_subgraph=self._review_subgraph,
                 tool_catalog=tool_catalog,
                 evidence_store=self._evidence_store,
                 request_source_prompt_ref=self._single_request_source_prompt_ref,
@@ -1117,30 +1092,7 @@ class WorkflowRuntimeCore:
         }
 
     def _modify_review_node(self, state: GraphState) -> GraphState:
-        if self._graph_profile is GraphProfile.SIX_ROLE_BASELINE:
-            reviewed = cast(GraphState, self._review_subgraph.invoke(state))
-        elif self._graph_profile is GraphProfile.THREE_STAGE:
-            reviewed = cast(GraphState, self._three_stage_review_subgraph.invoke(state))
-        else:
-            assert self._single_review is not None
-            request = self._request_from_state(state)
-            result = self._single_review.inspect(
-                request_intent=_require_state_value(state["request_intent"], "request_intent"),
-                context_result=_require_state_value(state["context_result"], "context_result"),
-                analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
-                answer_draft=None,
-                plan_draft=_require_state_value(state["plan_draft"], "plan_draft"),
-                request=request,
-                deterministic_action_risks=state.get("__modify_review_risks__"),
-            )
-            decision = route_supervisor(
-                phase=WorkflowPhase.PLAN_REVIEW,
-                state=cast(MultiAgentGraphState, state),
-                result=result,
-            )
-            reviewed = self._merge_decision(
-                state, self._single_review.build_state_update(result), decision
-            )
+        reviewed = cast(GraphState, self._review_subgraph.invoke(state))
 
         reviewed = {
             **reviewed,
@@ -1218,7 +1170,7 @@ class WorkflowRuntimeCore:
         return "review"
 
     @staticmethod
-    def _review_status(review: PlanReviewResultV1) -> PlanReviewStatus:
+    def _review_status(review: PlanReviewResultV2) -> PlanReviewStatus:
         return {
             ReviewResult.REVISE.value: PlanReviewStatus.REQUIRED,
             ReviewResult.RETRIEVE_MORE.value: PlanReviewStatus.REQUIRED,

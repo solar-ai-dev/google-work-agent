@@ -7,6 +7,13 @@ from dataclasses import asdict, is_dataclass
 from enum import StrEnum
 from typing import TypedDict, cast
 
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+    ReviewBlockV2,
+    ReviewConfirmV2,
+    ReviewRetrieveMoreV2,
+    ReviewReviseV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRouteDisposition,
     ToolRouteResultV1,
@@ -43,7 +50,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ClarificationQuestionV1,
-    PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
     RetrievalNeedV1,
@@ -58,10 +64,6 @@ from google_work_agent.application.orchestration.insufficient_data import (
     InsufficientDataIssue,
     ResolutionSource,
     decide_insufficient_data,
-)
-from google_work_agent.application.orchestration.plan_review import (
-    build_plan_review_clarification_question,
-    resolve_review_target,
 )
 from google_work_agent.application.orchestration.solution_planning import (
     build_solution_planning_clarification_question,
@@ -167,7 +169,7 @@ def route_supervisor(
     if current_phase is WorkflowPhase.PLAN_REVIEW:
         return _route_plan_review(
             state=state,
-            result=cast(PlanReviewResultV1, _require_mapping(result, "result")),
+            result=cast(PlanReviewResultV2, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.DOMAIN_VALIDATION:
         return _route_domain_validation(
@@ -213,6 +215,17 @@ def _route_reconsideration(
     if expected is None or status != expected:
         return None
     raw_reason_codes = result.get("reason_codes", [])
+    if phase is WorkflowPhase.PLAN_REVIEW:
+        route_issues = result.get("route_issues", [])
+        raw_reason_codes = (
+            [
+                item["code"]
+                for item in route_issues
+                if isinstance(item, Mapping) and isinstance(item.get("code"), str)
+            ]
+            if isinstance(route_issues, list)
+            else []
+        )
     reason_codes = (
         [item for item in raw_reason_codes if isinstance(item, str)]
         if isinstance(raw_reason_codes, list)
@@ -222,6 +235,11 @@ def _route_reconsideration(
         "kind": "ROUTE_RECONSIDERATION_REQUIRED",
         "reason_codes": reason_codes or ["ROUTE_RECONSIDERATION_REQUIRED"],
     }
+    review_update = (
+        {"plan_review": cast(PlanReviewResultV2, result)}
+        if phase is WorkflowPhase.PLAN_REVIEW
+        else {"plan_review": None}
+    )
     return _decision(
         target=SupervisorTarget.TOOL_ROUTE,
         next_phase=WorkflowPhase.TOOL_ROUTING,
@@ -234,7 +252,7 @@ def _route_reconsideration(
             work_analysis_result=None,
             answer_draft=None,
             plan_draft=None,
-            plan_review=None,
+            **review_update,
         ),
         reason_code=signal["reason_codes"][0],
     )
@@ -638,12 +656,12 @@ def _route_solution_planning(
 def _route_plan_review(
     *,
     state: MultiAgentGraphState,
-    result: PlanReviewResultV1,
+    result: PlanReviewResultV2,
 ) -> SupervisorDecisionV1:
     status = ReviewResult(str(result["status"]))
     review_update: GraphStateUpdateV1 = {"plan_review": result}
     if status is ReviewResult.PASS:
-        target_kind, _draft = _review_target_from_state(state)
+        target_kind = _review_target_from_state(state)
         if target_kind == "ANSWER":
             return _finalize(
                 state=state,
@@ -661,6 +679,7 @@ def _route_plan_review(
             reason_code="PLAN_REVIEW_PASS",
         )
     if status is ReviewResult.REVISE:
+        revised_result = cast(ReviewReviseV2, result)
         revision_budget = approve_planning_revision(state["retry_budget"])
         if revision_budget["decision"] == BudgetDecision.DENY.value:
             return _finalize(
@@ -672,7 +691,7 @@ def _route_plan_review(
                 budget_decision=revision_budget,
                 current_update=review_update,
             )
-        target_kind, _draft = _review_target_from_state(state)
+        target_kind = _review_target_from_state(state)
         # Semantic Revision dedup (docs/06 SS10.1, contracts.approve_semantic_revision):
         # same target Planning node + same normalized Review failure signature
         # gets at most one revision attempt per Run, persisted in
@@ -682,9 +701,7 @@ def _route_plan_review(
         # REVISE has nothing to record and falls back to the planning-revision
         # cap alone.
         node_id = "planning.revise_answer" if target_kind == "ANSWER" else "planning.revise_plan"
-        failure_reason_codes = [
-            reason_code for issue in result["issues"] for reason_code in issue["reason_codes"]
-        ]
+        failure_reason_codes = [issue["code"] for issue in revised_result["issues"]]
         if failure_reason_codes:
             signature = build_semantic_failure_signature_v1(
                 node_id=node_id,
@@ -718,17 +735,42 @@ def _route_plan_review(
             budget_decision=budget,
         )
     if status is ReviewResult.RETRIEVE_MORE:
+        retrieval_result = cast(ReviewRetrieveMoreV2, result)
+        reason_codes = list(dict.fromkeys(gap["code"] for gap in retrieval_result["evidence_gaps"]))
+        missing_information = [
+            information
+            for gap in retrieval_result["evidence_gaps"]
+            for information in gap["required_information"]
+        ]
         return _route_retrieval_required(
             state=state,
             reason_code="PLAN_REVIEW_RETRIEVE_MORE",
             current_update=review_update,
-            request=result["additional_acquisition_request"],
+            request={
+                "schema_version": 1,
+                "origin_phase": WorkflowPhase.PLAN_REVIEW.value,
+                "origin_result": ReviewResult.RETRIEVE_MORE.value,
+                "missing_slots": [],
+                "missing_information": list(dict.fromkeys(missing_information)),
+                "evidence_refs": [],
+                "reason_codes": reason_codes,
+            },
         )
     if status is ReviewResult.CONFIRM:
-        question = build_plan_review_clarification_question(
-            result=result,
-            request_intent=_request_intent_from_state(state),
-        )
+        confirmation = cast(ReviewConfirmV2, result)["confirmation"]
+        question: ClarificationQuestionV1 = {
+            "schema_version": 1,
+            "origin_target": "review.aggregate_findings",
+            "question": confirmation["question"],
+            "affected_field_paths": [],
+            "reason_code": "PLAN_REVIEW_CONFIRM",
+            "known_context_summary": str(
+                _request_intent_from_state(state).get("goal", "Plan review")
+            ),
+            "options": [
+                {"option_id": option, "label": option} for option in confirmation["options"]
+            ],
+        }
         return _decision(
             target=SupervisorTarget.WAITING_CONFIRMATION,
             next_phase=WorkflowPhase.WAITING_CONFIRMATION,
@@ -738,10 +780,11 @@ def _route_plan_review(
             ),
             reason_code=question["reason_code"],
         )
+    blocked_result = cast(ReviewBlockV2, result)
     return _finalize(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
-        reason_code="PLAN_REVIEW_BLOCK",
+        reason_code=blocked_result["blockers"][0]["code"],
         current_update=review_update,
     )
 
@@ -1002,11 +1045,18 @@ def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
 
 def _review_target_from_state(
     state: MultiAgentGraphState,
-) -> tuple[str, AnswerDraftV1 | ActionPlanDraftV1]:
-    return resolve_review_target(
-        answer_draft=state["answer_draft"],
-        plan_draft=state["plan_draft"],
-    )
+) -> str:
+    planning_result = cast(Mapping[str, object], state).get("planning_result")
+    if isinstance(planning_result, Mapping):
+        if isinstance(planning_result.get("answer"), str):
+            return "ANSWER"
+        if isinstance(planning_result.get("actions"), list):
+            return "PLAN"
+    if state.get("answer_draft") is not None:
+        return "ANSWER"
+    if state.get("plan_draft") is not None:
+        return "PLAN"
+    raise ValueError("Review requires a Planning artifact")
 
 
 def _is_revision_follow_up(state: MultiAgentGraphState) -> bool:

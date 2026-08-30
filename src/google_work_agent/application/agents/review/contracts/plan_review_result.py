@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Literal, Required, TypedDict
 
-from google_work_agent.application.agents.review.contracts.review_findings import ReviewDimension
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewDimensionIdV1,
+)
 
 
 class StateArtifactRefV1(TypedDict):
@@ -19,27 +21,27 @@ class StateArtifactMetaV1(TypedDict):
 
 
 class ReviewIssueV1(TypedDict):
-    dimension: ReviewDimension
     code: str
     description: str
-    action_id: str | None
-    route_id: str | None
+    affected_dimensions: list[ReviewDimensionIdV1]
+    affected_action_ids: list[str]
+    affected_route_ids: list[str]
+    evidence_refs: list[str]
 
 
-class ReviewEvidenceGapV1(TypedDict):
+class EvidenceGapV1(TypedDict):
     code: str
     description: str
     required_information: list[str]
 
 
-class ReviewRouteIssueV1(TypedDict):
+class RouteIssueV1(TypedDict):
     code: str
     description: str
-    route_id: str | None
+    affected_route_ids: list[str]
 
 
 class ReviewConfirmationV1(TypedDict):
-    reason_code: str
     question: str
     options: list[str]
 
@@ -47,6 +49,7 @@ class ReviewConfirmationV1(TypedDict):
 class ReviewBlockerV1(TypedDict):
     code: str
     description: str
+    affected_action_ids: list[str]
 
 
 class ReviewPassV2(TypedDict):
@@ -67,14 +70,14 @@ class ReviewRetrieveMoreV2(TypedDict):
     schema_version: Required[Literal[2]]
     meta: StateArtifactMetaV1
     status: Required[Literal["RETRIEVE_MORE"]]
-    evidence_gaps: list[ReviewEvidenceGapV1]
+    evidence_gaps: list[EvidenceGapV1]
 
 
 class ReviewRouteReconsiderationV2(TypedDict):
     schema_version: Required[Literal[2]]
     meta: StateArtifactMetaV1
     status: Required[Literal["ROUTE_RECONSIDERATION"]]
-    route_issues: list[ReviewRouteIssueV1]
+    route_issues: list[RouteIssueV1]
 
 
 class ReviewConfirmV2(TypedDict):
@@ -99,3 +102,21 @@ PlanReviewResultV2 = (
     | ReviewConfirmV2
     | ReviewBlockV2
 )
+
+
+__all__ = [
+    "EvidenceGapV1",
+    "PlanReviewResultV2",
+    "ReviewBlockV2",
+    "ReviewBlockerV1",
+    "ReviewConfirmV2",
+    "ReviewConfirmationV1",
+    "ReviewIssueV1",
+    "ReviewPassV2",
+    "ReviewRetrieveMoreV2",
+    "ReviewReviseV2",
+    "ReviewRouteReconsiderationV2",
+    "RouteIssueV1",
+    "StateArtifactMetaV1",
+    "StateArtifactRefV1",
+]

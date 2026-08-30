@@ -14,6 +14,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, TypedDict, cast
 
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
+from google_work_agent.application.agents.review.validate_review import validate_review
 from google_work_agent.application.orchestration.contracts import (
     DomainValidationOutputV1,
     DomainValidationResult,
@@ -25,9 +29,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     StateArtifactMetaV1,
     StateArtifactRefV1,
 )
-from google_work_agent.application.orchestration.inspect_plan_output import (
-    validate_plan_review_candidate_v2,
-)
 from google_work_agent.application.orchestration.planning_plan_assembler import (
     ActionPlanDraftV2,
     PlannedActionV2,
@@ -35,10 +36,7 @@ from google_work_agent.application.orchestration.planning_plan_assembler import 
 from google_work_agent.application.orchestration.planning_tool_schemas import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.orchestration.state_artifacts import (
-    PlanReviewResultV2,
-    WorkAnalysisResultV2,
-)
+from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.tool_registry.signed_tool_registry import (
     P0_GOOGLE_WORKSPACE_CONNECTOR_ID,
     SignedToolRegistry,
@@ -220,13 +218,7 @@ def _validate_pass_review_for_plan(
     if set(root) != {"schema_version", "meta", "status", "summary"}:
         raise CanonicalDomainValidationError("plan review PASS keys are invalid")
     try:
-        validate_plan_review_candidate_v2(
-            {
-                "schema_version": root["schema_version"],
-                "status": root["status"],
-                "summary": root["summary"],
-            }
-        )
+        validate_review(root)
     except ValueError as error:
         raise CanonicalDomainValidationError(f"plan review invalid: {error}") from error
     if root["status"] != "PASS":

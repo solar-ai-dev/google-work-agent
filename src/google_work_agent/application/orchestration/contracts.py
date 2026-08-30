@@ -5,6 +5,15 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, Required, TypedDict, cast
 
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
+
+# ``handoff_contracts`` imports this module for shared budget types.  Keep the
+# runtime annotation resolvable without creating that reverse import cycle;
+# static checking still sees the exact union below.
+WorkflowSignalV1 = object
+
 if TYPE_CHECKING:
     from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
         ScopeExpansionRequiredV1,
@@ -18,13 +27,11 @@ if TYPE_CHECKING:
         ActionPlanDraftV1,
         AnswerDraftV1,
         ContextRetrievalResultV1,
-        PlanReviewResultV1,
         RequestIntentV2,
-        RetrievalRequiredV1,
         RetrievalResultV1,
-        RouteReconsiderationRequiredV1,
         SourceFetchPlanV1,
         StateArtifactMetaV1,
+        WorkflowSignalV1,
     )
 
 
@@ -127,9 +134,7 @@ class MultiAgentGraphState(TypedDict):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: (
-        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
-    )
+    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -137,7 +142,7 @@ class MultiAgentGraphState(TypedDict):
     work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
+    plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
     execution_summary: dict[str, object] | None
     verification_summary: dict[str, object] | None
@@ -155,9 +160,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     workflow_phase: str
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: (
-        ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
-    )
+    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
     source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
@@ -165,7 +168,7 @@ class GraphStateUpdateV1(TypedDict, total=False):
     work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
+    plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
     execution_summary: dict[str, object] | None
     verification_summary: dict[str, object] | None
@@ -485,7 +488,7 @@ CONFIRMATION_ORIGIN_TARGETS = frozenset(
         "analysis.assess_operational_risks",
         "planning.outline_answer",
         "planning.compose_arguments_per_output_route",
-        "review.inspect",
+        "review.aggregate_findings",
     }
 )
 CONFIRMATION_RESUME_KIND = "CONFIRMATION"

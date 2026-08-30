@@ -15,11 +15,13 @@ def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
     revised = aggregate_review_findings(
         [
             {
-                "dimension": "ACTION_SCOPE_ROUTE",
+                "dimension": "review.inspect_action_scope_and_route",
                 "code": "REVISION_REQUIRED",
+                "finding_kind": "ISSUE",
                 "description": "revise action",
-                "action_id": "a1",
-                "route_id": "r1",
+                "evidence_refs": ["e1"],
+                "affected_action_ids": ["a1"],
+                "affected_route_ids": ["r1"],
                 "required_information": [],
             }
         ],
@@ -30,11 +32,12 @@ def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
     assert validated["status"] == "REVISE"
     assert validated["issues"] == [
         {
-            "dimension": "ACTION_SCOPE_ROUTE",
             "code": "REVISION_REQUIRED",
             "description": "revise action",
-            "action_id": "a1",
-            "route_id": "r1",
+            "affected_dimensions": ["review.inspect_action_scope_and_route"],
+            "affected_action_ids": ["a1"],
+            "affected_route_ids": ["r1"],
+            "evidence_refs": ["e1"],
         }
     ]
 

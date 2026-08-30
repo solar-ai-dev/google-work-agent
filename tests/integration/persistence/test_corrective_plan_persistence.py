@@ -289,7 +289,7 @@ def _state_and_draft(
                 "evidence_refs": ["old-evidence-1", "old-evidence-2"],
             },
             "acquisition_result": {},
-            "plan_review_result": {
+            "plan_review": {
                 "status": "PASS",
                 "meta": {"revision": 1, "artifact_id": "review-corrective-1"},
             },

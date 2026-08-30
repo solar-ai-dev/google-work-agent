@@ -14,6 +14,9 @@ from collections.abc import Mapping
 from typing import Final, NotRequired, cast
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
@@ -32,7 +35,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
-    PlanReviewResultV1,
     RequestIntentV2,
     RequestUnderstandingOutputV1,
     RetrievalRequiredV1,
@@ -47,10 +49,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
 )
-from google_work_agent.application.orchestration.state_artifacts import (
-    PlanReviewResultV2,
-    WorkAnalysisResultV2,
-)
+from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
@@ -78,9 +77,7 @@ class ParentGraphState(MultiAgentGraphState):
 class ProductionGraphStateV2(ParentGraphState, total=False):
     """Production state extension for canonical post-Retrieval V2 artifacts."""
 
-    work_analysis_result: NotRequired[WorkAnalysisResultV2 | None]
     planning_result: NotRequired[PlanningResultV2 | None]
-    plan_review_result: NotRequired[PlanReviewResultV2 | None]
     post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
     __v2_revision_mode__: NotRequired[str | None]
     __v2_block_reason__: NotRequired[str | None]

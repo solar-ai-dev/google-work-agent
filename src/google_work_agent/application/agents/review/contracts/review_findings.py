@@ -20,20 +20,6 @@ ReviewFindingKindV1 = Literal[
     "BLOCKER",
 ]
 
-# Legacy aggregate/recheck input contracts remain owned by #120.  Keep them
-# distinct from the atomic inspector contract so this slice does not migrate
-# the downstream final-disposition authority early.
-ReviewDimension = Literal["GOAL_EVIDENCE", "ACTION_SCOPE_ROUTE", "CONSTRAINTS_POLICY"]
-
-
-class AtomicReviewFindingV1(TypedDict):
-    dimension: ReviewDimension
-    code: str
-    description: str
-    action_id: str | None
-    route_id: str | None
-    required_information: list[str]
-
 
 class ReviewInspectorFindingV1(TypedDict):
     dimension: ReviewDimensionIdV1
@@ -53,8 +39,9 @@ class ReviewInspectorResultV1(TypedDict):
 
 
 class RecheckAffectedDimensionsResultV1(TypedDict):
-    affected_dimensions: tuple[ReviewDimension, ...]
-    findings: tuple[AtomicReviewFindingV1, ...]
+    schema_version: Literal[1]
+    affected_dimensions: tuple[ReviewDimensionIdV1, ...]
+    findings: tuple[ReviewInspectorFindingV1, ...]
 
 
 class ReviewSemanticInvoker(Protocol):
@@ -96,6 +83,68 @@ def review_inspector_output_schema(
                         ],
                         "properties": {
                             "dimension": {"const": dimension},
+                            "code": {"type": "string", "minLength": 1},
+                            "finding_kind": {
+                                "enum": [
+                                    "ISSUE",
+                                    "EVIDENCE_GAP",
+                                    "ROUTE_ISSUE",
+                                    "CONFIRMATION",
+                                    "BLOCKER",
+                                ]
+                            },
+                            "description": {"type": "string", "minLength": 1},
+                            "evidence_refs": string_array,
+                            "affected_action_ids": string_array,
+                            "affected_route_ids": string_array,
+                            "required_information": string_array,
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+
+def review_recheck_output_schema(
+    affected_dimensions: tuple[ReviewDimensionIdV1, ...],
+) -> OutputSchemaDefinition:
+    """Return the closed replacement-finding schema for one bounded recheck."""
+    if not affected_dimensions:
+        raise ValueError("Review recheck requires affected dimensions")
+    string_array = {"type": "array", "items": {"type": "string"}}
+    dimension_schema = {"enum": list(affected_dimensions)}
+    return OutputSchemaDefinition(
+        schema_version="review-recheck-affected-dimensions-result-v1",
+        json_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["schema_version", "affected_dimensions", "findings"],
+            "properties": {
+                "schema_version": {"const": 1},
+                "affected_dimensions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "items": dimension_schema,
+                },
+                "findings": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "dimension",
+                            "code",
+                            "finding_kind",
+                            "description",
+                            "evidence_refs",
+                            "affected_action_ids",
+                            "affected_route_ids",
+                            "required_information",
+                        ],
+                        "properties": {
+                            "dimension": dimension_schema,
                             "code": {"type": "string", "minLength": 1},
                             "finding_kind": {
                                 "enum": [
@@ -185,14 +234,13 @@ def validate_review_inspector_result(
 
 
 __all__ = [
-    "AtomicReviewFindingV1",
     "RecheckAffectedDimensionsResultV1",
-    "ReviewDimension",
     "ReviewDimensionIdV1",
     "ReviewFindingKindV1",
     "ReviewInspectorFindingV1",
     "ReviewInspectorResultV1",
     "ReviewSemanticInvoker",
     "review_inspector_output_schema",
+    "review_recheck_output_schema",
     "validate_review_inspector_result",
 ]

@@ -1,4 +1,4 @@
-"""Bounded semantic Review recheck for dimensions affected by a revision."""
+"""Product-LLM recheck limited by a deterministic affected-dimension selector."""
 
 from __future__ import annotations
 
@@ -6,166 +6,127 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 from google_work_agent.application.agents.review.contracts.review_findings import (
-    AtomicReviewFindingV1,
     RecheckAffectedDimensionsResultV1,
-    ReviewDimension,
+    ReviewDimensionIdV1,
+    ReviewInspectorFindingV1,
     ReviewSemanticInvoker,
-)
-from google_work_agent.application.agents.review.inspect_action_scope_and_route import (
-    inspect_action_scope_and_route,
-)
-from google_work_agent.application.agents.review.inspect_constraints_and_policy_summary import (
-    inspect_constraints_and_policy_summary,
-)
-from google_work_agent.application.agents.review.inspect_goal_and_evidence import (
-    inspect_goal_and_evidence,
 )
 
 PROMPT_ID = "review.recheck_affected_dimensions"
-_REVIEW_DIMENSIONS: tuple[ReviewDimension, ...] = (
-    "GOAL_EVIDENCE",
-    "ACTION_SCOPE_ROUTE",
-    "CONSTRAINTS_POLICY",
+_DIMENSIONS: tuple[ReviewDimensionIdV1, ...] = (
+    "review.inspect_goal_and_evidence",
+    "review.inspect_action_scope_and_route",
+    "review.inspect_constraints_and_policy_summary",
 )
-_REVIEW_DIMENSION_SET = set(_REVIEW_DIMENSIONS)
+_DIMENSION_SET = set(_DIMENSIONS)
+_FINDING_KINDS = {"ISSUE", "EVIDENCE_GAP", "ROUTE_ISSUE", "CONFIRMATION", "BLOCKER"}
 
 
 def recheck_affected_dimensions(
-    findings: Iterable[Mapping[str, object]],
     *,
-    affected_dimensions: Iterable[ReviewDimension] = (),
+    affected_dimensions: Iterable[ReviewDimensionIdV1],
     affected_action_ids: Iterable[str] = (),
     affected_route_ids: Iterable[str] = (),
     request_intent: Mapping[str, object],
-    tool_route_plan: Mapping[str, object],
     planning_result: Mapping[str, object],
-    evidence: Sequence[Mapping[str, object]],
     invoke: ReviewSemanticInvoker,
+    tool_route_plan: Mapping[str, object] | None = None,
     work_analysis: Mapping[str, object] | None = None,
+    evidence: Sequence[Mapping[str, object]] = (),
     policy_summary: Mapping[str, object] | None = None,
+    confirmation_response: Mapping[str, object] | None = None,
 ) -> RecheckAffectedDimensionsResultV1:
-    """Re-run exactly the canonical union of explicitly and identity-affected dimensions."""
-    prior_findings = tuple(dict(item) for item in findings)
-    action_ids = set(affected_action_ids)
-    route_ids = set(affected_route_ids)
-    explicit_dimensions = _normalize_dimensions(affected_dimensions)
-    canonical_dimensions: set[ReviewDimension] = set(explicit_dimensions)
+    """Return fresh replacement findings for exactly the supplied closed dimension set."""
+    dimensions = _normalize_dimensions(affected_dimensions)
+    if not dimensions:
+        raise ValueError("Review recheck requires affected_dimensions")
+    prompt_input: dict[str, object] = {
+        "affected_dimensions": list(dimensions),
+        "affected_action_ids": _stable_ids(affected_action_ids, "affected_action_ids"),
+        "affected_route_ids": _stable_ids(affected_route_ids, "affected_route_ids"),
+        "request_intent": dict(request_intent),
+        "planning_result": dict(planning_result),
+        "evidence": [dict(item) for item in evidence],
+    }
+    for key, value in (
+        ("tool_route_plan", tool_route_plan),
+        ("work_analysis", work_analysis),
+        ("policy_summary", policy_summary),
+        ("confirmation_response", confirmation_response),
+    ):
+        if value is not None:
+            prompt_input[key] = dict(value)
 
-    for finding in prior_findings:
-        dimension = finding.get("dimension")
-        if dimension not in _REVIEW_DIMENSION_SET:
-            continue
-        action_id = finding.get("action_id")
-        route_id = finding.get("route_id")
-        if (isinstance(action_id, str) and action_id in action_ids) or (
-            isinstance(route_id, str) and route_id in route_ids
+    raw = invoke(PROMPT_ID, prompt_input)
+    if set(raw) != {"schema_version", "affected_dimensions", "findings"}:
+        raise ValueError("Review recheck result keys do not match contract")
+    if raw.get("schema_version") != 1 or isinstance(raw.get("schema_version"), bool):
+        raise ValueError("Review recheck schema_version must be 1")
+    returned_dimensions = _normalize_dimensions(_sequence(raw.get("affected_dimensions")))
+    if returned_dimensions != dimensions:
+        raise ValueError("Review recheck cannot broaden or narrow affected_dimensions")
+    findings = tuple(_validate_findings(_sequence(raw.get("findings")), dimensions))
+    return {"schema_version": 1, "affected_dimensions": dimensions, "findings": findings}
+
+
+def _validate_findings(
+    values: Sequence[object], dimensions: tuple[ReviewDimensionIdV1, ...]
+) -> list[ReviewInspectorFindingV1]:
+    expected = {
+        "dimension",
+        "code",
+        "finding_kind",
+        "description",
+        "evidence_refs",
+        "affected_action_ids",
+        "affected_route_ids",
+        "required_information",
+    }
+    allowed = set(dimensions)
+    result: list[ReviewInspectorFindingV1] = []
+    for value in values:
+        if not isinstance(value, Mapping) or set(value) != expected:
+            raise ValueError("Review recheck finding keys do not match contract")
+        item = dict(value)
+        if item["dimension"] not in allowed:
+            raise ValueError("Review recheck returned an unaffected dimension")
+        if item["finding_kind"] not in _FINDING_KINDS:
+            raise ValueError("Review recheck finding_kind is invalid")
+        for key in ("code", "description"):
+            if not isinstance(item[key], str) or not item[key]:
+                raise ValueError(f"Review recheck {key} is required")
+        for key in (
+            "evidence_refs",
+            "affected_action_ids",
+            "affected_route_ids",
+            "required_information",
         ):
-            canonical_dimensions.add(cast(ReviewDimension, dimension))
-
-    if not canonical_dimensions:
-        return {"affected_dimensions": (), "findings": ()}
-
-    ordered_dimensions = tuple(
-        dimension for dimension in _REVIEW_DIMENSIONS if dimension in canonical_dimensions
-    )
-    recheck_decision = invoke(
-        PROMPT_ID,
-        {
-            "base_projection": {"findings": prior_findings},
-            "candidate_output": {"planning_result": dict(planning_result)},
-            "failure_record": {
-                "affected_dimensions": list(explicit_dimensions),
-                "affected_action_ids": sorted(action_ids),
-                "affected_route_ids": sorted(route_ids),
-                "candidate_dimensions": list(ordered_dimensions),
-            },
-        },
-    )
-    selected = recheck_decision.get("affected_dimensions")
-    if not isinstance(selected, list) or not all(isinstance(item, str) for item in selected):
-        raise ValueError("recheck_affected_dimensions requires affected_dimensions")
-    selected_dimensions = _normalize_dimensions(selected)
-    if set(selected_dimensions) != canonical_dimensions:
-        raise ValueError("recheck affected_dimensions must match the canonical affected set")
-
-    fresh: list[AtomicReviewFindingV1] = []
-    if "GOAL_EVIDENCE" in canonical_dimensions:
-        fresh.extend(
-            _legacy_findings(
-                inspect_goal_and_evidence(
-                    request_intent=request_intent,
-                    planning_result=planning_result,
-                    work_analysis=work_analysis,
-                    evidence=evidence,
-                    invoke=invoke,
-                )["findings"],
-                dimension="GOAL_EVIDENCE",
-            )
-        )
-    if "ACTION_SCOPE_ROUTE" in canonical_dimensions:
-        fresh.extend(
-            _legacy_findings(
-                inspect_action_scope_and_route(
-                    request_intent=request_intent,
-                    tool_route_plan=tool_route_plan,
-                    planning_result=planning_result,
-                    work_analysis=work_analysis,
-                    evidence=evidence,
-                    invoke=invoke,
-                )["findings"],
-                dimension="ACTION_SCOPE_ROUTE",
-            )
-        )
-    if "CONSTRAINTS_POLICY" in canonical_dimensions:
-        if policy_summary is None:
-            raise ValueError("policy_summary is required for constraints Review recheck")
-        fresh.extend(
-            _legacy_findings(
-                inspect_constraints_and_policy_summary(
-                    request_intent=request_intent,
-                    planning_result=planning_result,
-                    policy_summary=policy_summary,
-                    work_analysis=work_analysis,
-                    evidence=evidence,
-                    invoke=invoke,
-                )["findings"],
-                dimension="CONSTRAINTS_POLICY",
-            )
-        )
-    return {"affected_dimensions": ordered_dimensions, "findings": tuple(fresh)}
-
-
-def _legacy_findings(
-    findings: Sequence[Mapping[str, object]],
-    *,
-    dimension: ReviewDimension,
-) -> list[AtomicReviewFindingV1]:
-    """Adapt exact inspector output for the aggregate/recheck migration owned by #120."""
-    result: list[AtomicReviewFindingV1] = []
-    for finding in findings:
-        action_ids = finding.get("affected_action_ids", [])
-        route_ids = finding.get("affected_route_ids", [])
-        required_information = finding.get("required_information", [])
-        if not isinstance(action_ids, list) or not isinstance(route_ids, list):
-            raise ValueError("Review inspector affected identities must be lists")
-        if not isinstance(required_information, list):
-            raise ValueError("Review inspector required_information must be a list")
-        result.append(
-            {
-                "dimension": dimension,
-                "code": str(finding["code"]),
-                "description": str(finding["description"]),
-                "action_id": action_ids[0] if action_ids else None,
-                "route_id": route_ids[0] if route_ids else None,
-                "required_information": [str(item) for item in required_information],
-            }
-        )
+            item[key] = _stable_ids(_sequence(item[key]), key)
+        result.append(cast(ReviewInspectorFindingV1, item))
     return result
 
 
-def _normalize_dimensions(dimensions: Iterable[object]) -> tuple[ReviewDimension, ...]:
-    requested = set(dimensions)
-    invalid = requested - _REVIEW_DIMENSION_SET
-    if invalid:
+def _normalize_dimensions(values: Iterable[object]) -> tuple[ReviewDimensionIdV1, ...]:
+    requested = set(values)
+    if requested - _DIMENSION_SET:
         raise ValueError("invalid Review affected dimension")
-    return tuple(dimension for dimension in _REVIEW_DIMENSIONS if dimension in requested)
+    return tuple(dimension for dimension in _DIMENSIONS if dimension in requested)
+
+
+def _stable_ids(values: Iterable[object], label: str) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{label} must contain nonempty strings")
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def _sequence(value: object) -> Sequence[object]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError("Review recheck arrays are required")
+    return value
+
+
+__all__ = ["PROMPT_ID", "recheck_affected_dimensions"]

@@ -37,7 +37,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "planning.compose_arguments_per_output_route": frozenset(
         {"planning.compose_arguments_per_output_route"}
     ),
-    "review.inspect": frozenset({"review.inspect"}),
+    "review.aggregate_findings": frozenset({"review.recheck_affected_dimensions"}),
 }
 
 

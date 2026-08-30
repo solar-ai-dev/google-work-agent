@@ -10,5 +10,5 @@ def route_after_entry(state: Mapping[str, object]) -> str:
     if phase == "INITIAL":
         return "inspect_goal_and_evidence"
     if phase == "RECHECK":
-        return "recheck_affected_dimensions"
+        return "recheck"
     raise ValueError("unknown Review phase")

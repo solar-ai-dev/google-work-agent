@@ -27,6 +27,9 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
 )
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
     ScopeExpansionRequiredV1,
@@ -60,7 +63,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
-    PlanReviewResultV1,
     RequestIntentV2,
     RetrievalNeedV1,
     RetrievalRequiredV1,
@@ -71,6 +73,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourcePlanningOutputV1,
     SufficiencyResultV2,
     WorkAnalysisResultV1,
+    WorkflowSignalV1,
 )
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
@@ -162,7 +165,7 @@ class PlanningInputState(AgentSubgraphInputEnvelope, total=False):
     work_analysis_result: WorkAnalysisResultV2 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
+    plan_review: PlanReviewResultV2 | None
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
 
@@ -177,7 +180,7 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     analysis_result: WorkAnalysisResultV1 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
-    plan_review: PlanReviewResultV1 | None
+    plan_review: PlanReviewResultV2 | None
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
 
@@ -273,6 +276,23 @@ class PlanningLocalState(GraphState):
 
 
 class ReviewLocalState(GraphState):
+    work_analysis: NotRequired[dict[str, object]]
+    review_phase: NotRequired[str]
+    review_artifact_id: NotRequired[str]
+    review_revision: NotRequired[int]
+    review_based_on: NotRequired[list[dict[str, object]]]
+    prior_review_findings: NotRequired[list[dict[str, object]]]
+    affected_dimensions: NotRequired[list[str]]
+    affected_action_ids: NotRequired[list[str]]
+    affected_route_ids: NotRequired[list[str]]
+    goal_evidence_result: NotRequired[dict[str, object]]
+    action_scope_route_result: NotRequired[dict[str, object]]
+    constraints_policy_result: NotRequired[dict[str, object]]
+    affected_dimension_recheck: NotRequired[list[dict[str, object]]]
+    review_result: NotRequired[PlanReviewResultV2]
+    evidence: NotRequired[list[EvidenceDraftV1]]
+    policy_summary: NotRequired[dict[str, object]]
+    confirmation_response: NotRequired[dict[str, object]]
     __review_agent_local__: NotRequired[AgentLocalStateV1]
     __review_mode__: NotRequired[str]
     # Same purpose as the other native subgraphs' retry markers: routes the

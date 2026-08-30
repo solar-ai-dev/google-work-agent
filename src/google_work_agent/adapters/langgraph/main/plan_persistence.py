@@ -250,9 +250,7 @@ def _current_retrieval_locator(
     *, retrieval_result: RetrievalResultV1, evidence: EvidenceDraftV1
 ) -> str:
     reason_codes = evidence.get("reason_codes", [])
-    roles = [
-        item for item in reason_codes if item in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
-    ]
+    roles = [item for item in reason_codes if item in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}]
     if len(roles) != 1:
         raise ValueError("selected Evidence must carry exactly one canonical context role")
     return dumps(
@@ -379,8 +377,6 @@ class PlanPersistenceMixin:
             )
         review_artifact_id, review_version = self._review_proof_for_persistence(
             state=state,
-            plan_id=plan_id,
-            plan_revision_no=revision_no,
         )
         save_response = self._save_write_plan(
             SaveWritePlanCommand(
@@ -471,8 +467,6 @@ class PlanPersistenceMixin:
         plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
         review_artifact_id, review_version = self._review_proof_for_persistence(
             state=state,
-            plan_id=plan_id,
-            plan_revision_no=1,
         )
         save_response = self._save_read_plan(
             SaveReadOnlyPlanCommand(
@@ -514,22 +508,14 @@ class PlanPersistenceMixin:
     def _review_proof_for_persistence(
         *,
         state: GraphState,
-        plan_id: str,
-        plan_revision_no: int,
     ) -> tuple[str, int]:
-        review_v2 = state.get("plan_review_result")
-        if review_v2 is not None:
-            if review_v2["status"] != "PASS":
-                raise ValueError("only a PASS Review may open a persisted Plan approval gate")
-            revision = review_v2["meta"]["revision"]
-            if revision < 1:
-                raise ValueError("persisted Review revision must be positive")
-            return review_v2["meta"]["artifact_id"], revision
-
-        review_v1 = _require_state_value(state.get("plan_review"), "plan_review")
-        if review_v1["status"] != "PASS":
+        review = _require_state_value(state.get("plan_review"), "plan_review")
+        if review["status"] != "PASS":
             raise ValueError("only a PASS Review may open a persisted Plan approval gate")
-        return f"{plan_id}:review:{plan_revision_no}", plan_revision_no
+        revision = review["meta"]["revision"]
+        if revision < 1:
+            raise ValueError("persisted Review revision must be positive")
+        return review["meta"]["artifact_id"], revision
 
     def _persist_initial_review_pass(
         self,

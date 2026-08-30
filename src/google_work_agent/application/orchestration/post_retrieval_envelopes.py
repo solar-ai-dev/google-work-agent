@@ -13,13 +13,13 @@ from typing import cast
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionPlanDraftV2,
 )
-from google_work_agent.application.orchestration.handoff_contracts import SubgraphReturnV2
-from google_work_agent.application.orchestration.inspect_plan_output import (
-    validate_plan_review_candidate_v2,
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
 )
+from google_work_agent.application.agents.review.validate_review import validate_review
+from google_work_agent.application.orchestration.handoff_contracts import SubgraphReturnV2
 from google_work_agent.application.orchestration.state_artifacts import (
     AnswerDraftV2,
-    PlanReviewResultV2,
     WorkAnalysisResultV2,
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
@@ -190,9 +190,8 @@ def _review_artifact(value: object, *, expected_status: str) -> PlanReviewResult
     if root.get("schema_version") != 2 or root.get("status") != expected_status:
         raise PostRetrievalEnvelopeV2Error("Review typed_result status must match disposition")
     _artifact_meta(root.get("meta"), "typed_result.meta")
-    candidate = {key: item for key, item in root.items() if key != "meta"}
     try:
-        validate_plan_review_candidate_v2(candidate)
+        validate_review(root)
     except ValueError as error:
         raise PostRetrievalEnvelopeV2Error(str(error)) from error
     return cast(PlanReviewResultV2, root)

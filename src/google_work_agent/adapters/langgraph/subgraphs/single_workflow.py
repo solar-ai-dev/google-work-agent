@@ -54,7 +54,6 @@ from google_work_agent.application.orchestration.contracts import (
     MultiAgentGraphState,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.plan_review import PlanReviewAgent
 from google_work_agent.application.orchestration.profile_fused import (
     PROFILE_FUSED_PLANNING_OUTPUT_SCHEMA,
     PROFILE_REQUEST_SOURCE_OUTPUT_SCHEMA,
@@ -66,8 +65,6 @@ from google_work_agent.application.orchestration.retrieval_evidence_store import
 )
 from google_work_agent.application.orchestration.solution_planning import (
     SolutionPlanningAgent,
-    validate_action_plan_draft_v1,
-    validate_answer_draft_v1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -96,7 +93,7 @@ class SingleWorkflowSubgraph:
         llm_runtime: StructuredLLMRuntime,
         acquisition_agent: ApiDiscoveryAcquisitionAgent,
         planning_agent: SolutionPlanningAgent,
-        review_agent: PlanReviewAgent,
+        review_subgraph: Any,
         tool_catalog: SignedToolRegistry,
         evidence_store: RunScopedEvidenceStore,
         request_source_prompt_ref: PromptReference,
@@ -110,7 +107,7 @@ class SingleWorkflowSubgraph:
         self._llm_runtime = llm_runtime
         self._acquisition_agent = acquisition_agent
         self._planning_agent = planning_agent
-        self._review_agent = review_agent
+        self._review_subgraph = review_subgraph
         self._tool_catalog = tool_catalog
         self._evidence_store = evidence_store
         self._request_source_prompt_ref = request_source_prompt_ref
@@ -370,45 +367,37 @@ class SingleWorkflowSubgraph:
         self._evidence_store.put(run_id=request.run_id, evidence_drafts=evidence_drafts)
         planning_result = output["planning_result"]
         result = planning_result_from_projection(planning_result)
-        answer_draft = (
-            validate_answer_draft_v1(result, analysis_result=output["analysis_result"])
-            if "answer" in result
-            else None
-        )
-        plan_draft = (
-            validate_action_plan_draft_v1(result, analysis_result=output["analysis_result"])
-            if "plan_id" in result
-            else None
-        )
-        llm_result = self._review_agent.invoke_inspect_llm(
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            context_result=output["context_result"],
+        planning_update = profile_planning_state_update(
+            planning_result,
             analysis_result=output["analysis_result"],
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-            request=request,
-            deterministic_action_risks=state.get("__modify_review_risks__"),
+            planning_agent=self._planning_agent,
         )
-        review_result = self._review_agent.build_output_from_llm_result(
-            llm_result,
-            analysis_result=output["analysis_result"],
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
+        reviewed = cast(
+            SingleWorkflowLocalState,
+            self._review_subgraph.invoke(
+                {
+                    **state,
+                    "context_result": output["context_result"],
+                    "retrieval_result": retrieval_result,
+                    "analysis_result": output["analysis_result"],
+                    "work_analysis_result": output["analysis_result"],
+                    "planning_result": result,
+                    **planning_update,
+                }
+            ),
         )
-        updated_local = dict(record_llm_result(local_state, llm_result))
+        review_result = _require_state_value(reviewed["plan_review"], "plan_review")
+        updated_local = dict(local_state)
         updated_local["node_state"] = "SELF_REVIEW_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], review_result)
         return {
-            **state,
+            **reviewed,
             PROFILE_AGENT_LOCAL_KEY: cast(AgentLocalStateV1, updated_local),
             "context_result": output["context_result"],
             "retrieval_result": retrieval_result,
             "analysis_result": output["analysis_result"],
-            **profile_planning_state_update(
-                planning_result,
-                analysis_result=output["analysis_result"],
-                planning_agent=self._planning_agent,
-            ),
+            "planning_result": result,
+            **planning_update,
             "plan_review": review_result,
             "trace_context": merge_trace_context(
                 state,
@@ -418,10 +407,6 @@ class SingleWorkflowSubgraph:
                 agent_invocation_id=local_state["invocation_id"],
                 subgraph_namespace="single",
                 node_name="self_review",
-                llm_call_id=f"{request.run_id}:profile.single.self_review.initial",
-                prompt_ref=self._review_agent.inspect_prompt_ref,
-                llm_call_increment=llm_result.structured_output_attempts,
-                repair_increment=max(0, llm_result.structured_output_attempts - 1),
             ),
         }
 
@@ -541,7 +526,7 @@ class SingleWorkflowSubgraph:
                     node_name="finalize",
                 ),
             },
-            self._review_agent.build_state_update(result),
+            cast(GraphStateUpdateV1, {"plan_review": result}),
             decision,
         )
         merged.pop(PROFILE_AGENT_LOCAL_KEY, None)

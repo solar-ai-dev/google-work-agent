@@ -22,10 +22,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourcePlanningOutputV1,
     WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.plan_review import (
-    load_plan_review_inspect_prompt_reference,
-    validate_plan_review_result_v1,
-)
 from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
@@ -160,24 +156,6 @@ def load_profile_single_reason_plan_prompt_reference(
     )
 
 
-def load_profile_single_self_review_prompt_reference(
-    manifest_path: Path | None = None,
-) -> PromptReference:
-    return _load_registry_prompt_reference(
-        "profile.single.self_review.initial",
-        manifest_path or _registry_default_prompt_manifest_path(),
-    )
-
-
-def load_profile_single_self_review_recheck_prompt_reference(
-    manifest_path: Path | None = None,
-) -> PromptReference:
-    return _load_registry_prompt_reference(
-        "profile.single.self_review.recheck",
-        manifest_path or _registry_default_prompt_manifest_path(),
-    )
-
-
 def load_profile_three_stage1_prompt_reference(
     manifest_path: Path | None = None,
 ) -> PromptReference:
@@ -193,14 +171,6 @@ def load_profile_three_stage2_prompt_reference(
     return _load_registry_prompt_reference(
         "profile.three.stage2.initial",
         manifest_path or _registry_default_prompt_manifest_path(),
-    )
-
-
-def load_profile_three_stage3_prompt_reference(
-    manifest_path: Path | None = None,
-) -> PromptReference:
-    return load_plan_review_inspect_prompt_reference(
-        manifest_path or _registry_default_prompt_manifest_path()
     )
 
 
@@ -430,13 +400,9 @@ __all__ = [
     "ProfileRequestSourceOutputV1",
     "load_profile_single_reason_plan_prompt_reference",
     "load_profile_single_request_source_prompt_reference",
-    "load_profile_single_self_review_prompt_reference",
-    "load_profile_single_self_review_recheck_prompt_reference",
     "load_profile_three_stage1_prompt_reference",
     "load_profile_three_stage2_prompt_reference",
-    "load_profile_three_stage3_prompt_reference",
     "validate_profile_planning_projection_v1",
     "validate_profile_reason_plan_output_v1",
     "validate_profile_request_source_output_v1",
-    "validate_plan_review_result_v1",
 ]

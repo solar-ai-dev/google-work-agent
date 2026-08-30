@@ -24,11 +24,11 @@ def test_production_has_no_second_planning_answer_authority() -> None:
     optional_source = _source(
         "src/google_work_agent/application/orchestration/optional_agent_inputs.py"
     )
-    provider_source = _source("src/google_work_agent/adapters/langgraph/workflow_providers.py")
+    provider_path = ROOT / "src/google_work_agent/adapters/langgraph/workflow_providers.py"
     response_source = _source("src/google_work_agent/adapters/langgraph/main/response_synthesis.py")
     assert "CanonicalOptionalInputPlanningAgent" not in optional_source
     assert "invoke_answer_with_optional_analysis" not in optional_source
-    assert "ProductionPlanningAnswerV2CandidateProvider" not in provider_source
+    assert not provider_path.exists()
     assert "build_production_planning_runtime" not in response_source
     assert "CanonicalOptionalPlanningSubgraph" not in response_source
     assert "PlanningSubgraph(" in response_source
@@ -39,9 +39,9 @@ def test_review_graph_has_no_generic_semantic_binding_authority() -> None:
     assert "ReviewNodeBindings" not in source
     assert "operation=bindings." not in source
     assert "ReviewRuntimeDependencies" in source
-    assert "invoke=self._dependencies.invoke" in source
+    assert "return self._dependencies.invoke" in source
     assert "route_after_entry" in source
-    assert "route_after_validation" in source
+    assert "route_after_aggregate_review_findings" in source
 
 
 def test_nodes_import_canonical_application_operations_directly() -> None:
@@ -59,7 +59,6 @@ def test_nodes_import_canonical_application_operations_directly() -> None:
             "inspect_action_scope_and_route",
             "inspect_constraints_and_policy_summary",
             "aggregate_review_findings",
-            "validate_review",
             "recheck_affected_dimensions",
         ),
     }
@@ -77,7 +76,7 @@ def test_nodes_import_canonical_application_operations_directly() -> None:
 def test_review_revise_does_not_route_to_pre_revision_recheck() -> None:
     source = _source(
         "src/google_work_agent/adapters/langgraph/subgraphs/review/"
-        "routing/route_after_validation.py"
+        "routing/route_after_aggregate_review_findings.py"
     )
     assert 'return "end"' in source
     assert '"REVISE": "recheck_affected_dimensions"' not in source

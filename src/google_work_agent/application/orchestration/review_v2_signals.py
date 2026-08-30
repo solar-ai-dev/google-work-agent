@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
+from google_work_agent.application.agents.review.validate_review import validate_review
 from google_work_agent.application.orchestration.handoff_contracts import (
     BlockedSignalV1,
     ConfirmationRequiredV1,
@@ -13,10 +17,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RouteReconsiderationRequiredV1,
     WorkflowSignalV1,
 )
-from google_work_agent.application.orchestration.inspect_plan_output import (
-    validate_plan_review_candidate_v2,
-)
-from google_work_agent.application.orchestration.state_artifacts import PlanReviewResultV2
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
@@ -138,13 +138,8 @@ def _blocked(review: Mapping[str, object]) -> BlockedSignalV1:
 
 
 def _validated_review(result: PlanReviewResultV2) -> dict[str, object]:
-    if not isinstance(result, Mapping):
-        raise ReviewV2SignalProjectionError("PlanReviewResultV2 must be an object")
-    if "meta" not in result:
-        raise ReviewV2SignalProjectionError("PlanReviewResultV2.meta is required")
-    candidate = {key: item for key, item in result.items() if key != "meta"}
     try:
-        return cast(dict[str, object], validate_plan_review_candidate_v2(candidate))
+        return cast(dict[str, object], validate_review(result))
     except ValueError as error:
         raise ReviewV2SignalProjectionError(str(error)) from error
 

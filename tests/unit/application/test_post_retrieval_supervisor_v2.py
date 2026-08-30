@@ -45,7 +45,16 @@ def _revise_return():
             "schema_version": 2,
             "meta": _meta("review-1"),
             "status": "REVISE",
-            "issues": [{"code": "PLAN_WRONG_TARGET", "description": "wrong", "action_id": "a1"}],
+            "issues": [
+                {
+                    "code": "PLAN_WRONG_TARGET",
+                    "description": "wrong",
+                    "affected_dimensions": ["review.inspect_action_scope_and_route"],
+                    "affected_action_ids": ["a1"],
+                    "affected_route_ids": ["r1"],
+                    "evidence_refs": ["ev-1"],
+                }
+            ],
         },
         "workflow_signal": None,
     }

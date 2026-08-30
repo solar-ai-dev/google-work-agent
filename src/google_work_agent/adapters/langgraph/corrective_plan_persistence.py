@@ -558,7 +558,7 @@ def _build_durable_materialization_proof(
 
 
 def _corrective_review_input(state: GraphState) -> tuple[int, str]:
-    review = _require_state_value(state.get("plan_review_result"), "plan_review_result")
+    review = _require_state_value(state.get("plan_review"), "plan_review")
     if review["status"] != "PASS":
         raise ValueError("corrective Plan persistence requires a PASS Review")
     revision = review["meta"]["revision"]

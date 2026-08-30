@@ -97,12 +97,12 @@ def test_clear_expires_pending_confirmation() -> None:
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
         run_id="run-1",
-        origin_target="review.inspect",
+        origin_target="review.aggregate_findings",
         response=_response(),  # type: ignore[arg-type]
     )
     runtime.clear(run_id="run-1")
 
-    _call(runtime, "review.inspect")
+    _call(runtime, "review.recheck_affected_dimensions")
 
     assert "confirmation_response" not in delegate.calls[0]["prompt_input"]
 

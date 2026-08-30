@@ -13,7 +13,6 @@ from google_work_agent.application.orchestration.confirmation import (
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionOriginResult,
     AdditionalAcquisitionRequestV1,
-    GraphStateUpdateV1,
     ReviewResult,
     WorkflowPhase,
     validate_additional_acquisition_request_v1,
@@ -51,17 +50,12 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 from google_work_agent.application.tool_registry.signed_tool_registry import (
     SignedToolRegistry,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
-    StructuredLLMResult,
     ToolCallProviderResponse,
     ToolDefinition,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 JsonObject = dict[str, object]
@@ -342,307 +336,6 @@ class PlanReviewValidationError(ValueError):
     """Raised when plan review structured output is invalid."""
 
 
-class PlanReviewAgent:
-    """Inspect or recheck drafts without mutating workflow state."""
-
-    def __init__(
-        self,
-        *,
-        llm_runtime: StructuredLLMRuntime,
-        inspect_prompt_ref: PromptReference | None = None,
-        recheck_prompt_ref: PromptReference | None = None,
-        tool_registry: SignedToolRegistry | None = None,
-        manifest_path: Path | None = None,
-    ) -> None:
-        self._llm_runtime = llm_runtime
-        self._inspect_prompt_ref = inspect_prompt_ref
-        self._recheck_prompt_ref = recheck_prompt_ref
-        self._manifest_path = manifest_path
-        self._tool_registry = tool_registry or load_signed_tool_registry()
-
-    @property
-    def inspect_prompt_ref(self) -> PromptReference:
-        if self._inspect_prompt_ref is None:
-            self._inspect_prompt_ref = load_plan_review_inspect_prompt_reference(
-                self._manifest_path
-            )
-        return self._inspect_prompt_ref
-
-    @property
-    def llm_runtime(self) -> StructuredLLMRuntime:
-        """Return the infrastructure runtime shared with the owner-local Review graph."""
-        return self._llm_runtime
-
-    @property
-    def recheck_prompt_ref(self) -> PromptReference:
-        if self._recheck_prompt_ref is None:
-            self._recheck_prompt_ref = load_plan_review_recheck_prompt_reference(
-                self._manifest_path
-            )
-        return self._recheck_prompt_ref
-
-    def inspect(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        request: WorkflowStartRequest,
-        policy_review_context: PolicyReviewContextV1 | None = None,
-        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-    ) -> PlanReviewResultV1:
-        target_kind, draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        llm_result = self.invoke_inspect_llm(
-            request_intent=request_intent,
-            context_result=context_result,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-            request=request,
-            policy_review_context=policy_review_context,
-            deterministic_action_risks=deterministic_action_risks,
-        )
-        return self.build_output_from_llm_result(
-            llm_result,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-
-    def invoke_inspect_llm(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        request: WorkflowStartRequest,
-        policy_review_context: PolicyReviewContextV1 | None = None,
-        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-    ) -> StructuredLLMResult:
-        target_kind, draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        return self._llm_runtime.invoke_tool_call(
-            prompt_ref=self.inspect_prompt_ref,
-            prompt_input=_build_review_prompt_input(
-                request=request,
-                request_intent=request_intent,
-                context_result=context_result,
-                analysis_result=analysis_result,
-                draft=draft,
-                target_kind=target_kind,
-                policy_review_context=policy_review_context
-                or _shortlisted_policy_review_context_v1(
-                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
-                ),
-                deterministic_action_risks=deterministic_action_risks,
-            ),
-            tools=REVIEW_INSPECT_TOOLS,
-            mapper=_review_tool_call_to_result_v1,
-            output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:review.inspect",
-            ),
-            semantic_validate=lambda candidate: validate_plan_review_result_v1(
-                candidate,
-                target_kind=target_kind,
-                analysis_result=analysis_result,
-                answer_draft=answer_draft,
-                plan_draft=plan_draft,
-            ),
-        )
-
-    def recheck(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        request: WorkflowStartRequest,
-        policy_review_context: PolicyReviewContextV1 | None = None,
-        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-    ) -> PlanReviewResultV1:
-        target_kind, draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        llm_result = self.invoke_recheck_llm(
-            request_intent=request_intent,
-            context_result=context_result,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-            request=request,
-            policy_review_context=policy_review_context,
-            deterministic_action_risks=deterministic_action_risks,
-        )
-        return self.build_output_from_llm_result(
-            llm_result,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-            allowed_statuses=_RECHECK_ALLOWED_STATUSES,
-        )
-
-    def invoke_recheck_llm(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        context_result: ContextRetrievalResultV1,
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        request: WorkflowStartRequest,
-        policy_review_context: PolicyReviewContextV1 | None = None,
-        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-    ) -> StructuredLLMResult:
-        target_kind, draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        return self._llm_runtime.invoke_tool_call(
-            prompt_ref=self.recheck_prompt_ref,
-            prompt_input=_build_review_prompt_input(
-                request=request,
-                request_intent=request_intent,
-                context_result=context_result,
-                analysis_result=analysis_result,
-                draft=draft,
-                target_kind=target_kind,
-                policy_review_context=policy_review_context
-                or _shortlisted_policy_review_context_v1(
-                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
-                ),
-                deterministic_action_risks=deterministic_action_risks,
-            ),
-            tools=REVIEW_RECHECK_TOOLS,
-            mapper=_review_tool_call_to_result_v1,
-            output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:review.recheck",
-            ),
-            semantic_validate=lambda candidate: validate_plan_review_result_v1(
-                candidate,
-                target_kind=target_kind,
-                analysis_result=analysis_result,
-                answer_draft=answer_draft,
-                plan_draft=plan_draft,
-                allowed_statuses=_RECHECK_ALLOWED_STATUSES,
-            ),
-        )
-
-    def invoke_recheck_llm_from_evidence(
-        self,
-        *,
-        request_intent: RequestIntentV2,
-        evidence_drafts: list[EvidenceDraftV1],
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        request: WorkflowStartRequest,
-        policy_review_context: PolicyReviewContextV1 | None = None,
-        deterministic_action_risks: dict[str, dict[str, object]] | None = None,
-    ) -> StructuredLLMResult:
-        """Legacy recheck entry retained until the #120 aggregate/recheck cut-over."""
-        target_kind, draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        return self._llm_runtime.invoke_tool_call(
-            prompt_ref=self.recheck_prompt_ref,
-            prompt_input=_build_review_prompt_input_from_evidence(
-                request=request,
-                request_intent=request_intent,
-                evidence_drafts=evidence_drafts,
-                analysis_result=analysis_result,
-                draft=draft,
-                target_kind=target_kind,
-                policy_review_context=policy_review_context
-                or _shortlisted_policy_review_context_v1(
-                    tool_registry=self._tool_registry, target_kind=target_kind, draft=draft
-                ),
-                deterministic_action_risks=deterministic_action_risks,
-            ),
-            tools=REVIEW_RECHECK_TOOLS,
-            mapper=_review_tool_call_to_result_v1,
-            output_schema=PLAN_REVIEW_OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(
-                request_id=request.correlation.request_id,
-                command_id=request.correlation.command_id,
-                conversation_id=request.conversation_id,
-                run_id=request.run_id,
-                langgraph_thread_id=request.workflow_key,
-                llm_call_id=f"{request.run_id}:review.recheck",
-            ),
-            semantic_validate=lambda candidate: validate_plan_review_result_v1(
-                candidate,
-                target_kind=target_kind,
-                analysis_result=analysis_result,
-                answer_draft=answer_draft,
-                plan_draft=plan_draft,
-                allowed_statuses=_RECHECK_ALLOWED_STATUSES,
-            ),
-        )
-
-    def build_output_from_llm_result(
-        self,
-        llm_result: StructuredLLMResult,
-        *,
-        analysis_result: WorkAnalysisResultV1,
-        answer_draft: AnswerDraftV1 | None,
-        plan_draft: ActionPlanDraftV1 | None,
-        allowed_statuses: frozenset[str] = _INSPECT_ALLOWED_STATUSES,
-    ) -> PlanReviewResultV1:
-        target_kind, _draft = resolve_review_target(
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-        )
-        result = validate_plan_review_result_v1(
-            llm_result.structured_output,
-            target_kind=target_kind,
-            analysis_result=analysis_result,
-            answer_draft=answer_draft,
-            plan_draft=plan_draft,
-            allowed_statuses=allowed_statuses,
-        )
-        result["llm_provider_result"] = _provider_summary(llm_result)
-        return result
-
-    def build_state_update(
-        self,
-        result: PlanReviewResultV1,
-    ) -> GraphStateUpdateV1:
-        return {
-            "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
-            "plan_review": result,
-            "trace_context": {
-                "review_result": result["status"],
-                "review_issue_count": len(result["issues"]),
-                "review_blocker_count": len(result["blockers"]),
-            },
-        }
-
-
 def build_policy_review_context_v1(
     *,
     tool_registry: SignedToolRegistry | None = None,
@@ -807,7 +500,7 @@ def build_plan_review_clarification_question(
 ) -> ClarificationQuestionV1:
     confirmation = _require_mapping(result["confirmation"], "$.confirmation")
     return build_clarification_question_v1(
-        origin_target="review.inspect",
+        origin_target="review.aggregate_findings",
         question=_require_string(confirmation, "question", "$.confirmation"),
         reason_code=_require_string(confirmation, "reason_code", "$.confirmation"),
         known_context_summary=request_intent["goal"],
@@ -1100,7 +793,6 @@ __all__ = [
     "POLICY_REVIEW_CONTEXT_SCHEMA_VERSION",
     "REVIEW_ISSUE_SCHEMA_VERSION",
     "build_plan_review_clarification_question",
-    "PlanReviewAgent",
     "PlanReviewResultV1",
     "PlanReviewValidationError",
     "PolicyReviewContextV1",

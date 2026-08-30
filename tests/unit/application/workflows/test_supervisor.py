@@ -4,6 +4,9 @@ from typing import Literal, cast
 import pytest
 from tests.support.legacy_write.write_actions import WriteActionResponse
 
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
+)
 from google_work_agent.application.orchestration.contracts import (
     AdditionalAcquisitionRequestV1,
     BudgetProfile,
@@ -24,9 +27,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
     ContextRetrievalResultV1,
-    PlanReviewResultV1,
     RequestIntentV2,
-    ReviewIssueV1,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
@@ -756,7 +757,7 @@ def test_review_route_reconsideration_routes_to_tool_route() -> None:
     signal = decision["state_update"]["workflow_signal"]
     assert signal is not None
     assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
-    assert decision["state_update"]["plan_review"] is None
+    assert decision["state_update"]["plan_review"] == _review_result("ROUTE_RECONSIDERATION")
 
 
 def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_present() -> None:
@@ -831,7 +832,7 @@ def _state(
     context_result: ContextRetrievalResultV1 | None = None,
     answer_draft: AnswerDraftV1 | None = None,
     plan_draft: ActionPlanDraftV1 | None = None,
-    plan_review: PlanReviewResultV1 | None = None,
+    plan_review: PlanReviewResultV2 | None = None,
     approved_plan_id: str | None = None,
     retry_budget: RunBudgetV1 | None = None,
 ) -> MultiAgentGraphState:
@@ -1040,81 +1041,56 @@ def _action_draft() -> ActionDraftV1:
 
 def _review_result(
     status: Literal["PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"],
-) -> PlanReviewResultV1:
-    request: AdditionalAcquisitionRequestV1 | None = None
-    confirmation: dict[str, object] | None = None
-    issues: list[ReviewIssueV1] = []
-    blockers = []
+) -> PlanReviewResultV2:
+    meta = {"artifact_id": "review-1", "revision": 1, "based_on": []}
+    result: dict[str, object] = {
+        "schema_version": 2,
+        "meta": meta,
+        "status": status,
+    }
+    if status == "PASS":
+        result["summary"] = "Review summary"
     if status == "REVISE":
-        issues = [
+        result["issues"] = [
             {
-                "schema_version": 2,
-                "issue_id": "issue-1",
-                "kind": "MISSING_GOAL_COVERAGE",
-                "message": "Missing one point",
+                "code": "PLAN_REQUIRED_ACTION_MISSING",
+                "description": "Missing one point",
+                "affected_dimensions": ["review.inspect_goal_and_evidence"],
                 "affected_action_ids": [],
-                "affected_field_paths": ["answer"],
+                "affected_route_ids": [],
                 "evidence_refs": ["evidence-1"],
-                "resource_refs": ["message:1"],
-                "reason_codes": ["PLAN_REQUIRED_ACTION_MISSING"],
             }
         ]
     if status == "RETRIEVE_MORE":
-        issues = [
+        result["evidence_gaps"] = [
             {
-                "schema_version": 2,
-                "issue_id": "issue-1",
-                "kind": "EVIDENCE_GAP",
-                "message": "Need more evidence",
-                "affected_action_ids": [],
-                "affected_field_paths": ["answer"],
-                "evidence_refs": ["evidence-1"],
-                "resource_refs": ["message:1"],
-                "reason_codes": ["EVIDENCE_GAP"],
+                "code": "EVIDENCE_GAP",
+                "description": "Need more evidence",
+                "required_information": ["Need one more source."],
             }
         ]
-        request = {
-            "schema_version": 1,
-            "origin_phase": WorkflowPhase.PLAN_REVIEW.value,
-            "origin_result": "RETRIEVE_MORE",
-            "missing_slots": [],
-            "missing_information": ["Need one more source."],
-            "evidence_refs": ["evidence-1"],
-            "reason_codes": ["EVIDENCE_GAP"],
-        }
     if status == "ROUTE_RECONSIDERATION":
-        issues = [
+        result["route_issues"] = [
             {
-                "schema_version": 2,
-                "issue_id": "issue-1",
-                "kind": "ROUTE_CANNOT_SATISFY_REQUEST",
-                "message": "The fixed route cannot satisfy the request",
-                "affected_action_ids": [],
-                "affected_field_paths": ["answer"],
-                "evidence_refs": ["evidence-1"],
-                "resource_refs": ["message:1"],
-                "reason_codes": ["ROUTE_CANNOT_SATISFY_REQUEST"],
+                "code": "ROUTE_CANNOT_SATISFY_REQUEST",
+                "description": "The fixed route cannot satisfy the request",
+                "affected_route_ids": [],
             }
         ]
     if status == "CONFIRM":
-        confirmation = {
+        result["confirmation"] = {
             "question": "Which interpretation is correct?",
-            "reason_code": "REVIEW_CONFIRMATION_REQUIRED",
-            "affected_field_paths": ["answer"],
-            "options": [],
+            "options": ["first", "second"],
         }
     if status == "BLOCK":
-        blockers = ["policy blocker"]
-    return {
-        "schema_version": 2,
-        "status": status,
-        "summary": "Review summary",
-        "issues": issues,
-        "confirmation": confirmation,
-        "blockers": blockers,
-        "additional_acquisition_request": request,
-        "llm_provider_result": {},
-    }
+        result["blockers"] = [
+            {
+                "code": "POLICY_BLOCKER",
+                "description": "policy blocker",
+                "affected_action_ids": [],
+            }
+        ]
+    return cast(PlanReviewResultV2, result)
 
 
 def _apply_state_update(

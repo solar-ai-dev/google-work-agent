@@ -312,7 +312,7 @@ def test_confirmation_contract_constants_match_gap_b_contract() -> None:
         "analysis.assess_operational_risks",
         "planning.outline_answer",
         "planning.compose_arguments_per_output_route",
-        "review.inspect",
+        "review.aggregate_findings",
     } == CONFIRMATION_ORIGIN_TARGETS
     assert CONFIRMATION_RESUME_KIND == "CONFIRMATION"
 
@@ -323,7 +323,7 @@ def test_user_interrupt_validator_preserves_confirmation_projection() -> None:
             "schema_version": 1,
             "interrupt_kind": "CONFIRMATION",
             "resume_kind": "CONFIRMATION",
-            "origin_target": "review.inspect",
+            "origin_target": "review.aggregate_findings",
             "question": "Which version should we keep?",
             "affected_field_paths": ["draft.summary"],
             "reason_code": "REVIEW_CONFIRMATION_REQUIRED",
@@ -335,7 +335,7 @@ def test_user_interrupt_validator_preserves_confirmation_projection() -> None:
         }
     )
 
-    assert user_interrupt["origin_target"] == "review.inspect"
+    assert user_interrupt["origin_target"] == "review.aggregate_findings"
     assert user_interrupt["resume_kind"] == "CONFIRMATION"
     assert [item["option_id"] for item in user_interrupt["options"]] == [
         "keep-current",
@@ -344,7 +344,10 @@ def test_user_interrupt_validator_preserves_confirmation_projection() -> None:
 
 
 def test_confirmation_origin_target_and_response_validators_enforce_runtime_contract() -> None:
-    assert validate_confirmation_origin_target("review.inspect") == "review.inspect"
+    assert (
+        validate_confirmation_origin_target("review.aggregate_findings")
+        == "review.aggregate_findings"
+    )
 
     selection = validate_confirmation_response_projection_v1(
         {
