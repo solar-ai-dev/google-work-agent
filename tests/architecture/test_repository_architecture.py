@@ -388,11 +388,10 @@ def test_immediate_dependency_and_provider_boundary() -> None:
                 errors.append(f"Domain outward import: {rel(path)} -> {module}")
             if p[0] == "application" and m[0] == "adapters":
                 errors.append(f"Application concrete Adapter import: {rel(path)} -> {module}")
-            if p[:2] == ("adapters", "langgraph") and m[:3] == (
-                "adapters",
-                "persistence",
-                "sqlite",
-            ):
+            if p[:2] == ("adapters", "langgraph") and m[:3] in {
+                ("adapters", "persistence", "sqlite"),
+                ("adapters", "system", "sqlite_checkpoint"),
+            }:
                 errors.append(f"LangGraph concrete SQLite import: {rel(path)} -> {module}")
             if p[:2] == ("adapters", "langgraph") and m[:1] == ("domain",) and "transitions" in m:
                 errors.append(f"LangGraph Domain transition import: {rel(path)} -> {module}")

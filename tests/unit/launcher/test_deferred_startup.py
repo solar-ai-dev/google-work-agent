@@ -11,6 +11,9 @@ from typing import NoReturn, cast
 import pytest
 from fastapi.testclient import TestClient
 
+from google_work_agent.adapters.llm.runtime.llm_credential_router import (
+    SessionMemorySecretStore,
+)
 from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.app import create_app
@@ -80,6 +83,8 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
             bootstrap_secret=bootstrap_secret,
             service_instance_id=service_instance_id,
             safe_mode_controller=safe_mode_controller,
+            test_keyring_path=tmp_path / "test-keyring.json",
+            keyring_store=SessionMemorySecretStore(),
         )
 
     container = _shell(core_builder=delayed_core)
@@ -124,7 +129,12 @@ def test_start_run_reaches_the_durable_execution_runtime_after_core_initializati
         connection.close()
 
     container = _shell(
-        core_builder=lambda **kwargs: build_container(runtime_root=runtime_root, **kwargs)
+        core_builder=lambda **kwargs: build_container(
+            runtime_root=runtime_root,
+            test_keyring_path=runtime_root / "test-keyring.json",
+            keyring_store=SessionMemorySecretStore(),
+            **kwargs,
+        )
     )
     with TestClient(create_app(cast(ApiContainer, container))) as client:
         headers = _headers()
@@ -170,6 +180,8 @@ def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: 
             bootstrap_secret=bootstrap_secret,
             service_instance_id=service_instance_id,
             safe_mode_controller=safe_mode_controller,
+            test_keyring_path=tmp_path / "test-keyring.json",
+            keyring_store=SessionMemorySecretStore(),
         )
 
     container = _shell(core_builder=delayed_core)

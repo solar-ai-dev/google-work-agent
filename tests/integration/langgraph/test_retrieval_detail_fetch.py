@@ -28,6 +28,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _sufficiency_output,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 def _detail_fetch_plan_query(route_id: str, *, detail_candidate_ref: str) -> dict[str, object]:
@@ -59,7 +60,7 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
         database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-detail-fetch.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-detail-fetch.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",

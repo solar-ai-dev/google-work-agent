@@ -1,40 +1,14 @@
-"""Canonical Response Synthesis and optional-stage boundaries for SIX_ROLE.
-
-The release runtime still contains legacy Supervisor branches that:
-
-* send both ``ANSWER_ONLY`` and ``PLAN_READY`` through Review,
-* send every successful Tool Route through Retrieval, and
-* send every usable Retrieval result through Work Analysis.
-
-Canonical Workflow v7.20 owns stricter deterministic edges. This compatibility
-layer corrects those production decisions without adding LLM authority or
-inventing placeholder artifacts. SIX_ROLE Work Analysis/Planning are rebuilt
-with optional-input subgraphs; SINGLE/THREE experimental profiles are untouched.
-"""
+"""Canonical Response Synthesis and optional-stage routing boundaries."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
-from google_work_agent.adapters.langgraph.main.graph import (
-    GraphNodeBindings,
-)
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.adapters.langgraph.optional_input_subgraphs import (
-    CanonicalOptionalWorkAnalysisSubgraph,
-)
-from google_work_agent.adapters.langgraph.profiles.profile_registry import (
-    GraphProfile,
-    get_graph_profile_builder,
-)
-from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
-    PlanningSubgraph,
-)
 from google_work_agent.application.orchestration.contracts import (
     GraphStateUpdateV1,
     PlanningResult,
@@ -196,62 +170,6 @@ def _analysis_requirement(state: GraphState) -> str:
 
 class ResponseSynthesisMixin:
     """Canonical runtime with response synthesis and optional-stage routing."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        manifest_path = cast(Path | None, kwargs.get("prompt_manifest_path"))
-        super().__init__(*args, **kwargs)
-        if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
-            return
-
-        self._analysis_subgraph = CanonicalOptionalWorkAnalysisSubgraph(
-            llm_runtime=self._confirmation_llm_runtime,
-            prompt_manifest_path=manifest_path,
-            id_factory=self._id_factory,
-            graph_profile=self._graph_profile,
-            transition_run=self._transition_run,
-            merge_decision=self._merge_decision,
-            evidence_store=self._evidence_store,
-            confirm_inline=self._confirm_work_analysis_inline,
-        ).build()
-        self._planning_subgraph = PlanningSubgraph(
-            llm_runtime=self._confirmation_llm_runtime,
-            prompt_manifest_path=manifest_path,
-            id_factory=self._id_factory,
-            graph_profile=self._graph_profile,
-            merge_decision=self._merge_decision,
-            evidence_store=self._evidence_store,
-            confirm_inline=self._confirm_planning_inline,
-            default_tasklist_id_provider=self._default_tasklist_id_provider,
-            default_calendar_id_provider=self._default_calendar_id_provider,
-        ).build()
-        self._rebuild_six_role_graph_with_optional_subgraphs()
-
-    def _rebuild_six_role_graph_with_optional_subgraphs(self) -> None:
-        self._graph_node_bindings = GraphNodeBindings(
-            request_understanding=self._request_subgraph,
-            tool_route=self._tool_route_subgraph,
-            acquisition=self._acquisition_subgraph,
-            context_retriever=self._context_subgraph,
-            work_analysis=self._analysis_subgraph,
-            planning=self._planning_subgraph,
-            review=self._review_subgraph,
-            single_workflow=self._single_workflow_subgraph,
-            waiting_approval=self._waiting_approval_node,
-            stage_one=self._three_stage_one_subgraph,
-            stage_two=self._three_stage_two_subgraph,
-            stage_three=self._three_stage_review_subgraph,
-        )
-        self._main_graph_control_bindings = self._main_control_bindings()
-        profile_builder = get_graph_profile_builder(self._graph_profile)
-        self._graph_composition = profile_builder(
-            bindings=self._graph_node_bindings,
-            control_bindings=self._main_graph_control_bindings,
-            route_next_node=self._route_next_node,
-            checkpointer=self._checkpointer,
-        )
-        self._native_agent_subgraphs = self._graph_composition.native_subgraphs()
-        self._graph = self._build_graph()
-        self._invocation._graph = self._graph
 
     def _merge_decision(
         self,

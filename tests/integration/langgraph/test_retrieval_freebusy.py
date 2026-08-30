@@ -28,6 +28,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _sufficiency_output,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 def _freebusy_plan_query(route_ids: list[str]) -> dict[str, object]:
@@ -75,7 +76,7 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
         database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-freebusy.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-freebusy.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",

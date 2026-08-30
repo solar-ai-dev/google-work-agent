@@ -62,7 +62,7 @@ def test_main_and_all_profiles_bind_the_single_canonical_review_graph() -> None:
         "google_work_agent.adapters.langgraph.subgraphs.review.runtime_active_graph" not in imports
     )
     assert "self._three_stage_review_subgraph = self._review_subgraph" in workflow
-    assert "review_subgraph=self._review_subgraph" in workflow
+    assert "review=self._review_subgraph" in workflow
 
 
 def test_review_state_has_one_canonical_result_channel() -> None:

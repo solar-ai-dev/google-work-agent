@@ -257,6 +257,7 @@ from google_work_agent.launcher.development_readiness import (
     DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
 )
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPortError
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.llm import (
     ApprovedModelInfo,
     RuntimePolicy,
@@ -551,6 +552,8 @@ def build_container(
     bootstrap_secret: str | None = None,
     service_instance_id: str | None = None,
     safe_mode_controller: SafeModeController | None = None,
+    test_keyring_path: Path | None = None,
+    keyring_store: SecretStorePort | None = None,
 ) -> ApiContainer:
     """Assemble the development service with real local adapters."""
 
@@ -586,6 +589,7 @@ def build_container(
             attachment_staging_dir=attachment_staging_dir,
             python_executable=Path(sys.executable).resolve(),
             working_directory=PROJECT_ROOT,
+            test_keyring_path=test_keyring_path,
         )
     except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
@@ -611,6 +615,7 @@ def build_container(
             prompt_manifest_path=prompt_manifest_path,
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            keyring_store=keyring_store,
         )
     except RuntimeError as error:
         connector_registry.close_all()
@@ -1091,6 +1096,7 @@ def build_container(
             connector_registry=connector_registry,
             mcp_manifest_path=mcp_manifest_path,
             prompt_active=prompt_active,
+            keyring_store=keyring_store,
         ),
         api_access_guard=LocalApiAccessGuard(
             expected_host=f"{host}:{port}",
@@ -1312,6 +1318,7 @@ def _build_llm_runtime(
     prompt_manifest_path: Path,
     unit_of_work_factory: Callable[[], UnitOfWork],
     now_ms: Callable[[], int],
+    keyring_store: SecretStorePort | None = None,
 ) -> tuple[
     LLMRuntimeService,
     JsonSettingsAdapter,
@@ -1328,7 +1335,7 @@ def _build_llm_runtime(
     credential_service = LlmCredentialRouter(
         provider_name="gemini",
         environment="DEVELOPMENT",
-        keyring_store=OsKeyringSecretStoreAdapter(),
+        keyring_store=keyring_store or OsKeyringSecretStoreAdapter(),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()

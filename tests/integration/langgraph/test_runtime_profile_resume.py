@@ -16,14 +16,17 @@ from tests.integration.langgraph.test_runtime import (
     WorkflowResumeRequest,
     _action_required_intent,
     _ambiguous_intent,
+    _analysis_output,
+    _answer_output,
+    _clear_intent,
     _make_runtime,
-    _profile_reason_plan_output,
-    _profile_request_source_output,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
+    _selection_output,
     _start_request,
     _start_write_request,
+    _write_plan_output,
     connect_sqlite,
     pytest,
     write_draft_manifest,
@@ -33,6 +36,29 @@ from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
     start_with_admission,
 )
+from tests.support.checkpoint import sqlite_checkpoint
+from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
+
+
+def _answer_path_payloads() -> list[object]:
+    return [
+        _clear_intent(),
+        _selection_output(),
+        _sufficiency_output("SUFFICIENT"),
+        _analysis_output(),
+        _answer_output(),
+    ]
+
+
+def _action_path_payloads() -> list[object]:
+    return [
+        _action_required_intent(),
+        _selection_output(),
+        _sufficiency_output("SUFFICIENT"),
+        _analysis_output(),
+        _write_plan_output(),
+        _review_output("PASS"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -54,13 +80,9 @@ def test_agent_local_checkpoint_is_not_authority_for_approval_or_execution_facts
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(request_intent=_action_required_intent()),
-            _profile_reason_plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_action_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=checkpoint_database_path,
+        checkpoint_port=sqlite_checkpoint(checkpoint_database_path),
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
     )
@@ -112,13 +134,9 @@ def test_single_stage_runtime_completes_answer_only_run(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(),
-            _profile_reason_plan_output(),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_answer_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-single-answer.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-single-answer.db"),
         graph_profile=GraphProfile.SINGLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -152,13 +170,9 @@ def test_three_stage_runtime_completes_answer_only_run(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(),
-            _profile_reason_plan_output(),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_answer_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-three-answer.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-three-answer.db"),
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
@@ -192,13 +206,9 @@ def test_native_profiles_record_answer_path_invocation_counts(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     three = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(),
-            _profile_reason_plan_output(),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_answer_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-three-native-full.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-three-native-full.db"),
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
@@ -206,13 +216,8 @@ def test_native_profiles_record_answer_path_invocation_counts(
         three_result = three.start(_start_request())
         three_state = three._graph.get_state(three._config_for_thread("thread-1"))  # noqa: SLF001
         assert three_result.outcome is WorkflowOutcome.COMPLETED
-        assert three_state.values["trace_context"]["agent_invocation_count"] == 2
-        assert three_state.values["trace_context"]["llm_call_count"] == 2
-        assert [
-            item["agent_subgraph_id"]
-            for item in three_state.values["trace_context"]["agent_node_log"]
-            if item["node_name"] == "init"
-        ] == ["stage_one", "stage_two"]
+        assert three_state.values["trace_context"]["agent_invocation_count"] == 5
+        assert three_state.values["trace_context"]["llm_call_count"] == 13
     finally:
         three.close()
 
@@ -221,13 +226,9 @@ def test_native_profiles_record_answer_path_invocation_counts(
     database_path = _seed_runtime_database(single_root)
     single = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(),
-            _profile_reason_plan_output(),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_answer_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=single_root / "checkpoints-single-native-full.db",
+        checkpoint_port=sqlite_checkpoint(single_root / "checkpoints-single-native-full.db"),
         graph_profile=GraphProfile.SINGLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -235,12 +236,18 @@ def test_native_profiles_record_answer_path_invocation_counts(
         single_result = single.start(_start_request())
         single_state = single._graph.get_state(single._config_for_thread("thread-1"))  # noqa: SLF001
         assert single_result.outcome is WorkflowOutcome.COMPLETED
-        assert single_state.values["trace_context"]["agent_invocation_count"] == 1
-        assert single_state.values["trace_context"]["llm_call_count"] == 2
+        assert single_state.values["trace_context"]["agent_invocation_count"] == 5
+        assert single_state.values["trace_context"]["llm_call_count"] == 13
         assert {
             item["agent_subgraph_id"]
             for item in single_state.values["trace_context"]["agent_node_log"]
-        } == {"single_workflow"}
+        } == {
+            "request_understanding",
+            "tool_route",
+            "context_retriever",
+            "work_analysis",
+            "planning",
+        }
     finally:
         single.close()
 
@@ -253,9 +260,9 @@ def test_resume_rejects_profile_change_for_same_thread(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     three_runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
+        llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
@@ -267,7 +274,7 @@ def test_resume_rejects_profile_change_for_same_thread(
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -319,13 +326,9 @@ def test_native_profiles_generate_plan_and_share_domain_approval_boundary(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(request_intent=_action_required_intent()),
-            _profile_reason_plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_action_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=root / "checkpoints-plan.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-plan.db"),
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
     )
@@ -368,9 +371,9 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     first_runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[_profile_request_source_output("NEEDS_CONFIRMATION")],
+        llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
         id_prefix=f"{root_name}-initial",
@@ -384,13 +387,9 @@ def test_native_profiles_resume_with_same_profile_after_confirmation(
 
     resumed_runtime = _make_runtime(
         database_path=database_path,
-        llm_payloads=[
-            _profile_request_source_output(),
-            _profile_reason_plan_output(),
-            _review_output("PASS"),
-        ],
+        llm_payloads=_answer_path_payloads(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
         id_prefix=f"{root_name}-resumed",
@@ -434,16 +433,12 @@ def test_resume_rejects_mismatched_profile_for_thread(
     manifest_path = _runtime_active_manifest_path(root)
     database_path = _seed_runtime_database(root)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    start_payloads = (
-        [_ambiguous_intent()]
-        if start_profile is GraphProfile.SIX_ROLE_BASELINE
-        else [_profile_request_source_output("NEEDS_CONFIRMATION")]
-    )
+    start_payloads = [_ambiguous_intent()]
     starter = _make_runtime(
         database_path=database_path,
         llm_payloads=start_payloads,
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=start_profile,
         prompt_manifest_path=manifest_path,
     )
@@ -455,7 +450,7 @@ def test_resume_rejects_mismatched_profile_for_thread(
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=resume_profile,
         prompt_manifest_path=manifest_path,
     )
@@ -503,7 +498,7 @@ def test_default_product_runtime_rejects_draft_prompt_bundle(
             database_path=database_path,
             llm_payloads=[],
             gateway=FakeGoogleGateway(snapshot),
-            checkpoint_database_path=tmp_path / "checkpoints-draft.db",
+            checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-draft.db"),
             prompt_manifest_path=manifest_path,
         )
 
@@ -529,7 +524,7 @@ def test_six_role_baseline_runtime_ignores_inactive_profile_candidate_prompts(
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-six-role-only.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-six-role-only.db"),
         prompt_manifest_path=manifest_path,
     )
     try:

@@ -17,6 +17,7 @@ def retrieval_entry_node(
     current_run_status: Callable[[str], str],
     begin_retrieval: Callable[[str], BeginRetrievalResult],
     retrieval_node: str,
+    retrieval_logical_node: str | None = None,
 ) -> dict[str, object]:
     """Validate frozen routes, enter Retrieval lifecycle, and invoke its subgraph."""
 
@@ -31,7 +32,7 @@ def retrieval_entry_node(
         return _reconcile_patch()
     return {
         "workflow_phase": "CONTEXT_RETRIEVAL",
-        "__logical_target__": retrieval_node,
+        "__logical_target__": retrieval_logical_node or retrieval_node,
         "__target__": retrieval_node,
     }
 

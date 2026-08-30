@@ -16,6 +16,7 @@ def initialize_node(
     *,
     start_analysis: Callable[[str], StartAnalysisResult],
     request_node: str,
+    request_logical_node: str | None = None,
 ) -> dict[str, object]:
     """Apply ``run.start_analysis`` and project only Main control fields."""
 
@@ -24,7 +25,7 @@ def initialize_node(
     if result.current_status == "ANALYZING":
         return {
             "workflow_phase": "REQUEST_ANALYSIS",
-            "__logical_target__": request_node,
+            "__logical_target__": request_logical_node or request_node,
             "__target__": request_node,
         }
     return {

@@ -56,6 +56,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     RequestIntentV2,
@@ -68,6 +69,10 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
+)
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+    IssueSelectionHandleCommand,
 )
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
@@ -168,6 +173,57 @@ def _task_update_plan() -> ActionPlanDraftV1:
         }
     )
     return plan
+
+
+def _gmail_send_plan() -> ActionPlanDraftV1:
+    plan = _send_write_plan_output()
+    plan["actions"][0]["evidence_refs"] = ["evidence-seg-1"]
+    plan["actions"][0]["resource_refs"] = ["gmail_draft:draft-followup"]
+    plan["evidence_refs"] = ["evidence-seg-1"]
+    plan["resource_refs"] = [
+        {
+            "resource_handle": "gmail_draft:draft-followup",
+            "resource_type": "gmail_draft",
+            "resource_id": "draft-followup",
+        }
+    ]
+    return plan
+
+
+def _gmail_draft_selection_output() -> dict[str, object]:
+    return {
+        "schema_version": 2,
+        "selected_segment_ids": ["seg-1"],
+        "evidence_drafts": [
+            {
+                "segment_id": "seg-1",
+                "role": "SUPPORTS",
+                "relevance_reason": "The selected draft is the exact Gmail send target.",
+            }
+        ],
+        "excluded_segment_ids": [],
+    }
+
+
+def _gmail_draft_analysis_output() -> dict[str, object]:
+    result = _gmail_analysis_output()
+    finding = cast(dict[str, object], cast(list[object], result["findings"])[0])
+    finding["evidence_refs"] = ["evidence-seg-1"]
+    finding["resource_refs"] = ["gmail_draft:draft-followup"]
+    finding["related_resource_handles"] = ["gmail_draft:draft-followup"]
+    finding["segment_refs"] = ["seg-1"]
+    result["evidence_refs"] = ["evidence-seg-1"]
+    result["resource_refs"] = [
+        {
+            "resource_handle": "gmail_draft:draft-followup",
+            "resource_type": "gmail_draft",
+            "resource_id": "draft-followup",
+        }
+    ]
+    result["segment_refs"] = [
+        {"segment_id": "seg-1", "resource_handle": "gmail_draft:draft-followup"}
+    ]
+    return result
 
 
 def _calendar_create_plan() -> ActionPlanDraftV1:
@@ -288,7 +344,7 @@ def _intent_for_write_operation(write_operation: str) -> RequestIntentV2:
     [
         (_gmail_draft_plan, "GMAIL", "create_gmail_draft", "get_gmail_draft"),
         (
-            _send_write_plan_output,
+            _gmail_send_plan,
             "GMAIL",
             "send_gmail",
             "search_by_recovery_fingerprint",
@@ -319,6 +375,12 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             _calendar_selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _calendar_analysis_output(),
+        ]
+    elif write_operation == "send_gmail":
+        context_payloads = [
+            _gmail_draft_selection_output(),
+            _sufficiency_output("SUFFICIENT"),
+            _gmail_draft_analysis_output(),
         ]
     elif context_family == "GMAIL":
         context_payloads = [
@@ -448,7 +510,27 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
 
     try:
         with TestClient(create_app(container), base_url="http://127.0.0.1:8780") as client:
-            run_id = _create_conversation_and_run(client)
+            selection_handle = None
+            if write_operation == "send_gmail":
+                session_token = "product-e2e-session"
+                client.cookies.set("gwa_session", session_token)
+                selection_handle = IssueSelectionHandle(
+                    signing_secret=b"s" * 32,
+                    service_instance_id="svc-product",
+                    now_ms=clock.now_ms,
+                    ttl_ms=30_000,
+                )(
+                    IssueSelectionHandleCommand(
+                        session_digest=calculate_session_digest(session_token),
+                        account_id="account-1",
+                        connector_id="google_workspace",
+                        resource_type="gmail_draft",
+                        resource_id="draft-followup",
+                        parent_resource_id="thread-project",
+                        version_token="2",
+                    )
+                )
+            run_id = _create_conversation_and_run(client, selection_handle=selection_handle)
             waiting = _wait_for_snapshot(client, run_id, "WAITING_APPROVAL")
             assert production_runtime.workflow_execution.await_drained(5_000)
             production_runtime.workflow_handoff_reconciliation_loop.start()
@@ -467,6 +549,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             approved = client.post(f"/api/v1/actions/{action_id}/approve", json=approval_body)
             assert approved.status_code == 200
             effective_approval_body = approval_body
+            assert production_runtime.workflow_execution.await_drained(5_000)
             completed = _wait_for_snapshot(client, run_id, "COMPLETED")
 
             assert _first_action(completed)["status"] == "VERIFIED"
@@ -547,7 +630,9 @@ def _seed_product_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def _create_conversation_and_run(client: TestClient) -> str:
+def _create_conversation_and_run(
+    client: TestClient, *, selection_handle: str | None = None
+) -> str:
     conversation = client.post(
         "/api/v1/conversations",
         json={
@@ -564,9 +649,9 @@ def _create_conversation_and_run(client: TestClient) -> str:
         json={
             "command_id": "run-command-1",
             "conversation_id": "conversation-1",
-            "request_text": "Create the requested follow-up task.",
-            "entry_mode": "AGENT_SEARCH",
-            "selected_resource_handles": [],
+            "request_text": "Send the selected Gmail draft.",
+            "entry_mode": "RESOURCE_SELECTED" if selection_handle is not None else "AGENT_SEARCH",
+            "selected_resource_handles": [] if selection_handle is None else [selection_handle],
             "requested_mode": "AUTO",
             "api_contract_version": "1",
         },
@@ -584,7 +669,11 @@ def _wait_for_snapshot(client: TestClient, run_id: str, expected_status: str) ->
         latest = response.json()["snapshot"]
         if latest["status"] == expected_status:
             return latest
-        time.sleep(0.01)
+        # Snapshot reads use the same SQLite file as native checkpoints in
+        # this component topology. A bounded UI-like polling cadence leaves
+        # the background checkpoint writer a fair writer slot instead of
+        # creating an artificial continuous BEGIN IMMEDIATE writer loop.
+        time.sleep(0.05)
     raise AssertionError(f"run did not reach {expected_status}: {latest}")
 
 

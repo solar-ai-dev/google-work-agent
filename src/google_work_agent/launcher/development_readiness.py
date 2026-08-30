@@ -21,6 +21,7 @@ from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
     PROJECT_ROOT,
 )
+from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
     ReadinessCheckResult,
@@ -35,6 +36,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
     connector_registry: ConnectorRuntimeRegistry
     mcp_manifest_path: Path | None = None
     prompt_active: bool = True
+    keyring_store: SecretStorePort | None = None
 
     @property
     def transport(self) -> Any:
@@ -111,8 +113,9 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
             name="domain_schema", state=ReadinessState.NOT_READY, detail="DOMAIN_SCHEMA_UNAVAILABLE"
         )
 
-    @staticmethod
-    def _keyring_check() -> ReadinessCheckResult:
+    def _keyring_check(self) -> ReadinessCheckResult:
+        if self.keyring_store is not None:
+            return ReadinessCheckResult(name="keyring_adapter", state=ReadinessState.READY)
         try:
             OsKeyringSecretStoreAdapter()
         except RuntimeError:

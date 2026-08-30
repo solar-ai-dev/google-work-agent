@@ -29,6 +29,7 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 @pytest.mark.parametrize(
@@ -68,7 +69,7 @@ def test_compiled_graph_registers_profile_and_shared_nodes(
         gateway=FakeGoogleGateway(
             ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
         ),
-        checkpoint_database_path=root / "checkpoints-topology-edge.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-topology-edge.db"),
         graph_profile=profile,
         prompt_manifest_path=_runtime_active_manifest_path(root),
     )
@@ -107,7 +108,7 @@ def test_edge_rejected_approval_never_enters_preflight_or_claim(tmp_path: Path) 
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-rejected-edge.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-rejected-edge.db"),
         prompt_manifest_path=manifest_path,
     )
 
@@ -175,7 +176,7 @@ def test_merge_decision_fails_closed_for_unroutable_supervisor_target(tmp_path: 
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-unroutable-target.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-unroutable-target.db"),
         prompt_manifest_path=manifest_path,
     )
     try:

@@ -113,7 +113,32 @@ class WorkflowInvocationCoordinator:
                 )
             if request.resume_kind == "CONSUMED_CONTINUATION_RECOVERY":
                 if snapshot.next:
-                    self._graph.invoke(None, config=config)
+                    pending_owner = (
+                        snapshot.next[0]
+                        if len(snapshot.next) == 1 and isinstance(snapshot.next[0], str)
+                        else None
+                    )
+                    returned = self._graph.invoke(None, config=config)
+                    advanced = self._graph.get_state(config)
+                    # A checkpoint-level Command(goto=...) materialized by an
+                    # external handoff executes the selected owner as a PUSH
+                    # task. LangGraph can return that task's state without
+                    # committing a descendant checkpoint/conditional edge.
+                    # Materialize the returned owner patch exactly once, then
+                    # continue from its registered edge. This never re-runs
+                    # PREFLIGHT (and therefore never creates a second Claim).
+                    if (
+                        advanced.config == snapshot.config
+                        and pending_owner is not None
+                        and isinstance(returned, Mapping)
+                        and returned.get("__target__") != pending_owner
+                    ):
+                        self._graph.update_state(
+                            config,
+                            dict(returned),
+                            as_node=pending_owner,
+                        )
+                        self._graph.invoke(None, config=config)
                 else:
                     continuation = self._continue_from_domain_facts(
                         values=cast(GraphState, snapshot.values),

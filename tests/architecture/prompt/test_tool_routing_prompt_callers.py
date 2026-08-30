@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[3]
 SOURCE_ROOT = ROOT / "src/google_work_agent"
 TOOL_ROUTING_OWNER = SOURCE_ROOT / "application/agents/tool_routing"
 TOOL_ROUTING_GRAPH = SOURCE_ROOT / "adapters/langgraph/subgraphs/tool_routing/graph.py"
-PROFILE_HELPER = SOURCE_ROOT / "adapters/langgraph/subgraphs/profile_shared.py"
+SINGLE_PROFILE = SOURCE_ROOT / "adapters/langgraph/subgraphs/single_workflow.py"
+THREE_STAGE_PROFILE = SOURCE_ROOT / "adapters/langgraph/subgraphs/three_stage.py"
 CANONICAL_TOOL_ROUTING_PROMPTS = {
     "tool_routing.determine_io_resources",
     "tool_routing.select_tool_if_needed",
@@ -105,13 +106,15 @@ def test_tool_routing_graph_has_no_separate_revision_prompt_authority() -> None:
     assert ".revise" not in owner_source
 
 
-def test_profile_helper_is_composition_without_product_prompt_authority() -> None:
-    source = PROFILE_HELPER.read_text(encoding="utf-8")
-    function_source = source[source.index("def build_profile_tool_route_plan(") :]
+def test_profile_composition_has_no_product_prompt_authority() -> None:
+    profile_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (SINGLE_PROFILE, THREE_STAGE_PROFILE)
+    )
 
-    assert "load_prompt_reference" not in function_source
-    assert "invoke_structured" not in function_source
-    assert "StructuredLLMRuntime" not in function_source
-    assert "resolve_policy_preconditions(" in function_source
-    assert "bind_registry_candidates(" in function_source
-    assert "finalize_route(" in function_source
+    assert "load_prompt_reference" not in profile_source
+    assert "invoke_structured" not in profile_source
+    assert "StructuredLLMRuntime" not in profile_source
+    assert "PromptRef" not in profile_source
+    assert "profile.single" not in profile_source
+    assert "profile.three" not in profile_source

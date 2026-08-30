@@ -59,6 +59,7 @@ from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
     start_with_admission,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
@@ -85,6 +86,9 @@ class _BudgetExhaustedLLMRuntime:
             "PROFILE_LLM_LIMIT_EXHAUSTED",
         )
 
+    def discard_run(self, *, run_id: str) -> None:
+        del run_id
+
 
 def test_langgraph_runtime_completes_answer_only_run(
     tmp_path: Path,
@@ -103,7 +107,7 @@ def test_langgraph_runtime_completes_answer_only_run(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-answer.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-answer.db"),
         prompt_manifest_path=manifest_path,
     )
 
@@ -137,7 +141,7 @@ def test_llm_budget_exhaustion_uses_canonical_terminal_chain(tmp_path: Path) -> 
         database_path=database_path,
         llm_runtime=_BudgetExhaustedLLMRuntime(),
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-budget-terminal.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-budget-terminal.db"),
         prompt_manifest_path=manifest_path,
     )
 
@@ -183,7 +187,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         database_path=database_path,
         llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
 
@@ -241,7 +245,7 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
         database_path=database_path,
         llm_runtime=resumed_llm_runtime,
         gateway=resumed_gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",
@@ -477,7 +481,7 @@ def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_b
         database_path=database_path,
         llm_payloads=[_ambiguous_intent()],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     first = start_with_admission(runtime, database_path, _start_request())
@@ -498,7 +502,7 @@ def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_b
         database_path=database_path,
         llm_runtime=round2_llm_runtime,
         gateway=round2_gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",
@@ -562,7 +566,7 @@ def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_b
         database_path=database_path,
         llm_runtime=round3_llm_runtime,
         gateway=round3_gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",
@@ -635,7 +639,7 @@ def test_langgraph_runtime_executes_verified_write_after_approval_resume(
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
 
@@ -753,7 +757,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     assert (
@@ -821,7 +825,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     recovered = restarted.recover_open_run(
@@ -876,7 +880,7 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     assert (
@@ -994,7 +998,7 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     assert (
@@ -1200,7 +1204,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_port=sqlite_checkpoint(checkpoint_path),
         prompt_manifest_path=manifest_path,
     )
     assert (
@@ -1264,7 +1268,7 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_port=sqlite_checkpoint(checkpoint_path),
         prompt_manifest_path=manifest_path,
     )
     recovered = restarted.recover_open_run(
@@ -1387,7 +1391,7 @@ def test_langgraph_runtime_executes_send_and_delete_after_approval_resume(
         database_path=database_path,
         llm_payloads=llm_payloads,
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
 
@@ -1491,7 +1495,7 @@ def test_langgraph_runtime_supports_same_database_for_domain_and_checkpointer(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
 

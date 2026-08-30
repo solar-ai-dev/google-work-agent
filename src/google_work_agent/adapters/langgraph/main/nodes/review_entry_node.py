@@ -11,6 +11,7 @@ def review_entry_node(
     prepare_persisted_review: Callable[[Mapping[str, object]], Mapping[str, object]],
     settle_persisted_review: Callable[[Mapping[str, object]], Mapping[str, object]],
     review_node: str,
+    review_logical_node: str | None = None,
 ) -> dict[str, object]:
     """Invoke the one Review subgraph over current persisted or pre-publish input."""
 
@@ -22,14 +23,16 @@ def review_entry_node(
             "__workflow_control__": None,
         }
 
-    published = isinstance(state.get("approved_plan_id"), str)
+    published = isinstance(state.get("approved_plan_id"), str) and not isinstance(
+        state.get("__replan_from_plan_id__"), str
+    )
     already_prepared = isinstance(state.get("__modify_review_plan_id__"), str)
     working = state if not published or already_prepared else prepare_persisted_review(state)
     patch = {key: value for key, value in working.items() if state.get(key) != value}
     patch.update(
         {
             "workflow_phase": "PLAN_REVIEW",
-            "__logical_target__": review_node,
+            "__logical_target__": review_logical_node or review_node,
             "__target__": review_node,
         }
     )

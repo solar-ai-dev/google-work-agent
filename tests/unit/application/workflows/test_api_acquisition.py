@@ -180,6 +180,7 @@ class RecordingGoogleGateway:
             )
         }
         self.gmail_messages: dict[str, ResourceSnapshot] = {}
+        self.gmail_drafts: dict[str, ResourceSnapshot] = {}
         self.freebusy: dict[str, tuple[FreeBusyCalendar, ...]] = {}
 
     def queue_fault(self, operation: str, code: GoogleWorkspaceErrorCode) -> None:
@@ -237,7 +238,9 @@ class RecordingGoogleGateway:
         raise NotImplementedError
 
     def get_gmail_draft(self, *, draft_id: str) -> ResourceSnapshot:
-        raise NotImplementedError
+        self._maybe_fault("get_gmail_draft")
+        self.calls.append(("get_gmail_draft", {"draft_id": draft_id}))
+        return self.gmail_drafts[draft_id]
 
     def send_gmail(
         self,
@@ -800,6 +803,35 @@ def test_resource_selected_gmail_message_returns_body_directly() -> None:
     assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
     assert [name for name, _args in gateway.calls] == ["get_gmail_message"]
     assert acquisition["resource_handles"] == ["gmail_message:message-1"]
+
+
+def test_resource_selected_gmail_draft_returns_exact_write_target() -> None:
+    runtime = FakeLLMRuntime()
+    runtime.queued.append(
+        _llm_result([_plan("GMAIL", {}, reason_codes=["RESOURCE_SELECTED_DIRECT_GET"])])
+    )
+    gateway = RecordingGoogleGateway()
+    gateway.gmail_drafts["draft-1"] = _snapshot(
+        ResourceType.GMAIL_DRAFT,
+        "draft-1",
+        parent_id="thread-kim",
+        title="Draft reply",
+    )
+    agent = _agent(runtime=runtime, gateway=gateway)
+    request = _request(
+        entry_mode="RESOURCE_SELECTED",
+        selected_resource_ids=("draft-1",),
+        selected_resources=(
+            SelectedResourceRef(source="GMAIL", resource_type="DRAFT", resource_id="draft-1"),
+        ),
+    )
+
+    planning = agent.plan_sources(request_intent=_intent(source="GMAIL"), request=request)
+    acquisition = agent.acquire(plans=planning["source_fetch_plans"], request=request)
+
+    assert acquisition["status"] == ApiAcquisitionResult.COMPLETE.value
+    assert [name for name, _args in gateway.calls] == ["get_gmail_draft"]
+    assert acquisition["resource_handles"] == ["gmail_draft:draft-1"]
 
 
 def test_resource_selected_uses_task_parent_identity_without_default() -> None:

@@ -25,6 +25,7 @@ from google_work_agent.application.orchestration.supervisor import SupervisorTar
             GraphProfile.SIX_ROLE_BASELINE,
             (
                 "request_understanding",
+                "tool_route",
                 "context_retriever",
                 "work_analysis",
                 "planning",
@@ -52,20 +53,20 @@ def test_profile_topology_is_preserved(
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.SOURCE_PLANNING,
-            "stage_one",
+            "context_retriever",
             "stage_one",
         ),
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.API_ACQUISITION,
+            "context_retriever",
             "stage_one",
-            "stage_two",
         ),
         (
             GraphProfile.THREE_STAGE,
             SupervisorTarget.PLANNING_REVISE_PLAN,
-            "stage_two",
-            "stage_two",
+            "planning_entry",
+            "planning_entry",
         ),
         (
             GraphProfile.THREE_STAGE,

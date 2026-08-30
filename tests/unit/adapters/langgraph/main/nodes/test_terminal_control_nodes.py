@@ -146,9 +146,10 @@ def test_finalize_is_post_commit_best_effort_and_end_only() -> None:
         },
         emit_trace=failed_trace,
         project_run_event=project,
+        discard_run_transients=lambda run_id: calls.append(f"discard:{run_id}"),
     )
 
-    assert calls == ["trace", "sse"]
+    assert calls == ["trace", "sse", "discard:run-1"]
     assert patch == {
         "__logical_target__": "end",
         "__target__": "end",
@@ -167,4 +168,5 @@ def test_finalize_rejects_nonterminal_fallthrough() -> None:
             },
             emit_trace=lambda _facts: None,
             project_run_event=lambda _facts: None,
+            discard_run_transients=lambda _run_id: None,
         )

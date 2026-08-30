@@ -168,7 +168,6 @@ def test_graph_composition_has_explicit_response_synthesis_edge() -> None:
     bindings = GraphNodeBindings(
         request_understanding=object(),
         tool_route=object(),
-        acquisition=object(),
         context_retriever=object(),
         work_analysis=object(),
         planning=object(),

@@ -72,15 +72,10 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourceFetchPlanV1,
     SourcePlanningOutputV1,
     SufficiencyResultV2,
-    WorkAnalysisResultV1,
     WorkflowSignalV1,
 )
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
-)
-from google_work_agent.application.orchestration.profile_fused import (
-    ProfileReasonPlanOutputV1,
-    ProfileRequestSourceOutputV1,
 )
 from google_work_agent.application.orchestration.retrieval_ranking import RagCandidateV1
 from google_work_agent.application.orchestration.retrieval_v2_contracts import (
@@ -178,7 +173,6 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
     planning_result: PlanningResultV2 | None
-    analysis_result: WorkAnalysisResultV1 | None
     answer_draft: AnswerDraftV1 | None
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV2 | None
@@ -307,26 +301,6 @@ class ReviewLocalState(GraphState):
     __review_retry_confirmation__: NotRequired[bool]
 
 
-class ProfileRequestSourceLocalState(GraphState):
-    __profile_agent_local__: NotRequired[AgentLocalStateV1]
-    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
-    __profile_request_source_confirmation_resolved__: NotRequired[bool]
-
-
-class ProfileReasonPlanLocalState(GraphState):
-    __profile_agent_local__: NotRequired[AgentLocalStateV1]
-    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
-
-
-class SingleWorkflowLocalState(GraphState):
-    """Local state for the fused request/source/reason/review subgraph."""
-
-    __profile_agent_local__: NotRequired[AgentLocalStateV1]
-    __profile_request_source_output__: NotRequired[ProfileRequestSourceOutputV1]
-    __profile_reason_plan_output__: NotRequired[ProfileReasonPlanOutputV1]
-    __profile_request_source_confirmation_resolved__: NotRequired[bool]
-
-
 __all__ = [
     "AcquisitionLocalState",
     "AgentSubgraphInputEnvelope",
@@ -334,12 +308,9 @@ __all__ = [
     "ContextRetrievalLocalState",
     "PlanningInputState",
     "PlanningLocalState",
-    "ProfileReasonPlanLocalState",
-    "ProfileRequestSourceLocalState",
     "RequestUnderstandingInputState",
     "ReviewInputState",
     "ReviewLocalState",
-    "SingleWorkflowLocalState",
     "ToolRoutingInputState",
     "WorkAnalysisInputState",
     "WorkAnalysisLocalState",

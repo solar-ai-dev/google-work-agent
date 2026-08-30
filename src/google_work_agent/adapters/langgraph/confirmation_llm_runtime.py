@@ -24,11 +24,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     ),
     "tool_route.finalize": frozenset({"tool_routing.determine_io_resources"}),
     "acquisition.plan_sources": frozenset(
-        {
-            "retrieval.plan_query",
-            "profile.single.request_source.initial",
-            "profile.three.stage1.initial",
-        }
+        {"retrieval.plan_query"}
     ),
     "retrieval.assess_sufficiency": frozenset({"retrieval.assess_sufficiency"}),
     "analysis.assess_information_gaps": frozenset({"work_analysis.assess_information_gaps"}),

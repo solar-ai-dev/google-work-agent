@@ -155,6 +155,8 @@ def build_feasibility_input(
 ) -> dict[str, object] | None:
     constraints = analysis_result.get("schedule_constraints")
     if not isinstance(constraints, dict):
+        constraints = _schedule_constraints_from_work_analysis(analysis_result)
+    if not isinstance(constraints, dict):
         return None
     deadline = _required_text(constraints.get("business_deadline"), "business_deadline")
     deadline_source = constraints.get("business_deadline_source")
@@ -173,6 +175,46 @@ def build_feasibility_input(
         "business_deadline_source": deadline_source,
         "required_duration_minutes": duration,
         "duration_source": duration_source,
+    }
+
+
+def _schedule_constraints_from_work_analysis(
+    analysis_result: Mapping[str, object],
+) -> dict[str, object] | None:
+    """Project the exact V2 Work Analysis deadline into Action feasibility.
+
+    Work Analysis owns deadline semantics; Action owns the deterministic
+    feasibility decision. Multiple distinct deadlines are ambiguous and must
+    fail closed instead of being guessed here.
+    """
+
+    facts = analysis_result.get("work_facts")
+    if not isinstance(facts, list):
+        return None
+    deadlines = [
+        fact
+        for fact in facts
+        if isinstance(fact, Mapping)
+        and fact.get("kind") == "DEADLINE"
+        and isinstance(fact.get("value"), str)
+        and cast(str, fact["value"]).strip()
+    ]
+    values = {cast(str, fact["value"]).strip() for fact in deadlines}
+    if not values:
+        return None
+    if len(values) != 1:
+        raise PolicyViolationError("multiple business deadlines require confirmation")
+    evidence_refs = {
+        ref
+        for fact in deadlines
+        for ref in cast(list[object], fact.get("evidence_refs", []))
+        if isinstance(ref, str) and ref
+    }
+    return {
+        "business_deadline": next(iter(values)),
+        "business_deadline_source": "GMAIL_EVIDENCE" if evidence_refs else "USER",
+        "expected_duration_minutes": None,
+        "duration_source": "EVENT_INTERVAL",
     }
 
 

@@ -66,6 +66,7 @@ from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
     start_with_admission,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
@@ -295,7 +296,7 @@ def _build_runtime(
         database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",
@@ -736,7 +737,7 @@ def test_tool_route_happy_path_without_confirmation_reaches_context_retrieval(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     try:

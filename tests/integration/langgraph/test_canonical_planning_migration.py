@@ -38,6 +38,7 @@ from tests.integration.langgraph.test_runtime import (
     _sufficiency_output,
     pytest,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 from google_work_agent.application.agents.planning.resolve_default_container import (
     PlanningArgumentBindingError,
@@ -130,7 +131,7 @@ def _build_runtime(
         database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_port=sqlite_checkpoint(checkpoint_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",

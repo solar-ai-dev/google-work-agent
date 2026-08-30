@@ -34,7 +34,6 @@ class RouteTranslation:
 
 
 _COMMON_ROUTES = {
-    SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "tool_route"),
     SupervisorTarget.DOMAIN_VALIDATION.value: RouteTranslation(
         "domain_validation", "domain_validation"
     ),
@@ -54,28 +53,12 @@ _COMMON_ROUTES = {
 }
 
 
-def _single_profile_entry(target: SupervisorTarget) -> str:
-    if target is SupervisorTarget.CONTEXT_RETRIEVAL:
-        return "retrieval_entry"
-    if target in {
-        SupervisorTarget.SOLUTION_PLANNING,
-        SupervisorTarget.PLANNING_REVISE_ANSWER,
-        SupervisorTarget.PLANNING_REVISE_PLAN,
-    }:
-        return "planning_entry"
-    if target in {
-        SupervisorTarget.PLAN_REVIEW_INSPECT,
-        SupervisorTarget.PLAN_REVIEW_RECHECK,
-    }:
-        return "review_entry"
-    return "single_workflow"
-
-
 _PROFILE_TOPOLOGIES = {
     GraphProfile.SINGLE_BASELINE: ("single_workflow",),
     GraphProfile.THREE_STAGE: ("stage_one", "stage_two", "stage_three"),
     GraphProfile.SIX_ROLE_BASELINE: (
         "request_understanding",
+        "tool_route",
         "context_retriever",
         "work_analysis",
         "planning",
@@ -86,47 +69,67 @@ _PROFILE_TOPOLOGIES = {
 _PROFILE_ROUTES = {
     GraphProfile.SINGLE_BASELINE: {
         **_COMMON_ROUTES,
-        **{
-            target.value: RouteTranslation(
-                _single_profile_entry(target), _single_profile_entry(target)
-            )
-            for target in (
-                SupervisorTarget.SOURCE_PLANNING,
-                SupervisorTarget.API_ACQUISITION,
-                SupervisorTarget.CONTEXT_RETRIEVAL,
-                SupervisorTarget.WORK_ANALYSIS,
-                SupervisorTarget.SOLUTION_PLANNING,
-                SupervisorTarget.PLAN_REVIEW_INSPECT,
-                SupervisorTarget.PLAN_REVIEW_RECHECK,
-                SupervisorTarget.PLANNING_REVISE_ANSWER,
-                SupervisorTarget.PLANNING_REVISE_PLAN,
-            )
-        },
+        SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "single_workflow"),
+        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation(
+            "context_retriever", "single_workflow"
+        ),
+        SupervisorTarget.API_ACQUISITION.value: RouteTranslation(
+            "context_retriever", "single_workflow"
+        ),
+        SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
+            "retrieval_entry", "retrieval_entry"
+        ),
+        SupervisorTarget.WORK_ANALYSIS.value: RouteTranslation(
+            "work_analysis", "single_workflow"
+        ),
+        SupervisorTarget.SOLUTION_PLANNING.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLANNING_REVISE_ANSWER.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLANNING_REVISE_PLAN.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLAN_REVIEW_INSPECT.value: RouteTranslation(
+            "review_entry", "review_entry"
+        ),
+        SupervisorTarget.PLAN_REVIEW_RECHECK.value: RouteTranslation(
+            "review_entry", "review_entry"
+        ),
     },
     GraphProfile.THREE_STAGE: {
         **_COMMON_ROUTES,
-        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation("stage_one", "stage_one"),
-        SupervisorTarget.API_ACQUISITION.value: RouteTranslation("stage_one", "stage_two"),
-        **{
-            target.value: RouteTranslation("stage_two", "stage_two")
-            for target in (
-                SupervisorTarget.CONTEXT_RETRIEVAL,
-                SupervisorTarget.WORK_ANALYSIS,
-                SupervisorTarget.SOLUTION_PLANNING,
-                SupervisorTarget.PLANNING_REVISE_ANSWER,
-                SupervisorTarget.PLANNING_REVISE_PLAN,
-            )
-        },
-        **{
-            target.value: RouteTranslation("review_entry", "review_entry")
-            for target in (
-                SupervisorTarget.PLAN_REVIEW_INSPECT,
-                SupervisorTarget.PLAN_REVIEW_RECHECK,
-            )
-        },
+        SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "stage_one"),
+        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation(
+            "context_retriever", "stage_one"
+        ),
+        SupervisorTarget.API_ACQUISITION.value: RouteTranslation(
+            "context_retriever", "stage_one"
+        ),
+        SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
+            "retrieval_entry", "retrieval_entry"
+        ),
+        SupervisorTarget.WORK_ANALYSIS.value: RouteTranslation("work_analysis", "stage_two"),
+        SupervisorTarget.SOLUTION_PLANNING.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLANNING_REVISE_ANSWER.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLANNING_REVISE_PLAN.value: RouteTranslation(
+            "planning_entry", "planning_entry"
+        ),
+        SupervisorTarget.PLAN_REVIEW_INSPECT.value: RouteTranslation(
+            "review_entry", "review_entry"
+        ),
+        SupervisorTarget.PLAN_REVIEW_RECHECK.value: RouteTranslation(
+            "review_entry", "review_entry"
+        ),
     },
     GraphProfile.SIX_ROLE_BASELINE: {
         **_COMMON_ROUTES,
+        SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "tool_route"),
         **{
             target.value: RouteTranslation("context_retriever", "context_retriever")
             for target in (

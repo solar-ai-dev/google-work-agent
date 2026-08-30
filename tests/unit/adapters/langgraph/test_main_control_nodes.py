@@ -118,6 +118,26 @@ def test_review_entry_routes_then_settles_persisted_review() -> None:
     }
 
 
+def test_review_entry_does_not_reload_persisted_plan_for_fresh_replan_draft() -> None:
+    state = {
+        "approved_plan_id": "plan-1",
+        "__replan_from_plan_id__": "plan-1",
+        "planning_result": {"schema_version": 2, "kind": "ACTION"},
+    }
+
+    entered = review_entry_node(
+        state,
+        prepare_persisted_review=lambda _state: (_ for _ in ()).throw(
+            AssertionError("fresh replan review must not reload the superseded plan")
+        ),
+        settle_persisted_review=lambda current: current,
+        review_node="review",
+    )
+
+    assert entered["__target__"] == "review"
+    assert "__workflow_control__" not in entered
+
+
 def test_validation_and_preflight_reject_unregistered_targets_and_return_patches() -> None:
     assert domain_validation_node(
         {"foreign": "keep"},

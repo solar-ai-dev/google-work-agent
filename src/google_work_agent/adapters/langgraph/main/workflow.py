@@ -93,7 +93,6 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
-from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
@@ -118,21 +117,12 @@ from google_work_agent.application.orchestration.domain_output_validation import
     CanonicalDomainValidationService,
     CurrentRunResourceIdentityV1,
 )
-from google_work_agent.application.orchestration.domain_validation import (
-    DomainValidationService,
-)
 from google_work_agent.application.orchestration.handoff_contracts import (
     AcquisitionResultV1,
     ActionPlanDraftV1,
 )
 from google_work_agent.application.orchestration.persist_planning_output import (
     project_action_plan_v2_for_persistence,
-)
-from google_work_agent.application.orchestration.profile_fused import (
-    load_profile_single_reason_plan_prompt_reference,
-    load_profile_single_request_source_prompt_reference,
-    load_profile_three_stage1_prompt_reference,
-    load_profile_three_stage2_prompt_reference,
 )
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -149,9 +139,6 @@ from google_work_agent.application.orchestration.retrieval_read_cache import (
 )
 from google_work_agent.application.orchestration.retrieval_read_executor import (
     RetrievalReadExecutor,
-)
-from google_work_agent.application.orchestration.solution_planning import (
-    SolutionPlanningAgent,
 )
 from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
@@ -348,12 +335,13 @@ from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceR
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
-from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError, PromptReference
+from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError
 from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
@@ -422,10 +410,9 @@ class WorkflowRuntimeCore:
         id_factory: Callable[[], str],
         signing_secret: str,
         service_instance_id: str,
+        checkpoint_port: CheckpointPort,
         claim_context_signer: Callable[[dict[str, object]], str] | None = None,
         mcp_process_instance_id: Callable[[], str] | None = None,
-        checkpoint_port: SqliteCheckpointAdapter | None = None,
-        checkpoint_database_path: Path | None = None,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
         timezone_provider: Callable[[], str] | None = None,
@@ -445,13 +432,7 @@ class WorkflowRuntimeCore:
         self._id_factory = id_factory
         del signing_secret
         self._service_instance_id = service_instance_id
-        if (checkpoint_port is None) == (checkpoint_database_path is None):
-            raise ValueError("provide exactly one canonical checkpoint adapter or database path")
-        self._checkpoint_port = (
-            checkpoint_port
-            if checkpoint_port is not None
-            else SqliteCheckpointAdapter(cast(Path, checkpoint_database_path), now_ms=now_ms)
-        )
+        self._checkpoint_port = checkpoint_port
         self._graph_profile = graph_profile
         self._route_translator = GraphRouteTranslator(graph_profile)
         self._resume_target_registry = resume_target_registry or ResumeTargetRegistry(
@@ -519,39 +500,6 @@ class WorkflowRuntimeCore:
             timezone_provider=timezone_provider or (lambda: "Asia/Seoul"),
         )
         self._evidence_store = RunScopedEvidenceStore()
-        self._planning: SolutionPlanningAgent | None = None
-        if self._graph_profile is not GraphProfile.SIX_ROLE_BASELINE:
-            self._planning = SolutionPlanningAgent(
-                llm_runtime=llm_runtime,
-                manifest_path=prompt_manifest_path,
-            )
-        # Each non-default graph_profile (SINGLE_BASELINE, THREE_STAGE) is an
-        # E06-A architecture-candidate under comparison, not a feature that
-        # ships alongside SIX_ROLE_BASELINE (docs/06-agent-workflow.md 1.1,
-        # 1.3). Loading a profile's prompt refs/subgraph -- and therefore
-        # requiring its RUNTIME_ACTIVE prompts -- only when that profile is
-        # the one actually selected keeps an inactive candidate profile's
-        # prompts from blocking the product (SIX_ROLE_BASELINE) runtime.
-        self._single_request_source_prompt_ref: PromptReference | None = None
-        self._single_reason_plan_prompt_ref: PromptReference | None = None
-        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            self._single_request_source_prompt_ref = (
-                load_profile_single_request_source_prompt_reference(prompt_manifest_path)
-            )
-            self._single_reason_plan_prompt_ref = load_profile_single_reason_plan_prompt_reference(
-                prompt_manifest_path
-            )
-        self._three_stage1_prompt_ref: PromptReference | None = None
-        self._three_stage2_prompt_ref: PromptReference | None = None
-        if self._graph_profile is GraphProfile.THREE_STAGE:
-            assert self._planning is not None
-            self._three_stage1_prompt_ref = load_profile_three_stage1_prompt_reference(
-                prompt_manifest_path
-            )
-            self._three_stage2_prompt_ref = load_profile_three_stage2_prompt_reference(
-                prompt_manifest_path
-            )
-        self._domain_validation = DomainValidationService()
         self._canonical_domain_validation = CanonicalDomainValidationService(
             tool_registry=tool_catalog,
         )
@@ -798,7 +746,6 @@ class WorkflowRuntimeCore:
         )
         self._request_subgraph = entry_subgraphs.request_understanding
         self._tool_route_subgraph = entry_subgraphs.tool_route
-        self._acquisition_subgraph = entry_subgraphs.acquisition
         self._context_subgraph = entry_subgraphs.context_retrieval
         self._analysis_subgraph = WorkAnalysisSubgraph(
             llm_runtime=self._llm_runtime,
@@ -835,55 +782,30 @@ class WorkflowRuntimeCore:
         self._three_stage_two_subgraph: Any = None
         self._three_stage_review_subgraph: Any = None
         if self._graph_profile is GraphProfile.THREE_STAGE:
-            assert self._three_stage1_prompt_ref is not None
-            assert self._three_stage2_prompt_ref is not None
             self._three_stage_one_subgraph = ThreeStageOneSubgraph(
-                llm_runtime=self._llm_runtime,
-                acquisition_agent=self._acquisition,
-                tool_catalog=tool_catalog,
-                prompt_ref=self._three_stage1_prompt_ref,
-                id_factory=id_factory,
-                graph_profile=self._graph_profile,
-                transition_run=self._transition_run,
-                merge_decision=self._merge_decision,
-                confirm_inline=self._confirm_context_retrieval_inline,
+                request_understanding=self._request_subgraph,
+                tool_route=self._tool_route_subgraph,
+                retrieval=self._context_subgraph,
             ).build()
             self._three_stage_two_subgraph = ThreeStageTwoSubgraph(
-                llm_runtime=self._llm_runtime,
-                planning_agent=cast(SolutionPlanningAgent, self._planning),
-                evidence_store=self._evidence_store,
-                prompt_ref=self._three_stage2_prompt_ref,
-                id_factory=id_factory,
-                graph_profile=self._graph_profile,
-                transition_run=self._transition_run,
-                merge_decision=self._merge_decision,
+                work_analysis=self._analysis_subgraph,
+                planning=self._planning_subgraph,
             ).build()
             self._three_stage_review_subgraph = self._review_subgraph
         self._single_workflow_subgraph: Any = None
         if self._graph_profile is GraphProfile.SINGLE_BASELINE:
-            assert self._planning is not None
-            assert self._single_request_source_prompt_ref is not None
-            assert self._single_reason_plan_prompt_ref is not None
             self._single_workflow_subgraph = SingleWorkflowSubgraph(
-                llm_runtime=self._llm_runtime,
-                acquisition_agent=self._acquisition,
-                planning_agent=self._planning,
-                review_subgraph=self._review_subgraph,
-                tool_catalog=tool_catalog,
-                evidence_store=self._evidence_store,
-                request_source_prompt_ref=self._single_request_source_prompt_ref,
-                reason_plan_prompt_ref=self._single_reason_plan_prompt_ref,
-                id_factory=id_factory,
-                graph_profile=self._graph_profile,
-                transition_run=self._transition_run,
-                merge_decision=self._merge_decision,
-                confirm_inline=self._confirm_context_retrieval_inline,
+                request_understanding=self._request_subgraph,
+                tool_route=self._tool_route_subgraph,
+                retrieval=self._context_subgraph,
+                work_analysis=self._analysis_subgraph,
+                planning=self._planning_subgraph,
+                review=self._review_subgraph,
             ).build()
         self._topology = self._topology_for_profile()
         self._graph_node_bindings = GraphNodeBindings(
             request_understanding=self._request_subgraph,
             tool_route=self._tool_route_subgraph,
-            acquisition=self._acquisition_subgraph,
             context_retriever=self._context_subgraph,
             work_analysis=self._analysis_subgraph,
             planning=self._planning_subgraph,
@@ -1044,29 +966,37 @@ class WorkflowRuntimeCore:
         self._checkpoint_port.close()
 
     def _main_control_bindings(self) -> MainControlNodeBindings:
+        request_node = self._physical_agent_node("request_understanding")
+        retrieval_node = self._physical_agent_node("context_retriever")
+        planning_node = self._physical_agent_node("planning")
+        review_node = self._physical_agent_node("review")
         return MainControlNodeBindings(
             initialize=partial(
                 initialize_node,
                 start_analysis=self._start_analysis_for_main,
-                request_node=self._topology[0],
+                request_node=request_node,
+                request_logical_node="request_understanding",
             ),
             retrieval_entry=partial(
                 retrieval_entry_node,
                 current_run_status=self._current_run_status,
                 begin_retrieval=self._begin_retrieval_for_main,
-                retrieval_node="context_retriever",
+                retrieval_node=retrieval_node,
+                retrieval_logical_node="context_retriever",
             ),
             planning_entry=partial(
                 planning_entry_node,
                 current_run_status=self._current_run_status,
                 begin_planning=self._begin_planning_for_main,
-                planning_node="planning",
+                planning_node=planning_node,
+                planning_logical_node="planning",
             ),
             review_entry=partial(
                 review_entry_node,
                 prepare_persisted_review=self._prepare_current_persisted_review_state,
                 settle_persisted_review=self._settle_persisted_review,
-                review_node="review",
+                review_node=review_node,
+                review_logical_node="review",
             ),
             domain_validation=partial(
                 domain_validation_node,
@@ -1118,8 +1048,30 @@ class WorkflowRuntimeCore:
                 read_terminal_facts=self._read_terminal_facts,
                 emit_trace=self._emit_terminal_finalize_trace,
                 project_run_event=self._project_terminal_finalize_event,
+                discard_run_transients=self.discard_run_transients,
             ),
         )
+
+    def _physical_agent_node(self, semantic_node: str) -> str:
+        if self._graph_profile is GraphProfile.SINGLE_BASELINE:
+            return "single_workflow"
+        if self._graph_profile is GraphProfile.THREE_STAGE:
+            if semantic_node in {"request_understanding", "tool_route", "context_retriever"}:
+                return "stage_one"
+            if semantic_node in {"work_analysis", "planning"}:
+                return "stage_two"
+            if semantic_node == "review":
+                return "stage_three"
+        if semantic_node in {
+            "request_understanding",
+            "tool_route",
+            "context_retriever",
+            "work_analysis",
+            "planning",
+            "review",
+        }:
+            return semantic_node
+        raise ValueError(f"unknown semantic agent node: {semantic_node}")
 
     def _read_durable_run(self, run_id: str) -> Any:
         snapshot = self._get_run_snapshot_handler(GetRunSnapshotQuery(run_id))
@@ -1473,12 +1425,9 @@ class WorkflowRuntimeCore:
             else:
                 plan_draft = cast(ActionPlanDraftV1, typed_state.get("plan_draft") or {})
         else:
-            plan_draft = _require_state_value(typed_state["plan_draft"], "plan_draft")
-            result = self._domain_validation(
-                plan_draft=plan_draft,
-                analysis_result=_require_state_value(
-                    typed_state["analysis_result"], "analysis_result"
-                ),
+            raise ValueError(
+                "DOMAIN_VALIDATION requires canonical PlanningResultV2; "
+                "non-canonical planning channels are not accepted"
             )
         decision = route_supervisor(
             phase=WorkflowPhase.DOMAIN_VALIDATION,
@@ -1891,10 +1840,15 @@ class WorkflowRuntimeCore:
         ):
             return "end"
         control = state.get("__workflow_control__")
+        workflow_signal = state.get("workflow_signal")
+        review_is_complete = state.get("plan_review") is not None or (
+            isinstance(workflow_signal, Mapping)
+            and workflow_signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
+        )
         if (
             isinstance(control, Mapping)
             and control.get("stage") == "REVIEW_PENDING_SETTLEMENT"
-            and state.get("__target__") != "review"
+            and review_is_complete
         ):
             return "review_entry"
         return cast(str, state.get("__target__", "end"))
@@ -2094,7 +2048,9 @@ class WorkflowRuntimeCore:
         )
         feasibility = evidence_feasibility_risk(
             arguments=arguments,
-            analysis_result=_require_state_value(state["analysis_result"], "analysis_result"),
+            analysis_result=cast(
+                Mapping[str, object], state.get("work_analysis_result") or {}
+            ),
             acquisition_result=acquisition,
             checked_at_ms=checked_at_ms,
             work_hours=self._work_hours_provider(),

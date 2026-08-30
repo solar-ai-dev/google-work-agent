@@ -13,6 +13,7 @@ def finalize_node(
     read_terminal_facts: Callable[[str], Mapping[str, object]],
     emit_trace: Callable[[Mapping[str, object]], object],
     project_run_event: Callable[[Mapping[str, object]], object],
+    discard_run_transients: Callable[[str], None],
 ) -> dict[str, object]:
     """Verify durable truth, then publish best-effort observability and END."""
 
@@ -29,6 +30,7 @@ def finalize_node(
             publisher(facts)
         except Exception:
             continue
+    discard_run_transients(run_id)
     return {
         "__logical_target__": "end",
         "__target__": "end",

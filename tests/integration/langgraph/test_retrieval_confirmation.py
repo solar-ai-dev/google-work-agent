@@ -44,6 +44,7 @@ from tests.support.canonical_workflow_runtime import (
     resume_confirmation_with_handoff,
     start_with_admission,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
 
@@ -60,7 +61,7 @@ def _build_runtime(
         database_path=database_path,
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
         default_tasklist_id="task-list-default",
@@ -618,7 +619,7 @@ def test_retrieval_happy_path_without_confirmation_completes(tmp_path: Path) -> 
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=manifest_path,
     )
     try:

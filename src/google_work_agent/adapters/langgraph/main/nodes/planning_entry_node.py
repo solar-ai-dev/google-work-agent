@@ -17,6 +17,7 @@ def planning_entry_node(
     current_run_status: Callable[[str], str],
     begin_planning: Callable[[str], BeginPlanningResult],
     planning_node: str,
+    planning_logical_node: str | None = None,
 ) -> dict[str, object]:
     """Enter the existing deterministic Planning boundary without a pseudo-node."""
 
@@ -30,7 +31,7 @@ def planning_entry_node(
         return _reconcile_patch()
     return {
         "workflow_phase": "SOLUTION_PLANNING",
-        "__logical_target__": planning_node,
+        "__logical_target__": planning_logical_node or planning_node,
         "__target__": planning_node,
     }
 

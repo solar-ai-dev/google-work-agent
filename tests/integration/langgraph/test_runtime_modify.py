@@ -23,8 +23,6 @@ from tests.integration.langgraph.test_runtime import (
     _action_required_intent,
     _analysis_output,
     _make_runtime,
-    _profile_reason_plan_output,
-    _profile_request_source_output,
     _review_output,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -38,6 +36,7 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
@@ -74,7 +73,7 @@ def test_edge_preflight_google_read_failure_blocks_claim_and_write(tmp_path: Pat
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-preflight-failure-edge.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-preflight-failure-edge.db"),
         prompt_manifest_path=manifest_path,
     )
 
@@ -162,33 +161,19 @@ def test_modify_reenters_profile_review_and_pass_reopens_approval(
         finally:
             connection.close()
 
-    initial_payloads = (
-        [
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _write_plan_output(),
-            _review_output("PASS"),
-        ]
-        if profile is GraphProfile.SIX_ROLE_BASELINE
-        else [
-            _profile_request_source_output(request_intent=_action_required_intent()),
-            _profile_reason_plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ]
-        if profile is GraphProfile.SINGLE_BASELINE
-        else [
-            _profile_request_source_output(request_intent=_action_required_intent()),
-            _profile_reason_plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ]
-    )
+    initial_payloads = [
+        _action_required_intent(),
+        _selection_output(),
+        _sufficiency_output("SUFFICIENT"),
+        _analysis_output(),
+        _write_plan_output(),
+        _review_output("PASS"),
+    ]
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=[*initial_payloads, _review_output("PASS")],
         gateway=gateway,
-        checkpoint_database_path=root / "checkpoints-modify-review.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-modify-review.db"),
         graph_profile=profile,
         prompt_manifest_path=_runtime_active_manifest_path(root),
         before_llm_invoke=assert_no_sqlite_write_transaction,
@@ -361,7 +346,7 @@ def test_modify_review_branches_use_existing_supervisor_routes(
             review_output,
         ],
         gateway=gateway,
-        checkpoint_database_path=root / "checkpoints-modify-review-branch.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-modify-review-branch.db"),
         prompt_manifest_path=_runtime_active_manifest_path(root),
     )
 
@@ -464,7 +449,9 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
             route_reconsideration_review_output,
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-modify-review-route-reconsideration.db",
+        checkpoint_port=sqlite_checkpoint(
+            tmp_path / "checkpoints-modify-review-route-reconsideration.db"
+        ),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
 
@@ -595,7 +582,7 @@ def test_modify_review_revise_or_retrieve_persists_a_new_plan_revision(
             *continuation,
         ],
         gateway=gateway,
-        checkpoint_database_path=root / "checkpoints-modify-review-replan.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-modify-review-replan.db"),
         prompt_manifest_path=_runtime_active_manifest_path(root),
     )
 
@@ -689,7 +676,7 @@ def test_modify_review_block_finalizes_without_approval_or_write(tmp_path: Path)
             _review_output("BLOCK", blockers=["Modified plan is unsafe."]),
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-modify-review-block.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-modify-review-block.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
 
@@ -769,7 +756,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-stale-modify-review.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-stale-modify-review.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
     modify_service = ModifyWriteActionService(

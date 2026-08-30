@@ -7,6 +7,7 @@ import pytest
 from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.use_cases.action.feasibility import (
     FeasibilityValidator,
+    build_feasibility_input,
     evidence_feasibility_risk,
     feasibility_change_requires_reapproval,
     merge_feasibility_risk,
@@ -126,6 +127,43 @@ def test_event_interval_is_the_only_deterministic_duration_fallback() -> None:
         work_hours=WORK_HOURS,
     )
     assert risk["feasibility_input"]["required_duration_minutes"] == 120  # type: ignore[index]
+
+
+def test_v2_work_analysis_deadline_projects_to_action_owned_feasibility() -> None:
+    analysis = {
+        "work_facts": [
+            {
+                "fact_id": "deadline-1",
+                "kind": "DEADLINE",
+                "subject": "follow-up",
+                "value": "2026-08-12",
+                "derivation": "EXPLICIT",
+                "evidence_refs": ["evidence-1"],
+            }
+        ]
+    }
+
+    assert build_feasibility_input(
+        analysis_result=analysis,
+        arguments=_arguments(),
+    ) == {
+        "business_deadline": "2026-08-12",
+        "business_deadline_source": "GMAIL_EVIDENCE",
+        "required_duration_minutes": 120,
+        "duration_source": "EVENT_INTERVAL",
+    }
+
+
+def test_v2_work_analysis_multiple_deadlines_fail_closed() -> None:
+    analysis = {
+        "work_facts": [
+            {"kind": "DEADLINE", "value": "2026-08-12", "evidence_refs": []},
+            {"kind": "DEADLINE", "value": "2026-08-13", "evidence_refs": []},
+        ]
+    }
+
+    with pytest.raises(PolicyViolationError, match="multiple business deadlines"):
+        build_feasibility_input(analysis_result=analysis, arguments=_arguments())
 
 
 def test_fresh_check_reads_exact_deadline_horizon() -> None:

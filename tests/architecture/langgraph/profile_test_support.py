@@ -11,7 +11,6 @@ def profile_build_arguments() -> dict[str, object]:
     bindings = GraphNodeBindings(
         request_understanding=object(),
         tool_route=object(),
-        acquisition=object(),
         context_retriever=object(),
         work_analysis=object(),
         planning=object(),

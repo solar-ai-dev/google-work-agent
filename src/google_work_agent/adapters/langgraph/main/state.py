@@ -45,7 +45,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourcePlanningOutputV1,
     SubgraphReturnV2,
     SufficiencyResultV2,
-    WorkAnalysisResultV1,
 )
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
@@ -97,9 +96,6 @@ class ParentGraphState(MultiAgentGraphState):
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
     __replan_from_plan_id__: NotRequired[str]
     __reserved_corrective_plan_id__: NotRequired[str | None]
-    # Temporary #118 ACTION-delegate projection. Canonical ANSWER never
-    # reads or writes this V1 compatibility channel.
-    analysis_result: NotRequired[WorkAnalysisResultV1 | None]
 
 
 class MultiAgentGraphStateV2(ParentGraphState, total=False):
@@ -144,9 +140,6 @@ PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"
 REVIEW_AGENT_LOCAL_KEY: Final = "__review_agent_local__"
 REVIEW_MODE_KEY: Final = "__review_mode__"
-PROFILE_AGENT_LOCAL_KEY: Final = "__profile_agent_local__"
-PROFILE_REQUEST_SOURCE_OUTPUT_KEY: Final = "__profile_request_source_output__"
-PROFILE_REASON_PLAN_OUTPUT_KEY: Final = "__profile_reason_plan_output__"
 
 
 def initial_graph_state(

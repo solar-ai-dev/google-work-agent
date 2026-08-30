@@ -151,20 +151,33 @@ def determine_io_resources(
             raise ToolRouteValidationError(
                 f"tool route semantic candidate is not ready: {raw['disposition']}"
             )
-        return _semantic_candidate(raw, request_intent=request_intent), legacy_post_call_projection(
-            retry_budget
-        )
+        return _semantic_candidate(
+            raw,
+            request_intent=request_intent,
+            request=request,
+        ), legacy_post_call_projection(retry_budget)
 
 
 def _semantic_candidate(
-    raw: Mapping[str, object], *, request_intent: RequestIntentV2
+    raw: Mapping[str, object],
+    *,
+    request_intent: RequestIntentV2,
+    request: WorkflowStartRequest,
 ) -> SemanticRouteCandidate:
-    input_resources = tuple(
+    inferred_input_resources = tuple(
         dict.fromkeys(
             normalize_resource_type(cast(str, item))
             for item in cast(list[object], raw["input_resource_types"])
         )
     )
+    selected_input_resources = _selected_input_resource_types(request)
+    if selected_input_resources and {
+        coarse_resource_category(resource) for resource in selected_input_resources
+    } != {coarse_resource_category(resource) for resource in inferred_input_resources}:
+        raise ToolRouteValidationError(
+            "RESOURCE_SELECTED input scope does not match the semantic route candidate"
+        )
+    input_resources = selected_input_resources or inferred_input_resources
     raw_output_resources = cast(list[str], raw["output_resource_types"])
     output_effects = tuple(
         EffectType(cast(str, item)) for item in cast(list[object], raw["output_effects"])
@@ -195,6 +208,33 @@ def _semantic_candidate(
         output_mode=output_mode,
         analysis_requirement=cast(Literal["NONE", "REQUIRED"], analysis_requirement),
     )
+
+
+def _selected_input_resource_types(request: WorkflowStartRequest) -> tuple[str, ...]:
+    if request.entry_mode != "RESOURCE_SELECTED":
+        return ()
+    mapping = {
+        ("GMAIL", "THREAD"): "GMAIL_THREAD",
+        ("GMAIL", "MESSAGE"): "GMAIL_MESSAGE",
+        ("GMAIL", "DRAFT"): "GMAIL_DRAFT",
+        ("GMAIL", "ATTACHMENT"): "GMAIL_ATTACHMENT",
+        ("TASKS", "TASK_LIST"): "TASK_LIST",
+        ("TASKS", "TASK"): "TASK",
+        ("CALENDAR", "CALENDAR"): "CALENDAR",
+        ("CALENDAR", "EVENT"): "CALENDAR_EVENT",
+        ("CALENDAR", "FREEBUSY"): "CALENDAR_FREEBUSY",
+    }
+    try:
+        return tuple(
+            dict.fromkeys(
+                mapping[(resource.source, resource.resource_type)]
+                for resource in request.selected_resources
+            )
+        )
+    except KeyError as error:
+        raise ToolRouteValidationError(
+            "RESOURCE_SELECTED contains an unsupported resource identity"
+        ) from error
 
 
 def _validate_candidate(value: object) -> Mapping[str, object]:

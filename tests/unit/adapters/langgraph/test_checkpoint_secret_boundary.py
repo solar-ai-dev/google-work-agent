@@ -357,7 +357,6 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
         bindings = GraphNodeBindings(
             request_understanding=noop,
             tool_route=noop,
-            acquisition=noop,
             context_retriever=noop,
             work_analysis=noop,
             planning=noop,

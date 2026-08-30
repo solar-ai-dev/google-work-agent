@@ -17,11 +17,6 @@ from tests.integration.langgraph.test_runtime import (
     _context_result,
     _evidence_drafts_seg_2,
     _make_runtime,
-    _make_runtime_with_llm,
-    _plan,
-    _profile_reason_plan_output,
-    _profile_request_source_output,
-    _QueuedLLMRuntime,
     _retrieval_result,
     _review_output,
     _runtime_active_manifest_path,
@@ -35,6 +30,7 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
     supported_graph_profiles,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 def test_graph_profile_registry_exposes_three_supported_profiles() -> None:
@@ -56,7 +52,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-six.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-six.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -64,7 +60,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-three.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-three.db"),
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
@@ -72,7 +68,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-single.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-single.db"),
         graph_profile=GraphProfile.SINGLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -80,6 +76,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
     try:
         assert six.describe_topology() == (
             "request_understanding",
+            "tool_route",
             "context_retriever",
             "work_analysis",
             "planning",
@@ -98,11 +95,7 @@ def test_langgraph_runtime_reports_distinct_topologies_by_profile(
 def test_six_role_runtime_exposes_six_native_agent_subgraphs(
     tmp_path: Path,
 ) -> None:
-    """SIX_ROLE_BASELINE's active agent set is request_understanding,
-    context_retriever, work_analysis, planning, review -- ``acquisition``
-    stays a registered node (resolvable via ``_node_handler``, used by other
-    profiles/legacy paths) but is not part of this profile's own topology
-    since Retrieval V2's context_retriever subgraph replaced it here."""
+    """SIX_ROLE_BASELINE exposes exactly the six canonical semantic owners."""
     manifest_path = _runtime_active_manifest_path(tmp_path)
     database_path = _seed_runtime_database(tmp_path)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -111,7 +104,7 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-subgraphs.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-subgraphs.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -128,7 +121,6 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
         assert len(runtime._native_agent_subgraphs) == 6  # noqa: SLF001
         assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
         assert runtime._node_handler("tool_route") is runtime._tool_route_subgraph  # noqa: SLF001
-        assert runtime._node_handler("acquisition") is runtime._acquisition_subgraph  # noqa: SLF001
         assert runtime._node_handler("context_retriever") is runtime._context_subgraph  # noqa: SLF001
         assert runtime._node_handler("work_analysis") is runtime._analysis_subgraph  # noqa: SLF001
         assert runtime._node_handler("planning") is runtime._planning_subgraph  # noqa: SLF001
@@ -148,7 +140,7 @@ def test_native_profile_runtimes_expose_three_and_single_subgraphs(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-three-subgraphs.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-three-subgraphs.db"),
         graph_profile=GraphProfile.THREE_STAGE,
         prompt_manifest_path=manifest_path,
     )
@@ -156,7 +148,7 @@ def test_native_profile_runtimes_expose_three_and_single_subgraphs(
         database_path=database_path,
         llm_payloads=[],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-single-subgraphs.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-single-subgraphs.db"),
         graph_profile=GraphProfile.SINGLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -184,7 +176,7 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
         database_path=database_path,
         llm_payloads=[_clear_intent()],
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-request-subgraph.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-request-subgraph.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -215,7 +207,7 @@ def test_tool_route_subgraph_freezes_plan_before_context_retriever(tmp_path: Pat
         gateway=FakeGoogleGateway(
             ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
         ),
-        checkpoint_database_path=tmp_path / "checkpoints-tool-route.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-tool-route.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
 
@@ -230,58 +222,6 @@ def test_tool_route_subgraph_freezes_plan_before_context_retriever(tmp_path: Pat
         input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
         assert {route["resource_type"] for route in input_routes} == {"TASK", "TASK_LIST"}
         assert "__tool_route_result__" not in routed
-    finally:
-        runtime.close()
-
-
-def test_acquisition_subgraph_keeps_single_invocation_id_and_parent_isolation(
-    tmp_path: Path,
-) -> None:
-    manifest_path = _runtime_active_manifest_path(tmp_path)
-    database_path = _seed_runtime_database(tmp_path, status="ANALYZING")
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    gateway = FakeGoogleGateway(snapshot)
-    llm_runtime = _QueuedLLMRuntime([[_plan("TASKS", {"task_list_id": "task-list-default"})]])
-    runtime = _make_runtime_with_llm(
-        database_path=database_path,
-        llm_runtime=llm_runtime,
-        gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-acquisition-subgraph.db",
-        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
-        prompt_manifest_path=manifest_path,
-    )
-
-    try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
-
-        assert "__request_agent_local__" not in result
-        assert "__acquisition_agent_local__" not in result
-        assert "__acquisition_planning_output__" not in result
-        assert result["__logical_target__"] == "retrieval_entry"
-        assert result["__target__"] == "retrieval_entry"
-        assert gateway.count_calls("list_tasks") == 1
-        assert gateway.count_calls("get_task") >= 1
-        assert gateway.count_calls("search_gmail_threads") == 0
-        assert gateway.count_calls("list_calendar_events") == 0
-        assert len(llm_runtime.calls) == 1
-
-        trace_context = result["trace_context"]
-        assert trace_context["agent_invocation_count"] == 1
-        assert trace_context["llm_call_count"] == 1
-        node_log = trace_context["agent_node_log"]
-        assert [item["node_name"] for item in node_log] == [
-            "init",
-            "plan_sources",
-            "plan_validate",
-            "deterministic_read",
-            "result_validate",
-            "finalize",
-        ]
-        invocation_ids = {item["agent_invocation_id"] for item in node_log}
-        assert len(invocation_ids) == 1
-        assert {item["agent_subgraph_id"] for item in node_log} == {"acquisition"}
     finally:
         runtime.close()
 
@@ -317,7 +257,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_atomic_llm_calls(
             _review_output("PASS"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-six-full.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-six-full.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -381,7 +321,7 @@ def test_retrieval_rejects_execution_without_a_frozen_tool_route(
             _sufficiency_output("NEEDS_MORE_DATA"),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-context-route.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-context-route.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -469,7 +409,7 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
             ),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-no-direct-peer.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-no-direct-peer.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -568,7 +508,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
             _review_output("RETRIEVE_MORE", issues=[issue]),
         ],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-review-route.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-review-route.db"),
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path=manifest_path,
     )
@@ -617,27 +557,19 @@ def test_agent_subgraphs_do_not_issue_google_writes_before_approval(
     database_path = _seed_runtime_database(root)
     snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
     gateway = FakeGoogleGateway(snapshot)
-    llm_payloads = (
-        [
-            _action_required_intent(),
-            _selection_output(),
-            _sufficiency_output("SUFFICIENT"),
-            _analysis_output(),
-            _write_plan_output(),
-            _review_output("PASS"),
-        ]
-        if graph_profile is GraphProfile.SIX_ROLE_BASELINE
-        else [
-            _profile_request_source_output(request_intent=_action_required_intent()),
-            _profile_reason_plan_output("PLAN_READY"),
-            _review_output("PASS"),
-        ]
-    )
+    llm_payloads = [
+        _action_required_intent(),
+        _selection_output(),
+        _sufficiency_output("SUFFICIENT"),
+        _analysis_output(),
+        _write_plan_output(),
+        _review_output("PASS"),
+    ]
     runtime = _make_runtime(
         database_path=database_path,
         llm_payloads=llm_payloads,
         gateway=gateway,
-        checkpoint_database_path=root / "checkpoints-no-write.db",
+        checkpoint_port=sqlite_checkpoint(root / "checkpoints-no-write.db"),
         graph_profile=graph_profile,
         prompt_manifest_path=manifest_path,
     )

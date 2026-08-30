@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.acquisition import AcquisitionSubgraph
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
@@ -52,10 +51,6 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
 class PreAnalysisSubgraphs:
     request_understanding: Any
     tool_route: Any
-    # Compatibility-only direct acquisition graph.  No SINGLE/THREE/SIX
-    # production topology routes to this field; it remains only for older
-    # direct callers and is not accepted as a production privacy proof.
-    acquisition: Any
     context_retrieval: Any
 
 
@@ -109,17 +104,6 @@ def build_pre_analysis_subgraphs(
             graph_profile=graph_profile,
             confirm_inline=confirm_tool_route_inline,
         ),
-        # Legacy standalone acquisition is intentionally left as an isolated
-        # compatibility object: no production profile topology routes here.
-        # Production Retrieval owns the checkpoint-safe facade below.
-        acquisition=AcquisitionSubgraph(
-            agent=acquisition_agent,
-            id_factory=id_factory,
-            graph_profile=graph_profile,
-            transition_run=transition_run,
-            merge_decision=merge_decision,
-            read_result_cache=read_result_cache,
-        ).build(),
         context_retrieval=RetrievalSubgraph(
             llm_runtime=llm_runtime,
             prompt_manifest_path=prompt_manifest_path,

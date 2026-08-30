@@ -19,7 +19,6 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 class GraphNodeBindings:
     request_understanding: Any
     tool_route: Any
-    acquisition: Any
     context_retriever: Any
     work_analysis: Any
     planning: Any
@@ -34,7 +33,6 @@ class GraphNodeBindings:
         return {
             "request_understanding": self.request_understanding,
             "tool_route": self.tool_route,
-            "acquisition": self.acquisition,
             "context_retriever": self.context_retriever,
             "work_analysis": self.work_analysis,
             "planning": self.planning,
@@ -128,9 +126,7 @@ class WorkflowGraphComposition:
 
     def build(self) -> Any:
         graph = StateGraph(GraphState)
-        agent_node_names = tuple(
-            dict.fromkeys((*self._topology, "context_retriever", "planning", "review"))
-        )
+        agent_node_names = self._topology
         for name in agent_node_names:
             graph.add_node(name, self._bindings.for_name(name))
         for name in (
@@ -150,10 +146,7 @@ class WorkflowGraphComposition:
             "finalize",
         ):
             graph.add_node(name, self._control_bindings.for_name(name))
-        for name in (
-            "tool_route",
-            "waiting_approval",
-        ):
+        for name in ("waiting_approval",):
             if name not in agent_node_names:
                 graph.add_node(name, self._bindings.for_name(name))
         graph.add_edge(START, "initialize")
@@ -161,14 +154,10 @@ class WorkflowGraphComposition:
         for name in dict.fromkeys(
             (
                 *self._topology,
-                "context_retriever",
-                "planning",
-                "review",
                 "initialize",
                 "retrieval_entry",
                 "planning_entry",
                 "review_entry",
-                "tool_route",
                 "domain_validation",
                 "preflight",
                 "domain_reconcile",
@@ -187,7 +176,6 @@ class WorkflowGraphComposition:
 
     def edge_map(self) -> dict[Hashable, str]:
         edges: dict[Hashable, str] = {
-            "tool_route": "tool_route",
             "retrieval_entry": "retrieval_entry",
             "planning_entry": "planning_entry",
             "review_entry": "review_entry",
@@ -204,7 +192,7 @@ class WorkflowGraphComposition:
             "finalize": "finalize",
             "end": END,
         }
-        for name in dict.fromkeys((*self._topology, "context_retriever", "planning", "review")):
+        for name in self._topology:
             edges[name] = name
         return edges
 

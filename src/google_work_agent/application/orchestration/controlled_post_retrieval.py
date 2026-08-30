@@ -11,6 +11,10 @@ from typing import Literal, Required, TypedDict, cast
 from google_work_agent.application.orchestration.context_retrieval_result_validation import (
     validate_context_retrieval_result_v1,
 )
+from google_work_agent.application.orchestration.controlled_post_retrieval_profile import (
+    ProfilePlanningProjectionV1,
+    validate_profile_planning_projection_v1,
+)
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     AnswerDraftV1,
@@ -22,10 +26,6 @@ from google_work_agent.application.orchestration.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
     load_plan_review_inspect_prompt_reference,
     validate_plan_review_result_v1,
-)
-from google_work_agent.application.orchestration.profile_fused import (
-    ProfilePlanningProjectionV1,
-    validate_profile_planning_projection_v1,
 )
 from google_work_agent.application.orchestration.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,

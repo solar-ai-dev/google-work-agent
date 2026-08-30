@@ -42,6 +42,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _sufficiency_output,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fixtures import ProductFixtureSnapshot
 
 
@@ -110,7 +111,7 @@ def test_production_retrieval_checkpoint_contains_no_raw_provider_or_continuatio
             _review_output("PASS"),
         ],
         gateway=gateway,
-        checkpoint_database_path=checkpoint_path,
+        checkpoint_port=sqlite_checkpoint(checkpoint_path),
         prompt_manifest_path=manifest_path,
     )
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from tests.integration.langgraph.test_runtime import (
     _ACTION_REQUIRED_SEMANTIC_CASES,
     _ANSWER_ONLY_SEMANTIC_CASES,
@@ -11,10 +9,7 @@ from tests.integration.langgraph.test_runtime import (
     _RUNTIME_ACTIVE_PROMPT_IDS,
     FIXTURE_ROOT,
     FakeGoogleGateway,
-    GoogleGatewayFault,
-    GoogleGatewayFaultKind,
     GraphProfile,
-    InactivePromptArtifactError,
     Path,
     ProductFixtureSnapshotLoader,
     _ambiguous_intent,
@@ -33,12 +28,13 @@ from tests.integration.langgraph.test_runtime import (
     pytest,
 )
 from tests.support.canonical_workflow_runtime import start_with_admission
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
 
 from google_work_agent.adapters.langgraph.main.state import CONTEXT_RAG_CANDIDATES_KEY
 
 
-def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
+def test_single_and_three_stage_runtimes_never_select_legacy_profile_prompts(
     tmp_path: Path,
 ) -> None:
     database_path = _seed_runtime_database(tmp_path)
@@ -50,25 +46,32 @@ def test_single_and_three_stage_runtimes_still_reject_own_draft_prompts(
         draft_prompt_ids=_PROFILE_CANDIDATE_PROMPT_IDS,
     )
 
-    with pytest.raises(InactivePromptArtifactError, match="profile.single.request_source.initial"):
+    runtimes = [
         _make_runtime(
             database_path=database_path,
             llm_payloads=[],
             gateway=FakeGoogleGateway(snapshot),
-            checkpoint_database_path=tmp_path / "checkpoints-single-draft.db",
+            checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-single-draft.db"),
             prompt_manifest_path=manifest_path,
             graph_profile=GraphProfile.SINGLE_BASELINE,
-        )
-
-    with pytest.raises(InactivePromptArtifactError, match="profile.three.stage1.initial"):
+        ),
         _make_runtime(
             database_path=database_path,
             llm_payloads=[],
             gateway=FakeGoogleGateway(snapshot),
-            checkpoint_database_path=tmp_path / "checkpoints-three-draft.db",
+            checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-three-draft.db"),
             prompt_manifest_path=manifest_path,
             graph_profile=GraphProfile.THREE_STAGE,
-        )
+        ),
+    ]
+    try:
+        assert [runtime.graph_profile() for runtime in runtimes] == [
+            GraphProfile.SINGLE_BASELINE,
+            GraphProfile.THREE_STAGE,
+        ]
+    finally:
+        for runtime in runtimes:
+            runtime.close()
 
 
 @pytest.mark.parametrize(
@@ -126,141 +129,6 @@ def test_action_route_with_not_required_analysis_finishes_as_answer_without_rout
     )
 
 
-@pytest.mark.parametrize(
-    ("source", "constraints", "expected_operation"),
-    [
-        ("GMAIL", {}, "search_gmail_threads"),
-        ("CALENDAR", {"calendar_id": "calendar-primary"}, "list_calendar_events"),
-        ("TASKS", {"task_list_id": "task-list-default"}, "list_tasks"),
-    ],
-)
-def test_edge_request_to_acquisition_to_context_preserves_typed_state(
-    tmp_path: Path,
-    source: Literal["GMAIL", "CALENDAR", "TASKS"],
-    constraints: dict[str, object],
-    expected_operation: str,
-) -> None:
-    root = tmp_path / source.lower()
-    root.mkdir()
-    gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    )
-    intent = _clear_intent()
-    runtime = _make_runtime(
-        database_path=_seed_runtime_database(root),
-        llm_payloads=[intent, [_plan(source, constraints)]],
-        gateway=gateway,
-        checkpoint_database_path=root / "checkpoints.db",
-        prompt_manifest_path=_runtime_active_manifest_path(root),
-    )
-
-    try:
-        initial = runtime._initial_state(_start_request())  # noqa: SLF001
-        understood = runtime._request_subgraph.invoke(initial)  # noqa: SLF001
-        intent_without_meta = {
-            key: value for key, value in understood["request_intent"].items() if key != "meta"
-        }
-        assert intent_without_meta == intent
-        assert understood["request_intent"]["meta"]["revision"] == 1
-        assert understood["__target__"] == "tool_route"
-
-        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
-        assert acquired["__target__"] == "retrieval_entry"
-        assert acquired["source_fetch_plans"][0]["source"] == source
-        assert acquired["acquisition_result"]["status"] in {"COMPLETE", "PARTIAL"}
-        assert gateway.count_calls(expected_operation) >= 1
-    finally:
-        runtime.close()
-
-
-def test_edge_answer_only_no_fetch_skips_google_and_builds_typed_result(
-    tmp_path: Path,
-) -> None:
-    gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    )
-    runtime = _make_runtime(
-        database_path=_seed_runtime_database(tmp_path),
-        llm_payloads=[_clear_intent(), []],
-        gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-no-fetch-edge.db",
-        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
-    )
-
-    try:
-        understood = runtime._request_subgraph.invoke(  # noqa: SLF001
-            runtime._initial_state(_start_request())  # noqa: SLF001
-        )
-        acquired = runtime._acquisition_subgraph.invoke(understood)  # noqa: SLF001
-        assert acquired["__target__"] == "retrieval_entry"
-        assert acquired["source_fetch_plans"] == []
-        assert acquired["acquisition_result"]["status"] == "COMPLETE"
-        assert acquired["acquisition_result"]["source_summaries"] == []
-        assert gateway.call_log == []
-    finally:
-        runtime.close()
-
-
-def test_edge_acquisition_failure_never_routes_to_context_as_success(tmp_path: Path) -> None:
-    gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    )
-    gateway.queue_fault(
-        operation="list_tasks",
-        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
-    )
-    runtime = _make_runtime(
-        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
-        llm_payloads=[[_plan("TASKS", {"task_list_id": "task-list-default"})]],
-        gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-acquisition-failure-edge.db",
-        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
-    )
-
-    try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
-        assert result["acquisition_result"]["status"] == "FAILED"
-        assert result["__target__"] == "response_synthesis"
-        assert result["workflow_phase"] == "FINALIZE"
-        assert result["context_result"] is None
-    finally:
-        runtime.close()
-
-
-def test_edge_partial_acquisition_preserves_result_and_routes_to_context(tmp_path: Path) -> None:
-    gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
-    )
-    gateway.queue_fault(
-        operation="search_gmail_threads",
-        fault=GoogleGatewayFault(GoogleGatewayFaultKind.HTTP_500),
-    )
-    runtime = _make_runtime(
-        database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
-        llm_payloads=[
-            [
-                _plan("TASKS", {"task_list_id": "task-list-default"}),
-                _plan("GMAIL", {}),
-            ]
-        ],
-        gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-acquisition-partial-edge.db",
-        prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
-    )
-
-    try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        result = runtime._acquisition_subgraph.invoke(state)  # noqa: SLF001
-        assert result["acquisition_result"]["status"] == "PARTIAL"
-        assert result["__target__"] == "retrieval_entry"
-        assert len(result["acquisition_result"]["source_summaries"]) == 2
-    finally:
-        runtime.close()
-
-
 def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> None:
     gateway = FakeGoogleGateway(
         ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
@@ -270,7 +138,7 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
         database_path=database_path,
         llm_payloads=[_ambiguous_intent()],
         gateway=gateway,
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
 
@@ -308,7 +176,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
         database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm_runtime,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints-chain-b.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-chain-b.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
         id_prefix="edge",
     )
@@ -318,8 +186,7 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
         state["request_intent"] = _clear_intent()
         state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
         routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        acquired = runtime._acquisition_subgraph.invoke(routed)  # noqa: SLF001
-        context = runtime._context_subgraph.invoke(acquired)  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
         assert context["__target__"] == "work_analysis"
         evidence_ref = context["retrieval_result"]["evidence_refs"][0]
         assert evidence_ref.startswith("evidence-seg_")
@@ -362,7 +229,7 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
         gateway=FakeGoogleGateway(
             ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
         ),
-        checkpoint_database_path=database_path,
+        checkpoint_port=sqlite_checkpoint(database_path),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
 

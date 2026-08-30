@@ -18,9 +18,6 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     RequestIntentV2,
 )
 from google_work_agent.application.orchestration.planning_plan_assembler import ActionPlanDraftV2
-from google_work_agent.application.use_cases.action.calendar_conflicts import (
-    CALENDAR_CONFLICT_TOOLS,
-)
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
 )
@@ -63,9 +60,9 @@ def project_action_plan_v2_for_persistence(
 
     V2 plan/frozen routes own semantic identity. Expected is recomputed by
     deterministic code. Target resources are admitted only after an exact
-    current-run/connector/evidence/argument match. Calendar writes fail closed
-    until a V2-native feasibility authority is available; no synthetic
-    ``schedule_constraints`` or WorkAnalysisResultV1 is created.
+    current-run/connector/evidence/argument match. Calendar conflict and
+    optional business-deadline feasibility remain deterministic Action-owner
+    risk projections during durable plan persistence.
     """
 
     if not run_id:
@@ -132,8 +129,6 @@ def project_action_plan_v2_for_persistence(
             if handle not in all_resource_handles:
                 all_resource_handles.append(handle)
 
-        if tool_id in CALENDAR_CONFLICT_TOOLS:
-            raise V2PersistenceProjectionError("CALENDAR_V2_PERSISTENCE_FEASIBILITY_UNPROVEN")
         target_handle = _target_resource_handle(
             run_id=run_id,
             connector_id=connector_id,

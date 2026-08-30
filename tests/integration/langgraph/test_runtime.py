@@ -9,6 +9,7 @@ from typing import Literal, cast
 
 import pytest
 from tests.integration.persistence.test_write_actions import _expected_task_projection
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import (
     DeterministicUUID,
     FakeClockPort,
@@ -1478,7 +1479,6 @@ def _make_runtime(
     database_path: Path,
     llm_payloads: Sequence[object],
     gateway: FakeGoogleGateway,
-    checkpoint_database_path: Path | None = None,
     checkpoint_port=None,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
@@ -1491,8 +1491,8 @@ def _make_runtime(
         database_path=database_path,
         llm_runtime=_QueuedLLMRuntime(llm_payloads, before_invoke=before_llm_invoke),
         gateway=gateway,
-        checkpoint_database_path=checkpoint_database_path,
-        checkpoint_port=checkpoint_port,
+        checkpoint_port=checkpoint_port
+        or sqlite_checkpoint(database_path.with_name("checkpoints.db")),
         graph_profile=graph_profile,
         prompt_manifest_path=prompt_manifest_path,
         default_tasklist_id=default_tasklist_id,
@@ -1506,7 +1506,6 @@ def _make_runtime_with_llm(
     database_path: Path,
     llm_runtime: object,
     gateway: FakeGoogleGateway,
-    checkpoint_database_path: Path | None = None,
     checkpoint_port=None,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
@@ -1537,8 +1536,8 @@ def _make_runtime_with_llm(
         id_factory=ids.next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_database_path=checkpoint_database_path,
-        checkpoint_port=checkpoint_port,
+        checkpoint_port=checkpoint_port
+        or sqlite_checkpoint(database_path.with_name("checkpoints.db")),
         graph_profile=graph_profile,
         prompt_manifest_path=prompt_manifest_path,
         default_tasklist_id_provider=(
@@ -1746,6 +1745,6 @@ def _planning_mode_runtime(tmp_path: Path) -> LangGraphWorkflowRuntime:
         database_path=database_path,
         llm_payloads=[],
         gateway=FakeGoogleGateway(snapshot),
-        checkpoint_database_path=tmp_path / "checkpoints-planning-mode.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints-planning-mode.db"),
         prompt_manifest_path=manifest_path,
     )

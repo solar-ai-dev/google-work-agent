@@ -31,7 +31,7 @@ def test_production_has_no_second_planning_answer_authority() -> None:
     assert not provider_path.exists()
     assert "build_production_planning_runtime" not in response_source
     assert "CanonicalOptionalPlanningSubgraph" not in response_source
-    assert "PlanningSubgraph(" in response_source
+    assert "_rebuild_six_role_graph_with_optional_subgraphs" not in response_source
 
 
 def test_review_graph_has_no_generic_semantic_binding_authority() -> None:

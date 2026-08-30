@@ -10,7 +10,6 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
     RequestUnderstandingInputState,
     ReviewInputState,
     ReviewLocalState,
-    SingleWorkflowLocalState,
     ToolRoutingInputState,
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
@@ -34,7 +33,6 @@ def test_each_local_state_owns_only_its_subgraph_working_fields() -> None:
         (WorkAnalysisLocalState, "__analysis_agent_local__"),
         (PlanningLocalState, "__planning_agent_local__"),
         (ReviewLocalState, "__review_agent_local__"),
-        (SingleWorkflowLocalState, "__profile_agent_local__"),
     )
 
     for local_state, owned_field in cases:
@@ -105,7 +103,7 @@ def test_role_input_projection_does_not_expose_foreign_business_artifacts() -> N
         "request_intent",
         "tool_route_plan",
         "retrieval_result",
-        "analysis_result",
+        "work_analysis_result",
         "answer_draft",
         "plan_draft",
         "plan_review",

@@ -278,6 +278,9 @@ class ConnectorReadProjection:
             elif resource.source == "GMAIL" and resource.resource_type == "MESSAGE":
                 self._require_allowed(request, "gmail_get_message")
                 selected.append(self.get_gmail_message(message_id=resource.resource_id))
+            elif resource.source == "GMAIL" and resource.resource_type == "DRAFT":
+                self._require_allowed(request, "gmail_get_draft")
+                selected.append(self.get_gmail_draft(draft_id=resource.resource_id))
             elif resource.source == "TASKS" and resource.parent_resource_id is not None:
                 self._require_allowed(request, "tasks_get_task")
                 selected.append(

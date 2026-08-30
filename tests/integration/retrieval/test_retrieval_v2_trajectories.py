@@ -21,6 +21,7 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _synthesize_tool_route_candidate,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes.google_gateway import GoogleGatewayCallRecord
 
 
@@ -245,7 +246,7 @@ def test_ret_int_01_initial_search_reaches_evidence_and_retrieval_result(tmp_pat
         database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
         id_prefix="ret-int-01",
     )
@@ -274,7 +275,7 @@ def test_ret_int_02_changed_search_reaches_second_round_evidence(tmp_path: Any) 
         database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
         id_prefix="ret-int-02",
     )
@@ -304,7 +305,7 @@ def test_ret_int_03_next_page_reaches_second_page_evidence(tmp_path: Any) -> Non
         database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
         id_prefix="ret-int-03",
     )
@@ -345,7 +346,7 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
         database_path=_seed_runtime_database(tmp_path, status="ANALYZING"),
         llm_runtime=llm,
         gateway=gateway,
-        checkpoint_database_path=tmp_path / "checkpoints.db",
+        checkpoint_port=sqlite_checkpoint(tmp_path / "checkpoints.db"),
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
         id_prefix="ret-required",
     )
