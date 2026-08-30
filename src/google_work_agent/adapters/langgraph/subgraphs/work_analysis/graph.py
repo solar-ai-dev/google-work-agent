@@ -51,6 +51,9 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.resolve_
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.validate_relations_node import (
     validate_relations_node,
 )
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assemble_work_analysis import (
+    route_after_assemble_work_analysis,
+)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assess_information_gaps import (
     route_after_assess_information_gaps,
 )
@@ -219,10 +222,9 @@ class WorkAnalysisSubgraph:
         )
         graph.add_conditional_edges(
             "finalize",
-            self._route_after_finalize,
+            route_after_assemble_work_analysis,
             {
                 "assess_operational_risks": "assess_operational_risks",
-                "finalize": "finalize",
                 "end": END,
             },
         )
@@ -548,12 +550,6 @@ class WorkAnalysisSubgraph:
         return cast(
             WorkAnalysisLocalState, {**merged, "__work_analysis_retry_confirmation__": False}
         )
-
-    @staticmethod
-    def _route_after_finalize(state: WorkAnalysisLocalState) -> str:
-        if not state.get("__work_analysis_retry_confirmation__"):
-            return "end"
-        return "assess_operational_risks"
 
     def _resolve_gap_disposition(
         self,
