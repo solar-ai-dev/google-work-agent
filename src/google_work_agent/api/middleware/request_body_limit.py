@@ -23,10 +23,15 @@ def install_request_body_limit_middleware(app: FastAPI, container: ApiContainer)
                 if content_length is not None and content_length.isdigit()
                 else None
             )
+            limit_bytes = (
+                container.max_attachment_bytes + 64 * 1024
+                if request.url.path == "/api/v1/attachments/stage"
+                else container.max_request_body_bytes
+            )
             if is_body_too_large(
                 content_length=parsed_length,
                 actual_length=len(body),
-                limit_bytes=container.max_request_body_bytes,
+                limit_bytes=limit_bytes,
             ):
                 request_id = getattr(request.state, "request_id", None)
                 if not isinstance(request_id, str):

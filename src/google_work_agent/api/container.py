@@ -51,6 +51,7 @@ class ApiContainer:
     local_bind_host: str = "127.0.0.1"
     local_bind_port: int = 8000
     max_request_body_bytes: int = 64 * 1024
+    max_attachment_bytes: int = 8 * 1024 * 1024
     api_docs_enabled: bool = False
     launcher_probe_verifier: LauncherProbeVerifier | None = None
     bootstrap_grant_store: Any | None = None

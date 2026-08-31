@@ -320,30 +320,12 @@ export function getGmailResourceDetail(resourceId: string): Promise<GmailResourc
 }
 
 export async function stageAttachment(file: File): Promise<AttachmentDescriptorResponse> {
-  const bytes = new Uint8Array(await readFileBuffer(file));
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
+  const body = new FormData();
+  body.set("command_id", crypto.randomUUID());
+  body.set("file", file, file.name);
   return requestJson("/api/v1/attachments/stage", {
     method: "POST",
-    body: {
-      filename: file.name,
-      mime_type: file.type || "application/octet-stream",
-      data_base64: btoa(binary),
-    },
-  });
-}
-
-function readFileBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
-      else reject(new Error("Attachment file could not be read."));
-    });
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("Attachment file could not be read.")));
-    reader.readAsArrayBuffer(file);
+    body,
   });
 }
 
@@ -360,7 +342,6 @@ export function listTaskResources(
   taskListId?: string | null,
   pageToken?: string | null,
   pageSize = 100,
-  refresh = false,
   statusScope: "incomplete" | "completed" = "incomplete",
 ): Promise<ResourceListResponse> {
   const search = new URLSearchParams({ page_size: String(pageSize) });
@@ -370,7 +351,6 @@ export function listTaskResources(
   if (pageToken) {
     search.set("page_token", pageToken);
   }
-  if (refresh) search.set("refresh", "true");
   if (statusScope === "completed") search.set("status_scope", statusScope);
   return requestJson(`/api/v1/resources/tasks?${search.toString()}`);
 }

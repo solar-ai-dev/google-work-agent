@@ -15,6 +15,7 @@ describe("api index wrappers", () => {
       path: string;
       method: "GET" | "POST" | "PATCH" | "DELETE";
       bodyIncludes?: Record<string, unknown>;
+      formIncludes?: Record<string, string>;
     }> = [
       { call: () => api.getLive(), path: "/health/live", method: "GET" },
       { call: () => api.getReady(), path: "/health/ready", method: "GET" },
@@ -216,7 +217,7 @@ describe("api index wrappers", () => {
         call: () => api.stageAttachment(new File(["abc"], "a.txt", { type: "text/plain" })),
         path: "/api/v1/attachments/stage",
         method: "POST",
-        bodyIncludes: { filename: "a.txt", mime_type: "text/plain", data_base64: "YWJj" },
+        formIncludes: { filename: "a.txt", mime_type: "text/plain" },
       },
       {
         call: () => api.listTaskResources("list-1", "page-2"),
@@ -246,6 +247,15 @@ describe("api index wrappers", () => {
       expect(init.method).toBe(testCase.method);
       if (testCase.bodyIncludes) {
         expect(JSON.parse(String(init.body))).toEqual(expect.objectContaining(testCase.bodyIncludes));
+      }
+      if (testCase.formIncludes) {
+        expect(init.body).toBeInstanceOf(FormData);
+        const form = init.body as FormData;
+        const file = form.get("file") as File;
+        expect(file.name).toBe(testCase.formIncludes.filename);
+        expect(file.type).toBe(testCase.formIncludes.mime_type);
+        expect(form.get("command_id")).toEqual(expect.any(String));
+        expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
       }
     }
   });

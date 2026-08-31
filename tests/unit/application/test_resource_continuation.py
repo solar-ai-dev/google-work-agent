@@ -30,6 +30,7 @@ from google_work_agent.ports.connector.connector_failure import (
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
     GmailThreadDetail,
+    GoogleWorkspaceGatewayError,
     ResourcePage,
 )
 
@@ -39,12 +40,16 @@ class OpaqueConnectorResourceAccess(_OpaqueConnectorResourceAccess):
 
     def list_gmail_threads(self, **kwargs: object) -> ResourceListPage:
         return ListResourcesHandler(self)(
-            ListResourcesQuery(source="gmail", **kwargs)  # type: ignore[arg-type]
+            ListResourcesQuery(
+                source="gmail", session_digest="a" * 64, account_id="account-1", **kwargs
+            )  # type: ignore[arg-type]
         ).page
 
     def list_tasks(self, **kwargs: object) -> ResourceListPage:
         return ListResourcesHandler(self)(
-            ListResourcesQuery(source="tasks", **kwargs)  # type: ignore[arg-type]
+            ListResourcesQuery(
+                source="tasks", session_digest="a" * 64, account_id="account-1", **kwargs
+            )  # type: ignore[arg-type]
         ).page
 
     def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
@@ -331,3 +336,29 @@ def test_count_paths_do_not_allocate_or_resolve_continuations() -> None:
         service.count_calendar_resources(calendar_id=None, time_min=None, time_max=None).total_count
         == 0
     )
+
+
+def test_local_continuation_is_session_account_bound_and_expires() -> None:
+    now_ms = 100
+    store = LocalResourceContinuationStore(
+        token_factory=lambda: "local-bound",
+        now_ms=lambda: now_ms,
+        ttl_ms=10,
+    )
+    scope = ("a" * 64, "account-1", "gmail", "", "20", "metadata")
+    handle = store.issue(scope=scope, provider_page_token="provider-secret")
+
+    with pytest.raises(GoogleWorkspaceGatewayError):
+        store.resolve(
+            scope=("b" * 64, "account-1", "gmail", "", "20", "metadata"),
+            local_handle=handle,
+        )
+    with pytest.raises(GoogleWorkspaceGatewayError):
+        store.resolve(
+            scope=("a" * 64, "account-2", "gmail", "", "20", "metadata"),
+            local_handle=handle,
+        )
+
+    now_ms = 110
+    with pytest.raises(GoogleWorkspaceGatewayError):
+        store.resolve(scope=scope, local_handle=handle)

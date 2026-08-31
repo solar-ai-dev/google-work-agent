@@ -5,7 +5,11 @@ from hashlib import sha256
 from typing import Any, cast
 
 from google_work_agent.application.use_cases.operational_replay import execute_operational_command
+from google_work_agent.ports.connector.connector_failure import (
+    normalize_attachment_staging_failure,
+)
 from google_work_agent.ports.system.attachment_staging_port import (
+    AttachmentStagingError,
     AttachmentStagingPort,
     StagedAttachmentDescriptorV1,
 )
@@ -43,19 +47,22 @@ class CreateStagedAttachmentHandler:
             )
             return value.staged_attachment_id, asdict(value)
 
-        outcome = execute_operational_command(
-            replay_port=self._replay,
-            command_id=command.command_id,
-            operation_kind="CREATE_STAGED_ATTACHMENT",
-            request_payload={
-                "filename": command.filename,
-                "mime_type": command.mime_type,
-                "size_bytes": len(command.file_bytes),
-                "sha256": sha256(command.file_bytes).hexdigest(),
-            },
-            reconcile=self._staging.reconcile_stage,
-            execute=execute,
-        )
+        try:
+            outcome = execute_operational_command(
+                replay_port=self._replay,
+                command_id=command.command_id,
+                operation_kind="CREATE_STAGED_ATTACHMENT",
+                request_payload={
+                    "filename": command.filename,
+                    "mime_type": command.mime_type,
+                    "size_bytes": len(command.file_bytes),
+                    "sha256": sha256(command.file_bytes).hexdigest(),
+                },
+                reconcile=self._staging.reconcile_stage,
+                execute=execute,
+            )
+        except AttachmentStagingError as error:
+            raise normalize_attachment_staging_failure(error) from error
         return CreateStagedAttachmentResult(
             attachment=StagedAttachmentDescriptorV1(**cast(Any, outcome.bounded_result)),
             operation_ref=outcome.operation_ref,

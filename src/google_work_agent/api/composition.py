@@ -97,6 +97,7 @@ from google_work_agent.adapters.runtime import (
 from google_work_agent.adapters.system.default_browser_launcher import DefaultBrowserLauncherAdapter
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
+    MAX_STAGED_FILE_BYTES,
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
@@ -262,6 +263,7 @@ from google_work_agent.application.use_cases.resource.list_calendars import List
 from google_work_agent.application.use_cases.resource.list_resources import ListResourcesHandler
 from google_work_agent.application.use_cases.resource.list_task_lists import ListTaskListsHandler
 from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    LocalResourceContinuationStore,
     OpaqueConnectorResourceAccess,
 )
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
@@ -735,6 +737,7 @@ class DeferredApiContainer:
         self.local_bind_host = host
         self.local_bind_port = port
         self.max_request_body_bytes = 64 * 1024
+        self.max_attachment_bytes = MAX_STAGED_FILE_BYTES
         self.api_docs_enabled = False
         self.frontend_site = None
         self.additional_readiness_checks: tuple[Any, ...] = ()
@@ -1369,6 +1372,7 @@ def build_production_container(
         marker_path=root / "shutdown" / "request.json",
     )
 
+    resource_continuations = LocalResourceContinuationStore(now_ms=clock.now_ms)
     resource_access = OpaqueConnectorResourceAccess(
         ConnectorResourceAccess(
             gateway=read_projection,
@@ -1379,7 +1383,8 @@ def build_production_container(
                 lambda: llm_runtime.settings_service().default_tasklist_id
             ),
             timezone_provider=lambda: llm_runtime.settings_service().timezone,
-        )
+        ),
+        continuation_store=resource_continuations,
     )
     project_recovery_options = ProjectRecoveryOptionsHandler(read_unit_of_work_factory)
     project_error_actions = ProjectErrorActionsHandler(
@@ -1484,6 +1489,7 @@ def build_production_container(
         release_version=RELEASE_VERSION,
         environment="DEVELOPMENT",
         service_instance_id=service_instance_id,
+        max_attachment_bytes=MAX_STAGED_FILE_BYTES,
         local_bind_host=host,
         local_bind_port=port,
         launcher_probe_verifier=DevelopmentLauncherProbeVerifier(service_instance_id),
@@ -1509,10 +1515,12 @@ def build_production_container(
         list_task_lists_handler=ListTaskListsHandler(
             connector_read=connector_reader,
             registry=connector_bundle.tool_registry,
+            continuation_store=resource_continuations,
         ),
         list_calendars_handler=ListCalendarsHandler(
             connector_read=connector_reader,
             registry=connector_bundle.tool_registry,
+            continuation_store=resource_continuations,
         ),
         get_task_resource_detail_handler=GetTaskResourceDetailHandler(
             resolve_handle=resolve_selection_handle,

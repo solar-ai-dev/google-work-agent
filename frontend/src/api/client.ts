@@ -21,14 +21,23 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   if (!path.startsWith("/")) {
     throw new Error("same-origin relative path is required");
   }
+  const isFormData = options.body instanceof FormData;
+  const requestBody: BodyInit | undefined =
+    options.body === undefined
+      ? undefined
+      : options.body instanceof FormData
+        ? options.body
+        : JSON.stringify(options.body);
   const response = await fetch(path, {
     method: options.method ?? "GET",
     credentials: "same-origin",
     headers: {
       "X-Api-Contract-Version": API_CONTRACT_VERSION,
-      ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(options.body === undefined || isFormData
+        ? {}
+        : { "Content-Type": "application/json" }),
     },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: requestBody,
   });
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";

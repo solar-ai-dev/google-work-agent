@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from secrets import token_urlsafe
 from threading import RLock
+from time import time
 from typing import Protocol
 
 from google_work_agent.ports.connector.contracts.google_workspace import (
@@ -132,13 +133,24 @@ class ResourceAccess(Protocol):
 class _StoredContinuation:
     scope: ContinuationScope
     provider_page_token: str
+    expires_at_ms: int
 
 
 class LocalResourceContinuationStore:
     """In-memory map from local opaque handles to provider page tokens."""
 
-    def __init__(self, *, token_factory: Callable[[], str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        token_factory: Callable[[], str] | None = None,
+        now_ms: Callable[[], int] | None = None,
+        ttl_ms: int = 5 * 60 * 1000,
+    ) -> None:
+        if ttl_ms < 1:
+            raise ValueError("resource continuation TTL must be positive")
         self._token_factory = token_factory or (lambda: token_urlsafe(24))
+        self._now_ms = now_ms or (lambda: int(time() * 1000))
+        self._ttl_ms = ttl_ms
         self._values: dict[str, _StoredContinuation] = {}
         self._lock = RLock()
 
@@ -154,12 +166,16 @@ class LocalResourceContinuationStore:
             self._values[local_handle] = _StoredContinuation(
                 scope=scope,
                 provider_page_token=provider_page_token,
+                expires_at_ms=self._now_ms() + self._ttl_ms,
             )
         return local_handle
 
     def resolve(self, *, scope: ContinuationScope, local_handle: str) -> str:
         with self._lock:
             stored = self._values.get(local_handle)
+            if stored is not None and stored.expires_at_ms <= self._now_ms():
+                self._values.pop(local_handle, None)
+                stored = None
         if stored is None or stored.scope != scope:
             raise _invalid_continuation()
         return stored.provider_page_token

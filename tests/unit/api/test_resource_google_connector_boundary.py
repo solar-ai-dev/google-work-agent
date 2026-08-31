@@ -85,9 +85,12 @@ def test_routes_actually_invoke_canonical_application_handlers() -> None:
         assert _called_names(ROUTE_DIR / route_name).intersection(handlers) or "handler(" in source
 
 
-def test_route_wire_ownership_keeps_attachment_base64_decode_in_api() -> None:
+def test_route_wire_ownership_uses_canonical_multipart_attachment_boundary() -> None:
     calls = _called_names(ROUTE_DIR / "attachments.py")
-    assert "b64decode" in calls
+    assert "read" in calls
+    source = _source(ROUTE_DIR / "attachments.py")
+    assert "UploadFile" in source
+    assert "data_base64" not in source
 
 
 def test_owned_routes_and_use_cases_have_zero_provider_sdk_dependencies() -> None:

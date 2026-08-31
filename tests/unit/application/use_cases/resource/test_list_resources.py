@@ -52,7 +52,11 @@ class _Access:
 
 def test_list_resources_projects_bounded_gmail_page_with_default_query() -> None:
     access = _Access()
-    result = ListResourcesHandler(access)(ListResourcesQuery(source="gmail", page_size=20))
+    result = ListResourcesHandler(access)(
+        ListResourcesQuery(
+            source="gmail", session_digest="a" * 64, account_id="account-1", page_size=20
+        )
+    )
 
     assert access.gmail_query == GMAIL_PRIMARY_QUERY
     assert result.page.source == "gmail"
@@ -65,7 +69,9 @@ def test_list_resources_rejects_unknown_source_without_provider_call() -> None:
     access = _Access()
 
     with pytest.raises(ConnectorOperationFailure) as error:
-        ListResourcesHandler(access)(ListResourcesQuery(source="drive"))
+        ListResourcesHandler(access)(
+            ListResourcesQuery(source="drive", session_digest="a" * 64, account_id="account-1")
+        )
 
     assert error.value.detail_code == "RESOURCE_SOURCE_NOT_FOUND"
     assert access.gmail_query is None

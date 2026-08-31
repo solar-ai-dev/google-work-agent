@@ -291,13 +291,26 @@ def test_list_resources_handler_owns_gmail_defaults_projection_and_page_validati
     access = _ResourceAccess()
 
     result = ListResourcesHandler(access)(
-        ListResourcesQuery(source="gmail", query="  ", page_size=500)
+        ListResourcesQuery(
+            source="gmail",
+            session_digest="a" * 64,
+            account_id="account-1",
+            query="  ",
+            page_size=500,
+        )
     )
 
     call = access.gmail_calls[0]
     assert call["query"] == GMAIL_PRIMARY_QUERY
     assert call["page_size"] == 100
-    assert call["continuation_scope"] == ("gmail", "", "500", "metadata")
+    assert call["continuation_scope"] == (
+        "a" * 64,
+        "account-1",
+        "gmail",
+        "",
+        "500",
+        "metadata",
+    )
     item = result.page.items[0]
     assert result.page.next_page_token == "local-next"
     assert item.title == "Subject"
@@ -315,6 +328,8 @@ def test_list_resources_handler_owns_task_resolution_status_and_projection() -> 
     result = ListResourcesHandler(access)(
         ListResourcesQuery(
             source="tasks",
+            session_digest="a" * 64,
+            account_id="account-1",
             task_list_id=None,
             page_size=25,
             status_scope="completed",
@@ -344,13 +359,25 @@ def test_list_resources_handler_owns_task_resolution_status_and_projection() -> 
 def test_list_resources_handler_owns_calendar_defaults_and_90_day_window() -> None:
     access = _ResourceAccess()
 
-    ListResourcesHandler(access)(ListResourcesQuery(source="calendar", page_size=20))
+    ListResourcesHandler(access)(
+        ListResourcesQuery(
+            source="calendar", session_digest="a" * 64, account_id="account-1", page_size=20
+        )
+    )
 
     call = access.calendar_calls[0]
     assert call["calendar_id"] == "primary"
     assert call["single_events"] is True
     assert call["order_by"] == "startTime"
-    assert call["continuation_scope"] == ("calendar", "", "", "", "20")
+    assert call["continuation_scope"] == (
+        "a" * 64,
+        "account-1",
+        "calendar",
+        "",
+        "",
+        "",
+        "20",
+    )
     assert call["time_min"] == "2026-08-23T09:00:00+09:00"
     assert call["time_max"] == "2026-11-21T09:00:00+09:00"
 
@@ -508,13 +535,23 @@ def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> No
     )
     handler = ListResourcesHandler(opaque)
 
-    first = handler(ListResourcesQuery(source="gmail", query="", page_size=20)).page
+    first = handler(
+        ListResourcesQuery(
+            source="gmail",
+            session_digest="a" * 64,
+            account_id="account-1",
+            query="",
+            page_size=20,
+        )
+    ).page
     assert first.next_page_token == "local-next"
     assert first.next_page_token != "provider-next"
 
     second = handler(
         ListResourcesQuery(
             source="gmail",
+            session_digest="a" * 64,
+            account_id="account-1",
             query="",
             page_token=first.next_page_token,
             page_size=20,
@@ -540,7 +577,13 @@ def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_ha
     )
 
     page = ListResourcesHandler(opaque)(
-        ListResourcesQuery(source="tasks", status_scope="completed", page_size=25)
+        ListResourcesQuery(
+            source="tasks",
+            session_digest="a" * 64,
+            account_id="account-1",
+            status_scope="completed",
+            page_size=25,
+        )
     ).page
 
     assert [item.resource_id for item in page.items] == ["task-a", "task-c"]
@@ -572,7 +615,13 @@ def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
     handler = ListResourcesHandler(opaque)
 
     first = handler(
-        ListResourcesQuery(source="tasks", status_scope="incomplete", page_size=20)
+        ListResourcesQuery(
+            source="tasks",
+            session_digest="a" * 64,
+            account_id="account-1",
+            status_scope="incomplete",
+            page_size=20,
+        )
     ).page
     assert first.next_page_token == "local-task-next"
     assert first.next_page_token != "provider-next"
@@ -580,6 +629,8 @@ def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
     second = handler(
         ListResourcesQuery(
             source="tasks",
+            session_digest="a" * 64,
+            account_id="account-1",
             status_scope="incomplete",
             page_token=first.next_page_token,
             page_size=20,

@@ -81,7 +81,7 @@ export function useTasks({
       let pageToken: string | null = null;
       let completedItems: ResourceItem[] = [];
       do {
-        const response = await listTaskResources(parentId, pageToken, PROVIDER_BATCH_SIZE, force && pageToken === null, "completed");
+        const response = await listTaskResources(parentId, pageToken, PROVIDER_BATCH_SIZE, "completed");
         completedItems = [...new Map([...completedItems, ...response.items.filter((item) => item.metadata.task_status === "completed")].map((item) => [item.resource_id, item])).values()];
         pageToken = response.next_page_token;
       } while (pageToken !== null);
@@ -120,7 +120,7 @@ export function useTasks({
         let nextItems = force ? [] : defaultCached?.items ?? items;
         let token = force ? null : defaultCached?.nextPageToken ?? nextPageToken;
         do {
-          const response = await listTaskResources(parentId, token, PROVIDER_BATCH_SIZE, Boolean(force && token === null));
+          const response = await listTaskResources(parentId, token, PROVIDER_BATCH_SIZE);
           nextItems = [...nextItems, ...response.items];
           token = response.next_page_token;
         } while (token !== null);
@@ -143,7 +143,7 @@ export function useTasks({
     if (!force && cachedItems.length > 0 && cachedToken === null) return;
     setLoading(true); setError(null);
     try {
-      const response = await listTaskResources(parentId, force ? null : cachedToken, PROVIDER_BATCH_SIZE, Boolean(force && targetPageIndex === 0));
+      const response = await listTaskResources(parentId, force ? null : cachedToken, PROVIDER_BATCH_SIZE);
       const nextItems = force || cachedItems.length === 0 ? response.items : [...cachedItems, ...response.items];
       const token = response.next_page_token;
       const nextTotal = token === null ? nextItems.length : null;

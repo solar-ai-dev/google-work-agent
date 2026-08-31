@@ -40,17 +40,23 @@ class ConnectorResourceAccess(_ConnectorResourceAccess):
 
     def list_gmail_threads(self, **kwargs: object) -> ResourceListPage:
         return ListResourcesHandler(self)(
-            ListResourcesQuery(source="gmail", **kwargs)  # type: ignore[arg-type]
+            ListResourcesQuery(
+                source="gmail", session_digest="a" * 64, account_id="account-1", **kwargs
+            )  # type: ignore[arg-type]
         ).page
 
     def list_tasks(self, **kwargs: object) -> ResourceListPage:
         return ListResourcesHandler(self)(
-            ListResourcesQuery(source="tasks", **kwargs)  # type: ignore[arg-type]
+            ListResourcesQuery(
+                source="tasks", session_digest="a" * 64, account_id="account-1", **kwargs
+            )  # type: ignore[arg-type]
         ).page
 
     def list_calendar_resources(self, **kwargs: object) -> ResourceListPage:
         return ListResourcesHandler(self)(
-            ListResourcesQuery(source="calendar", **kwargs)  # type: ignore[arg-type]
+            ListResourcesQuery(
+                source="calendar", session_digest="a" * 64, account_id="account-1", **kwargs
+            )  # type: ignore[arg-type]
         ).page
 
     def count_gmail_threads(self, *, query: str = "") -> ResourceCount:

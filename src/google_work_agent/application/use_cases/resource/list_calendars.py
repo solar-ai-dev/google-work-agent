@@ -4,13 +4,28 @@ from dataclasses import dataclass
 from typing import cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    LocalResourceContinuationStore,
+)
+from google_work_agent.ports.connector.connector_failure import normalize_google_workspace_failure
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
 
 
 @dataclass(frozen=True, slots=True)
 class ListCalendarsQuery:
+    session_digest: str
+    account_id: str
     page_token: str | None = None
     page_size: int = 50
+
+    def __post_init__(self) -> None:
+        if (
+            len(self.session_digest) != 64
+            or any(character not in "0123456789abcdef" for character in self.session_digest)
+            or not self.account_id
+        ):
+            raise ValueError("resource continuation principal is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,22 +36,46 @@ class CalendarContainerListResponseV1:
 
 
 class ListCalendarsHandler:
-    def __init__(self, *, connector_read: ConnectorReadPort, registry: SignedToolRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        connector_read: ConnectorReadPort,
+        registry: SignedToolRegistry,
+        continuation_store: LocalResourceContinuationStore,
+    ) -> None:
         self._connector_read = connector_read
         self._registry = registry
+        self._continuation_store = continuation_store
 
     def __call__(self, query: ListCalendarsQuery) -> CalendarContainerListResponseV1:
         if not 1 <= query.page_size <= 100:
             raise ValueError("page_size must be in 1..100")
+        scope = (query.session_digest, query.account_id, "calendars", str(query.page_size))
+        try:
+            provider_page_token = (
+                None
+                if query.page_token is None
+                else self._continuation_store.resolve(scope=scope, local_handle=query.page_token)
+            )
+        except GoogleWorkspaceGatewayError as error:
+            raise normalize_google_workspace_failure(error) from error
         result = self._connector_read.execute_read(
             self._registry.bind_required("google_workspace", "calendar_list_calendars", "READ"),
-            {"page_token": query.page_token, "page_size": query.page_size},
+            {"page_token": provider_page_token, "page_size": query.page_size},
         )
         raw = result.output.get("items", [])
         if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
             raise ValueError("calendar-list result is malformed")
+        next_page_token = (
+            None
+            if result.next_page_token is None
+            else self._continuation_store.issue(
+                scope=scope,
+                provider_page_token=result.next_page_token,
+            )
+        )
         return CalendarContainerListResponseV1(
-            1, tuple(cast(list[dict[str, JsonValue]], raw)), result.next_page_token
+            1, tuple(cast(list[dict[str, JsonValue]], raw)), next_page_token
         )
 
 

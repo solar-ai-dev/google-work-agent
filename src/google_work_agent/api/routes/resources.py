@@ -66,10 +66,16 @@ def list_task_lists(
     x_api_contract_version: str | None = Header(default=None),
 ) -> dict[str, object]:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
+    session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.list_task_lists_handler
     if not isinstance(handler, ListTaskListsHandler):
         _raise_resource_handler_unavailable(request)
-    result = cast(ListTaskListsHandler, handler)(ListTaskListsQuery(page_token, page_size))
+    try:
+        result = cast(ListTaskListsHandler, handler)(
+            ListTaskListsQuery(session_digest, account_id, page_token, page_size)
+        )
+    except ConnectorOperationFailure as error:
+        _raise_connector_failure(error, request_id=request.state.request_id)
     return cast(dict[str, object], asdict(result))
 
 
@@ -82,10 +88,16 @@ def list_calendars(
     x_api_contract_version: str | None = Header(default=None),
 ) -> dict[str, object]:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
+    session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.list_calendars_handler
     if not isinstance(handler, ListCalendarsHandler):
         _raise_resource_handler_unavailable(request)
-    result = cast(ListCalendarsHandler, handler)(ListCalendarsQuery(page_token, page_size))
+    try:
+        result = cast(ListCalendarsHandler, handler)(
+            ListCalendarsQuery(session_digest, account_id, page_token, page_size)
+        )
+    except ConnectorOperationFailure as error:
+        _raise_connector_failure(error, request_id=request.state.request_id)
     return cast(dict[str, object], asdict(result))
 
 
@@ -105,6 +117,7 @@ def list_gmail_resources(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
+    session_digest, account_id = _selection_identity(request, dependencies)
     try:
         handler = dependencies.list_resources_handler
         if not isinstance(handler, ListResourcesHandler):
@@ -112,6 +125,8 @@ def list_gmail_resources(
         result = handler(
             ListResourcesQuery(
                 source="gmail",
+                session_digest=session_digest,
+                account_id=account_id,
                 query=query,
                 page_token=page_token,
                 page_size=page_size,
@@ -123,7 +138,12 @@ def list_gmail_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=_items_with_selection_handles(request, dependencies, page.items),
+        items=_items_with_selection_handles(
+            dependencies,
+            page.items,
+            session_digest=session_digest,
+            account_id=account_id,
+        ),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -134,10 +154,8 @@ def get_resource_count(
     request: Request,
     dependencies: ResourceRouteDependency,
     query: str = Query(default=""),
-    refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceCountResponse:
-    del refresh
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -214,6 +232,8 @@ def get_task_resource_detail(
         )
     except ValueError as error:
         _raise_invalid_selection(error, request_id=request.state.request_id)
+    except ConnectorOperationFailure as error:
+        _raise_connector_failure(error, request_id=request.state.request_id)
     return {"schema_version": 1, "detail": result.detail}
 
 
@@ -241,6 +261,8 @@ def get_calendar_resource_detail(
         )
     except ValueError as error:
         _raise_invalid_selection(error, request_id=request.state.request_id)
+    except ConnectorOperationFailure as error:
+        _raise_connector_failure(error, request_id=request.state.request_id)
     return {"schema_version": 1, "detail": result.detail}
 
 
@@ -252,16 +274,15 @@ def list_task_resources(
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=100, ge=1, le=100),
     status_scope: str = Query(default="incomplete", pattern="^(incomplete|completed)$"),
-    refresh: bool = Query(default=False),
     x_api_contract_version: str | None = Header(default=None),
 ) -> ResourceListResponse:
-    del refresh
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
+    session_digest, account_id = _selection_identity(request, dependencies)
     try:
         handler = dependencies.list_resources_handler
         if not isinstance(handler, ListResourcesHandler):
@@ -269,6 +290,8 @@ def list_task_resources(
         result = handler(
             ListResourcesQuery(
                 source="tasks",
+                session_digest=session_digest,
+                account_id=account_id,
                 task_list_id=task_list_id,
                 page_token=page_token,
                 page_size=page_size,
@@ -280,7 +303,12 @@ def list_task_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=_items_with_selection_handles(request, dependencies, page.items),
+        items=_items_with_selection_handles(
+            dependencies,
+            page.items,
+            session_digest=session_digest,
+            account_id=account_id,
+        ),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -303,6 +331,7 @@ def list_calendar_resources(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
+    session_digest, account_id = _selection_identity(request, dependencies)
     try:
         handler = dependencies.list_resources_handler
         if not isinstance(handler, ListResourcesHandler):
@@ -310,6 +339,8 @@ def list_calendar_resources(
         result = handler(
             ListResourcesQuery(
                 source="calendar",
+                session_digest=session_digest,
+                account_id=account_id,
                 calendar_id=calendar_id,
                 time_min=time_min,
                 time_max=time_max,
@@ -322,7 +353,12 @@ def list_calendar_resources(
     page = result.page
     return ResourceListResponse(
         source=page.source,
-        items=_items_with_selection_handles(request, dependencies, page.items),
+        items=_items_with_selection_handles(
+            dependencies,
+            page.items,
+            session_digest=session_digest,
+            account_id=account_id,
+        ),
         next_page_token=page.next_page_token,
         api_contract_version=dependencies.api_contract_version,
     )
@@ -401,21 +437,12 @@ def _raise_invalid_selection(error: ValueError, *, request_id: str) -> None:
 
 
 def _items_with_selection_handles(
-    request: Request,
     dependencies: ResourceRouteDependency,
     items: tuple[ResourceListItem, ...],
+    *,
+    session_digest: str,
+    account_id: str,
 ) -> list[dict[str, object]]:
-    session_token = request.cookies.get(local_session_cookie_name(dependencies.service_instance_id))
-    account_id = dependencies.current_account_id()
-    if session_token is None or account_id is None:
-        raise ApiRequestError(
-            error_code="LOCAL_SESSION_INVALID",
-            user_message="Resource selection requires an active account and local session.",
-            status_code=401,
-            request_id=request.state.request_id,
-            detail_code="RESOURCE_SELECTION_BINDING_UNAVAILABLE",
-        )
-    session_digest = calculate_session_digest(session_token)
     projected: list[dict[str, object]] = []
     for item in items:
         values = asdict(item)

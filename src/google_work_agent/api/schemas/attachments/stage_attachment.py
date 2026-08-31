@@ -1,11 +1,11 @@
-"""Stage-attachment wire request."""
+"""Stage-attachment multipart command metadata."""
+
+from pydantic import Field
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
 class StageAttachmentRequest(ApiModel):
-    """Base64-encoded JSON upload body."""
+    """Typed non-file fields of the canonical multipart request."""
 
-    filename: str
-    mime_type: str
-    data_base64: str
+    command_id: str = Field(min_length=1, max_length=128)

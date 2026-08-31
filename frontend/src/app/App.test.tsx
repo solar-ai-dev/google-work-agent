@@ -2303,7 +2303,7 @@ test("Tasks refresh keeps stale UI until a fresh provider result replaces its ca
 
   await user.click(screen.getByRole("button", { name: "현재 목록 새로고침" }));
   await waitFor(() => expect(requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length).toBe(taskCallsBeforeRefresh + 1));
-  expect(requests.at(-1)?.path).toContain("refresh=true");
+  expect(requests.at(-1)?.path).not.toContain("refresh=");
   expect(screen.getByRole("tab", { name: /태스크.*23/ })).toBeInTheDocument();
   expect(screen.getByText("할 일 1")).toBeInTheDocument();
 
@@ -2354,7 +2354,7 @@ test("Tasks date-sort refresh invalidates its cached result and rebuilds it from
   await waitFor(() => expect(
     requests.filter((request) => request.path.startsWith("/api/v1/resources/tasks?") && !request.path.includes("status_scope=completed")).length,
   ).toBe(callsBeforeRefresh + 1));
-  expect(requests.at(-1)?.path).toContain("refresh=true");
+  expect(requests.at(-1)?.path).not.toContain("refresh=");
   expect(await screen.findByRole("tab", { name: /태스크.*21/ })).toBeInTheDocument();
   expect(screen.queryByText("할 일 22")).not.toBeInTheDocument();
   expect(requests.some((request) => request.path === "/api/v1/resources/tasks/count")).toBe(false);

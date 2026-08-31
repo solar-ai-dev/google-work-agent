@@ -116,6 +116,8 @@ class ListResourceAccess(Protocol):
 @dataclass(frozen=True, slots=True)
 class ListResourcesQuery:
     source: str
+    session_digest: str
+    account_id: str
     query: str = ""
     page_token: str | None = None
     page_size: int = 20
@@ -125,6 +127,14 @@ class ListResourcesQuery:
     calendar_id: str | None = None
     time_min: str | None = None
     time_max: str | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            len(self.session_digest) != 64
+            or any(character not in "0123456789abcdef" for character in self.session_digest)
+            or not self.account_id
+        ):
+            raise ValueError("resource continuation principal is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +175,8 @@ class ListResourcesHandler:
             page_size=_validated_page_size(query.page_size),
             include_thread_metadata=query.include_thread_metadata,
             continuation_scope=(
+                query.session_digest,
+                query.account_id,
                 "gmail",
                 query.query.strip(),
                 str(query.page_size),
@@ -197,6 +209,8 @@ class ListResourcesHandler:
             show_hidden=False,
             show_deleted=False,
             continuation_scope=(
+                query.session_digest,
+                query.account_id,
                 "tasks",
                 query.task_list_id or "",
                 str(query.page_size),
@@ -256,6 +270,8 @@ class ListResourcesHandler:
             single_events=True,
             order_by="startTime",
             continuation_scope=(
+                query.session_digest,
+                query.account_id,
                 "calendar",
                 query.calendar_id or "",
                 query.time_min or "",
