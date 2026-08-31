@@ -275,8 +275,8 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
     }
     if (path === "/api/v1/conversations" && init?.method === "POST") {
       conversationCreated = true;
-      createdConversationId = JSON.parse(String(init.body)).conversation_id;
-      return jsonResponse({ conversation_id: createdConversationId });
+      createdConversationId = "conversation-1";
+      return jsonResponse(conversationItem(createdConversationId, "Project sync", 2));
     }
     if (path === "/api/v1/runs" && init?.method === "POST") {
       return jsonResponse({
