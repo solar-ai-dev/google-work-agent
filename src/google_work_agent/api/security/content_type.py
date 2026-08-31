@@ -16,3 +16,19 @@ def is_allowed_json_content_type(content_type: str | None) -> bool:
         if normalized != "charset=utf-8":
             return False
     return True
+
+
+def is_allowed_mutation_content_type(*, content_type: str | None, path: str) -> bool:
+    if path != "/api/v1/attachments/stage":
+        return is_allowed_json_content_type(content_type)
+    if content_type is None:
+        return False
+    media_type, *parameters = (part.strip() for part in content_type.split(";"))
+    if media_type.lower() != "multipart/form-data":
+        return False
+    boundary_parameters = [
+        parameter.split("=", 1)[1].strip()
+        for parameter in parameters
+        if parameter.lower().startswith("boundary=") and "=" in parameter
+    ]
+    return len(boundary_parameters) == 1 and bool(boundary_parameters[0])

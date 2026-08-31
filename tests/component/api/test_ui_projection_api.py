@@ -39,7 +39,7 @@ from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
-from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import (
     InMemoryLocalSessionManager,
     calculate_session_digest,
@@ -319,9 +319,9 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         bootstrap = client.post(
             "/api/v1/session/bootstrap",
             json={
+                "schema_version": 1,
                 "bootstrap_secret": "bootstrap-secret",
-                "service_instance_id": "svc-ui",
-                "api_contract_version": "1",
+                "frontend_api_contract_version": "1",
             },
             headers=headers,
         )
@@ -420,7 +420,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert created.status_code == 201
 
         task_handle = tasks.json()["items"][0]["selection_handle"]
-        session_token = client.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+        session_token = client.cookies.get(local_session_cookie_name("svc-ui"))
         assert session_token is not None
         session_digest = calculate_session_digest(session_token)
         invalid_handles = (

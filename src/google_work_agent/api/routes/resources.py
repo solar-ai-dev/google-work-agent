@@ -14,7 +14,7 @@ from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.schemas.resources.count_resources import ResourceCountResponse
 from google_work_agent.api.schemas.resources.get_gmail_resource import GmailResourceDetailResponse
 from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
-from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
     GetCalendarResourceDetailHandler,
@@ -377,7 +377,7 @@ def _raise_resource_handler_unavailable(request: Request) -> NoReturn:
 
 
 def _selection_identity(request: Request, dependencies: ResourceRouteDependency) -> tuple[str, str]:
-    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    session_token = request.cookies.get(local_session_cookie_name(dependencies.service_instance_id))
     account_id = dependencies.current_account_id()
     if session_token is None or account_id is None:
         raise ApiRequestError(
@@ -405,7 +405,7 @@ def _items_with_selection_handles(
     dependencies: ResourceRouteDependency,
     items: tuple[ResourceListItem, ...],
 ) -> list[dict[str, object]]:
-    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    session_token = request.cookies.get(local_session_cookie_name(dependencies.service_instance_id))
     account_id = dependencies.current_account_id()
     if session_token is None or account_id is None:
         raise ApiRequestError(

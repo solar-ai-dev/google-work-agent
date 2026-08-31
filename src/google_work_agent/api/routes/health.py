@@ -1,4 +1,4 @@
-"""Health-check routes."""
+"""Process liveness and infrastructure readiness routes."""
 
 from fastapi import APIRouter, Request
 

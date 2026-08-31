@@ -13,6 +13,7 @@ from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
     GetRuntimeStatusHandler,
@@ -45,7 +46,11 @@ class _LlmStatusStub:
         return LlmRuntimeStatusV1(1, provider, False, "DISABLED", None, None)
 
 
-def _build_client(*, with_probe: bool = True) -> TestClient:
+def _build_client(
+    *,
+    with_probe: bool = True,
+    grant_service_instance_id: str = "svc-test",
+) -> TestClient:
     clock = FakeClockPort(100)
     bind_host = "127.0.0.1"
     bind_port = 8765
@@ -53,7 +58,7 @@ def _build_client(*, with_probe: bool = True) -> TestClient:
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
         secret="CANARY_BOOTSTRAP_SECRET",
-        service_instance_id="svc-test",
+        service_instance_id=grant_service_instance_id,
         now_ms=clock.now_ms(),
     )
     container = ApiContainer(
@@ -136,9 +141,9 @@ def test_bootstrap_sets_cookie_and_runtime_requires_session() -> None:
         bootstrap = client.post(
             "/api/v1/session/bootstrap",
             json={
+                "schema_version": 1,
                 "bootstrap_secret": "CANARY_BOOTSTRAP_SECRET",
-                "service_instance_id": "svc-test",
-                "api_contract_version": "1",
+                "frontend_api_contract_version": "1",
             },
             headers=headers,
         )
@@ -146,9 +151,71 @@ def test_bootstrap_sets_cookie_and_runtime_requires_session() -> None:
 
     assert unauthorized.status_code == 401
     assert bootstrap.status_code == 200
+    assert bootstrap.json()["schema_version"] == 1
+    assert bootstrap.json()["compatibility"] == "COMPATIBLE"
     assert bootstrap.headers["cache-control"] == "no-store"
-    assert "gwa_session=" in bootstrap.headers["set-cookie"]
+    assert f"{local_session_cookie_name('svc-test')}=" in bootstrap.headers["set-cookie"]
+    assert "CANARY_BOOTSTRAP_SECRET" not in bootstrap.text
     assert authorized.status_code == 200
+
+
+def test_incompatible_session_blocks_mutation_and_sse() -> None:
+    headers = {
+        "Origin": "http://127.0.0.1:8765",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+    }
+    with _build_client() as client:
+        bootstrap = client.post(
+            "/api/v1/session/bootstrap",
+            json={
+                "schema_version": 1,
+                "bootstrap_secret": "CANARY_BOOTSTRAP_SECRET",
+                "frontend_api_contract_version": "unsupported",
+            },
+            headers=headers,
+        )
+        mutation = client.post(
+            "/api/v1/conversations",
+            json={
+                "command_id": "command-1",
+                "conversation_id": "conversation-1",
+                "account_id": "account-1",
+                "title": "Blocked",
+                "api_contract_version": "1",
+            },
+            headers=headers,
+        )
+        sse = client.get("/api/v1/runs/run-1/events", headers=headers)
+
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["compatibility"] == "INCOMPATIBLE"
+    assert mutation.status_code == 409
+    assert sse.status_code == 409
+    assert mutation.json()["detail_code"] == "API_CONTRACT_INCOMPATIBLE"
+
+
+def test_bootstrap_grant_is_bound_to_the_current_service_instance() -> None:
+    headers = {
+        "Origin": "http://127.0.0.1:8765",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+    }
+    with _build_client(grant_service_instance_id="different-service") as client:
+        response = client.post(
+            "/api/v1/session/bootstrap",
+            json={
+                "schema_version": 1,
+                "bootstrap_secret": "CANARY_BOOTSTRAP_SECRET",
+                "frontend_api_contract_version": "1",
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail_code"] == "BOOTSTRAP_INSTANCE_MISMATCH"
 
 
 def test_bootstrap_rejection_and_unknown_api_path_do_not_echo_canaries() -> None:
@@ -162,9 +229,9 @@ def test_bootstrap_rejection_and_unknown_api_path_do_not_echo_canaries() -> None
         bootstrap = client.post(
             "/api/v1/session/bootstrap",
             json={
+                "schema_version": 1,
                 "bootstrap_secret": "CANARY_BOOTSTRAP_SECRET_typo",
-                "service_instance_id": "svc-test",
-                "api_contract_version": "1",
+                "frontend_api_contract_version": "1",
             },
             headers=headers,
         )

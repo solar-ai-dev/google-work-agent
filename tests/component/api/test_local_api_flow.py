@@ -228,9 +228,9 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         bootstrap_response = client.post(
             "/api/v1/session/bootstrap",
             json={
+                "schema_version": 1,
                 "bootstrap_secret": "bootstrap-secret",
-                "service_instance_id": "svc-test",
-                "api_contract_version": "1",
+                "frontend_api_contract_version": "1",
             },
             headers=headers,
         )

@@ -1,20 +1,17 @@
-"""Local session bootstrap routes."""
+"""Local Session bootstrap route."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response, status
 
 from google_work_agent.api.dependencies.access_control import enforce_access
-from google_work_agent.api.dependencies.contract_version import (
-    enforce_supported_api_contract_version,
-)
 from google_work_agent.api.dependencies.sessions import SessionRouteDependency
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.schemas.sessions.bootstrap_session import (
     BootstrapSessionRequest,
     BootstrapSessionResponse,
 )
-from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/session")
@@ -28,22 +25,8 @@ def bootstrap_session(
     dependencies: SessionRouteDependency,
 ) -> BootstrapSessionResponse:
     enforce_access(request, policy=EndpointPolicy.BOOTSTRAP_EXCHANGE)
-    enforce_supported_api_contract_version(
-        supported_version=dependencies.api_contract_version,
-        request_id=request.state.request_id,
-        request_version=payload.api_contract_version,
-    )
-    if payload.service_instance_id != dependencies.service_instance_id:
-        raise ApiRequestError(
-            error_code="INVALID_ARGUMENT",
-            user_message="Service instance mismatch.",
-            status_code=409,
-            request_id=request.state.request_id,
-            detail_code="SERVICE_INSTANCE_MISMATCH",
-        )
-    store = dependencies.bootstrap_grant_store
-    session_manager = dependencies.local_session_manager
-    if store is None or session_manager is None:
+    service = dependencies.bootstrap_session_service
+    if service is None:
         raise ApiRequestError(
             error_code="INTERNAL_ERROR",
             user_message="Bootstrap is not configured.",
@@ -51,26 +34,22 @@ def bootstrap_session(
             request_id=request.state.request_id,
             detail_code="BOOTSTRAP_NOT_CONFIGURED",
         )
-    consume_result = store.consume(
-        secret=payload.bootstrap_secret,
-        service_instance_id=payload.service_instance_id,
+    result = service.establish(
+        bootstrap_secret=payload.bootstrap_secret,
+        frontend_api_contract_version=payload.frontend_api_contract_version,
         now_ms=dependencies.clock.now_ms(),
     )
-    if not consume_result.allowed:
+    if not result.allowed or result.session_token is None or result.compatibility is None:
         raise ApiRequestError(
             error_code="LOCAL_SESSION_INVALID",
             user_message="Bootstrap exchange rejected.",
             status_code=401,
             request_id=request.state.request_id,
-            detail_code=consume_result.detail_code,
+            detail_code=result.detail_code,
         )
-    token = session_manager.issue(
-        service_instance_id=dependencies.service_instance_id,
-        now_ms=dependencies.clock.now_ms(),
-    )
     response.set_cookie(
-        key=LOCAL_SESSION_COOKIE_NAME,
-        value=token,
+        key=local_session_cookie_name(dependencies.service_instance_id),
+        value=result.session_token,
         httponly=True,
         secure=False,
         samesite="strict",
@@ -81,4 +60,5 @@ def bootstrap_session(
         session_established=True,
         service_instance_id=dependencies.service_instance_id,
         api_contract_version=dependencies.api_contract_version,
+        compatibility=result.compatibility,
     )

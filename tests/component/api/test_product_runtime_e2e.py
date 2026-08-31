@@ -61,6 +61,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpoint
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
@@ -523,7 +524,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             selection_handle = None
             if write_operation == "send_gmail":
                 session_token = "product-e2e-session"
-                client.cookies.set("gwa_session", session_token)
+                client.cookies.set(local_session_cookie_name("svc-product"), session_token)
                 selection_handle = IssueSelectionHandle(
                     signing_secret=b"s" * 32,
                     service_instance_id="svc-product",

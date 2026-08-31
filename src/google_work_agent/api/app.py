@@ -20,13 +20,13 @@ from google_work_agent.api.routes import (
     diagnostics,
     events,
     google_connections,
-    health_checks,
+    health,
     identities,
     llm_connections,
     resources,
     runs,
     runtime_summaries,
-    sessions,
+    session,
     settings,
 )
 from google_work_agent.api.routes.frontend_assets import create_frontend_asset_router
@@ -51,8 +51,8 @@ def create_app(container: ApiContainer) -> FastAPI:
     install_error_response_handlers(app, container)
 
     for route in (
-        health_checks,
-        sessions,
+        health,
+        session,
         google_connections,
         runtime_summaries,
         identities,

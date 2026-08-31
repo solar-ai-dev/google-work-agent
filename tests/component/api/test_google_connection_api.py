@@ -221,9 +221,9 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             bootstrap = client.post(
                 "/api/v1/session/bootstrap",
                 json={
+                    "schema_version": 1,
                     "bootstrap_secret": "bootstrap-secret",
-                    "service_instance_id": "svc-google-api",
-                    "api_contract_version": "1",
+                    "frontend_api_contract_version": "1",
                 },
                 headers=headers,
             )

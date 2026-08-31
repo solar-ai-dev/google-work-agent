@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
@@ -28,21 +30,67 @@ def test_bootstrap_grant_is_one_time_and_ttl_bound() -> None:
 
     assert accepted.allowed is True
     assert reused.allowed is False
-    assert reused.detail_code == "BOOTSTRAP_SECRET_CONSUMED"
+    assert reused.detail_code == "BOOTSTRAP_REUSED"
 
     store.provision(secret="secret-2", service_instance_id="svc-1", now_ms=200)
     expired = store.consume(secret="secret-2", service_instance_id="svc-1", now_ms=211)
     assert expired.allowed is False
-    assert expired.detail_code == "BOOTSTRAP_SECRET_EXPIRED"
+    assert expired.detail_code == "BOOTSTRAP_EXPIRED"
 
 
 def test_local_session_manager_binds_service_instance() -> None:
     manager = InMemoryLocalSessionManager()
     token = manager.issue(service_instance_id="svc-1", now_ms=100)
 
-    assert manager.validate(token=token, service_instance_id="svc-1") is True
-    assert manager.validate(token=token, service_instance_id="svc-2") is False
-    assert manager.validate(token=None, service_instance_id="svc-1") is False
+    assert manager.resolve(token=token, service_instance_id="svc-1", now_ms=100) is not None
+    assert manager.resolve(token=token, service_instance_id="svc-2", now_ms=100) is None
+    assert manager.resolve(token=None, service_instance_id="svc-1", now_ms=100) is None
+
+
+def test_local_session_manager_rejects_expired_and_revoked_sessions() -> None:
+    manager = InMemoryLocalSessionManager(ttl_ms=10)
+    expired = manager.issue(service_instance_id="svc-1", now_ms=100)
+    assert manager.resolve(token=expired, service_instance_id="svc-1", now_ms=111) is None
+
+    revoked = manager.issue(service_instance_id="svc-1", now_ms=200)
+    manager.invalidate_all()
+    assert manager.resolve(token=revoked, service_instance_id="svc-1", now_ms=201) is None
+
+
+def test_bootstrap_failure_limit_expires_the_active_grant() -> None:
+    store = InMemoryBootstrapGrantStore()
+    store.provision(secret="valid", service_instance_id="svc-1", now_ms=100)
+
+    for attempt in range(3):
+        rejected = store.consume(
+            secret=f"invalid-{attempt}",
+            service_instance_id="svc-1",
+            now_ms=101 + attempt,
+        )
+        assert rejected.allowed is False
+
+    locked = store.consume(secret="valid", service_instance_id="svc-1", now_ms=105)
+    assert locked.detail_code == "BOOTSTRAP_EXPIRED"
+
+
+def test_bootstrap_consume_is_atomic_under_concurrency() -> None:
+    store = InMemoryBootstrapGrantStore()
+    store.provision(secret="valid", service_instance_id="svc-1", now_ms=100)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = tuple(
+            executor.map(
+                lambda _: store.consume(
+                    secret="valid",
+                    service_instance_id="svc-1",
+                    now_ms=101,
+                ),
+                range(8),
+            )
+        )
+
+    assert sum(result.allowed for result in results) == 1
+    assert {result.detail_code for result in results if not result.allowed} == {"BOOTSTRAP_REUSED"}
 
 
 def test_local_api_access_guard_enforces_origin_fetch_metadata_and_session() -> None:
@@ -110,3 +158,38 @@ def test_local_api_access_guard_enforces_origin_fetch_metadata_and_session() -> 
     assert denied.allowed is False
     assert denied.detail_code == "ORIGIN_REQUIRED"
     assert allowed.allowed is True
+
+
+def test_attachment_staging_is_the_only_multipart_mutation_exception() -> None:
+    manager = InMemoryLocalSessionManager()
+    session_token = manager.issue(service_instance_id="svc-1", now_ms=100)
+    guard = LocalApiAccessGuard(
+        expected_host="127.0.0.1:8765",
+        expected_origin="http://127.0.0.1:8765",
+        service_instance_id="svc-1",
+        session_manager=manager,
+        release_version="test",
+        environment="test",
+        now_ms=lambda: 100,
+    )
+
+    def authorize(path: str) -> bool:
+        return guard.authorize(
+            ApiRequestContext(
+                method="POST",
+                path=path,
+                request_id="request-1",
+                client_host="127.0.0.1",
+                host="127.0.0.1:8765",
+                origin="http://127.0.0.1:8765",
+                content_type="multipart/form-data; boundary=bounded",
+                session_token=session_token,
+                sec_fetch_site="same-origin",
+                sec_fetch_mode="cors",
+                sec_fetch_dest="empty",
+            ),
+            endpoint_policy=EndpointPolicy.API_SESSION_REQUIRED,
+        ).allowed
+
+    assert authorize("/api/v1/attachments/stage") is True
+    assert authorize("/api/v1/conversations") is False

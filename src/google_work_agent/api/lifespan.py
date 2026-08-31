@@ -1,14 +1,16 @@
 """Own FastAPI startup and shutdown lifecycle orchestration."""
 
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
 
 from google_work_agent.api.container import ApiContainer
 
 
-def build_lifespan(container: ApiContainer) -> Callable[[FastAPI], AsyncIterator[None]]:
+def build_lifespan(
+    container: ApiContainer,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.container = container

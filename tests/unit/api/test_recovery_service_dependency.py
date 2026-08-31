@@ -17,6 +17,7 @@ def _request_with_run_composition() -> tuple[Request, object]:
 
     app.state.container = SimpleNamespace(
         api_contract_version="1",
+        service_instance_id="svc-test",
         current_account_id_provider=lambda: None,
         unit_of_work_factory=unit_of_work_factory,
         graph_profile="SIX_ROLE_BASELINE",

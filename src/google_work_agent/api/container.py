@@ -8,7 +8,6 @@ from typing import Any
 
 from fastapi import Request
 
-from google_work_agent.api.security.policies import DEFAULT_ENDPOINT_POLICY_REGISTRY
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
 )
@@ -56,7 +55,6 @@ class ApiContainer:
     launcher_probe_verifier: LauncherProbeVerifier | None = None
     bootstrap_grant_store: Any | None = None
     local_session_manager: Any | None = None
-    endpoint_policy_registry: Any = DEFAULT_ENDPOINT_POLICY_REGISTRY
     start_run_service: Any | None = None
     graph_profile: Any = "SIX_ROLE_BASELINE"
     graph_version: str = "resume-contract-v1"

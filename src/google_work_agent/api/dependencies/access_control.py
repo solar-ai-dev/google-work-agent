@@ -4,7 +4,7 @@ from fastapi import Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.errors.api_request_error import ApiRequestError
-from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -33,7 +33,9 @@ def enforce_access(request: Request, *, policy: EndpointPolicy) -> None:
             origin=request.headers.get("origin"),
             content_type=request.headers.get("content-type"),
             content_length=_parse_content_length(request.headers.get("content-length")),
-            session_token=request.cookies.get(LOCAL_SESSION_COOKIE_NAME),
+            session_token=request.cookies.get(
+                local_session_cookie_name(container.service_instance_id)
+            ),
             sec_fetch_site=request.headers.get("sec-fetch-site"),
             sec_fetch_mode=request.headers.get("sec-fetch-mode"),
             sec_fetch_dest=request.headers.get("sec-fetch-dest"),

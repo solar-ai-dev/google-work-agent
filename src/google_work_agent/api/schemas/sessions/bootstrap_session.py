@@ -1,14 +1,19 @@
 """Bootstrap-session wire contracts."""
 
-from google_work_agent.api.schemas.model import ApiModel, ContractVersionedRequest
+from typing import Literal
+
+from google_work_agent.api.schemas.model import ApiModel
 
 
-class BootstrapSessionRequest(ContractVersionedRequest):
+class BootstrapSessionRequest(ApiModel):
+    schema_version: Literal[1]
     bootstrap_secret: str
-    service_instance_id: str
+    frontend_api_contract_version: str
 
 
 class BootstrapSessionResponse(ApiModel):
+    schema_version: Literal[1] = 1
     session_established: bool
     service_instance_id: str
     api_contract_version: str
+    compatibility: Literal["COMPATIBLE", "INCOMPATIBLE"]

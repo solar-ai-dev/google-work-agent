@@ -721,7 +721,6 @@ class DeferredApiContainer:
         self.startup_callbacks = (self._initialize,)
         self.client_address_resolver: Callable[[Any], str | None] | None = None
         self.operational_log_sink = None
-        self.endpoint_policy_registry = None
         self._bootstrap_secret = bootstrap_secret
         self._bootstrap_grant_store = InMemoryBootstrapGrantStore()
         self._session_manager = InMemoryLocalSessionManager()
@@ -876,9 +875,9 @@ def build_production_container(
     runtime_root: Path,
     working_directory: Path,
     mcp_manifest_version: str,
+    bootstrap_secret: str,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
-    bootstrap_secret: str | None = None,
     service_instance_id: str | None = None,
     safe_mode_controller: SafeModeController | None = None,
     mcp_module_name: str | None = None,
@@ -1302,9 +1301,8 @@ def build_production_container(
 
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
-    secret = bootstrap_secret or secrets.token_urlsafe(32)
     grant_store.provision(
-        secret=secret,
+        secret=bootstrap_secret,
         service_instance_id=service_instance_id,
         now_ms=clock.now_ms(),
     )

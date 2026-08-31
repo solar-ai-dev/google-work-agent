@@ -25,7 +25,7 @@ from google_work_agent.api.schemas.runs.recovery import RecoveryUiProjectionV1
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
-from google_work_agent.api.security.cookies import LOCAL_SESSION_COOKIE_NAME
+from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.use_cases.recovery.project_recovery_options import (
     ProjectRecoveryOptionsHandler,
@@ -148,7 +148,7 @@ def _resolve_start_run_selections(
 ) -> tuple[ResourceSelectionHandlePayloadV1, ...]:
     if not selection_handles:
         return ()
-    session_token = request.cookies.get(LOCAL_SESSION_COOKIE_NAME)
+    session_token = request.cookies.get(local_session_cookie_name(dependencies.service_instance_id))
     account_id = dependencies.current_account_id()
     if session_token is None or account_id is None:
         raise ApiRequestError(

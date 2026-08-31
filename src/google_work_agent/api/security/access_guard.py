@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.api.security.content_type import is_allowed_json_content_type
+from google_work_agent.api.dependencies.local_session import validate_local_session
+from google_work_agent.api.security.content_type import is_allowed_mutation_content_type
 from google_work_agent.api.security.fetch_metadata import (
     validate_fetch_metadata,
     validate_mutation_fetch_metadata,
@@ -117,7 +118,10 @@ class LocalApiAccessGuard:
                 destination=request_context.sec_fetch_dest,
             ):
                 return _deny(403, "REQUEST_FORGERY_BLOCKED", "FETCH_METADATA_INVALID")
-            if not is_allowed_json_content_type(request_context.content_type):
+            if not is_allowed_mutation_content_type(
+                content_type=request_context.content_type,
+                path=request_context.path,
+            ):
                 return _deny(415, "INVALID_ARGUMENT", "CONTENT_TYPE_INVALID")
         else:
             if request_context.origin is not None and not is_exact_origin_match(
@@ -134,12 +138,18 @@ class LocalApiAccessGuard:
             ):
                 return _deny(403, "REQUEST_FORGERY_BLOCKED", "FETCH_METADATA_INVALID")
         if endpoint_policy is EndpointPolicy.API_SESSION_REQUIRED:
-            is_valid_session = self.session_manager.validate(
+            session = validate_local_session(
+                session_manager=self.session_manager,
                 token=request_context.session_token,
                 service_instance_id=self.service_instance_id,
+                now_ms=self.now_ms(),
             )
-            if not is_valid_session:
+            if not session.valid:
                 return _deny(401, "LOCAL_SESSION_INVALID", "LOCAL_SESSION_REQUIRED")
+            if not session.compatible and (
+                method in _MUTATION_METHODS or request_context.path.endswith("/events")
+            ):
+                return _deny(409, "VERSION_CONFLICT", "API_CONTRACT_INCOMPATIBLE")
         return AccessDecision(allowed=True)
 
 

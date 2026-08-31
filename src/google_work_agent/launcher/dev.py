@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import secrets
 import uuid
 from pathlib import Path
 from typing import NoReturn, cast
@@ -20,6 +19,7 @@ from google_work_agent.api.composition import (
 )
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.bind import LocalBindPolicy
+from google_work_agent.launcher.bootstrap_secret import create_bootstrap_secret
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
     PROJECT_ROOT,
@@ -51,7 +51,7 @@ def build_container(
         runtime_root=(runtime_root or PROJECT_ROOT / "runtime" / "development").resolve(),
         working_directory=PROJECT_ROOT,
         mcp_manifest_version=MCP_MANIFEST_VERSION,
-        bootstrap_secret=bootstrap_secret,
+        bootstrap_secret=bootstrap_secret or create_bootstrap_secret(),
         service_instance_id=service_instance_id,
         safe_mode_controller=safe_mode_controller,
         mcp_module_name=mcp_module_name,
@@ -66,7 +66,7 @@ def create_service_app() -> FastAPI:
         host=DEFAULT_HOST,
         port=DEFAULT_PORT,
         service_instance_id=f"dev-{uuid.uuid4()}",
-        bootstrap_secret=secrets.token_urlsafe(32),
+        bootstrap_secret=create_bootstrap_secret(),
         core_builder=build_container,
     )
     return create_app(cast(ApiContainer, shell))
@@ -80,7 +80,7 @@ def main() -> NoReturn:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
     LocalBindPolicy(host=args.host, port=args.port).validate()
-    bootstrap_secret = secrets.token_urlsafe(32)
+    bootstrap_secret = create_bootstrap_secret()
     container = DeferredApiContainer(
         host=args.host,
         port=args.port,

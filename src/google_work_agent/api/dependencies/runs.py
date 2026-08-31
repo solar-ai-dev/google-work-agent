@@ -41,6 +41,7 @@ from google_work_agent.ports.system.uuid_port import UUIDPort
 @dataclass(frozen=True, slots=True)
 class RunRouteDependencies:
     api_contract_version: str
+    service_instance_id: str
     unit_of_work_factory: Callable[[], UnitOfWork]
     read_unit_of_work_factory: Callable[[], UnitOfWork]
     checkpoint_port: CheckpointPort
@@ -124,6 +125,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
+        service_instance_id=container.service_instance_id,
         unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
         checkpoint_port=checkpoint_port,

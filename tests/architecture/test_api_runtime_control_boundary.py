@@ -22,7 +22,7 @@ RUNTIME_CONTROL_BINDINGS = (
     ("settings.py", "create_backup", "CreateBackupHandler"),
     ("settings.py", "restore_backup", "RestoreBackupHandler"),
     ("settings.py", "shutdown", "RequestShutdownHandler"),
-    ("health_checks.py", "ready", "GetReadinessHandler"),
+    ("health.py", "ready", "GetReadinessHandler"),
 )
 APPLICATION_RUNTIME_CONTROL_OWNERS = (
     "runtime_status",
@@ -39,7 +39,7 @@ PROVIDER_BOUNDARY_ROUTES = (
     "identities.py",
     "llm_connections.py",
     "settings.py",
-    "health_checks.py",
+    "health.py",
 )
 
 
@@ -109,6 +109,27 @@ def _calls_handler(function: ast.AST, handler_name: str) -> bool:
             and node.args[1].id == handler_name
         ):
             return True
+    return False
+
+
+def _reaches_local_call(tree: ast.Module, function: ast.AST, target: str) -> bool:
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    pending = [function]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        for call in ast.walk(current):
+            if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+                continue
+            if call.func.id == target:
+                return True
+            if call.func.id in functions and call.func.id not in visited:
+                visited.add(call.func.id)
+                pending.append(functions[call.func.id])
     return False
 
 
@@ -204,8 +225,8 @@ def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
         "identities.py",
         "llm_connections.py",
         "settings.py",
-        "sessions.py",
-        "health_checks.py",
+        "session.py",
+        "health.py",
     ):
         source = (ROUTES / route_name).read_text(encoding="utf-8")
         for dependency in prohibited:
@@ -213,8 +234,57 @@ def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
 
 
 def test_session_bootstrap_stays_transport_security_owned() -> None:
-    source = (ROUTES / "sessions.py").read_text(encoding="utf-8")
-    assert "bootstrap_grant_store" in source
-    assert "local_session_manager" in source
-    assert "httponly=True" in source
-    assert 'samesite="strict"' in source
+    route = (ROUTES / "session.py").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "src/google_work_agent/api/security/bootstrap_session.py").read_text(
+        encoding="utf-8"
+    )
+    validator = (ROOT / "src/google_work_agent/api/dependencies/local_session.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "bootstrap_session_service" in route
+    assert ".consume(" not in route
+    assert ".issue(" not in route
+    assert "grant_store.consume(" in bootstrap
+    assert "session_manager.issue(" in bootstrap
+    assert "def validate_local_session(" in validator
+    assert ".issue(" not in validator
+    assert "httponly=True" in route
+    assert 'samesite="strict"' in route
+    assert not (ROUTES / "sessions.py").exists()
+    assert not (ROUTES / "health_checks.py").exists()
+
+
+def test_every_local_api_route_has_an_explicit_access_guard() -> None:
+    offenders: list[str] = []
+    for path in ROUTES.glob("*.py"):
+        if path.name in {"__init__.py", "frontend_assets.py"}:
+            continue
+        tree = _parse(path)
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not _is_route_endpoint(node):
+                continue
+            calls_guard = _reaches_local_call(tree, node, "enforce_access")
+            if not calls_guard:
+                offenders.append(f"{path.name}:{node.name}")
+
+    assert offenders == []
+
+
+def test_local_security_has_no_wildcard_cors_or_secret_response_projection() -> None:
+    api_root = ROOT / "src/google_work_agent/api"
+    source = "\n".join(path.read_text(encoding="utf-8") for path in api_root.rglob("*.py"))
+    response_schema = (
+        (api_root / "schemas/sessions/bootstrap_session.py")
+        .read_text(encoding="utf-8")
+        .split("class BootstrapSessionResponse", 1)[1]
+    )
+
+    assert 'allow_origins=["*"]' not in source
+    assert "CORSMiddleware" not in source
+    assert "bootstrap_secret" not in response_schema
+    assert "session_token" not in response_schema
+    assert not (api_root / "security/policies.py").exists()
+    assert "endpoint_policy_registry" not in source

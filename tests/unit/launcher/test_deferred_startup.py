@@ -242,9 +242,9 @@ def _bootstrap(client: TestClient, headers: dict[str, str]) -> None:
         "/api/v1/session/bootstrap",
         headers=headers,
         json={
+            "schema_version": 1,
             "bootstrap_secret": "bootstrap-secret",
-            "service_instance_id": "svc-startup",
-            "api_contract_version": "1",
+            "frontend_api_contract_version": "1",
         },
     )
     assert response.status_code == 200
