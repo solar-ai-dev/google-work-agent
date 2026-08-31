@@ -39,7 +39,14 @@ class _CalendarListRead:
             1,
             "calendar_list_calendars",
             "read-1",
-            {"items": []},
+            {
+                "items": [
+                    {
+                        "resource_id": "primary",
+                        "payload": {"summary": "Primary calendar", "primary": True},
+                    }
+                ]
+            },
             "provider-secret" if page_token is None else None,
             None,
         )
@@ -62,6 +69,8 @@ def test_calendar_list_continuation_is_local_and_principal_bound() -> None:
     second = handler(ListCalendarsQuery("a" * 64, "account-1", first.next_page_token))
 
     assert first.next_page_token == "local-calendars"
+    assert first.items[0].calendar_id == "primary"
+    assert first.items[0].primary is True
     assert first.next_page_token != "provider-secret"
     assert second.next_page_token is None
     assert read.page_tokens == [None, "provider-secret"]

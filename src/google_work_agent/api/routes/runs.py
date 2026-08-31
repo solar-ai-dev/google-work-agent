@@ -23,7 +23,10 @@ from google_work_agent.api.schemas.runs.adjust_context import (
 )
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2, RunCommandResponse
 from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
-from google_work_agent.api.schemas.runs.get_run_context import RunContextResponse
+from google_work_agent.api.schemas.runs.get_run_context import (
+    ExecutionContextResponse,
+    RunContextResponse,
+)
 from google_work_agent.api.schemas.runs.get_run_snapshot import RunSnapshotResponseV1
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
@@ -45,7 +48,6 @@ from google_work_agent.application.use_cases.run.confirm_run import (
     ConfirmRunCommand,
 )
 from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
 from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotQuery
@@ -296,11 +298,11 @@ def get_run_context(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    context = GetExecutionContextHandler(
-        unit_of_work_factory=dependencies.read_unit_of_work_factory,
-    )(GetExecutionContextQuery(run_id=run_id))
+    if dependencies.get_execution_context_handler is None:
+        raise RuntimeError("execution-context handler is not configured")
+    context = dependencies.get_execution_context_handler(GetExecutionContextQuery(run_id=run_id))
     return RunContextResponse(
-        context=None if context is None else asdict(context),
+        context=None if context is None else ExecutionContextResponse(**asdict(context)),
         api_contract_version=dependencies.api_contract_version,
     )
 

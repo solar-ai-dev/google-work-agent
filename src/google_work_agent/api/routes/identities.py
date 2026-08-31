@@ -7,7 +7,10 @@ from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
 from google_work_agent.api.dependencies.identities import IdentityRouteDependency
-from google_work_agent.api.schemas.identities.get_google_account import CurrentGoogleAccountResponse
+from google_work_agent.api.schemas.identities.get_google_account import (
+    CurrentGoogleAccountResponse,
+    GoogleAccountProjection,
+)
 from google_work_agent.application.use_cases.connection.get_connection_status import (
     GetConnectionStatusHandler,
     GetConnectionStatusQuery,
@@ -34,11 +37,11 @@ def get_current_google_account(
     if isinstance(handler, GetConnectionStatusHandler):
         connection = handler(GetConnectionStatusQuery(connector_id="google_workspace")).connection
         if connection.account_id is not None or connection.display_email is not None:
-            account = {
-                "account_id": connection.account_id,
-                "email": connection.display_email,
-                "display_name": None,
-            }
+            account = GoogleAccountProjection(
+                account_id=connection.account_id,
+                email=connection.display_email,
+                display_name=None,
+            )
     return CurrentGoogleAccountResponse(
         account=account, api_contract_version=dependencies.api_contract_version
     )

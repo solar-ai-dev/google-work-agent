@@ -174,7 +174,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             "start_run": "dependencies.start_run_handler",
             "get_run_snapshot": "dependencies.get_run_snapshot_handler",
             "stream_events": "dependencies.list_run_events_handler",
-            "get_run_context": "GetExecutionContextHandler",
+            "get_run_context": "dependencies.get_execution_context_handler",
             "cancel_run": "dependencies.request_cancel_handler",
             "resume_run": "dependencies.resume_safe_checkpoint_handler",
             "confirm_run": "dependencies.confirm_run_handler",
@@ -209,6 +209,14 @@ def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
         source = path.read_text(encoding="utf-8")
         for token in forbidden:
             assert token not in source, f"{path}: forbidden route authority {token}"
+
+
+def test_run_context_handler_is_composed_once_and_never_constructed_in_route() -> None:
+    route = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
+    composition = (ROOT / "src/google_work_agent/api/composition.py").read_text(encoding="utf-8")
+    assert "GetExecutionContextHandler(" not in route
+    assert composition.count("GetExecutionContextHandler(") == 1
+    assert "get_execution_context_handler=get_execution_context" in composition
 
 
 def test_recovery_production_callers_do_not_bind_legacy_mismatch_authority() -> None:

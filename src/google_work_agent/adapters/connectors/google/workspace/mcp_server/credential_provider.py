@@ -621,6 +621,11 @@ def _event_snapshot(item: dict[str, object], calendar_id: str) -> dict[str, obje
         ),
         None,
     )
+    attendees = [
+        email
+        for attendee in _object_list(item.get("attendees"))
+        if (email := _optional_text(attendee.get("email"))) is not None
+    ]
     return _snapshot(
         "calendar_event",
         event_id,
@@ -635,6 +640,12 @@ def _event_snapshot(item: dict[str, object], calendar_id: str) -> dict[str, obje
             "self_response_status": self_response_status,
             "start": _optional_text(start.get("dateTime")) or _optional_text(start.get("date")),
             "end": _optional_text(end.get("dateTime")) or _optional_text(end.get("date")),
+            "timezone": _optional_text(start.get("timeZone"))
+            or _optional_text(end.get("timeZone"))
+            or "UTC",
+            "attendees": attendees,
+            "location": _optional_text(item.get("location")),
+            "description": _optional_text(item.get("description")),
         },
     )
 

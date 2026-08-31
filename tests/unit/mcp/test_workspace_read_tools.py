@@ -520,8 +520,11 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
             "summary": "Review",
             "status": "confirmed",
             "etag": "etag-1",
-            "start": {"dateTime": "2026-08-10T09:00:00+09:00"},
+            "start": {"dateTime": "2026-08-10T09:00:00+09:00", "timeZone": "Asia/Seoul"},
             "end": {"dateTime": "2026-08-10T10:00:00+09:00"},
+            "attendees": [{"email": "reviewer@example.com"}],
+            "location": "Room 1",
+            "description": "Weekly review",
         },
     ]
 
@@ -553,7 +556,10 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(monkeypatch) -> N
     assert cast(dict[str, object], task_item["payload"])["status"] == "needsAction"
     assert cast(dict[str, object], task_item["payload"])["completed"] == "2026-08-13T00:30:00.000Z"
     assert event_item["parent_id"] == "primary"
-    assert cast(dict[str, object], event_item["payload"])["start"] == "2026-08-10T09:00:00+09:00"
+    event_payload = cast(dict[str, object], event_item["payload"])
+    assert event_payload["start"] == "2026-08-10T09:00:00+09:00"
+    assert event_payload["timezone"] == "Asia/Seoul"
+    assert event_payload["attendees"] == ["reviewer@example.com"]
 
 
 def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_dates(

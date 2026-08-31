@@ -16,6 +16,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
 )
 from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunHandler
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
+)
 from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelHandler
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
@@ -29,7 +32,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
@@ -41,7 +43,6 @@ from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferP
 class RunRouteDependencies:
     api_contract_version: str
     service_instance_id: str
-    read_unit_of_work_factory: Callable[[], UnitOfWork]
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
@@ -60,6 +61,7 @@ class RunRouteDependencies:
     project_external_llm_transfer_scope_handler: object | None
     start_run_handler: StartRunHandler | None
     get_run_snapshot_handler: GetRunSnapshotHandler | None
+    get_execution_context_handler: GetExecutionContextHandler | None
     list_run_events_handler: ListRunEventsHandler | None
     event_buffer: SseEventBufferPort | None
 
@@ -70,17 +72,12 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     if resolve_selection_handle is None:
         raise RuntimeError("selection-handle resolver is not configured")
 
-    read_unit_of_work_factory = cast(
-        Callable[[], UnitOfWork],
-        getattr(container, "read_unit_of_work_factory", None) or container.unit_of_work_factory,
-    )
     if container.schedule_run_execution is None:
         raise RuntimeError("workflow execution scheduler is not configured")
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         service_instance_id=container.service_instance_id,
-        read_unit_of_work_factory=read_unit_of_work_factory,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=cast(
@@ -122,6 +119,10 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         ),
         get_run_snapshot_handler=cast(
             GetRunSnapshotHandler | None, getattr(container, "get_run_snapshot_handler", None)
+        ),
+        get_execution_context_handler=cast(
+            GetExecutionContextHandler | None,
+            getattr(container, "get_execution_context_handler", None),
         ),
         list_run_events_handler=cast(
             ListRunEventsHandler | None, getattr(container, "list_run_events_handler", None)

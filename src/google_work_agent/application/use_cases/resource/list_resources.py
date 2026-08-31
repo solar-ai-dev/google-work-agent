@@ -41,6 +41,7 @@ class ResourceListItem:
     subject: str | None
     received_at: str | None
     snippet: str | None
+    has_attachments: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,6 +334,7 @@ def _resource_item_from_snapshot(snapshot: ResourceSnapshot) -> ResourceListItem
         subject=_optional_text(metadata.get("subject")),
         received_at=_optional_text(metadata.get("received_at")),
         snippet=_optional_text(metadata.get("snippet")),
+        has_attachments=bool(snapshot.payload.get("attachments")),
     )
 
 
@@ -400,12 +402,13 @@ def _metadata_from_snapshot(snapshot: ResourceSnapshot) -> dict[str, object]:
             "subject",
             "received_at",
             "snippet",
+            "attachments",
         ),
         ResourceType.GMAIL_MESSAGE: ("from", "to", "received_at"),
         ResourceType.GMAIL_DRAFT: ("to", "cc"),
         ResourceType.TASK_LIST: ("kind",),
         ResourceType.CALENDAR: ("time_zone",),
-        ResourceType.CALENDAR_EVENT: ("start", "end"),
+        ResourceType.CALENDAR_EVENT: ("start", "end", "timezone", "location"),
         ResourceType.CALENDAR_FREEBUSY: ("intervals",),
     }[snapshot.resource_type]
     return {key: value for key, value in payload.items() if key in safe_keys and value is not None}

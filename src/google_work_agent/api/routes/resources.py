@@ -12,8 +12,27 @@ from google_work_agent.api.dependencies.contract_version import (
 from google_work_agent.api.dependencies.resources import ResourceRouteDependency
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.schemas.resources.count_resources import ResourceCountResponse
-from google_work_agent.api.schemas.resources.get_gmail_resource import GmailResourceDetailResponse
-from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
+from google_work_agent.api.schemas.resources.get_calendar_resource import (
+    CalendarResourceDetailResponseV1,
+)
+from google_work_agent.api.schemas.resources.get_gmail_resource import (
+    GmailAttachmentMetadataResponse,
+    GmailResourceDetailResponse,
+)
+from google_work_agent.api.schemas.resources.get_task_resource import TaskResourceDetailResponseV1
+from google_work_agent.api.schemas.resources.list_calendars import (
+    CalendarContainerListResponseV1,
+)
+from google_work_agent.api.schemas.resources.list_resources import (
+    CalendarListItemV1,
+    GmailListItemV1,
+    ResourceListItemV1,
+    ResourceListResponse,
+    TaskListItemV1,
+)
+from google_work_agent.api.schemas.resources.list_task_lists import (
+    TaskListContainerListResponseV1,
+)
 from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
 from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
@@ -57,14 +76,14 @@ from google_work_agent.ports.system.api_access_port import EndpointPolicy
 router = APIRouter(prefix="/api/v1/resources")
 
 
-@router.get("/task-lists")
+@router.get("/task-lists", response_model=TaskListContainerListResponseV1)
 def list_task_lists(
     request: Request,
     dependencies: ResourceRouteDependency,
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=50, ge=1, le=100),
     x_api_contract_version: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> TaskListContainerListResponseV1:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
     session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.list_task_lists_handler
@@ -76,17 +95,17 @@ def list_task_lists(
         )
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
-    return cast(dict[str, object], asdict(result))
+    return TaskListContainerListResponseV1(**asdict(result))
 
 
-@router.get("/calendars")
+@router.get("/calendars", response_model=CalendarContainerListResponseV1)
 def list_calendars(
     request: Request,
     dependencies: ResourceRouteDependency,
     page_token: str | None = Query(default=None),
     page_size: int = Query(default=50, ge=1, le=100),
     x_api_contract_version: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> CalendarContainerListResponseV1:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
     session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.list_calendars_handler
@@ -98,7 +117,7 @@ def list_calendars(
         )
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
-    return cast(dict[str, object], asdict(result))
+    return CalendarContainerListResponseV1(**asdict(result))
 
 
 @router.get("/gmail", response_model=ResourceListResponse)
@@ -137,15 +156,16 @@ def list_gmail_resources(
         _raise_connector_failure(error, request_id=request.state.request_id)
     page = result.page
     return ResourceListResponse(
-        source=page.source,
-        items=_items_with_selection_handles(
+        schema_version=1,
+        items=_project_resource_items(
             dependencies,
             page.items,
             session_digest=session_digest,
             account_id=account_id,
         ),
         next_page_token=page.next_page_token,
-        api_contract_version=dependencies.api_contract_version,
+        total_count=None,
+        projection_version=dependencies.api_contract_version,
     )
 
 
@@ -176,9 +196,10 @@ def get_resource_count(
         _raise_connector_failure(error, request_id=request.state.request_id)
     count = result.count
     return ResourceCountResponse(
-        source=count.source,
-        total_count=count.total_count,
-        api_contract_version=dependencies.api_contract_version,
+        schema_version=1,
+        source="gmail",
+        exact_count=count.total_count,
+        as_of_ms=dependencies.now_ms(),
     )
 
 
@@ -202,20 +223,40 @@ def get_gmail_resource_detail(
         result = handler(GetResourceDetailQuery(source="gmail", resource_id=resource_id))
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
+    resource = result.resource
     return GmailResourceDetailResponse(
-        **asdict(result.resource),
-        api_contract_version=dependencies.api_contract_version,
+        schema_version=1,
+        resource_id=resource.resource_id,
+        message_id=resource.message_id,
+        sender_name=resource.sender_name,
+        sender_email=resource.sender_email or "",
+        recipients=list(resource.recipients),
+        cc=list(resource.cc),
+        subject=resource.subject or "",
+        received_at=resource.received_at or "",
+        body=resource.body or "",
+        attachments=[
+            GmailAttachmentMetadataResponse(
+                schema_version=1,
+                attachment_id=attachment.attachment_id,
+                filename=attachment.filename,
+                mime_type=attachment.mime_type,
+                size_bytes=attachment.size_bytes,
+            )
+            for attachment in resource.attachments
+        ],
+        canonical_url=resource.canonical_url,
     )
 
 
-@router.get("/tasks/{resource_id}")
+@router.get("/tasks/{resource_id}", response_model=TaskResourceDetailResponseV1)
 def get_task_resource_detail(
     request: Request,
     dependencies: ResourceRouteDependency,
     resource_id: str = Path(min_length=1, max_length=2048),
     selection_handle: str = Query(min_length=1, max_length=4096),
     x_api_contract_version: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> TaskResourceDetailResponseV1:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
     session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.get_task_resource_detail_handler
@@ -234,17 +275,17 @@ def get_task_resource_detail(
         _raise_invalid_selection(error, request_id=request.state.request_id)
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
-    return {"schema_version": 1, "detail": result.detail}
+    return TaskResourceDetailResponseV1(schema_version=1, **asdict(result))
 
 
-@router.get("/calendar/{resource_id}")
+@router.get("/calendar/{resource_id}", response_model=CalendarResourceDetailResponseV1)
 def get_calendar_resource_detail(
     request: Request,
     dependencies: ResourceRouteDependency,
     resource_id: str = Path(min_length=1, max_length=2048),
     selection_handle: str = Query(min_length=1, max_length=4096),
     x_api_contract_version: str | None = Header(default=None),
-) -> dict[str, object]:
+) -> CalendarResourceDetailResponseV1:
     _enforce_resource_access(request, dependencies, x_api_contract_version)
     session_digest, account_id = _selection_identity(request, dependencies)
     handler = dependencies.get_calendar_resource_detail_handler
@@ -263,7 +304,7 @@ def get_calendar_resource_detail(
         _raise_invalid_selection(error, request_id=request.state.request_id)
     except ConnectorOperationFailure as error:
         _raise_connector_failure(error, request_id=request.state.request_id)
-    return {"schema_version": 1, "detail": result.detail}
+    return CalendarResourceDetailResponseV1(schema_version=1, **asdict(result))
 
 
 @router.get("/tasks", response_model=ResourceListResponse)
@@ -302,15 +343,16 @@ def list_task_resources(
         _raise_connector_failure(error, request_id=request.state.request_id)
     page = result.page
     return ResourceListResponse(
-        source=page.source,
-        items=_items_with_selection_handles(
+        schema_version=1,
+        items=_project_resource_items(
             dependencies,
             page.items,
             session_digest=session_digest,
             account_id=account_id,
         ),
         next_page_token=page.next_page_token,
-        api_contract_version=dependencies.api_contract_version,
+        total_count=None,
+        projection_version=dependencies.api_contract_version,
     )
 
 
@@ -352,15 +394,16 @@ def list_calendar_resources(
         _raise_connector_failure(error, request_id=request.state.request_id)
     page = result.page
     return ResourceListResponse(
-        source=page.source,
-        items=_items_with_selection_handles(
+        schema_version=1,
+        items=_project_resource_items(
             dependencies,
             page.items,
             session_digest=session_digest,
             account_id=account_id,
         ),
         next_page_token=page.next_page_token,
-        api_contract_version=dependencies.api_contract_version,
+        total_count=None,
+        projection_version=dependencies.api_contract_version,
     )
 
 
@@ -436,28 +479,84 @@ def _raise_invalid_selection(error: ValueError, *, request_id: str) -> None:
     ) from error
 
 
-def _items_with_selection_handles(
+def _project_resource_items(
     dependencies: ResourceRouteDependency,
     items: tuple[ResourceListItem, ...],
     *,
     session_digest: str,
     account_id: str,
-) -> list[dict[str, object]]:
-    projected: list[dict[str, object]] = []
+) -> list[ResourceListItemV1]:
+    projected: list[ResourceListItemV1] = []
     for item in items:
-        values = asdict(item)
-        values["selection_handle"] = dependencies.issue_selection_handle(
+        selection_handle = dependencies.issue_selection_handle(
             IssueSelectionHandleCommand(
                 session_digest=session_digest,
                 account_id=account_id,
                 connector_id=dependencies.resource_connector_id,
-                resource_type=str(values["resource_type"]),
-                resource_id=str(values["resource_id"]),
-                parent_resource_id=(
-                    None if values.get("parent_id") is None else str(values["parent_id"])
-                ),
-                version_token=None if values.get("version") is None else str(values["version"]),
+                resource_type=item.resource_type,
+                resource_id=item.resource_id,
+                parent_resource_id=item.parent_id,
+                version_token=item.version or None,
             )
         )
-        projected.append(values)
+        if item.source == "gmail":
+            projected.append(
+                GmailListItemV1(
+                    schema_version=1,
+                    selection_handle=selection_handle,
+                    resource_id=item.resource_id,
+                    subject=item.subject or item.title,
+                    sender_name=item.sender_name,
+                    sender_email=item.sender_email,
+                    received_at=item.received_at,
+                    snippet=item.snippet,
+                    has_attachments=item.has_attachments,
+                )
+            )
+        elif item.source == "tasks":
+            task_status = item.metadata.get("task_status")
+            if task_status not in {"incomplete", "completed"} or item.parent_id is None:
+                raise ValueError("Task resource projection is malformed")
+            projected.append(
+                TaskListItemV1(
+                    schema_version=1,
+                    selection_handle=selection_handle,
+                    resource_id=item.resource_id,
+                    title=item.title,
+                    task_status="completed" if task_status == "completed" else "incomplete",
+                    scheduled_date=_optional_projection_text(item.metadata.get("scheduled_date")),
+                    completed_at=_optional_projection_text(item.metadata.get("completed_at")),
+                    tasklist_id=item.parent_id,
+                )
+            )
+        elif item.source == "calendar":
+            if item.parent_id is None:
+                raise ValueError("Calendar resource projection is malformed")
+            projected.append(
+                CalendarListItemV1(
+                    schema_version=1,
+                    selection_handle=selection_handle,
+                    resource_id=item.resource_id,
+                    title=item.title,
+                    start=_required_projection_text(item.metadata.get("start")),
+                    end=_required_projection_text(item.metadata.get("end")),
+                    timezone=_required_projection_text(item.metadata.get("timezone")),
+                    calendar_id=item.parent_id,
+                    location=_optional_projection_text(item.metadata.get("location")),
+                )
+            )
+        else:
+            raise ValueError("Resource projection source is unsupported")
     return projected
+
+
+def _required_projection_text(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("Resource projection field is malformed")
+    return value
+
+
+def _optional_projection_text(value: object) -> str | None:
+    if value is None:
+        return None
+    return _required_projection_text(value)

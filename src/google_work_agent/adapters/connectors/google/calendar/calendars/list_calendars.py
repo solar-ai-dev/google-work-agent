@@ -24,6 +24,7 @@ def _calendar_list_calendars(
                 "summary": workspace_support._optional_text(item.get("summary"))
                 or workspace_support._required_response_text(item, "id"),
                 "time_zone": workspace_support._optional_text(item.get("timeZone")),
+                "primary": item.get("primary") is True,
             },
         )
         for item in workspace_support._object_list(payload.get("items"))

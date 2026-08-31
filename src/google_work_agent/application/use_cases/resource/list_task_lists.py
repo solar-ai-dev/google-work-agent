@@ -1,13 +1,16 @@
 """List task-list containers through ConnectorReadPort."""
 
 from dataclasses import dataclass
-from typing import cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
     LocalResourceContinuationStore,
 )
-from google_work_agent.ports.connector.connector_failure import normalize_google_workspace_failure
+from google_work_agent.ports.connector.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+    normalize_google_workspace_failure,
+)
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
 
@@ -29,9 +32,16 @@ class ListTaskListsQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class TaskListContainerItemV1:
+    schema_version: int
+    tasklist_id: str
+    title: str
+
+
+@dataclass(frozen=True, slots=True)
 class TaskListContainerListResponseV1:
     schema_version: int
-    items: tuple[dict[str, JsonValue], ...]
+    items: tuple[TaskListContainerItemV1, ...]
     next_page_token: str | None
 
 
@@ -64,8 +74,9 @@ class ListTaskListsHandler:
             {"page_token": provider_page_token, "page_size": query.page_size},
         )
         raw = result.output.get("items", [])
-        if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
-            raise ValueError("task-list result is malformed")
+        if not isinstance(raw, list):
+            raise _malformed_response()
+        items = tuple(_task_list_item(item) for item in raw)
         next_page_token = (
             None
             if result.next_page_token is None
@@ -74,9 +85,32 @@ class ListTaskListsHandler:
                 provider_page_token=result.next_page_token,
             )
         )
-        return TaskListContainerListResponseV1(
-            1, tuple(cast(list[dict[str, JsonValue]], raw)), next_page_token
-        )
+        return TaskListContainerListResponseV1(1, items, next_page_token)
 
 
-__all__ = ["ListTaskListsHandler", "ListTaskListsQuery", "TaskListContainerListResponseV1"]
+def _task_list_item(value: JsonValue) -> TaskListContainerItemV1:
+    if not isinstance(value, dict):
+        raise _malformed_response()
+    resource_id = value.get("resource_id")
+    payload = value.get("payload")
+    if not isinstance(resource_id, str) or not resource_id or not isinstance(payload, dict):
+        raise _malformed_response()
+    title = payload.get("title")
+    if not isinstance(title, str) or not title:
+        raise _malformed_response()
+    return TaskListContainerItemV1(1, resource_id, title)
+
+
+def _malformed_response() -> ConnectorOperationFailure:
+    return ConnectorOperationFailure(
+        code=ConnectorFailureCode.MALFORMED_RESPONSE,
+        detail_code="CONNECTOR_RESPONSE_MALFORMED",
+    )
+
+
+__all__ = [
+    "ListTaskListsHandler",
+    "ListTaskListsQuery",
+    "TaskListContainerItemV1",
+    "TaskListContainerListResponseV1",
+]

@@ -1631,6 +1631,7 @@ def build_production_container(
         ),
         start_run_handler=start_run_handler,
         get_run_snapshot_handler=get_run_snapshot_handler,
+        get_execution_context_handler=get_execution_context,
         list_run_events_handler=ListRunEventsHandler(
             unit_of_work_factory=read_unit_of_work_factory,
             event_buffer=event_publisher,

@@ -6,7 +6,8 @@
   "version": "1",
   "recovery_fingerprint": "rf-calendar-primary",
   "payload": {
-    "title": "Primary",
-    "timezone": "America/Los_Angeles"
+    "summary": "Primary",
+    "time_zone": "America/Los_Angeles",
+    "primary": true
   }
 }

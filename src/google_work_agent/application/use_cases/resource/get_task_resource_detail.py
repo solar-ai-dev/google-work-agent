@@ -7,6 +7,10 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
     ResolveSelectionHandleQuery,
 )
+from google_work_agent.ports.connector.connector_failure import (
+    ConnectorFailureCode,
+    ConnectorOperationFailure,
+)
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 
 
@@ -20,7 +24,13 @@ class GetTaskResourceDetailQuery:
 
 @dataclass(frozen=True, slots=True)
 class GetTaskResourceDetailResult:
-    detail: dict[str, JsonValue]
+    resource_id: str
+    title: str
+    task_status: str
+    scheduled_date: str | None
+    completed_at: str | None
+    tasklist_id: str
+    notes: str | None
 
 
 class GetTaskResourceDetailHandler:
@@ -42,7 +52,7 @@ class GetTaskResourceDetailHandler:
                 query.session_digest,
                 query.account_id,
                 expected_connector_id="google_workspace",
-                expected_resource_type="TASK",
+                expected_resource_type="task",
                 require_parent_match=False,
             )
         )
@@ -52,9 +62,55 @@ class GetTaskResourceDetailHandler:
             raise ValueError("Task selection requires task-list identity")
         result = self._connector_read.execute_read(
             self._registry.bind_required("google_workspace", "tasks_get_task", "READ"),
-            {"tasklist_id": selected.parent_resource_id, "task_id": selected.resource_id},
+            {"task_list_id": selected.parent_resource_id, "task_id": selected.resource_id},
         )
-        return GetTaskResourceDetailResult(result.output)
+        return _project_task_detail(result.output)
+
+
+def _project_task_detail(output: dict[str, JsonValue]) -> GetTaskResourceDetailResult:
+    item = output.get("item")
+    if not isinstance(item, dict):
+        raise _malformed_response()
+    resource_id = _required_text(item, "resource_id")
+    tasklist_id = _required_text(item, "parent_id")
+    payload = item.get("payload")
+    if not isinstance(payload, dict):
+        raise _malformed_response()
+    status = _required_text(payload, "status")
+    task_status = {"needsAction": "incomplete", "completed": "completed"}.get(status)
+    if task_status is None:
+        raise _malformed_response()
+    return GetTaskResourceDetailResult(
+        resource_id=resource_id,
+        title=_required_text(payload, "title"),
+        task_status=task_status,
+        scheduled_date=_optional_text(payload.get("due")),
+        completed_at=_optional_text(payload.get("completed")),
+        tasklist_id=tasklist_id,
+        notes=_optional_text(payload.get("notes")),
+    )
+
+
+def _required_text(values: dict[str, JsonValue], key: str) -> str:
+    value = values.get(key)
+    if not isinstance(value, str) or not value:
+        raise _malformed_response()
+    return value
+
+
+def _optional_text(value: JsonValue) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise _malformed_response()
+    return value or None
+
+
+def _malformed_response() -> ConnectorOperationFailure:
+    return ConnectorOperationFailure(
+        code=ConnectorFailureCode.MALFORMED_RESPONSE,
+        detail_code="CONNECTOR_RESPONSE_MALFORMED",
+    )
 
 
 __all__ = [

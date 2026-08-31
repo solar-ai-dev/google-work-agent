@@ -5,7 +5,10 @@ from fastapi import APIRouter, Request
 from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.dependencies.health_checks import HealthRouteDependency
 from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
-from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
+from google_work_agent.api.schemas.health_checks.get_readiness import (
+    ReadinessCheckResponse,
+    ReadyResponse,
+)
 from google_work_agent.launcher.get_readiness import (
     GetReadinessHandler,
     GetReadinessQuery,
@@ -40,7 +43,11 @@ def ready(request: Request, dependencies: HealthRouteDependency) -> ReadyRespons
     return ReadyResponse(
         status=result.state.value,
         checks=[
-            {"name": check.name, "state": check.state.value, "detail": check.detail}
+            ReadinessCheckResponse(
+                name=check.name,
+                state=check.state.value,
+                detail=check.detail,
+            )
             for check in result.checks
         ],
         release_version=dependencies.release_version,

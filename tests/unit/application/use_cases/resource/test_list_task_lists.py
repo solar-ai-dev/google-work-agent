@@ -40,7 +40,14 @@ class _TaskListRead:
             1,
             "tasks_list_tasklists",
             "read-1",
-            {"items": []},
+            {
+                "items": [
+                    {
+                        "resource_id": "task-list-1",
+                        "payload": {"title": "Primary tasks"},
+                    }
+                ]
+            },
             "provider-secret" if page_token is None else None,
             None,
         )
@@ -62,6 +69,8 @@ def test_task_list_continuation_is_local_and_principal_bound() -> None:
     second = handler(ListTaskListsQuery("a" * 64, "account-1", first.next_page_token))
 
     assert first.next_page_token == "local-task-lists"
+    assert first.items[0].tasklist_id == "task-list-1"
+    assert first.items[0].title == "Primary tasks"
     assert first.next_page_token != "provider-secret"
     assert second.next_page_token is None
     assert read.page_tokens == [None, "provider-secret"]

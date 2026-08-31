@@ -35,6 +35,7 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 @dataclass(frozen=True, slots=True)
 class ResourceRouteDependencies:
     api_contract_version: str
+    now_ms: Callable[[], int]
     issue_selection_handle: IssueSelectionHandle
     resolve_selection_handle: ResolveSelectionHandle
     service_instance_id: str
@@ -57,6 +58,7 @@ def get_resource_route_dependencies(request: Request) -> ResourceRouteDependenci
         raise RuntimeError("selection-handle operations are not configured")
     return ResourceRouteDependencies(
         api_contract_version=container.api_contract_version,
+        now_ms=container.clock.now_ms,
         issue_selection_handle=issue_selection_handle,
         resolve_selection_handle=resolve_selection_handle,
         service_instance_id=container.service_instance_id,

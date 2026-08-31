@@ -94,10 +94,13 @@ def test_issue_146_sqlite_queries_use_a_read_only_uow_boundary() -> None:
     assert 'connection.execute("BEGIN;")' in unit_of_work
 
     run_routes = (SOURCE / "api/routes/runs.py").read_text(encoding="utf-8")
-    assert run_routes.count("unit_of_work_factory=dependencies.read_unit_of_work_factory") == 1
     assert "dependencies.get_run_snapshot_handler" in run_routes
+    assert "dependencies.get_execution_context_handler" in run_routes
+    assert "GetExecutionContextHandler(" not in run_routes
     composition = (SOURCE / "api/composition.py").read_text(encoding="utf-8")
     snapshot_construction = (
         "GetRunSnapshotHandler(\n        unit_of_work_factory=read_unit_of_work_factory"
     )
     assert snapshot_construction in composition
+    assert composition.count("GetExecutionContextHandler(") == 1
+    assert "get_execution_context_handler=get_execution_context" in composition

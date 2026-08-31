@@ -11,6 +11,7 @@
     "transparency": "busy",
     "event_kind": "focusTime",
     "start": "2026-11-01T08:00:00-07:00",
-    "end": "2026-11-01T09:00:00-07:00"
+    "end": "2026-11-01T09:00:00-07:00",
+    "timezone": "America/Los_Angeles"
   }
 }
