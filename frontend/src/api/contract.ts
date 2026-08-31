@@ -220,18 +220,37 @@ export type RunCommandResponse = {
   result_kind?: string | null;
 };
 
+export type ResourceItemMetadata = {
+  subject?: string;
+  sender_name?: string | null;
+  sender_email?: string | null;
+  received_at?: string | null;
+  snippet?: string | null;
+  has_attachments?: boolean;
+  task_status?: "incomplete" | "completed";
+  scheduled_date?: string | null;
+  completed_at?: string | null;
+  tasklist_id?: string;
+  start?: string;
+  end?: string;
+  timezone?: string;
+  calendar_id?: string;
+  location?: string | null;
+};
+
 export type ResourceItem = {
+  schema_version: 1;
   selection_handle: string;
-  source: string;
-  resource_type: string;
+  source: "gmail" | "tasks" | "calendar";
+  resource_type: "gmail_thread" | "task" | "calendar_event";
   resource_id: string;
   parent_id?: string | null;
   title: string;
   subtitle?: string | null;
-  link_url: string;
+  link_url: string | null;
   version: string;
   related_resource_ids: string[];
-  metadata: Record<string, unknown>;
+  metadata: ResourceItemMetadata;
   sender_name?: string | null;
   sender_email?: string | null;
   subject?: string | null;
@@ -239,21 +258,62 @@ export type ResourceItem = {
   snippet?: string | null;
 };
 
-export type ResourceListResponse = {
-  source: string;
-  items: ResourceItem[];
-  next_page_token: string | null;
-  api_contract_version: string;
+export type GmailListItemWire = {
+  schema_version: 1;
+  selection_handle: string;
+  resource_id: string;
+  subject: string;
+  sender_name: string | null;
+  sender_email: string | null;
+  received_at: string | null;
+  snippet: string | null;
+  has_attachments: boolean;
 };
 
+export type TaskListItemWire = {
+  schema_version: 1;
+  selection_handle: string;
+  resource_id: string;
+  title: string;
+  task_status: "incomplete" | "completed";
+  scheduled_date: string | null;
+  completed_at: string | null;
+  tasklist_id: string;
+};
+
+export type CalendarListItemWire = {
+  schema_version: 1;
+  selection_handle: string;
+  resource_id: string;
+  title: string;
+  start: string;
+  end: string;
+  timezone: string;
+  calendar_id: string;
+  location: string | null;
+};
+
+export type ResourceListItemWire = GmailListItemWire | TaskListItemWire | CalendarListItemWire;
+
+export type ResourceListWireResponse = {
+  schema_version: 1;
+  items: ResourceListItemWire[];
+  next_page_token: string | null;
+  total_count: number | null;
+  projection_version: string;
+};
+
+export type ResourceListResponse = Omit<ResourceListWireResponse, "items"> & { items: ResourceItem[] };
+
 export type ResourceCountResponse = {
-  source: string;
-  total_count: number;
-  api_contract_version: string;
+  schema_version: 1;
+  source: "gmail" | "tasks" | "calendar";
+  exact_count: number;
+  as_of_ms: number;
 };
 
 export type GmailAttachmentMetadata = {
-  message_id: string;
+  schema_version: 1;
   attachment_id: string;
   filename: string;
   mime_type: string;
@@ -261,18 +321,18 @@ export type GmailAttachmentMetadata = {
 };
 
 export type GmailResourceDetailResponse = {
+  schema_version: 1;
   resource_id: string;
   message_id: string;
   sender_name: string | null;
-  sender_email: string | null;
+  sender_email: string;
   recipients: string[];
   cc: string[];
-  subject: string | null;
-  received_at: string | null;
-  body: string | null;
+  subject: string;
+  received_at: string;
+  body: string;
   attachments: GmailAttachmentMetadata[];
   canonical_url: string;
-  api_contract_version: string;
 };
 
 export type EventEnvelope = {

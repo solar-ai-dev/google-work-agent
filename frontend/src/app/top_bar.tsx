@@ -1,4 +1,4 @@
-import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings";
 
 type Props = {
   google: GoogleConnection | null;

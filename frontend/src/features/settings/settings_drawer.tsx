@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
-import { DiagnosticsPanel } from "../diagnostics/diagnostics_panel";
-import type { RuntimeSummary } from "../diagnostics/api/get_runtime";
+import { DiagnosticsPanel, type RuntimeSummary } from "../diagnostics";
 import { createBackup, listBackups, restoreBackup, type BackupMetadata } from "./api/backup_operations";
 import { disconnectGoogle, getGoogleConnection, startGoogleConnection, type GoogleConnection } from "./api/google_connection_operations";
 import { getSettings, type SettingsView } from "./api/get_settings";

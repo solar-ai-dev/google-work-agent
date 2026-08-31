@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
-import { AttachmentList } from "../attachment/attachment_list";
+import { AttachmentList } from "../attachment";
 
 const CLAMP_LINES = 3;
 const MORE_SUFFIX = "… 더보기";
@@ -179,7 +179,7 @@ export function ResourceDetail({
               ↗
             </button>
           ) : null}
-          {focusItem.resource_type === "task_list" || focusItem.resource_type === "calendar" ? (
+          {focusItem.parent_id && (focusItem.source === "tasks" || focusItem.source === "calendar") ? (
             <button
               className="icon-button"
               type="button"
@@ -299,7 +299,7 @@ function GmailDetailViewer({
       ) : (
         <p className="viewer-empty">표시할 메일 내용이 없습니다.</p>
       )}
-      <AttachmentList attachments={detail.attachments} onDownload={onDownloadAttachment} />
+      <AttachmentList messageId={detail.message_id} attachments={detail.attachments} onDownload={onDownloadAttachment} />
     </article>
   );
 }

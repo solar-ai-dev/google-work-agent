@@ -1,5 +1,14 @@
 import type { ResourceItem } from "../../api/contract";
-import type { GmailController } from "./useGmail";
+
+type GmailPanelController = {
+  searchInput: string;
+  setSearchInput: (value: string) => void;
+  pages: Record<number, { items: ResourceItem[] | null }>;
+  pageIndex: number;
+  lastLoadedPageIndex: number;
+  loading: boolean;
+  error: string | null;
+};
 
 type ResourcePresentation = {
   title: string | null;
@@ -9,7 +18,7 @@ type ResourcePresentation = {
 };
 
 type GmailPanelProps = {
-  gmail: GmailController;
+  gmail: GmailPanelController;
   selection: {
     selectedResourceIds: string[];
     focusedResourceId: string | null;

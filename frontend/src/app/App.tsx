@@ -2,15 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../api/client";
 import { ConversationHistoryPanel, useConversation } from "../features/conversation";
 import { ResourceSidebar, ResourceViewer, type ResourceBrowserProjection } from "../features/resource_browser";
-import { FirstRunOnboardingScreen, SettingsDrawer } from "../features/settings";
-import { getRuntime, type RuntimeSummary } from "../features/diagnostics/api/get_runtime";
-import { getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection, type CurrentGoogleAccount, type GoogleConnection } from "../features/settings/api/google_connection_operations";
-import { CenterWorkspace } from "../features/workspace";
+import { getRuntime, type RuntimeSummary } from "../features/diagnostics";
+import {
+  FirstRunOnboardingScreen,
+  SettingsDrawer,
+  getCurrentGoogleAccount,
+  getGoogleConnection,
+  startGoogleConnection,
+  type CurrentGoogleAccount,
+  type GoogleConnection,
+} from "../features/settings";
+import { CenterWorkspace } from "./center_workspace";
 import { MainShell } from "./main_shell";
 import { StartupFlow, type StartupFlowContext } from "./startup_flow";
 
 const THEME_KEY = "gwa.theme";
-const SETTINGS_KEY = "gwa.settings";
 
 export function App(): JSX.Element {
   return <StartupFlow>{(context) => <AuthenticatedWorkspace initial={context} />}</StartupFlow>;
@@ -133,10 +139,6 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ settingsOpen }));
-  }, [settingsOpen]);
 
   async function handleGoogleConnect(): Promise<void> {
     if (google?.connection_status === "CONNECTED" || googleConnectPending) {

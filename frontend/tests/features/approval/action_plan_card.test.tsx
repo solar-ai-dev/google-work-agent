@@ -9,7 +9,12 @@ test("ActionPlanCard sends only explicit server-projected acknowledgement", asyn
   const snapshot = { current_plan: { summary_text: "계획" }, actions: [action], approvals: [] } as unknown as RunSnapshot;
   const onApprove = vi.fn();
   render(<ActionPlanCard snapshot={snapshot} busy={null} retryActionIds={new Set()} formatTime={String} onApprove={onApprove} onModify={vi.fn()} onReject={vi.fn()} onRetry={vi.fn()} onAttachDescriptors={vi.fn()} />);
-  await userEvent.setup().click(screen.getByRole("button", { name: "확인하고 승인" }));
+  const user = userEvent.setup();
+  const approve = screen.getByRole("button", { name: "확인하고 승인" });
+  expect(approve).toBeDisabled();
+  await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
+  expect(approve).toBeEnabled();
+  await user.click(approve);
   expect([...onApprove.mock.calls[0][1]]).toEqual(["TASK_DUPLICATE"]);
   expect(document.body.textContent).not.toContain("private");
 });

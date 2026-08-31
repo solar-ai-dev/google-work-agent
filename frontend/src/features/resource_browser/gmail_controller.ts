@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem, ResourceListResponse } from "../../api/contract";
-import { getResourceCount, listResources } from "../resource_browser/api/list_resources";
-import { ResourceBrowserSessionCache } from "../resource_browser/session_page_cache";
+import { getResourceCount, listResources } from "./api/list_resources";
+import { ResourceBrowserSessionCache } from "./session_page_cache";
 
 type GmailPageCacheEntry = {
   pageToken: string | null;
@@ -114,9 +114,9 @@ export function useGmail({ accountId, active }: { accountId: string | null | und
     if (publish) setState((current) => ({ ...current, totalCount: null, countLoading: true }));
     try {
       const response = await getResourceCount("gmail", { query: state.query, taskListId: null, calendarId: null, timeMin: null, timeMax: null });
-      const count = { value: response.total_count, exact: true };
-      countCacheRef.current.set(currentCacheKey, response.total_count);
-      if (publish) setState((current) => ({ ...current, totalCount: response.total_count, countLoading: false, count }));
+      const count = { value: response.exact_count, exact: true };
+      countCacheRef.current.set(currentCacheKey, response.exact_count);
+      if (publish) setState((current) => ({ ...current, totalCount: response.exact_count, countLoading: false, count }));
       return count;
     } catch {
       countCacheRef.current.set(currentCacheKey, null);

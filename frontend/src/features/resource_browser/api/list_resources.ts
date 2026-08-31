@@ -1,5 +1,13 @@
 import { requestJson } from "../../../api/client";
-import type { ResourceCountResponse, ResourceListResponse } from "../../../api/contract";
+import type {
+  CalendarListItemWire,
+  GmailListItemWire,
+  ResourceCountResponse,
+  ResourceItem,
+  ResourceListResponse,
+  ResourceListWireResponse,
+  TaskListItemWire,
+} from "../../../api/contract";
 
 export type ListResourcesRequest =
   | { source: "gmail"; query: string; continuation?: string | null; pageSize?: number; includeThreadMetadata?: boolean }
@@ -25,7 +33,10 @@ export function listResources(request: ListResourcesRequest): Promise<ResourceLi
     search.set("time_min", request.timeMin);
     search.set("time_max", request.timeMax);
   }
-  return requestJson(`/api/v1/resources/${request.source}?${search.toString()}`);
+  return requestJson<ResourceListWireResponse>(`/api/v1/resources/${request.source}?${search.toString()}`).then((response) => ({
+    ...response,
+    items: response.items.map((item) => projectResourceItem(request.source, item, response.projection_version)),
+  }));
 }
 
 export function getResourceCount(
@@ -51,4 +62,69 @@ export function getResourceCount(
 function boundedPageSize(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   return Math.max(1, Math.min(100, Math.trunc(value)));
+}
+
+function projectResourceItem(
+  source: ListResourcesRequest["source"],
+  value: ResourceListWireResponse["items"][number],
+  projectionVersion: string,
+): ResourceItem {
+  if (source === "gmail") {
+    const item = value as GmailListItemWire;
+    return {
+      ...item,
+      source,
+      resource_type: "gmail_thread",
+      title: item.subject,
+      subtitle: null,
+      link_url: null,
+      version: projectionVersion,
+      related_resource_ids: [],
+      metadata: {
+        subject: item.subject,
+        sender_name: item.sender_name,
+        sender_email: item.sender_email,
+        received_at: item.received_at,
+        snippet: item.snippet,
+        has_attachments: item.has_attachments,
+      },
+    };
+  }
+  if (source === "tasks") {
+    const item = value as TaskListItemWire;
+    return {
+      ...item,
+      source,
+      resource_type: "task",
+      parent_id: item.tasklist_id,
+      subtitle: null,
+      link_url: null,
+      version: projectionVersion,
+      related_resource_ids: [item.tasklist_id],
+      metadata: {
+        task_status: item.task_status,
+        scheduled_date: item.scheduled_date,
+        completed_at: item.completed_at,
+        tasklist_id: item.tasklist_id,
+      },
+    };
+  }
+  const item = value as CalendarListItemWire;
+  return {
+    ...item,
+    source,
+    resource_type: "calendar_event",
+    parent_id: item.calendar_id,
+    subtitle: null,
+    link_url: null,
+    version: projectionVersion,
+    related_resource_ids: [item.calendar_id],
+    metadata: {
+      start: item.start,
+      end: item.end,
+      timezone: item.timezone,
+      calendar_id: item.calendar_id,
+      location: item.location,
+    },
+  };
 }

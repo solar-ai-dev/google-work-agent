@@ -2,16 +2,15 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   getCurrentGoogleAccount,
   getGoogleConnection,
-} from "../features/settings/api/google_connection_operations";
-import { getRuntime, type RuntimeSummary } from "../features/diagnostics/api/get_runtime";
-import { getSettings } from "../features/settings/api/get_settings";
-import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
+} from "../features/settings";
+import { getRuntime, StartupCheckScreen, type RuntimeSummary, type StartupCheckState } from "../features/diagnostics";
+import { getSettings } from "../features/settings";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings";
 import { getLive, getReady } from "../api";
 import { ApiClientError } from "../api/client";
 import {
   API_CONTRACT_VERSION,
 } from "../api/contract";
-import { StartupCheckScreen, type StartupCheckState } from "../features/diagnostics/startup_check";
 import { ApiCompatibilityGate, type ApiCompatibility } from "./api_compatibility_gate";
 import { bootstrapLocalSession, readBootstrapFragment } from "./session_bootstrap";
 

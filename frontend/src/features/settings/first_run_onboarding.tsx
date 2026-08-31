@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClientError } from "../../api/client";
-import type { RuntimeSummary } from "../diagnostics/api/get_runtime";
+import type { RuntimeSummary } from "../diagnostics";
 import type { GoogleConnection } from "./api/google_connection_operations";
 import { getSettings, type SettingsView } from "./api/get_settings";
 import { getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";

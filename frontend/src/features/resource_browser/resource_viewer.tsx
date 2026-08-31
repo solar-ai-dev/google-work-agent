@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiClientError, requestJson } from "../../api/client";
+import { ApiClientError } from "../../api/client";
 import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
-import { downloadAttachment } from "../attachment/api/download_attachment";
-import { ResourceDetail } from "../workspace/ResourceDetail";
+import { downloadAttachment } from "../attachment";
+import { getGmailResourceDetail } from "./api/get_resource_detail";
+import { ResourceDetail } from "./resource_detail";
 import type { ResourceBrowserProjection } from "./resource_sidebar";
 import { presentResource } from "./resource_sidebar";
 
@@ -20,7 +21,7 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
   const loadGmailDetail = useCallback(async (resourceId: string): Promise<void> => {
     setGmailDetail({ resourceId, status: "loading", detail: null, error: null });
     try {
-      const detail = await requestJson<GmailResourceDetailResponse>(`/api/v1/resources/gmail/${encodeURIComponent(resourceId)}`);
+      const detail = await getGmailResourceDetail(resourceId);
       setGmailDetail((current) => current.resourceId === resourceId ? { resourceId, status: "ready", detail, error: null } : current);
     } catch (error) {
       setGmailDetail((current) => current.resourceId === resourceId ? { resourceId, status: "error", detail: null, error: error instanceof ApiClientError ? error.message : "메일 내용을 불러오지 못했습니다." } : current);
@@ -54,17 +55,15 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
 function metadataEntries(item: ResourceItem): Array<[string, string]> {
   if (item.source === "tasks" && item.resource_type === "task") {
     const entries: Array<[string, string]> = [];
-    const status = taskStatusLabel(displayValue(item.metadata.task_status));
-    const scheduledDate = formatTaskDate(displayValue(item.metadata.scheduled_date), true);
-    const notes = displayValue(item.metadata.notes);
+    const status = taskStatusLabel(item.metadata.task_status ?? null);
+    const scheduledDate = formatTaskDate(item.metadata.scheduled_date ?? null, true);
     if (status) entries.push(["상태", status]);
     if (scheduledDate) entries.push(["예정일", scheduledDate]);
-    if (notes) entries.push(["내용", notes]);
     return entries;
   }
   if (item.source === "calendar" && item.resource_type === "calendar_event") {
-    const start = displayValue(item.metadata.start);
-    const end = displayValue(item.metadata.end);
+    const start = item.metadata.start ?? null;
+    const end = item.metadata.end ?? null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(start ?? "")) {
       const date = formatCalendarDate(start);
       return date ? [["날짜", date]] : [];
@@ -74,33 +73,19 @@ function metadataEntries(item: ResourceItem): Array<[string, string]> {
     const endLabel = formatCalendarDate(end);
     if (startLabel) entries.push(["시작 시간", startLabel]);
     if (endLabel) entries.push(["종료 시간", endLabel]);
-    const calendarName = displayValue(item.metadata.calendar_name) ?? displayValue(item.metadata.calendar_display_name);
-    const description = displayValue(item.metadata.description) ?? displayValue(item.metadata.notes);
-    if (calendarName) entries.push(["캘린더", calendarName]);
-    if (description) entries.push(["내용", description]);
+    if (item.metadata.location) entries.push(["장소", item.metadata.location]);
     return entries;
   }
-  const fields = item.source === "gmail"
-    ? [["보낸사람", ["sender", "from", "sender_name"]], ["이메일", ["sender_email", "from_email"]], ["받은 시각", ["received_at", "received_at_ms", "date"]], ["내용", ["body", "snippet", "preview"]]] as const
-    : item.source === "tasks"
-      ? [["상태", ["task_status", "status"]], ["예정일", ["scheduled_date", "due"]], ["내용", ["notes", "description"]]] as const
-      : [["시작", ["start"]], ["종료", ["end"]], ["내용", ["description", "notes"]]] as const;
-  return fields.flatMap(([label, keys]) => {
-    for (const key of keys) {
-      const value = displayValue(item.metadata[key]);
-      if (value) return [[label, value] as [string, string]];
-    }
-    return [];
-  });
-}
-
-function displayValue(value: unknown): string | null {
-  if (typeof value === "string" || typeof value === "number") {
-    const result = String(value).trim();
-    return result && !(/^[a-z0-9_-]{12,}$/i.test(result) && !result.includes("@")) ? result : null;
-  }
-  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).join(", ") || null;
-  return null;
+  const entries: Array<[string, string]> = [];
+  const senderName = item.sender_name ?? item.metadata.sender_name ?? null;
+  const senderEmail = item.sender_email ?? item.metadata.sender_email ?? null;
+  const receivedAt = item.received_at ?? item.metadata.received_at ?? null;
+  const snippet = item.snippet ?? item.metadata.snippet ?? null;
+  if (senderName) entries.push(["보낸사람", senderName]);
+  if (senderEmail) entries.push(["이메일", senderEmail]);
+  if (receivedAt) entries.push(["받은 시각", receivedAt]);
+  if (snippet) entries.push(["내용", snippet]);
+  return entries;
 }
 
 function taskStatusLabel(value: string | null): string | null {

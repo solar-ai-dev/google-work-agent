@@ -1,5 +1,19 @@
-import { API_CONTRACT_VERSION, type RunCommandResponse } from "../../../api/contract";
+import { API_CONTRACT_VERSION, type RunCommandResponse, type StartRunResponse } from "../../../api/contract";
 import { requestJson } from "../../../api/client";
+
+export function startRun(payload: {
+  command_id: string;
+  conversation_id: string;
+  request_text: string;
+  entry_mode: "AGENT_SEARCH" | "RESOURCE_SELECTED";
+  selected_resource_handles: string[];
+  requested_mode: "AUTO" | "LOCAL_GPU" | "API_LLM";
+}): Promise<StartRunResponse> {
+  return requestJson("/api/v1/runs", {
+    method: "POST",
+    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+  });
+}
 
 export function cancelRun(payload: { run_id: string; command_id: string; expected_version: number }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/cancel`, {

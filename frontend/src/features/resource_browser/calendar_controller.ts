@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem } from "../../api/contract";
-import { calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "../../app/CalendarMonthView";
-import { listResources } from "../resource_browser/api/list_resources";
-import { ResourceBrowserSessionCache } from "../resource_browser/session_page_cache";
+import { calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "../calendar";
+import { listResources } from "./api/list_resources";
+import { ResourceBrowserSessionCache } from "./session_page_cache";
 
 type CalendarMonthRequestInput = {
   cacheKey: string;

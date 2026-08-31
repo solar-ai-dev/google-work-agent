@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { stageAttachment } from "../../../src/features/attachment/api/stage_attachment";
+import { stageAttachment } from "../../../../src/features/attachment/api/stage_attachment";
 
 test("stageAttachment sends caller-owned stable identity and preserves expiry", async () => {
   globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ staged_attachment_id: "s-1", filename: "a.txt", mime_type: "text/plain", size_bytes: 3, sha256: "a".repeat(64), expires_at_ms: 99, api_contract_version: "1" }), { status: 200, headers: { "Content-Type": "application/json" } }));

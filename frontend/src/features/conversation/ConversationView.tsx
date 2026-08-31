@@ -1,12 +1,9 @@
 import { Fragment, useEffect, useRef, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { ConversationMessage, RunAction, RunContext, RunSnapshot } from "../../api/contract";
-import type { StagedAttachmentDescriptor } from "../attachment/api/stage_attachment";
-import { ActionPlanCard } from "../approval/action_plan_card";
-import { RecoveryCard } from "../recovery/recovery_card";
-import { ConfirmationCard } from "../run/confirmation_card";
-import { ExecutionStatusCard } from "../run/execution_status_card";
-import { RequestComposer } from "../run/request_composer";
-import { RunProgress } from "../run/run_progress";
+import type { StagedAttachmentDescriptor } from "../attachment";
+import { ActionPlanCard } from "../approval";
+import { RecoveryCard } from "../recovery";
+import { ConfirmationCard, ExecutionStatusCard, RequestComposer, RunProgress } from "../run";
 import { DateSeparator, UserMessageBubble } from "./MessageBubble";
 
 type RecoveryKind = NonNullable<RunSnapshot["recovery"]>["allowed_resolution_kinds"][number];

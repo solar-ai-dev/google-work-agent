@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResourceItem } from "../../api/contract";
-import { CalendarPanel, useCalendar } from "../calendar";
-import { GmailPanel, useGmail } from "../gmail";
-import { TasksPanel, useTasks } from "../tasks";
+import { CalendarPanel } from "../calendar";
+import { GmailPanel } from "../gmail";
+import { TasksPanel } from "../tasks";
+import { useCalendar } from "./calendar_controller";
+import { useGmail } from "./gmail_controller";
+import { useTasks } from "./tasks_controller";
 import { buildSelectedResourceContext, type SelectedResourceContext } from "./selected_resource_context";
 
 export type ResourceSource = "gmail" | "tasks" | "calendar";
@@ -59,7 +62,7 @@ export function ResourceSidebar({ scopeKey, accountId, connected, timezone, onPr
     if (focusedItem) toggleItem(focusedItem);
   }, [focusedItem, toggleItem]);
   const openFocusedContainer = useCallback((): void => {
-    if (focusedItem) setParentId(focusedItem.resource_id);
+    if (focusedItem?.parent_id) setParentId(focusedItem.parent_id);
   }, [focusedItem]);
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export function ResourceSidebar({ scopeKey, accountId, connected, timezone, onPr
           <button className="icon-button" type="button" aria-label="현재 목록 새로고침" title="새로고침" onClick={() => { if (source === "gmail") void gmail.refresh(); else if (source === "tasks") void tasks.refresh(); else void calendar.refresh(); }}>↻</button>
         </div>
         {source === "gmail" ? <GmailPanel gmail={gmail} selection={{ selectedResourceIds: selectedContext.resourceIds, focusedResourceId: focusedItem?.resource_id ?? null, onToggleResource: (resourceId) => toggleByResourceId(resourceId, gmail.items), onFocusResource: setFocusedItem }} pagination={{ pageIndexes: pageIndexes(gmail.pageIndex, gmail.totalCount, gmail.items.length), hasNextPage: gmail.pageIndex + 1 < pageCount(gmail.totalCount, gmail.items.length) || (gmail.totalCount === null && gmail.nextPageToken !== null), onGoToPage: (pageIndex) => void gmail.loadPage(pageIndex) }} presentResource={presentResource} /> : null}
-        {source === "tasks" ? <TasksPanel tasks={tasks} filter={filter} onFilterChange={setFilter} selection={{ selectedResourceIds: selectedContext.resourceIds, focusedResourceId: focusedItem?.resource_id ?? null, onToggleResource: (resourceId) => toggleByResourceId(resourceId, tasks.items), onFocusResource: setFocusedItem }} visibleItems={visibleTaskItems} sections={taskSections} pageIndexes={pageIndexes(tasks.pageIndex, tasks.totalCount, tasks.items.length)} hasNextPage={tasks.pageIndex + 1 < pageCount(tasks.totalCount, tasks.items.length) || (tasks.totalCount === null && tasks.nextPageToken !== null)} presentResource={presentResource} pastDays={pastScheduledDays} formatCompletedAt={(item) => formatCompletedTaskDate(firstValue(item.metadata, ["completed_at"]), timezone)} /> : null}
+        {source === "tasks" ? <TasksPanel tasks={tasks} filter={filter} onFilterChange={setFilter} selection={{ selectedResourceIds: selectedContext.resourceIds, focusedResourceId: focusedItem?.resource_id ?? null, onToggleResource: (resourceId) => toggleByResourceId(resourceId, tasks.items), onFocusResource: setFocusedItem }} visibleItems={visibleTaskItems} sections={taskSections} pageIndexes={pageIndexes(tasks.pageIndex, tasks.totalCount, tasks.items.length)} hasNextPage={tasks.pageIndex + 1 < pageCount(tasks.totalCount, tasks.items.length) || (tasks.totalCount === null && tasks.nextPageToken !== null)} presentResource={presentResource} pastDays={pastScheduledDays} formatCompletedAt={(item) => formatCompletedTaskDate(item.metadata.completed_at ?? null, timezone)} /> : null}
         {source === "calendar" ? <CalendarPanel calendar={calendar} timezone={timezone} filter={filter} onFilterChange={setFilter} onFocusEvent={setFocusedItem} /> : null}
       </div>
     </aside>
@@ -130,18 +133,13 @@ export function ResourceSidebar({ scopeKey, accountId, connected, timezone, onPr
 }
 
 export function presentResource(item: ResourceItem): { title: string | null; secondary: string | null; snippet: string | null; time: string | null } {
-  const source = item.source.toLowerCase();
   const metadata = item.metadata;
-  const subject = text(item.subject) ?? firstValue(metadata, ["subject", "title", "summary", "name"]);
-  const itemTitle = source === "tasks" && typeof item.title === "string" ? item.title.trim() || null : text(item.title);
-  const title = source === "gmail" && ["메일 자료", "gmail 자료", "google 자료"].includes(itemTitle?.toLowerCase() ?? "")
-    ? subject
-    : itemTitle ?? subject;
-  if (source === "calendar") return { title, secondary: calendarRange(firstValue(metadata, ["start"]), firstValue(metadata, ["end"])), snippet: null, time: null };
-  if (source === "tasks") return { title, secondary: null, snippet: null, time: formatTaskDate(firstValue(metadata, ["scheduled_date"])) };
-  const sender = text(item.sender_name) ?? firstValue(metadata, ["sender", "from", "sender_name"]);
-  const email = text(item.sender_email) ?? firstValue(metadata, ["sender_email", "from_email"]);
-  return { title, secondary: mailbox(sender, email), snippet: text(item.snippet) ?? text(item.subtitle) ?? firstValue(metadata, ["snippet", "preview"]), time: sidebarDate(text(item.received_at) ?? firstValue(metadata, ["received_at", "received_at_ms", "date"])) };
+  const title = item.title.trim() || null;
+  if (item.source === "calendar") return { title, secondary: calendarRange(metadata.start ?? null, metadata.end ?? null), snippet: null, time: null };
+  if (item.source === "tasks") return { title, secondary: null, snippet: null, time: formatTaskDate(metadata.scheduled_date ?? null) };
+  const sender = text(item.sender_name) ?? text(metadata.sender_name);
+  const email = text(item.sender_email) ?? text(metadata.sender_email);
+  return { title, secondary: mailbox(sender, email), snippet: text(item.snippet) ?? text(metadata.snippet), time: sidebarDate(text(item.received_at) ?? text(metadata.received_at)) };
 }
 
 function pageCount(total: number | null, loaded: number): number { return Math.ceil((total ?? loaded) / PAGE_SIZE); }
@@ -151,8 +149,7 @@ function tabLabel(source: ResourceSource): string { return { gmail: "메일", ta
 function tabIcon(source: ResourceSource): string { return { gmail: "✉", tasks: "✓", calendar: "▦" }[source]; }
 function composerPrompt(source: ResourceSource): string { return source === "tasks" ? "선택한 태스크에 대해 질문하거나 업무를 요청하세요..." : source === "calendar" ? "선택한 일정에 대해 질문하거나 업무를 요청하세요..." : "선택한 메일에 대해 질문하거나 업무를 요청하세요..."; }
 function emptyMessage(source: ResourceSource): string { return source === "tasks" ? "왼쪽 목록에서 태스크를 선택하면 상세 내용을 확인할 수 있습니다." : source === "calendar" ? "왼쪽 목록에서 일정을 선택하면 상세 내용을 확인할 수 있습니다." : "왼쪽 목록에서 메일을 선택하면 상세 내용을 확인할 수 있습니다."; }
-function text(value: unknown): string | null { if (typeof value !== "string" && typeof value !== "number") return null; const result = String(value).trim(); return result && !(/^[a-z0-9_-]{12,}$/i.test(result) && !result.includes("@")) ? result : null; }
-function firstValue(metadata: Record<string, unknown>, keys: string[]): string | null { for (const key of keys) { const value = text(metadata[key]); if (value) return value; } return null; }
+function text(value: unknown): string | null { if (typeof value !== "string" && typeof value !== "number") return null; return String(value).trim() || null; }
 function mailbox(name: string | null, email: string | null): string | null { return name && email && name !== email ? `${name} <${email}>` : name ?? (email ? `<${email}>` : null); }
 function parsedDate(value: string | null): Date | null { if (!value) return null; const milliseconds = /^\d{12,}$/.test(value) ? Number(value) : Date.parse(value); if (!Number.isFinite(milliseconds)) return null; const date = new Date(milliseconds); return Number.isNaN(date.getTime()) ? null : date; }
 function sidebarDate(value: string | null, now = new Date()): string | null { const date = parsedDate(value); if (!date) return null; const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()) / 86_400_000); if (days === 0) return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true }); if (days === 1) return "어제"; return date.toLocaleDateString("ko-KR", date.getFullYear() === now.getFullYear() ? { month: "long", day: "numeric" } : { year: "numeric", month: "2-digit", day: "2-digit" }); }
@@ -160,6 +157,6 @@ function calendarRange(start: string | null, end: string | null): string | null 
 function formatTaskDate(value: string | null): string | null { if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null; const [year, month, day] = value.split("-").map(Number); const date = new Date(year, month - 1, day); return `${date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} (${date.toLocaleDateString("ko-KR", { weekday: "short" })})`; }
 function formatCompletedTaskDate(value: string | null, timezone: string): string | null { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("ko-KR", { timeZone: timezone, month: "long", day: "numeric", weekday: "short" }) : null; }
 function localDate(value: Date): string { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`; }
-function scheduledDate(item: ResourceItem): string | null { const value = firstValue(item.metadata, ["scheduled_date"]); return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null; }
-function pastScheduledDays(item: ResourceItem, now = new Date()): number | null { const scheduled = scheduledDate(item); if (!scheduled || firstValue(item.metadata, ["task_status"]) === "completed") return null; const [year, month, day] = scheduled.split("-").map(Number); const scheduledDay = Date.UTC(year, month - 1, day); const [todayYear, todayMonth, todayDay] = localDate(now).split("-").map(Number); const difference = (Date.UTC(todayYear, todayMonth - 1, todayDay) - scheduledDay) / 86_400_000; return difference > 0 ? difference : null; }
-function groupTasksByScheduledDate(items: ResourceItem[], now = new Date()): Array<{ key: string; label: string; items: ResourceItem[] }> { const today = localDate(now); const tomorrow = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)); return items.reduce<Array<{ key: string; label: string; items: ResourceItem[] }>>((sections, item) => { const date = scheduledDate(item); const status = firstValue(item.metadata, ["task_status"]); const key = !date ? "no-date" : date < today && status !== "completed" ? "past" : date === today ? "today" : date === tomorrow ? "tomorrow" : `date:${date}`; const label = key === "past" ? "지난 날짜" : key === "today" ? "오늘" : key === "tomorrow" ? "내일" : key === "no-date" ? "날짜 없음" : formatTaskDate(date) ?? "날짜 없음"; const previous = sections.at(-1); if (previous?.key === key) previous.items.push(item); else sections.push({ key, label, items: [item] }); return sections; }, []); }
+function scheduledDate(item: ResourceItem): string | null { const value = item.metadata.scheduled_date; return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null; }
+function pastScheduledDays(item: ResourceItem, now = new Date()): number | null { const scheduled = scheduledDate(item); if (!scheduled || item.metadata.task_status === "completed") return null; const [year, month, day] = scheduled.split("-").map(Number); const scheduledDay = Date.UTC(year, month - 1, day); const [todayYear, todayMonth, todayDay] = localDate(now).split("-").map(Number); const difference = (Date.UTC(todayYear, todayMonth - 1, todayDay) - scheduledDay) / 86_400_000; return difference > 0 ? difference : null; }
+function groupTasksByScheduledDate(items: ResourceItem[], now = new Date()): Array<{ key: string; label: string; items: ResourceItem[] }> { const today = localDate(now); const tomorrow = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)); return items.reduce<Array<{ key: string; label: string; items: ResourceItem[] }>>((sections, item) => { const date = scheduledDate(item); const status = item.metadata.task_status; const key = !date ? "no-date" : date < today && status !== "completed" ? "past" : date === today ? "today" : date === tomorrow ? "tomorrow" : `date:${date}`; const label = key === "past" ? "지난 날짜" : key === "today" ? "오늘" : key === "tomorrow" ? "내일" : key === "no-date" ? "날짜 없음" : formatTaskDate(date) ?? "날짜 없음"; const previous = sections.at(-1); if (previous?.key === key) previous.items.push(item); else sections.push({ key, label, items: [item] }); return sections; }, []); }

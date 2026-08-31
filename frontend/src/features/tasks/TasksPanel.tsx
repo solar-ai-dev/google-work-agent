@@ -1,12 +1,30 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ResourceItem } from "../../api/contract";
-import type { TasksController } from "./useTasks";
+
+type TasksPanelController = {
+  sort: "provider" | "scheduled_date";
+  setSort: (sort: "provider" | "scheduled_date") => void;
+  loading: boolean;
+  error: string | null;
+  pageIndex: number;
+  loadPage: (pageIndex: number) => Promise<void>;
+  completed: {
+    expanded: boolean;
+    initialized: boolean;
+    items: ResourceItem[];
+    pageIndex: number;
+    loading: boolean;
+    error: string | null;
+  };
+  toggleCompleted: () => void;
+  showMoreCompleted: () => void;
+};
 
 type ResourcePresentation = { title: string | null; secondary: string | null; snippet: string | null; time: string | null };
 type TaskSection = { key: string; label: string; items: ResourceItem[] };
 
 type TasksPanelProps = {
-  tasks: TasksController;
+  tasks: TasksPanelController;
   filter: string;
   onFilterChange: (value: string) => void;
   selection: {

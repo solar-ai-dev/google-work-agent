@@ -1,4 +1,4 @@
-import type { ResourceItem } from "../api/contract";
+import type { ResourceItem } from "../../api/contract";
 
 export type CalendarMonthRange = {
   gridStart: string;

@@ -2745,6 +2745,7 @@ test("similar Task duplicate requires an acknowledgement without exposing resour
   render(<App />);
 
   expect(await screen.findByText("비슷한 기존 작업이 있습니다.")).toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
   await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
 
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
@@ -2769,6 +2770,7 @@ test("clear Task duplicate is blocked by default and offers an explicit override
 
   expect(await screen.findByText(/동일한 작업이 이미 있습니다/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
   await user.click(screen.getByRole("button", { name: "그래도 새로 만들기" }));
 
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
@@ -2816,6 +2818,7 @@ test("Calendar WARNING requires explicit acknowledgement without exposing author
   expect(
     await screen.findByText("겹칠 가능성이 있거나 업무 시간 밖의 일정입니다."),
   ).toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "일정 충돌 가능성을 확인했습니다." }));
   await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2840,6 +2843,7 @@ test("Calendar HARD_CONFLICT offers an explicit override", async () => {
 
   expect(await screen.findByText("해당 시간에 기존 일정이 있습니다.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "일정 충돌 가능성을 확인했습니다." }));
   await user.click(screen.getByRole("button", { name: "충돌을 알고도 진행" }));
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2888,7 +2892,7 @@ test("Gmail detail keeps an empty body honest and never exposes IDs or raw dates
     detail: {
       resource_id: technicalId,
       message_id: "19fe92f3e539543c",
-      body: null,
+      body: "",
       received_at: "Mon, 10 Aug 2026 09:15:00 +0900",
     },
   });
@@ -2904,7 +2908,6 @@ test("downloads an incoming Gmail attachment through the authenticated API", asy
   const requests = installUiContractFetch({
     detail: {
       attachments: [{
-        message_id: "message/1",
         attachment_id: "attachment/1",
         filename: "report.txt",
         mime_type: "text/plain",
@@ -2928,7 +2931,7 @@ test("downloads an incoming Gmail attachment through the authenticated API", asy
   await user.click(await screen.findByRole("button", { name: "report.txt" }));
 
   await waitFor(() => expect(requests).toContainEqual(expect.objectContaining({
-    path: "/api/v1/gmail/messages/message%2F1/attachments/attachment%2F1",
+    path: "/api/v1/gmail/messages/message-project-2/attachments/attachment%2F1",
   })));
   expect(click).toHaveBeenCalledOnce();
 });
@@ -3766,6 +3769,7 @@ function gmailThread() {
 
 function gmailDetail(resourceId = "thread-project", overrides: Record<string, unknown> = {}) {
   return {
+    schema_version: 1,
     resource_id: resourceId,
     message_id: "message-project-2",
     sender_name: "김대리",
@@ -3777,7 +3781,6 @@ function gmailDetail(resourceId = "thread-project", overrides: Record<string, un
     body: "실제 메일 본문입니다.",
     attachments: [],
     canonical_url: `https://mail.google.com/mail/u/0/#inbox/${resourceId}`,
-    api_contract_version: "1",
     ...overrides,
   };
 }
@@ -3841,6 +3844,64 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
 function normalizeOperationalPayload(json: unknown): unknown {
   if (json === null || typeof json !== "object" || Array.isArray(json)) return json;
   const payload = json as Record<string, unknown>;
+  if (typeof payload.source === "string" && typeof payload.total_count === "number") {
+    return {
+      schema_version: 1,
+      source: payload.source,
+      exact_count: payload.total_count,
+      as_of_ms: 1,
+    };
+  }
+  if (typeof payload.source === "string" && Array.isArray(payload.items)) {
+    const source = payload.source;
+    const items = payload.items.map((value) => {
+      const item = value as Record<string, unknown>;
+      const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+      if (source === "gmail") {
+        return {
+          schema_version: 1,
+          selection_handle: item.selection_handle,
+          resource_id: item.resource_id,
+          subject: item.subject ?? metadata.subject ?? item.title ?? "",
+          sender_name: item.sender_name ?? metadata.sender_name ?? metadata.sender ?? null,
+          sender_email: item.sender_email ?? metadata.sender_email ?? null,
+          received_at: item.received_at ?? metadata.received_at ?? null,
+          snippet: item.snippet ?? metadata.snippet ?? item.subtitle ?? null,
+          has_attachments: metadata.has_attachments ?? false,
+        };
+      }
+      if (source === "tasks") {
+        return {
+          schema_version: 1,
+          selection_handle: item.selection_handle ?? `handle-${String(item.resource_id)}`,
+          resource_id: item.resource_id,
+          title: item.title ?? "",
+          task_status: metadata.task_status ?? "incomplete",
+          scheduled_date: metadata.scheduled_date ?? null,
+          completed_at: metadata.completed_at ?? null,
+          tasklist_id: item.parent_id ?? metadata.tasklist_id ?? "task-list-default",
+        };
+      }
+      return {
+        schema_version: 1,
+        selection_handle: item.selection_handle ?? `handle-${String(item.resource_id)}`,
+        resource_id: item.resource_id,
+        title: item.title ?? "",
+        start: metadata.start ?? "2026-01-01T00:00:00Z",
+        end: metadata.end ?? "2026-01-01T01:00:00Z",
+        timezone: metadata.timezone ?? "Asia/Seoul",
+        calendar_id: item.parent_id ?? metadata.calendar_id ?? "primary",
+        location: metadata.location ?? null,
+      };
+    });
+    return {
+      schema_version: 1,
+      items,
+      next_page_token: payload.next_page_token ?? null,
+      total_count: null,
+      projection_version: "1",
+    };
+  }
   if (payload.summary && typeof payload.summary === "object") return normalizeOperationalPayload(payload.summary);
   if (payload.settings && typeof payload.settings === "object") return normalizeOperationalPayload(payload.settings);
   if (payload.llm && !payload.service_instance_id && typeof payload.llm === "object") return normalizeOperationalPayload(payload.llm);

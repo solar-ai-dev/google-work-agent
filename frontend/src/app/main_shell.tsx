@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings";
 import { TopBar } from "./top_bar";
 
 type Props = {

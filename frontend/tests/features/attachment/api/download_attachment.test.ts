@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { downloadAttachment } from "../../../src/features/attachment/api/download_attachment";
+import { downloadAttachment } from "../../../../src/features/attachment/api/download_attachment";
 
 test("downloadAttachment uses the server Content-Disposition filename and revokes the object URL", async () => {
   const payload = new Blob(["abc"]);

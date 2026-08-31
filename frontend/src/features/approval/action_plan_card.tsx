@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ApprovalSnapshot, RunAction, RunSnapshot } from "../../api/contract";
-import { AttachmentPicker } from "../attachment/attachment_picker";
-import type { StagedAttachmentDescriptor } from "../attachment/api/stage_attachment";
+import { AttachmentPicker, type StagedAttachmentDescriptor } from "../attachment";
 import { calendarConflictDecision, feasibilityDecision, hasOtherRisk, taskDuplicateDecision } from "./risk_presentation";
 
 export function ActionPlanCard({ snapshot, busy, retryActionIds, formatTime, onApprove, onModify, onReject, onRetry, onAttachDescriptors }: {
@@ -35,6 +34,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
   const requiredAcknowledgements = action.required_acknowledgements ?? [];
   const editableFields = action.editable_fields ?? [];
   const patch = Object.fromEntries(Object.entries(editValues).filter(([, value]) => value.trim()).map(([key, value]) => [key, value.trim()]));
+  const missingAcknowledgement = requiredAcknowledgements.some((item) => !acknowledgements.has(item));
   const duplicate = taskDuplicateDecision(action.risk);
   const conflict = calendarConflictDecision(action.risk);
   const feasibility = feasibilityDecision(action.risk);
@@ -59,7 +59,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
       ) : null}
       {action.attachment_allowed && action.next_allowed_commands.includes("MODIFY_ACTION") ? <AttachmentPicker disabled={busy === `modify-${action.action_id}`} onStaged={(descriptors) => onAttachDescriptors(action, descriptors)} /> : null}
       <div className="button-row">
-        {action.next_allowed_commands.includes("APPROVE_ACTION") ? <button className="button-primary" type="button" disabled={busy === `approve-${action.action_id}`} onClick={() => onApprove(action, requiredAcknowledgements.length ? new Set(requiredAcknowledgements) : acknowledgements)}>{approvalLabel(duplicate, conflict)}</button> : null}
+        {action.next_allowed_commands.includes("APPROVE_ACTION") ? <button className="button-primary" type="button" disabled={busy === `approve-${action.action_id}` || missingAcknowledgement} onClick={() => onApprove(action, acknowledgements)}>{approvalLabel(duplicate, conflict)}</button> : null}
         {action.next_allowed_commands.includes("REJECT_ACTION") ? <button className="button-danger" type="button" disabled={busy === `reject-${action.action_id}`} onClick={() => onReject(action)}>거절</button> : null}
         {canRetry ? <button className="button-secondary" type="button" disabled={busy === `retry-${action.action_id}`} onClick={() => onRetry(action)}>다시 준비</button> : null}
       </div>

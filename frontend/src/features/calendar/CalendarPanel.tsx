@@ -1,9 +1,19 @@
-import { CalendarMonthView } from "../../app/CalendarMonthView";
+import { CalendarMonthView } from "./calendar_month_view";
 import type { ResourceItem } from "../../api/contract";
-import type { CalendarController } from "./useCalendar";
+
+type CalendarPanelController = {
+  monthAnchor: string | null;
+  selectedDate: string | null;
+  items: ResourceItem[];
+  loading: boolean;
+  error: string | null;
+  goPreviousMonth: () => void;
+  goNextMonth: () => void;
+  selectDate: (date: string) => void;
+};
 
 type Props = {
-  calendar: CalendarController;
+  calendar: CalendarPanelController;
   timezone: string;
   filter: string;
   onFilterChange: (filter: string) => void;

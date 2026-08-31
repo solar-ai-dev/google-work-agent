@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { RunAction, RunSnapshot } from "../../api/contract";
-import type { StagedAttachmentDescriptor } from "../attachment/api/stage_attachment";
+import type { StagedAttachmentDescriptor } from "../attachment";
 import { approveAction, modifyAction, prepareRetry, rejectAction } from "./api/action_commands";
 
 type Options = { runSnapshot: RunSnapshot | null; currentAccountId: string | null; busyCommand: string | null; setBusyCommand: (value: string | null) => void; commandIdFor: (operation: string) => string; completeCommand: (operation: string) => void; selectRun: (runId: string) => Promise<void>; refreshRun: (runId: string) => Promise<boolean> };

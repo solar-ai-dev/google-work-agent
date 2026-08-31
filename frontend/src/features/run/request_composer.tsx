@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiClientError } from "../../api/client";
-import { requestJson } from "../../api/client";
-import { API_CONTRACT_VERSION, type ConversationItem, type StartRunResponse } from "../../api/contract";
+import type { ConversationItem } from "../../api/contract";
+import { startRun } from "./api/run_commands";
 
 export type SubmitNewRunInput = {
   conversationId: string | null;
   requestText: string;
   selectionHandles: string[];
+  conversationCommandId: string;
+  runCommandId: string;
+  createConversation: (payload: { command_id: string; title: string | null }) => Promise<ConversationItem>;
 };
 
 export type SubmitNewRunResult = { conversationId: string; runId: string; conversationCreated: boolean };
@@ -17,24 +20,17 @@ export async function submitNewRun(input: SubmitNewRunInput): Promise<SubmitNewR
   const selectionHandles = [...new Set(input.selectionHandles.map((handle) => handle.trim()).filter(Boolean))];
   if (selectionHandles.length > 20) throw new Error("At most 20 selected resources are allowed.");
   const conversation = input.conversationId === null
-    ? await requestJson<ConversationItem>("/api/v1/conversations", {
-        method: "POST",
-        body: { schema_version: 1, command_id: crypto.randomUUID(), title: requestText.slice(0, 80) },
-      })
+    ? await input.createConversation({ command_id: input.conversationCommandId, title: requestText.slice(0, 80) })
     : null;
   const conversationId = conversation?.conversation_id ?? input.conversationId;
   if (conversationId === null) throw new Error("Conversation identity is unavailable.");
-  const run = await requestJson<StartRunResponse>("/api/v1/runs", {
-    method: "POST",
-    body: {
-      command_id: crypto.randomUUID(),
-      conversation_id: conversationId,
-      request_text: requestText,
-      entry_mode: selectionHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH",
-      selected_resource_handles: selectionHandles,
-      requested_mode: "AUTO",
-      api_contract_version: API_CONTRACT_VERSION,
-    },
+  const run = await startRun({
+    command_id: input.runCommandId,
+    conversation_id: conversationId,
+    request_text: requestText,
+    entry_mode: selectionHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH",
+    selected_resource_handles: selectionHandles,
+    requested_mode: "AUTO",
   });
   return { conversationId, runId: run.run_id, conversationCreated: conversation !== null };
 }
@@ -51,6 +47,9 @@ type RequestComposerControllerOptions = {
   refreshConversations: () => Promise<unknown>;
   selectRun: (runId: string, conversationId: string, generation: number) => Promise<void>;
   onStatusLine: (message: string) => void;
+  commandIdFor: (operation: string) => string;
+  completeCommand: (operation: string) => void;
+  createConversation: SubmitNewRunInput["createConversation"];
 };
 
 export function useRequestComposerController(options: RequestComposerControllerOptions) {
@@ -70,15 +69,32 @@ export function useRequestComposerController(options: RequestComposerControllerO
     if (!requestText.trim() || options.busyCommand) return;
     options.setBusyCommand("start-run");
     setComposerError(null);
+    const normalizedHandles = [...new Set(options.selectedResourceHandles.map((handle) => handle.trim()).filter(Boolean))];
+    const operationIdentity = JSON.stringify({
+      conversationId: options.selectedConversationId,
+      requestText: requestText.trim(),
+      selectionHandles: normalizedHandles,
+    });
+    const conversationOperation = `create-conversation:${operationIdentity}`;
+    const runOperation = `start-run:${operationIdentity}`;
     try {
       let conversationId = options.selectedConversationId;
       let generation = options.getProjectionGeneration();
-      const result = await submitNewRun({ conversationId, requestText, selectionHandles: options.selectedResourceHandles });
+      const result = await submitNewRun({
+        conversationId,
+        requestText,
+        selectionHandles: normalizedHandles,
+        conversationCommandId: options.commandIdFor(conversationOperation),
+        runCommandId: options.commandIdFor(runOperation),
+        createConversation: options.createConversation,
+      });
       conversationId = result.conversationId;
       if (result.conversationCreated) generation = options.beginConversationProjection(conversationId);
       await options.reloadConversationHistory(conversationId, generation);
       await options.refreshConversations();
       await options.selectRun(result.runId, conversationId, generation);
+      options.completeCommand(conversationOperation);
+      options.completeCommand(runOperation);
       setComposerText("");
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : "요청을 시작하지 못했습니다.";

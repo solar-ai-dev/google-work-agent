@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { ConversationViewModel } from "../conversation";
-import { ConversationView } from "../conversation";
+import type { ConversationViewModel } from "../features/conversation";
+import { ConversationView } from "../features/conversation";
 
 export type CenterWorkspaceProps = {
   resourceViewer: ReactNode;

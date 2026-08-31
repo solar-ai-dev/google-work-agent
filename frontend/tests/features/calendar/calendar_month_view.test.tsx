@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import type { ResourceItem } from "../api/contract";
-import { CalendarMonthView, calendarMonthRange } from "./CalendarMonthView";
+import type { ResourceItem } from "../../../src/api/contract";
+import { CalendarMonthView, calendarMonthRange } from "../../../src/features/calendar/calendar_month_view";
 
 function event(overrides: Partial<ResourceItem> = {}): ResourceItem {
   return {
