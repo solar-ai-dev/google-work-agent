@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiClientError, requestBlob, requestJson } from "../../api/client";
+import { ApiClientError, requestJson } from "../../api/client";
 import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
+import { downloadAttachment } from "../attachment/api/download_attachment";
 import { ResourceDetail } from "../workspace/ResourceDetail";
 import type { ResourceBrowserProjection } from "./resource_sidebar";
 import { presentResource } from "./resource_sidebar";
@@ -32,19 +33,6 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
     else setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
   }, [loadGmailDetail, projection.focusedItem]);
 
-  const downloadAttachment = useCallback(async (messageId: string, attachmentId: string, filename: string): Promise<void> => {
-    const blob = await requestBlob(`/api/v1/gmail/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
-    const objectUrl = URL.createObjectURL(blob);
-    try {
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      anchor.click();
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-  }, []);
-
   return (
     <>
       {projection.focusedItem ? <button className="button-secondary" type="button" aria-pressed={projection.focusedItemSelected} onClick={projection.toggleFocusedSelection}>{projection.focusedItemSelected ? "요청에서 제외" : "요청에 포함"}</button> : null}
@@ -52,7 +40,7 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
         focusItem={projection.focusedItem}
         gmailDetail={gmailDetail}
         onRetryGmailDetail={() => { if (projection.focusedItem) void loadGmailDetail(projection.focusedItem.resource_id); }}
-        onDownloadGmailAttachment={(messageId, attachmentId, filename) => { void downloadAttachment(messageId, attachmentId, filename); }}
+        onDownloadGmailAttachment={(messageId, attachmentId) => { void downloadAttachment(messageId, attachmentId); }}
         onDrillInto={projection.openFocusedContainer}
         presentResource={presentResource}
         metadataEntriesFor={metadataEntries}

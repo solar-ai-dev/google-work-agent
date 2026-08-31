@@ -40,115 +40,6 @@ export type BootstrapResponse = {
   compatibility: "COMPATIBLE" | "INCOMPATIBLE";
 };
 
-export type RuntimeSummary = {
-  schema_version: 1;
-  service_instance_id: string;
-  connectors: Array<{
-    schema_version: 1;
-    connector_id: string;
-    connection_status: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "REAUTH_REQUIRED" | "UNAVAILABLE";
-    account_ref: string | null;
-    scope_status: "READY" | "INSUFFICIENT" | "UNKNOWN";
-    retry_at_ms: number | null;
-  }>;
-  llm_providers: Array<{
-    schema_version: 1;
-    provider: string;
-    configured: boolean;
-    availability: "READY" | "UNAVAILABLE" | "DISABLED";
-    model_id: string | null;
-    error_code: string | null;
-  }>;
-  component_circuits: Array<Record<string, unknown>>;
-  active_run_budget: Record<string, unknown> | null;
-  recovery_required: boolean;
-  release_version: string;
-  frontend_build_version: string;
-  api_contract_version: string;
-  deployment_profile: string;
-  runtime_mode: {
-    schema_version: 1;
-    requested_mode: "AUTO" | "LOCAL_GPU" | "API_LLM";
-    actual_runtime: "LOCAL_GPU" | "API_LLM" | "MIXED" | null;
-    fallback_reason: string | null;
-  };
-  database_status: "READY" | "DEGRADED" | "UNAVAILABLE";
-  migration_status: "READY" | "PENDING" | "FAILED";
-  sse_status: "READY" | "DEGRADED" | "UNAVAILABLE";
-  recent_sanitized_error_code: string | null;
-  launcher_status: "READY" | "DEGRADED" | "UNAVAILABLE";
-  manifest_status: "VALID" | "INVALID" | "UNAVAILABLE";
-  session_status: "ESTABLISHED" | "NOT_ESTABLISHED";
-  safe_mode: boolean;
-  last_backup_status: string | null;
-  last_migration_status: string | null;
-};
-
-export type RuntimeResponse = RuntimeSummary;
-
-export type SettingsResponse = {
-  schema_version: 1;
-  timezone: string;
-  default_tasklist_id: string | null;
-  default_calendar_id: string | null;
-  preferred_llm_mode: "AUTO" | "LOCAL_GPU" | "API_LLM";
-  external_llm_consent: boolean;
-  retention_days: number;
-  theme: "LIGHT" | "DARK";
-  panel_preferences: {
-    schema_version: 1;
-    right_panel_default_open: boolean;
-    right_panel_default_tab: "CONVERSATIONS" | "RESOURCES";
-  };
-  working_day_start_local: string;
-  working_day_end_local: string;
-  include_weekends: boolean;
-  calendar_buffer_minutes: number;
-  max_run_execution_ms: number;
-  max_connector_calls_per_run: number;
-  max_source_page_calls_per_run: number;
-  max_detail_fetches_per_run: number;
-  max_context_tokens_per_run: number;
-  max_retry_attempts_per_run: number;
-  circuit_failure_threshold: number;
-  circuit_open_duration_ms: number;
-};
-
-export type LLMConnectionResponse = {
-  schema_version: 1;
-  provider: string;
-  configured: boolean;
-  storage_mode: "KEYRING" | "SESSION_ONLY" | null;
-  validation_status: "VALID" | "INVALID" | "UNAVAILABLE" | "NOT_CONFIGURED";
-};
-
-export type LLMApiKeyResponse = LLMConnectionResponse;
-
-export type GoogleConnectionResponse = {
-  schema_version: 1;
-  connector_id: string;
-  account_id: string | null;
-  display_email: string | null;
-  connection_status: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "REAUTH_REQUIRED" | "UNAVAILABLE";
-  granted_scopes: string[];
-  missing_required_scopes: string[];
-};
-
-export type GoogleOAuthStartResponse = {
-  schema_version: 1;
-  authorization_url: string;
-  callback_id: string;
-};
-
-export type CurrentGoogleAccountResponse = {
-  account: {
-    account_id: string;
-    email: string;
-    display_name?: string | null;
-  } | null;
-  api_contract_version: string;
-};
-
 export type ConversationItem = {
   schema_version: 1;
   conversation_id: string;
@@ -367,15 +258,6 @@ export type GmailAttachmentMetadata = {
   filename: string;
   mime_type: string;
   size_bytes: number | null;
-};
-
-export type AttachmentDescriptorResponse = {
-  staged_attachment_id: string;
-  filename: string;
-  mime_type: string;
-  size_bytes: number;
-  sha256: string;
-  api_contract_version: string;
 };
 
 export type GmailResourceDetailResponse = {

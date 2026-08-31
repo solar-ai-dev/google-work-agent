@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { ConversationMessage, RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import type { StagedAttachmentDescriptor } from "../attachment/api/stage_attachment";
 import { ActionPlanCard } from "../approval/action_plan_card";
 import { RecoveryCard } from "../recovery/recovery_card";
 import { ConfirmationCard } from "../run/confirmation_card";
@@ -26,7 +27,7 @@ export type ConversationViewModel = {
     handleStartRun: (quickPrompt?: string) => Promise<void>;
     handleApprove: (action: RunAction, acknowledgements?: ReadonlySet<string>) => Promise<void>;
     handleSimpleAction: (kind: "modify" | "reject" | "retry", action: RunAction, argumentsPatch?: Record<string, unknown>) => Promise<void>;
-    handleAttachFiles: (action: RunAction, files: FileList) => Promise<void>;
+    handleAttachDescriptors: (action: RunAction, descriptors: StagedAttachmentDescriptor[]) => Promise<void>;
     handleCancelRun: () => Promise<void>;
     handleResumeRun: (resumeKind: "SAFE_CHECKPOINT_RESUME") => Promise<void>;
     handleConfirmation: (selectedOption?: string) => Promise<void>;
@@ -42,7 +43,7 @@ export type ConversationViewProps = { children: ReactNode; viewModel: Conversati
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
   const { controller, resourceContext, formatTime, onOpenSettings, onOpenDiagnostics } = viewModel;
-  const { selectedConversationId, historyMessages, runSnapshot, runContext, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery } = controller;
+  const { selectedConversationId, historyMessages, runSnapshot, runContext, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachDescriptors, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery } = controller;
   const showTransientRequest = Boolean(runContext?.request_text)
     && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -68,7 +69,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
               ))}
               {showTransientRequest ? <UserMessageBubble content={runContext!.request_text} /> : null}
               {runSnapshot?.pending_interrupt ? <ConfirmationCard interrupt={runSnapshot.pending_interrupt} text={confirmationText} busy={busyCommand === "confirm-run"} onTextChange={setConfirmationText} onSubmit={(option) => void handleConfirmation(option)} /> : null}
-              {runSnapshot ? <ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachFiles={(action, files) => void handleAttachFiles(action, files)} /> : null}
+              {runSnapshot ? <ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /> : null}
               {runSnapshot ? <ExecutionStatusCard snapshot={runSnapshot} /> : null}
               {runSnapshot ? <RecoveryCard snapshot={runSnapshot} busy={busyCommand} onResolve={(kind) => void handleResolveRecovery(kind)} onErrorAction={(kind) => kind === "OPEN_DIAGNOSTICS" ? onOpenDiagnostics() : onOpenSettings()} /> : null}
             </section>

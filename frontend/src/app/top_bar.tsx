@@ -1,8 +1,8 @@
-import type { CurrentGoogleAccountResponse, GoogleConnectionResponse } from "../api/contract";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
 
 type Props = {
-  google: GoogleConnectionResponse | null;
-  currentAccount: CurrentGoogleAccountResponse["account"];
+  google: GoogleConnection | null;
+  currentAccount: CurrentGoogleAccount["account"];
   statusLine: string;
   googleConnectPending: boolean;
   onConnectGoogle: () => void;

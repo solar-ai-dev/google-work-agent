@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
+import { AttachmentList } from "../attachment/attachment_list";
 
 const CLAMP_LINES = 3;
 const MORE_SUFFIX = "… 더보기";
@@ -123,11 +124,7 @@ export type ResourceDetailProps = {
   focusItem: ResourceItem | null;
   gmailDetail: GmailDetailState;
   onRetryGmailDetail: () => void;
-  onDownloadGmailAttachment: (
-    messageId: string,
-    attachmentId: string,
-    filename: string,
-  ) => void;
+  onDownloadGmailAttachment: (messageId: string, attachmentId: string) => void;
   onDrillInto: () => void;
   presentResource: (item: ResourceItem) => {
     title: string | null;
@@ -250,7 +247,7 @@ function GmailDetailViewer({
 }: {
   state: GmailDetailState;
   onRetry: () => void;
-  onDownloadAttachment: (messageId: string, attachmentId: string, filename: string) => void;
+  onDownloadAttachment: (messageId: string, attachmentId: string) => void;
   formatMailboxIdentity: (name: string | null, email: string | null) => string | null;
   isExpanded: boolean;
   onToggleExpanded: () => void;
@@ -302,32 +299,7 @@ function GmailDetailViewer({
       ) : (
         <p className="viewer-empty">표시할 메일 내용이 없습니다.</p>
       )}
-      {detail.attachments.length > 0 ? (
-        <section className="gmail-attachments" aria-label="첨부파일">
-          <strong>첨부파일</strong>
-          <ul>
-            {detail.attachments.map((attachment) => (
-              <li key={`${attachment.message_id}:${attachment.attachment_id}`}>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => onDownloadAttachment(
-                    attachment.message_id,
-                    attachment.attachment_id,
-                    attachment.filename,
-                  )}
-                >
-                  {attachment.filename}
-                </button>
-                <small>
-                  {attachment.mime_type}
-                  {attachment.size_bytes !== null ? ` · ${formatFileSize(attachment.size_bytes)}` : ""}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <AttachmentList attachments={detail.attachments} onDownload={onDownloadAttachment} />
     </article>
   );
 }
@@ -353,12 +325,6 @@ function parsedResourceDate(value: string | null): Date | null {
   if (!Number.isFinite(milliseconds)) return null;
   const date = new Date(milliseconds);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatFileSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function safeGoogleLink(url: string): string {

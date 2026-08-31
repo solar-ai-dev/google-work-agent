@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  getCurrentAccount,
+  getCurrentGoogleAccount,
   getGoogleConnection,
-  getLive,
-  getReady,
-  getRuntime,
-  getSettings,
-} from "../api";
+} from "../features/settings/api/google_connection_operations";
+import { getRuntime, type RuntimeSummary } from "../features/diagnostics/api/get_runtime";
+import { getSettings } from "../features/settings/api/get_settings";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
+import { getLive, getReady } from "../api";
 import { ApiClientError } from "../api/client";
 import {
   API_CONTRACT_VERSION,
-  type CurrentGoogleAccountResponse,
-  type GoogleConnectionResponse,
-  type RuntimeSummary,
 } from "../api/contract";
 import { StartupCheckScreen, type StartupCheckState } from "../features/diagnostics/startup_check";
 import { ApiCompatibilityGate, type ApiCompatibility } from "./api_compatibility_gate";
@@ -20,8 +17,8 @@ import { bootstrapLocalSession, readBootstrapFragment } from "./session_bootstra
 
 export type StartupFlowContext = {
   runtime: RuntimeSummary;
-  google: GoogleConnectionResponse;
-  currentAccount: CurrentGoogleAccountResponse["account"];
+  google: GoogleConnection;
+  currentAccount: CurrentGoogleAccount["account"];
   calendarTimezone: string;
   setupCompleted: boolean;
 };
@@ -132,10 +129,10 @@ export function StartupFlow({ children }: Props): JSX.Element {
         getRuntime(),
         getGoogleConnection(),
         getSettings(),
-        getCurrentAccount(),
+        getCurrentGoogleAccount(),
       ]);
       const account = google.connection_status === "CONNECTED" && firstAccount.account === null
-        ? (await getCurrentAccount()).account
+        ? (await getCurrentGoogleAccount()).account
         : firstAccount.account;
       const setupCompleted = Boolean(
         settings.default_calendar_id

@@ -4,8 +4,14 @@ import { approveAction, modifyAction, prepareRetry, rejectAction } from "../feat
 import { resolveRecovery } from "../features/recovery/api/resolve_recovery";
 import { getRunContext, getRunSnapshot } from "../features/run/api/get_run_snapshot";
 import { cancelRun, confirmRun, resumeRun } from "../features/run/api/run_commands";
+import { getRuntime } from "../features/diagnostics/api/get_runtime";
+import { getSettings } from "../features/settings/api/get_settings";
+import { updateSettings } from "../features/settings/api/update_settings";
+import { deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential } from "../features/settings/api/llm_credential_operations";
+import { disconnectGoogle, getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection } from "../features/settings/api/google_connection_operations";
+import { stageAttachment } from "../features/attachment/api/stage_attachment";
 
-const api = { ...rootApi, approveAction, modifyAction, prepareRetry, rejectAction, resolveRecovery, getRunContext, getRunSnapshot, cancelRun, confirmRun, resumeRun };
+const api = { ...rootApi, approveAction, modifyAction, prepareRetry, rejectAction, resolveRecovery, getRunContext, getRunSnapshot, cancelRun, confirmRun, resumeRun, getRuntime, getSettings, updateSettings, deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential, disconnectGoogle, getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection, stageAttachment };
 
 describe("api index wrappers", () => {
   test("calls same-origin endpoints with the expected methods", async () => {
@@ -40,11 +46,10 @@ describe("api index wrappers", () => {
       },
       { call: () => api.getRuntime(), path: "/api/v1/runtime", method: "GET" },
       { call: () => api.getSettings(), path: "/api/v1/settings", method: "GET" },
-      { call: () => api.getLLMConnection(), path: "/api/v1/credentials/llm/gemini", method: "GET" },
+      { call: () => api.getLlmCredentialStatus(), path: "/api/v1/credentials/llm/gemini", method: "GET" },
       {
         call: () =>
-          api.patchSettings({
-            command_id: "settings-1",
+          api.updateSettings("settings-1", {
             preferred_llm_mode: "AUTO",
             external_llm_consent: true,
           }),
@@ -54,20 +59,17 @@ describe("api index wrappers", () => {
       },
       {
         call: () =>
-          api.storeLLMApiKey({
-            api_key: "sk-test",
-            storage_mode: "KEYRING",
-          }),
+          api.storeLlmCredential("credential-1", "sk-test", "KEYRING"),
         path: "/api/v1/credentials/llm/gemini",
         method: "PUT",
         bodyIncludes: { api_key: "sk-test", storage_mode: "KEYRING" },
       },
-      { call: () => api.deleteLLMApiKey(), path: "/api/v1/credentials/llm/gemini", method: "DELETE" },
+      { call: () => api.deleteLlmCredential("credential-2"), path: "/api/v1/credentials/llm/gemini", method: "DELETE" },
       { call: () => api.getGoogleConnection(), path: "/api/v1/connections/google/status", method: "GET" },
-      { call: () => api.startGoogleOAuth(), path: "/api/v1/connections/google/start", method: "POST" },
-      { call: () => api.disconnectGoogle(), path: "/api/v1/connections/google/disconnect", method: "POST" },
+      { call: () => api.startGoogleConnection("google-1"), path: "/api/v1/connections/google/start", method: "POST" },
+      { call: () => api.disconnectGoogle("google-2"), path: "/api/v1/connections/google/disconnect", method: "POST" },
       {
-        call: () => api.getCurrentAccount(),
+        call: () => api.getCurrentGoogleAccount(),
         path: "/api/v1/identity/google-account",
         method: "GET",
       },
@@ -173,7 +175,7 @@ describe("api index wrappers", () => {
         bodyIncludes: { expected_version: 3 },
       },
       {
-        call: () => api.stageAttachment(new File(["abc"], "a.txt", { type: "text/plain" })),
+        call: () => api.stageAttachment(new File(["abc"], "a.txt", { type: "text/plain" }), "attachment-1"),
         path: "/api/v1/attachments/stage",
         method: "POST",
         formIncludes: { filename: "a.txt", mime_type: "text/plain" },

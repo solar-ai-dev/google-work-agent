@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  disconnectGoogle,
-  getGoogleConnection,
-  getRuntime,
-  startGoogleOAuth,
-} from "../api";
-import type {
-  CurrentGoogleAccountResponse,
-  GoogleConnectionResponse,
-  RuntimeSummary,
-} from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { ConversationHistoryPanel, useConversation } from "../features/conversation";
 import { ResourceSidebar, ResourceViewer, type ResourceBrowserProjection } from "../features/resource_browser";
 import { FirstRunOnboardingScreen, SettingsDrawer } from "../features/settings";
+import { getRuntime, type RuntimeSummary } from "../features/diagnostics/api/get_runtime";
+import { getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection, type CurrentGoogleAccount, type GoogleConnection } from "../features/settings/api/google_connection_operations";
 import { CenterWorkspace } from "../features/workspace";
 import { MainShell } from "./main_shell";
 import { StartupFlow, type StartupFlowContext } from "./startup_flow";
@@ -28,8 +19,8 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
   const [theme, setTheme] = useState(localStorage.getItem(THEME_KEY) ?? "light");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeSummary>(initial.runtime);
-  const [google, setGoogle] = useState<GoogleConnectionResponse>(initial.google);
-  const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(initial.currentAccount);
+  const [google, setGoogle] = useState<GoogleConnection>(initial.google);
+  const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccount["account"]>(initial.currentAccount);
   const [calendarTimezone, setCalendarTimezone] = useState(initial.calendarTimezone);
   const [setupCompleted, setSetupCompleted] = useState(initial.setupCompleted);
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
@@ -71,13 +62,14 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     handleStartRun,
     handleApprove,
     handleSimpleAction,
-    handleAttachFiles,
+    handleAttachDescriptors,
     handleCancelRun,
     handleResumeRun,
     handleConfirmation,
     handleResolveRecovery,
   } = conversation;
   const restoredOpenRunRef = useRef(false);
+  const operationalCommandIds = useRef(new Map<string, string>());
 
   useEffect(() => {
     if (restoredOpenRunRef.current) {
@@ -115,7 +107,7 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       handleStartRun,
       handleApprove,
       handleSimpleAction,
-      handleAttachFiles,
+      handleAttachDescriptors,
       handleCancelRun,
       handleResumeRun,
       handleConfirmation,
@@ -131,9 +123,10 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     onOpenDiagnostics: () => setStatusLine("설정의 Runtime 상태에서 진단 정보를 확인하세요."),
   };
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
-    const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
+    const [runtimeResponse, googleResponse, accountResponse] = await Promise.all([getRuntime(), getGoogleConnection(), getCurrentGoogleAccount()]);
     setRuntime(runtimeResponse);
     setGoogle(googleResponse);
+    setCurrentAccount(accountResponse.account);
   }, []);
 
   useEffect(() => {
@@ -151,7 +144,10 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     }
     setGoogleConnectPending(true);
     try {
-      const response = await startGoogleOAuth();
+      let commandId = operationalCommandIds.current.get("google:connect");
+      if (!commandId) { commandId = crypto.randomUUID(); operationalCommandIds.current.set("google:connect", commandId); }
+      const response = await startGoogleConnection(commandId);
+      operationalCommandIds.current.delete("google:connect");
       window.open(requireOAuthLaunchUrl(response.authorization_url), "_blank", "noopener,noreferrer");
       setStatusLine("Google 연결 완료를 기다리고 있습니다.");
     } catch (error) {
@@ -159,20 +155,6 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     } finally {
       setGoogleConnectPending(false);
     }
-  }
-
-  async function handleGoogleDisconnect(): Promise<void> {
-    await disconnectGoogle();
-    setGoogle((current) => current ? {
-      ...current,
-      account_id: null,
-      display_email: null,
-      connection_status: "DISCONNECTED",
-      granted_scopes: [],
-      missing_required_scopes: [],
-    } : current);
-    setCurrentAccount(null);
-    await refreshRuntimeSummary();
   }
 
   if (!workspaceReady) {
@@ -208,13 +190,10 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       settingsPanel={settingsOpen ? (
         <SettingsDrawer
           runtime={runtime}
-          google={google}
           theme={theme}
           onThemeChange={setTheme}
           onClose={() => setSettingsOpen(false)}
-          onConnect={handleGoogleConnect}
-          onDisconnect={handleGoogleDisconnect}
-          onRuntimeRefresh={refreshRuntimeSummary}
+          onOperationalStateChanged={refreshRuntimeSummary}
         />
       ) : null}
     >

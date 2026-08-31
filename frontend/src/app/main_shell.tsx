@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { CurrentGoogleAccountResponse, GoogleConnectionResponse } from "../api/contract";
+import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings/api/google_connection_operations";
 import { TopBar } from "./top_bar";
 
 type Props = {
-  google: GoogleConnectionResponse | null;
-  currentAccount: CurrentGoogleAccountResponse["account"];
+  google: GoogleConnection | null;
+  currentAccount: CurrentGoogleAccount["account"];
   statusLine: string;
   googleConnectPending: boolean;
   onConnectGoogle: () => void;

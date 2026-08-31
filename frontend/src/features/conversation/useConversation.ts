@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { CurrentGoogleAccountResponse } from "../../api/contract";
+import type { CurrentGoogleAccount } from "../settings/api/google_connection_operations";
 import { useActionPlanCommands } from "../approval/use_action_plan_commands";
 import { useRecoveryCommands } from "../recovery/use_recovery_commands";
 import { useRequestComposerController } from "../run/request_composer";
@@ -10,7 +10,7 @@ import { useConversationHistoryProjection } from "./conversation_history_panel";
 export type { PendingConfirmation } from "../run/use_run_projection";
 
 type UseConversationOptions = {
-  currentAccount: CurrentGoogleAccountResponse["account"];
+  currentAccount: CurrentGoogleAccount["account"];
   selectedResourceHandles: string[];
   onStatusLine: (message: string) => void;
 };
@@ -59,7 +59,6 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     completeCommand,
     selectRun: run.selectRun,
     refreshRun: run.refreshRun,
-    onStatusLine,
   });
   const recoveryCommands = useRecoveryCommands({
     runSnapshot: run.runSnapshot,

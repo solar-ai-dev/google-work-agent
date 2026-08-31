@@ -83,7 +83,15 @@ def test_selection_handle_has_one_issuer_and_resolver_authority() -> None:
 def test_attachment_route_is_singular_multipart_transport_only() -> None:
     route = _read(SRC / "api" / "routes" / "attachments.py")
     dependencies = _read(SRC / "api" / "dependencies" / "attachments.py")
-    frontend = _read(ROOT / "frontend" / "src" / "api" / "index.ts")
+    frontend = _read(
+        ROOT
+        / "frontend"
+        / "src"
+        / "features"
+        / "attachment"
+        / "api"
+        / "stage_attachment.ts"
+    )
     assert "def create_router(" not in route
     assert "injected_dependencies" not in route
     assert "UploadFile" in route and "Form(" in route and "File(" in route

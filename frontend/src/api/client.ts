@@ -56,7 +56,9 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   return json as T;
 }
 
-export async function requestBlob(path: string): Promise<Blob> {
+export type BlobResponse = { blob: Blob; contentDisposition: string | null; contentType: string; contentLength: number | null };
+
+export async function requestBlobResponse(path: string): Promise<BlobResponse> {
   if (!path.startsWith("/")) {
     throw new Error("same-origin relative path is required");
   }
@@ -77,7 +79,18 @@ export async function requestBlob(path: string): Promise<Blob> {
       envelope,
     );
   }
-  return response.blob();
+  const blob = await response.blob();
+  const rawLength = response.headers.get("content-length");
+  const contentLength = rawLength !== null && /^\d+$/.test(rawLength) ? Number(rawLength) : null;
+  if (contentLength !== null && contentLength !== blob.size) {
+    throw new ApiClientError(response.status, "Attachment size verification failed.", null);
+  }
+  return {
+    blob,
+    contentDisposition: response.headers.get("content-disposition"),
+    contentType: response.headers.get("content-type") ?? "application/octet-stream",
+    contentLength,
+  };
 }
 
 function tryParseJson(text: string): unknown {

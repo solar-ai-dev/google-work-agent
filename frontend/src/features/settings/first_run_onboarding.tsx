@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  getLLMConnection,
-  getSettings,
-  patchSettings,
-  storeLLMApiKey,
-} from "../../api";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClientError } from "../../api/client";
-import type { GoogleConnectionResponse, RuntimeSummary } from "../../api/contract";
+import type { RuntimeSummary } from "../diagnostics/api/get_runtime";
+import type { GoogleConnection } from "./api/google_connection_operations";
+import { getSettings, type SettingsView } from "./api/get_settings";
+import { getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";
+import { updateSettings } from "./api/update_settings";
 
 type Props = {
   runtime: RuntimeSummary;
-  google: GoogleConnectionResponse;
+  google: GoogleConnection;
   onConnectGoogle: () => void;
   onRefreshConnections: () => Promise<void>;
   onComplete: (timezone: string) => void;
@@ -26,27 +24,27 @@ export function FirstRunOnboardingScreen({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Record<string, unknown>>({});
-  const [llm, setLLM] = useState<Record<string, unknown>>({});
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [llm, setLLM] = useState<LlmCredentialStatus | null>(null);
   const [consent, setConsent] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
   const [calendarId, setCalendarId] = useState("primary");
   const [taskListId, setTaskListId] = useState("@default");
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul");
+  const commandIds = useRef(new Map<string, string>());
 
   useEffect(() => {
     let active = true;
-    void Promise.all([getSettings(), getLLMConnection()])
+    void Promise.all([getSettings(), getLlmCredentialStatus()])
       .then(([settingsResponse, llmResponse]) => {
         if (!active) return;
-        const loadedSettings = asRecord(settingsResponse);
-        setSettings(loadedSettings);
-        setLLM(asRecord(llmResponse));
-        setConsent(Boolean(loadedSettings.external_llm_consent));
-        setCalendarId(stringValue(loadedSettings.default_calendar_id) ?? "primary");
-        setTaskListId(stringValue(loadedSettings.default_tasklist_id) ?? "@default");
-        setTimezone(stringValue(loadedSettings.timezone) ?? "Asia/Seoul");
+        setSettings(settingsResponse);
+        setLLM(llmResponse);
+        setConsent(settingsResponse.external_llm_consent);
+        setCalendarId(settingsResponse.default_calendar_id ?? "primary");
+        setTaskListId(settingsResponse.default_tasklist_id ?? "@default");
+        setTimezone(settingsResponse.timezone);
       })
       .catch((cause: unknown) => {
         if (active) setError(errorMessage(cause, "설정 상태를 불러오지 못했습니다."));
@@ -58,52 +56,57 @@ export function FirstRunOnboardingScreen({
   }, []);
 
   const apiProvider = useMemo(() => llm, [llm]);
-  const apiAvailable = apiProvider.validation_status === "VALID";
+  const apiAvailable = apiProvider?.validation_status === "VALID";
   const diagnosticsReady = runtime.launcher_status === "READY" && runtime.migration_status === "READY";
-  const consentSaved = Boolean(settings.external_llm_consent);
+  const consentSaved = Boolean(settings?.external_llm_consent);
   const defaultsReady = Boolean(
-    stringValue(settings.default_calendar_id)
-    && stringValue(settings.default_tasklist_id)
-    && stringValue(settings.timezone),
+    settings?.default_calendar_id
+    && settings.default_tasklist_id
+    && settings.timezone,
   );
+
+  function commandIdFor(operation: string): string {
+    let commandId = commandIds.current.get(operation);
+    if (!commandId) { commandId = crypto.randomUUID(); commandIds.current.set(operation, commandId); }
+    return commandId;
+  }
 
   async function saveConsent(): Promise<void> {
     await run(async () => {
-      const response = await patchSettings({
-        command_id: `onboarding-consent-${Date.now()}`,
+      const response = await updateSettings(commandIdFor("onboarding:consent"), {
         external_llm_consent: consent,
       });
-      setSettings(asRecord(response));
+      commandIds.current.delete("onboarding:consent");
+      setSettings(response);
     });
   }
 
   async function connectLLM(): Promise<void> {
     await run(async () => {
       if (apiKey.trim()) {
-        await storeLLMApiKey({ api_key: apiKey, storage_mode: storageMode });
-        setApiKey("");
+        await storeLlmCredential(commandIdFor("onboarding:credential"), apiKey, storageMode);
+        commandIds.current.delete("onboarding:credential");
       }
-      const response = await getLLMConnection();
-      setLLM(asRecord(response));
+      const response = await getLlmCredentialStatus();
+      setLLM(response);
       await onRefreshConnections();
-    });
+    }, true);
   }
 
   async function completeSetup(): Promise<void> {
     await run(async () => {
-      const response = await patchSettings({
-        command_id: `onboarding-complete-${Date.now()}`,
+      const response = await updateSettings(commandIdFor("onboarding:complete"), {
         default_calendar_id: calendarId.trim(),
         default_tasklist_id: taskListId.trim(),
         timezone: timezone.trim(),
       });
-      const saved = asRecord(response);
-      setSettings(saved);
-      onComplete(stringValue(saved.timezone) ?? timezone.trim());
+      commandIds.current.delete("onboarding:complete");
+      setSettings(response);
+      onComplete(response.timezone);
     });
   }
 
-  async function run(operation: () => Promise<void>): Promise<void> {
+  async function run(operation: () => Promise<void>, clearSecret = false): Promise<void> {
     setBusy(true);
     setError(null);
     try {
@@ -111,6 +114,7 @@ export function FirstRunOnboardingScreen({
     } catch (cause) {
       setError(errorMessage(cause, "설정을 완료하지 못했습니다."));
     } finally {
+      if (clearSecret) setApiKey("");
       setBusy(false);
     }
   }
@@ -159,14 +163,6 @@ export function FirstRunOnboardingScreen({
 
 function ChecklistItem({ title, complete, children }: { title: string; complete: boolean; children: ReactNode }): JSX.Element {
   return <li className="info-card"><strong>{complete ? "완료" : "필요"} · {title}</strong>{complete ? null : <div>{children}</div>}</li>;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

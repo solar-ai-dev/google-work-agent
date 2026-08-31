@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { ApprovalSnapshot, RunAction, RunSnapshot } from "../../api/contract";
+import { AttachmentPicker } from "../attachment/attachment_picker";
+import type { StagedAttachmentDescriptor } from "../attachment/api/stage_attachment";
 import { calendarConflictDecision, feasibilityDecision, hasOtherRisk, taskDuplicateDecision } from "./risk_presentation";
 
-export function ActionPlanCard({ snapshot, busy, retryActionIds, formatTime, onApprove, onModify, onReject, onRetry, onAttachFiles }: {
+export function ActionPlanCard({ snapshot, busy, retryActionIds, formatTime, onApprove, onModify, onReject, onRetry, onAttachDescriptors }: {
   snapshot: RunSnapshot;
   busy: string | null;
   retryActionIds: ReadonlySet<string>;
@@ -11,22 +13,22 @@ export function ActionPlanCard({ snapshot, busy, retryActionIds, formatTime, onA
   onModify: (action: RunAction, patch: Record<string, unknown>) => void;
   onReject: (action: RunAction) => void;
   onRetry: (action: RunAction) => void;
-  onAttachFiles: (action: RunAction, files: FileList) => void;
+  onAttachDescriptors: (action: RunAction, descriptors: StagedAttachmentDescriptor[]) => Promise<void> | void;
 }): JSX.Element | null {
   if (!snapshot.current_plan) return null;
   return (
     <section aria-label="Action Plan">
       <article className="info-card"><strong>Action Plan</strong><div className="muted">{snapshot.current_plan.summary_text ?? "요약이 없습니다."}</div></article>
       {snapshot.actions.map((action) => (
-        <ActionDecisionCard key={action.action_id} action={action} approval={snapshot.approvals.find((item) => item.action_id === action.action_id)} busy={busy} canRetry={retryActionIds.has(action.action_id)} formatTime={formatTime} onApprove={onApprove} onModify={onModify} onReject={onReject} onRetry={onRetry} onAttachFiles={onAttachFiles} />
+        <ActionDecisionCard key={action.action_id} action={action} approval={snapshot.approvals.find((item) => item.action_id === action.action_id)} busy={busy} canRetry={retryActionIds.has(action.action_id)} formatTime={formatTime} onApprove={onApprove} onModify={onModify} onReject={onReject} onRetry={onRetry} onAttachDescriptors={onAttachDescriptors} />
       ))}
     </section>
   );
 }
 
-function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onApprove, onModify, onReject, onRetry, onAttachFiles }: {
+function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onApprove, onModify, onReject, onRetry, onAttachDescriptors }: {
   action: RunAction; approval?: ApprovalSnapshot; busy: string | null; canRetry: boolean; formatTime: (value: number) => string;
-  onApprove: (action: RunAction, acknowledgements: ReadonlySet<string>) => void; onModify: (action: RunAction, patch: Record<string, unknown>) => void; onReject: (action: RunAction) => void; onRetry: (action: RunAction) => void; onAttachFiles: (action: RunAction, files: FileList) => void;
+  onApprove: (action: RunAction, acknowledgements: ReadonlySet<string>) => void; onModify: (action: RunAction, patch: Record<string, unknown>) => void; onReject: (action: RunAction) => void; onRetry: (action: RunAction) => void; onAttachDescriptors: (action: RunAction, descriptors: StagedAttachmentDescriptor[]) => Promise<void> | void;
 }): JSX.Element {
   const [acknowledgements, setAcknowledgements] = useState<Set<string>>(new Set());
   const [editValues, setEditValues] = useState<Record<string, string>>({});
@@ -55,7 +57,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
       {action.next_allowed_commands.includes("MODIFY_ACTION") && editableFields.some((field) => field !== "attachments") ? (
         <fieldset><legend>수정</legend>{editableFields.filter((field) => field !== "attachments").map((field) => <label key={field}>{field}<input value={editValues[field] ?? ""} onChange={(event) => setEditValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<button className="button-secondary" type="button" disabled={busy === `modify-${action.action_id}` || Object.keys(patch).length === 0} onClick={() => onModify(action, patch)}>수정</button></fieldset>
       ) : null}
-      {action.attachment_allowed ? <label className="button-secondary">첨부파일 선택<input type="file" multiple hidden disabled={busy === `modify-${action.action_id}`} onChange={(event) => { if (event.currentTarget.files) onAttachFiles(action, event.currentTarget.files); event.currentTarget.value = ""; }} /></label> : null}
+      {action.attachment_allowed && action.next_allowed_commands.includes("MODIFY_ACTION") ? <AttachmentPicker disabled={busy === `modify-${action.action_id}`} onStaged={(descriptors) => onAttachDescriptors(action, descriptors)} /> : null}
       <div className="button-row">
         {action.next_allowed_commands.includes("APPROVE_ACTION") ? <button className="button-primary" type="button" disabled={busy === `approve-${action.action_id}`} onClick={() => onApprove(action, requiredAcknowledgements.length ? new Set(requiredAcknowledgements) : acknowledgements)}>{approvalLabel(duplicate, conflict)}</button> : null}
         {action.next_allowed_commands.includes("REJECT_ACTION") ? <button className="button-danger" type="button" disabled={busy === `reject-${action.action_id}`} onClick={() => onReject(action)}>거절</button> : null}

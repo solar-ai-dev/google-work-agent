@@ -141,6 +141,7 @@ async def stage_attachment(
         mime_type=descriptor.mime_type,
         size_bytes=descriptor.size_bytes,
         sha256=descriptor.sha256,
+        expires_at_ms=descriptor.expires_at_ms,
         api_contract_version=supported_version,
     )
 

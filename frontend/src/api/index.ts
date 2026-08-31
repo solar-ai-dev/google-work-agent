@@ -1,16 +1,8 @@
 import {
   API_CONTRACT_VERSION,
-  type AttachmentDescriptorResponse,
   type BootstrapResponse,
-  type CurrentGoogleAccountResponse,
-  type GoogleConnectionResponse,
-  type GoogleOAuthStartResponse,
-  type LLMApiKeyResponse,
-  type LLMConnectionResponse,
   type LiveResponse,
   type ReadyResponse,
-  type RuntimeResponse,
-  type SettingsResponse,
 } from "./contract";
 import { requestJson } from "./client";
 
@@ -32,84 +24,5 @@ export function bootstrapSession(payload: {
       bootstrap_secret: payload.bootstrap_secret,
       frontend_api_contract_version: API_CONTRACT_VERSION,
     },
-  });
-}
-
-export function getRuntime(): Promise<RuntimeResponse> {
-  return requestJson("/api/v1/runtime");
-}
-
-export function getSettings(): Promise<SettingsResponse> {
-  return requestJson("/api/v1/settings");
-}
-
-export function patchSettings(payload: {
-  command_id: string;
-  preferred_llm_mode?: "AUTO" | "LOCAL_GPU" | "API_LLM";
-  external_llm_consent?: boolean;
-  default_calendar_id?: string | null;
-  default_tasklist_id?: string | null;
-  timezone?: string;
-}): Promise<SettingsResponse> {
-  const { command_id, ...settings_patch } = payload;
-  return requestJson("/api/v1/settings", {
-    method: "PUT",
-    body: {
-      schema_version: 1,
-      command_id,
-      settings_patch: { schema_version: 1, ...settings_patch },
-    },
-  });
-}
-export function getLLMConnection(): Promise<LLMConnectionResponse> {
-  return requestJson("/api/v1/credentials/llm/gemini");
-}
-
-export function storeLLMApiKey(payload: {
-  api_key: string;
-  storage_mode: "KEYRING" | "SESSION_ONLY";
-}): Promise<LLMApiKeyResponse> {
-  return requestJson("/api/v1/credentials/llm/gemini", {
-    method: "PUT",
-    body: { schema_version: 1, command_id: crypto.randomUUID(), ...payload },
-  });
-}
-
-export function deleteLLMApiKey(): Promise<LLMApiKeyResponse> {
-  return requestJson("/api/v1/credentials/llm/gemini", {
-    method: "DELETE",
-    body: { schema_version: 1, command_id: crypto.randomUUID() },
-  });
-}
-
-export function getGoogleConnection(): Promise<GoogleConnectionResponse> {
-  return requestJson("/api/v1/connections/google/status");
-}
-
-export function startGoogleOAuth(): Promise<GoogleOAuthStartResponse> {
-  return requestJson("/api/v1/connections/google/start", {
-    method: "POST",
-    body: { schema_version: 1, command_id: crypto.randomUUID() },
-  });
-}
-
-export function disconnectGoogle(): Promise<{ schema_version: 1; revocation_attempted: boolean; local_credential_deleted: boolean; connection_status: "DISCONNECTED" | "UNAVAILABLE" }> {
-  return requestJson("/api/v1/connections/google/disconnect", {
-    method: "POST",
-    body: { schema_version: 1, command_id: crypto.randomUUID() },
-  });
-}
-
-export function getCurrentAccount(): Promise<CurrentGoogleAccountResponse> {
-  return requestJson("/api/v1/identity/google-account");
-}
-
-export async function stageAttachment(file: File): Promise<AttachmentDescriptorResponse> {
-  const body = new FormData();
-  body.set("command_id", crypto.randomUUID());
-  body.set("file", file, file.name);
-  return requestJson("/api/v1/attachments/stage", {
-    method: "POST",
-    body,
   });
 }

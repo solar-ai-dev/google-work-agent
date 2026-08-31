@@ -9,4 +9,5 @@ class AttachmentDescriptorResponse(ApiModel):
     mime_type: str
     size_bytes: int
     sha256: str
+    expires_at_ms: int
     api_contract_version: str

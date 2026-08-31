@@ -1123,7 +1123,7 @@ test("disconnects Google and refreshes the runtime summary", async () => {
       return jsonResponse({ llm: llmConnectionPayload(), api_contract_version: "1" });
     }
     if (path === "/api/v1/identity/google-account") {
-      return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+      return jsonResponse({ account: disconnected ? null : currentAccount(), api_contract_version: "1" });
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({ items: [], next_cursor: null, api_contract_version: "1" });
@@ -1156,7 +1156,7 @@ test("disconnects Google and refreshes the runtime summary", async () => {
   await user.click(screen.getByRole("button", { name: "연결 해제" }));
 
   await screen.findByText("Google 미연결");
-  expect(screen.queryByRole("checkbox", { name: /선택/ })).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("checkbox", { name: /Project sync follow-up 선택/ })).not.toBeInTheDocument());
 });
 
 test("submits cancel, resume, and retry actions while showing unknown-result recovery", async () => {
@@ -1426,7 +1426,7 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
   await user.click(screen.getByRole("button", { name: "설정" }));
   await screen.findByText("Requested mode");
   await user.selectOptions(screen.getByDisplayValue("API_LLM"), "AUTO");
-  await user.click(screen.getByRole("checkbox"));
+  await user.click(screen.getByRole("checkbox", { name: "외부 LLM 사용 동의" }));
   await user.click(screen.getByRole("button", { name: "LLM 설정 저장" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
