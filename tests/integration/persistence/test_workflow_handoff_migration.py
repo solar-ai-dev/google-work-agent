@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 
 MIGRATIONS = Path("src/google_work_agent/adapters/persistence/migrations")
 

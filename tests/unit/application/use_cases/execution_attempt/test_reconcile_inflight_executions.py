@@ -70,6 +70,26 @@ def test_post_begin_orphan_marks_unknown_without_resending_write() -> None:
     assert command.expected_attempt_version == 4
 
 
+def test_pre_begin_orphan_aborts_claim_without_resending_write() -> None:
+    action = SimpleNamespace(id="action-1", version=3)
+    attempt = SimpleNamespace(id="attempt-1", version=0)
+    abort = Mock(return_value=SimpleNamespace(applied=True))
+    handler = object.__new__(ReconcileInflightExecutionsHandler)
+    handler._unit_of_work_factory = lambda: _UnitOfWork(
+        actions=SimpleNamespace(get=Mock(return_value=action)),
+        execution_attempts=SimpleNamespace(get=Mock(return_value=attempt)),
+    )
+    handler._abort_claimed_execution = abort
+
+    assert handler._reconcile(_candidate("PRE_BEGIN_ORPHAN")) == 1
+
+    command = abort.call_args.args[0]
+    assert command.command_id == "system:execution-attempt-reconcile:attempt-1:abort"
+    assert command.expected_action_version == 3
+    assert command.expected_attempt_version == 0
+    assert command.error_code == "PROCESS_RESTART_BEFORE_BEGIN"
+
+
 def test_failed_continuation_uses_current_plan_and_current_run_guard() -> None:
     handler = object.__new__(ReconcileInflightExecutionsHandler)
     run = SimpleNamespace(status=RunStatusV1.WAITING_APPROVAL)

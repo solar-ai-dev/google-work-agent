@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from google_work_agent.application.orchestration.context_segmentation import _SourceSegment
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     ConstraintV1,
     RequestIntentV2,
 )
+from google_work_agent.application.orchestration.context_segmentation import _SourceSegment
 from google_work_agent.application.orchestration.retrieval_ranking import (
     EXACT_RESOURCE_REASON,
     KEYWORD_MATCH_REASON,

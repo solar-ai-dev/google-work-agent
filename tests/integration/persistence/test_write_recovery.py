@@ -63,6 +63,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
@@ -428,6 +429,7 @@ def test_unknown_result_create_recovery_and_retry_flow(
 
     unknown_service = MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )
     unknown = unknown_service(
@@ -464,6 +466,7 @@ def test_unknown_result_create_recovery_and_retry_flow(
     assert recovered.action_status == "EXECUTED"
     resumed = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         ResolveRecoveryCommandV1(
@@ -532,6 +535,7 @@ def test_unknown_result_mcp_request_id_persists_on_trace_and_audit(
 
     unknown_service = MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )
     unknown = unknown_service(
@@ -579,6 +583,7 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
 
     unknown_service = MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )
     unknown_service(
@@ -616,6 +621,7 @@ def test_update_recovery_can_resolve_unknown_as_failed_when_source_is_unchanged(
     scheduled: list[str] = []
     retry_service = PrepareWriteRetryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(prefix="retry-review"),
         resume_target_registry=ResumeTargetRegistry(
@@ -669,6 +675,7 @@ def test_update_recovery_get_runs_without_sqlite_write_transaction(
     )
     unknown_service = MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )
     unknown_service(

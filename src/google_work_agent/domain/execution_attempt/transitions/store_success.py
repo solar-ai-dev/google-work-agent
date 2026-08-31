@@ -1,6 +1,7 @@
 """Joint StoreSuccess transition authority."""
 
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.guards.store_success import guard_store_success
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptStatusV1,
     ExecutionAttemptTransitionDecision,
@@ -17,28 +18,23 @@ def transition_store_success(
     attempt_version: int,
     expected_attempt_version: int,
 ) -> ExecutionAttemptTransitionDecision:
-    if action_version != expected_action_version or attempt_version != expected_attempt_version:
+    conflict = guard_store_success(
+        action_status,
+        action_version=action_version,
+        expected_action_version=expected_action_version,
+        attempt_status=attempt_status,
+        attempt_version=attempt_version,
+        expected_attempt_version=expected_attempt_version,
+    )
+    if conflict is not None:
         return ExecutionAttemptTransitionDecision(
             False,
-            ResultCode.VERSION_CONFLICT,
+            conflict[0],
             action_status,
             action_version,
             attempt_status,
             attempt_version,
-            "expected version does not match current version",
-        )
-    if (
-        action_status is not ActionStatusV1.EXECUTING
-        or attempt_status is not ExecutionAttemptStatusV1.EXECUTING
-    ):
-        return ExecutionAttemptTransitionDecision(
-            False,
-            ResultCode.STATE_CONFLICT,
-            action_status,
-            action_version,
-            attempt_status,
-            attempt_version,
-            "StoreSuccess requires Action EXECUTING and Attempt EXECUTING",
+            conflict[1],
         )
     return ExecutionAttemptTransitionDecision(
         True,

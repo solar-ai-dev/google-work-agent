@@ -13,6 +13,7 @@ from google_work_agent.domain.run.transitions.begin_verification import (
     transition_begin_verification,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,14 +39,17 @@ class BeginVerificationHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         resume_target_registry: ResumeTargetIssuer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: BeginVerificationCommand) -> BeginVerificationResult:
+        checkpoint_update = None
         with self._unit_of_work_factory() as unit_of_work:
             now_ms = self._now_ms()
             receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -109,11 +113,11 @@ class BeginVerificationHandler:
                         {"status": next_status.value, "version": run.version + 1},
                     ):
                         raise RuntimeError("validated BeginVerification CAS failed")
-                    binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+                    binding = self._checkpoint_port.load_workflow_binding(run.id)
                     checkpoint = (
                         None
                         if binding is None
-                        else unit_of_work.checkpoints.load_same_run_checkpoint(
+                        else self._checkpoint_port.load_same_run_checkpoint(
                             run.id, binding.langgraph_thread_id
                         )
                     )
@@ -126,12 +130,10 @@ class BeginVerificationHandler:
                         "VERIFICATION",
                         binding.graph_version,
                     )
-                    unit_of_work.checkpoints.store_same_run_checkpoint(
-                        replace(
-                            checkpoint,
-                            registered_resume_target=verification_target,
-                            created_at_ms=now_ms,
-                        )
+                    checkpoint_update = replace(
+                        checkpoint,
+                        registered_resume_target=verification_target,
+                        created_at_ms=now_ms,
                     )
                     unit_of_work.audits.append(
                         AuditEvent(
@@ -165,7 +167,9 @@ class BeginVerificationHandler:
                 completed_at_ms=now_ms,
             )
             unit_of_work.commit()
-            return result
+        if checkpoint_update is not None:
+            self._checkpoint_port.store_same_run_checkpoint(checkpoint_update)
+        return result
 
 
 def _require_run(unit_of_work: UnitOfWork, run_id: str) -> Run:

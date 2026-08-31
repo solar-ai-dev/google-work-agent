@@ -16,7 +16,8 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
 from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
     BackgroundRunExecutorAdapter,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.run.schedule_run_execution import (

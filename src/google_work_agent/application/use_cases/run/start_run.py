@@ -40,6 +40,7 @@ from google_work_agent.ports.persistence.trace_event_repository import (
     TraceEventCursor,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
     WorkflowBindingV1,
@@ -117,6 +118,7 @@ class StartRunHandler:
         id_factory: Callable[[], str],
         graph_profile: GraphProfileIdV1,
         graph_version: str,
+        checkpoint_port: CheckpointPort,
         settings_provider: Callable[[], SettingsViewV1] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -124,6 +126,7 @@ class StartRunHandler:
         self._id_factory = id_factory
         self._graph_profile = graph_profile
         self._graph_version = graph_version
+        self._checkpoint_port = checkpoint_port
         self._settings_provider = settings_provider
 
     def __call__(self, command: StartRunCommand) -> StartRunResult:
@@ -186,7 +189,7 @@ class StartRunHandler:
                 if current_open is None:
                     raise
             if current_open is None:
-                unit_of_work.checkpoints.create_workflow_binding(
+                unit_of_work.workflow_bindings.create_workflow_binding(
                     WorkflowBindingV1(
                         schema_version=1,
                         workflow_key=workflow_key,
@@ -551,7 +554,7 @@ class StartRunHandler:
         run_id: str,
         workflow_key: str,
     ) -> None:
-        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        binding = self._checkpoint_port.load_workflow_binding(run_id)
         if (
             binding is None
             or binding.workflow_key != workflow_key

@@ -1,5 +1,8 @@
 """Authorize connector dispatch by advancing the durable Attempt."""
 
+from google_work_agent.domain.execution_attempt.guards.begin_execution_attempt import (
+    guard_begin_execution_attempt,
+)
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptCommand,
     ExecutionAttemptStatusV1,
@@ -15,32 +18,21 @@ def transition_begin_execution_attempt(
     claim_context_current: bool,
     durable_cancel_intent: bool,
 ) -> CommandResult[ExecutionAttemptStatusV1, ExecutionAttemptCommand]:
-    if expected_version != current_version:
+    conflict = guard_begin_execution_attempt(
+        current_status,
+        current_version,
+        expected_version,
+        claim_context_current=claim_context_current,
+        durable_cancel_intent=durable_cancel_intent,
+    )
+    if conflict is not None:
         return CommandResult(
             False,
-            ResultCode.VERSION_CONFLICT,
+            conflict[0],
             current_status,
             current_version,
             (),
-            "expected_version does not match current_version",
-        )
-    if current_status is not ExecutionAttemptStatusV1.CLAIMED:
-        return CommandResult(
-            False,
-            ResultCode.STATE_CONFLICT,
-            current_status,
-            current_version,
-            (),
-            "BeginExecutionAttempt requires CLAIMED",
-        )
-    if durable_cancel_intent or not claim_context_current:
-        return CommandResult(
-            False,
-            ResultCode.STATE_CONFLICT,
-            current_status,
-            current_version,
-            (),
-            "claim context is no longer dispatchable",
+            conflict[1],
         )
     return CommandResult(
         True,

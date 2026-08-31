@@ -4,7 +4,10 @@ from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
@@ -68,7 +71,11 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     handler = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,
         schedule_run_execution=schedule,
-        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
     )
 
     result = handler(RedriveWorkflowHandoffsCommand(limit=10))
@@ -89,7 +96,7 @@ def test_a_d_one_redrive_pass_reaches_recovery_required_and_settles_without_rest
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    redrive = _redrive(factory)
+    redrive = _redrive(factory, database_path)
 
     result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
 
@@ -106,12 +113,16 @@ def test_b_crash_after_context_committed_before_superseded_completes_without_rem
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     handoff = _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    require_recovery = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20)
+    require_recovery = RequireRecoveryHandler(
+        unit_of_work_factory=factory,
+        now_ms=lambda: 20,
+        checkpoint_port=sqlite_checkpoint(database_path),
+    )
     _seed_pre_recovery(require_recovery, handoff)
     assert _run_status(database_path, "r-1") == "RECOVERY_REQUIRED"
     assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
 
-    redrive = _redrive(factory, require_recovery=require_recovery)
+    redrive = _redrive(factory, database_path, require_recovery=require_recovery)
     result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
 
     assert result.blocked_binding == 1
@@ -124,7 +135,7 @@ def test_c_repeated_redrive_passes_produce_exactly_one_transition(tmp_path: Path
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    redrive = _redrive(factory)
+    redrive = _redrive(factory, database_path)
 
     first = redrive(RedriveWorkflowHandoffsCommand(limit=10))
     second = redrive(RedriveWorkflowHandoffsCommand(limit=10))
@@ -145,7 +156,7 @@ def test_e_terminal_run_supersedes_stale_handoff_without_creating_a_false_recove
     database_path = _database(tmp_path, run_status="COMPLETED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    redrive = _redrive(factory)
+    redrive = _redrive(factory, database_path)
 
     redrive(RedriveWorkflowHandoffsCommand(limit=10))
 
@@ -160,7 +171,7 @@ def test_e_preempting_run_status_leaves_handoff_blocked_without_creating_a_false
     database_path = _database(tmp_path, run_status="CANCEL_REQUESTED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    redrive = _redrive(factory)
+    redrive = _redrive(factory, database_path)
 
     redrive(RedriveWorkflowHandoffsCommand(limit=10))
 
@@ -175,7 +186,11 @@ def test_f_non_matching_recovery_context_fails_closed_without_superseding(
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
-    require_recovery = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20)
+    require_recovery = RequireRecoveryHandler(
+        unit_of_work_factory=factory,
+        now_ms=lambda: 20,
+        checkpoint_port=sqlite_checkpoint(database_path),
+    )
     unrelated = require_recovery(
         RequireRecoveryCommand(
             run_id="r-1",
@@ -190,7 +205,7 @@ def test_f_non_matching_recovery_context_fails_closed_without_superseding(
     )
     assert unrelated.applied
 
-    redrive = _redrive(factory, require_recovery=require_recovery)
+    redrive = _redrive(factory, database_path, require_recovery=require_recovery)
     redrive(RedriveWorkflowHandoffsCommand(limit=10))
 
     assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
@@ -216,7 +231,11 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
     blocked_pass = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,
         schedule_run_execution=schedule,
-        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
     )(RedriveWorkflowHandoffsCommand(limit=10))
 
     assert blocked_pass.accepted == 0
@@ -226,7 +245,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
     # h-2 still cannot bypass: the Domain-progress fence now blocks NORMAL dispatch
     # while a Recovery authority governs the run, not merely while the head is
     # BLOCKED_BINDING.
-    settled_pass = _redrive(factory, schedule_run_execution=schedule)(
+    settled_pass = _redrive(factory, database_path, schedule_run_execution=schedule)(
         RedriveWorkflowHandoffsCommand(limit=10)
     )
 
@@ -237,7 +256,11 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
 
     # Once Recovery resolves, the obsolete lower-sequence head no longer blocks the
     # lane forever -- h-2 can now dispatch.
-    resolve_recovery = ResolveRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 30)
+    resolve_recovery = ResolveRecoveryHandler(
+        unit_of_work_factory=factory,
+        checkpoint_port=sqlite_checkpoint(database_path),
+        now_ms=lambda: 30,
+    )
     with factory() as unit_of_work:
         run = unit_of_work.runs.get("r-1")
     assert run is not None
@@ -255,7 +278,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
     assert resolved.applied
     assert _run_status(database_path, "r-1") == "ANALYZING"
 
-    resumed_pass = _redrive(factory, schedule_run_execution=schedule)(
+    resumed_pass = _redrive(factory, database_path, schedule_run_execution=schedule)(
         RedriveWorkflowHandoffsCommand(limit=10)
     )
 
@@ -281,7 +304,11 @@ def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,
         schedule_run_execution=schedule,
-        require_recovery=RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
     )
 
     result = redrive(RedriveWorkflowHandoffsCommand(limit=10))
@@ -296,9 +323,7 @@ def test_newer_recovery_preemption_blocks_stale_retrieval_restart_before_cache_r
 ) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
-    target = MainControlResumeTargetV2(
-        "MAIN_CONTROL", "RETRIEVAL_ENTRY", "SIX_ROLE_BASELINE", "v1"
-    )
+    target = MainControlResumeTargetV2("MAIN_CONTROL", "RETRIEVAL_ENTRY", "SIX_ROLE_BASELINE", "v1")
     with factory() as unit_of_work:
         unit_of_work.workflow_handoffs.stage_pending(
             WorkflowHandoffStageV1(
@@ -330,7 +355,9 @@ def test_newer_recovery_preemption_blocks_stale_retrieval_restart_before_cache_r
             id_factory=lambda: "a-1",
         ),
         require_recovery=RequireRecoveryHandler(
-            unit_of_work_factory=factory, now_ms=lambda: 20
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
         ),
         reconcile_retrieval_cache_restart=reconcile,  # type: ignore[arg-type]
     )(RedriveWorkflowHandoffsCommand(limit=10))
@@ -341,6 +368,7 @@ def test_newer_recovery_preemption_blocks_stale_retrieval_restart_before_cache_r
 
 def _redrive(
     factory: _UnitOfWorkFactory,
+    database_path: Path,
     *,
     schedule_run_execution: ScheduleRunExecutionHandler | None = None,
     require_recovery: RequireRecoveryHandler | None = None,
@@ -349,7 +377,9 @@ def _redrive(
         unit_of_work_factory=factory, workflow_execution=_ExecutionPort(), id_factory=lambda: "a-1"
     )
     recovery = require_recovery or RequireRecoveryHandler(
-        unit_of_work_factory=factory, now_ms=lambda: 20
+        unit_of_work_factory=factory,
+        now_ms=lambda: 20,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
     return RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,

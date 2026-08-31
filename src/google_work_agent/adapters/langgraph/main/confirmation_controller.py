@@ -20,13 +20,15 @@ from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
-    PolicyConfirmationReceiptV1,
     validate_confirmation_response_projection_v1,
 )
 from google_work_agent.application.orchestration.supervisor import SupervisorDecisionV1
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetProfile,
     promote_run_budget_profile,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationCommand,
@@ -143,7 +145,9 @@ class ConfirmationControllerMixin:
         if not requested.applied:
             return None, {
                 "__target__": "end",
-                "execution_summary": {
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "CONFIRMATION_SUSPENDED",
                     "result": "REQUEST_CONFIRMATION_NOT_APPLIED",
                     "result_code": requested.result_code,
                 },
@@ -173,7 +177,11 @@ class ConfirmationControllerMixin:
         if self._current_run_status(request.run_id) != requested.pre_confirmation_status:
             return None, {
                 "__target__": "end",
-                "execution_summary": {"result": "CONFIRMATION_RESUME_CONFLICT"},
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "CONFIRMATION_SUSPENDED",
+                    "result": "CONFIRMATION_RESUME_CONFLICT",
+                },
             }
         self._materialize_policy_receipt_projection(state, raw_resume)
         # A resumed Product Prompt is a revision-heavy route. Promotion is

@@ -127,6 +127,7 @@ def test_reauth_core_command_marks_run_without_langgraph_dependency(
     _register_preflight_resume_target(write_database, clock)
     request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
     )
     response = request_service(
@@ -161,6 +162,7 @@ def test_reauth_rejects_stale_run_version_without_persisting_prior_status(
     _register_preflight_resume_target(write_database, clock)
     response = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
     )(
         RequireWriteReauthCommand(
@@ -199,6 +201,7 @@ def test_reauth_command_mcp_request_id_persists_on_trace_and_audit(
     _register_preflight_resume_target(write_database, clock)
     request_service = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
     )
     response = request_service(
@@ -243,20 +246,18 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
     scheduled: list[str] = []
     cancel = RequestCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
         resume_target_registry=registry,
         schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id)
-            or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
         ),
     )(RequestCancelCommand("run-1", 1, "cancel-reauth", "e" * 64))
     assert cancel.current_status == "CANCEL_REQUESTED"
 
     checkpoint_store = SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms)
-    cancel_target = registry.issue_main_stage(
-        "SIX_ROLE_BASELINE", "CANCEL_RESOLUTION", "v1"
-    )
+    cancel_target = registry.issue_main_stage("SIX_ROLE_BASELINE", "CANCEL_RESOLUTION", "v1")
     checkpoint = checkpoint_store.load_same_run_checkpoint("run-1", "thread-1")
     assert checkpoint is not None
     checkpoint_store.store_same_run_checkpoint(
@@ -267,6 +268,7 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
 
     required = RequireReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
     )(
         RequireWriteReauthCommand(
@@ -294,13 +296,13 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
 
     resumed = ResumeAfterReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
         resolve_resume_authority=authority,
         id_generator=DeterministicUUID(queued_ids=("handoff-resume",)),
         resume_target_registry=registry,
         schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id)
-            or RunExecutionAcceptedV1(1, True, "ACCEPTED")
+            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
         ),
     )(
         ResumeAfterReauthCommand(

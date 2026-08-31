@@ -4,8 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from tests.support.checkpoint import sqlite_checkpoint
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.api.composition import drain_workflow_handoffs_to_quiescence
 from google_work_agent.application.use_cases.recovery.require_recovery import (
@@ -113,7 +115,11 @@ def test_real_drain_processes_every_row_across_multiple_bounded_passes(
     schedule = ScheduleRunExecutionHandler(
         unit_of_work_factory=factory, workflow_execution=_ExecutionPort(), id_factory=lambda: "a-1"
     )
-    require_recovery = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 20)
+    require_recovery = RequireRecoveryHandler(
+        unit_of_work_factory=factory,
+        checkpoint_port=sqlite_checkpoint(database_path),
+        now_ms=lambda: 20,
+    )
     redrive = RedriveWorkflowHandoffsHandler(
         unit_of_work_factory=factory,
         schedule_run_execution=schedule,

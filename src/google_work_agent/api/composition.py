@@ -46,6 +46,9 @@ from google_work_agent.adapters.system.windows_hardware_probe import WindowsHard
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
+from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
+    AbortClaimedExecutionHandler,
+)
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultHandler,
 )
@@ -198,6 +201,7 @@ def build_production_runtime(
     )
     require_recovery = RequireRecoveryHandler(
         unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
         now_ms=now_ms,
         resume_target_registry=resume_target_registry,
     )
@@ -211,6 +215,11 @@ def build_production_runtime(
     )
     reconcile_inflight = ReconcileInflightExecutionsHandler(
         unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        abort_claimed_execution=AbortClaimedExecutionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        ),
         mark_unknown_result=MarkUnknownResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,

@@ -24,7 +24,6 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
     CreateStagedAttachmentCommand,
     CreateStagedAttachmentHandler,
 )
-from google_work_agent.launcher.connector_composition import TEST_KEYRING_PATH_ENV
 from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
 
 
@@ -33,7 +32,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     container = build_container(
         runtime_root=runtime_root,
         bootstrap_secret="test-bootstrap",
-        test_keyring_path=tmp_path / "test-keyring.json",
+        mcp_module_name="tests.fakes.google_workspace_mcp_server",
         keyring_store=SessionMemorySecretStore(),
     )
     container = replace(container, client_address_resolver=lambda _request: "127.0.0.1")
@@ -53,7 +52,6 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     base_transport = container.readiness_aggregator.transport.client
     assert base_transport._config.extra_environment == {  # noqa: SLF001
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
-        TEST_KEYRING_PATH_ENV: str((tmp_path / "test-keyring.json").resolve()),
     }
 
     with TestClient(create_app(container), base_url="http://127.0.0.1:8000") as client:
@@ -76,7 +74,7 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
         port=port,
         runtime_root=tmp_path / "runtime",
         bootstrap_secret="test-bootstrap",
-        test_keyring_path=tmp_path / "test-keyring.json",
+        mcp_module_name="tests.fakes.google_workspace_mcp_server",
         keyring_store=SessionMemorySecretStore(),
     )
     base_transport = container.readiness_aggregator.transport.client

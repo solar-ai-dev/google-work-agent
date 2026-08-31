@@ -27,6 +27,7 @@ from tests.integration.persistence.test_corrective_plan_persistence import (
     _persist,
     _prepare,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.resolve_recovery_adapter import (
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,
@@ -193,6 +194,7 @@ def test_resolve_recovery_command_replay_returns_original_reserved_plan(
 
     replay = ResolveMismatchRecoveryService(
         unit_of_work_factory=cast(Any, harness._unit_of_work_factory),
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=lambda: 20,
     )(
         ResolveMismatchRecoveryCommand(

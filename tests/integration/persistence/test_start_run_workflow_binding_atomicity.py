@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
@@ -68,6 +69,7 @@ def test_commit_failure_leaves_no_partial_start_run_participant(tmp_path: Path) 
 
     handler = StartRunHandler(
         unit_of_work_factory=factory,
+        checkpoint_port=SqliteCheckpointAdapter(database_path, now_ms=lambda: 100),
         now_ms=lambda: 100,
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
@@ -107,6 +109,7 @@ def _database(tmp_path: Path) -> Path:
 def _handler(database_path: Path) -> StartRunHandler:
     return StartRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=SqliteCheckpointAdapter(database_path, now_ms=lambda: 100),
         now_ms=lambda: 100,
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
     BeginPlanningHandler,
@@ -19,7 +20,6 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.plan.model import PlanStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import ContextAdjustmentControlV1
 
@@ -143,9 +143,7 @@ def _validated_adjustment(command: AdjustContextCommandV1) -> dict[str, object]:
         raise ValueError("unsupported context adjustment")
     requested = " ".join((command.requested_information or "").split())
     if segment_ids or not requested or len(requested) > MAX_REQUESTED_INFORMATION_CHARS:
-        raise ValueError(
-            "RETRIEVE_MORE requires no segment_ids and bounded requested_information"
-        )
+        raise ValueError("RETRIEVE_MORE requires no segment_ids and bounded requested_information")
     return {
         "kind": "RETRIEVE_MORE",
         "segment_ids": [],

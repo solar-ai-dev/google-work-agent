@@ -8,7 +8,9 @@ from typing import cast
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 
 _FACT_KINDS = frozenset(
     {

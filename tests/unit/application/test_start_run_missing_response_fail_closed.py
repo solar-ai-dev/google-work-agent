@@ -27,6 +27,7 @@ def test_completed_receipt_without_response_and_without_aggregate_is_not_reappli
     with pytest.raises(RuntimeError, match="missing replay response"):
         StartRunHandler(
             unit_of_work_factory=lambda: uow,
+            checkpoint_port=uow.workflow_bindings,
             now_ms=lambda: 20,
             id_factory=lambda: "unused",
             graph_profile="SIX_ROLE_BASELINE",

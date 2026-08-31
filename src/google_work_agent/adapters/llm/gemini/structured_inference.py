@@ -38,8 +38,8 @@ class APIProviderTransport(Protocol):
         raise NotImplementedError
 
 
-def _no_instruction_text(prompt_ref: PromptReference) -> str:
-    del prompt_ref
+def _no_instruction_text(prompt_ref: PromptReference, prompt_input: Mapping[str, object]) -> str:
+    del prompt_ref, prompt_input
     return ""
 
 
@@ -52,7 +52,7 @@ class GeminiStructuredInferenceAdapter:
     inherited descriptors, which collides with this dataclass's own field
     ordering).
 
-    ``resolve_instruction_text`` is called here, immediately before dispatch,
+    ``assemble_instruction_text`` is called here, immediately before dispatch,
     and its result lives only as a local variable for the duration of this
     call -- mirrors ``OllamaStructuredLLMProvider`` so the assembled prompt
     text never reaches ``prompt_ref``/Trace/Checkpoint storage (see
@@ -63,7 +63,9 @@ class GeminiStructuredInferenceAdapter:
     transport: APIProviderTransport
     model: str
     runtime: ActualRuntime = ActualRuntime.API_LLM
-    resolve_instruction_text: Callable[[PromptReference], str] = field(default=_no_instruction_text)
+    assemble_instruction_text: Callable[[PromptReference, Mapping[str, object]], str] = field(
+        default=_no_instruction_text
+    )
 
     def invoke_structured(
         self,
@@ -76,7 +78,7 @@ class GeminiStructuredInferenceAdapter:
     ) -> ProviderResponsePayload:
         if not api_key:
             raise ValueError("API key is required")
-        instruction_text = self.resolve_instruction_text(prompt_ref)
+        instruction_text = self.assemble_instruction_text(prompt_ref, prompt_input)
         # docs/15 section 9.5 (Runtime Prompt Activation Gate): only
         # sampling_temperature is forwarded here. runtime_policy.sampling_seed
         # is intentionally NOT passed to this transport -- this repository's

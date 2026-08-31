@@ -9,6 +9,7 @@ from json import dumps, loads
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
     ContinueCancelResolutionCommandV1,
     ContinueCancelResolutionResultV1,
@@ -24,8 +25,8 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -60,6 +61,7 @@ class RequestCancelHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetIssuer,
@@ -70,6 +72,7 @@ class RequestCancelHandler:
         | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
@@ -152,9 +155,7 @@ class RequestCancelHandler:
                 )
                 self._stage_cancel_handoff(unit_of_work, command)
             if result.applied:
-                metadata: dict[str, object] = {
-                    "plan_id": None if plan is None else plan.id
-                }
+                metadata: dict[str, object] = {"plan_id": None if plan is None else plan.id}
                 unit_of_work.traces.append(
                     TraceEventRecord(
                         run_id=run.id,
@@ -190,10 +191,10 @@ class RequestCancelHandler:
     def _stage_cancel_handoff(
         self, unit_of_work: UnitOfWork, command: RequestCancelCommand
     ) -> None:
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         if binding is None:
             return
-        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
             command.run_id, binding.langgraph_thread_id
         )
         if checkpoint is None:

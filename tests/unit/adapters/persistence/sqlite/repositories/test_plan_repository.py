@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SqlitePlanRepository,
 )

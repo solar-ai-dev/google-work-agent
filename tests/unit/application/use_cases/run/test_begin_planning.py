@@ -4,8 +4,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from tests.support.checkpoint import sqlite_checkpoint
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
@@ -138,12 +140,13 @@ def _database(tmp_path: Path, source_status: RunStatusV1) -> Path:
     return path
 
 
-def _handler(unit_of_work_factory: Any) -> BeginPlanningHandler:
+def _handler(unit_of_work_factory: Any, database_path: Path) -> BeginPlanningHandler:
     return BeginPlanningHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=lambda: 20,
         id_factory=lambda: "unused-handoff",
         resume_target_registry=_ResumeTargetRegistry(),
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
 
@@ -196,7 +199,7 @@ def test_begin_planning__published_plan_reentry__is_child_first_and_atomic(
 ) -> None:
     path = _database(tmp_path, source_status)
 
-    result = _handler(sqlite_unit_of_work_factory(path, now_ms=lambda: 20))(_command())
+    result = _handler(sqlite_unit_of_work_factory(path, now_ms=lambda: 20), path)(_command())
 
     assert result.applied
     snapshot = _durable_snapshot(path)
@@ -219,7 +222,7 @@ def test_begin_planning__validated_run_cas_failure__rolls_back_entire_uow(
     unit_of_work = _RunCasFailureUnitOfWork(path)
 
     with pytest.raises(RuntimeError, match="validated Run planning CAS failed"):
-        _handler(lambda: cast(UnitOfWork, unit_of_work))(_command())
+        _handler(lambda: cast(UnitOfWork, unit_of_work), path)(_command())
 
     assert unit_of_work.runs is not None and unit_of_work.runs.attempted
     assert (

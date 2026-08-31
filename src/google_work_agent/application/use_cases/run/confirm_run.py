@@ -14,7 +14,6 @@ from google_work_agent.application.agents.work_analysis.assemble_work_analysis i
 )
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
-    PolicyConfirmationReceiptV1,
     validate_confirmation_response_projection_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -23,6 +22,9 @@ from google_work_agent.application.orchestration.handoff_contracts import (
 )
 from google_work_agent.application.orchestration.scope_expansion import (
     build_policy_confirmation_receipt,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationCommand,

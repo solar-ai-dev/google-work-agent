@@ -21,6 +21,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
@@ -31,8 +32,8 @@ from google_work_agent.domain.run.transitions.require_reauth import transition_r
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +51,18 @@ class RequireReauthHandler:
     """Persist REAUTH_REQUIRED only when the Domain command is actually applied."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
+        now_ms: Callable[[], int],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
 
     def __call__(self, command: RequireReauthCommand) -> WriteRunResponse:
+        checkpoint_update = None
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -109,11 +116,11 @@ class RequireReauthHandler:
                 for approval in approvals
                 for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
             )
-            binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+            binding = self._checkpoint_port.load_workflow_binding(run.id)
             checkpoint = (
                 None
                 if binding is None
-                else unit_of_work.checkpoints.load_same_run_checkpoint(
+                else self._checkpoint_port.load_same_run_checkpoint(
                     run.id, binding.langgraph_thread_id
                 )
             )
@@ -178,9 +185,7 @@ class RequireReauthHandler:
                 return response
             if checkpoint is None:
                 raise RuntimeError("validated RequireReauth checkpoint disappeared")
-            unit_of_work.checkpoints.store_same_run_checkpoint(
-                replace(checkpoint, pre_reauth_status=run.status)
-            )
+            checkpoint_update = replace(checkpoint, pre_reauth_status=run.status)
             if not unit_of_work.runs.update_if_version_and_status(
                 run.id,
                 run.version,
@@ -234,7 +239,9 @@ class RequireReauthHandler:
                 now_ms,
             )
             unit_of_work.commit()
-            return response
+        if checkpoint_update is not None:
+            self._checkpoint_port.store_same_run_checkpoint(checkpoint_update)
+        return response
 
 
 RequireReauthResult = WriteRunResponse

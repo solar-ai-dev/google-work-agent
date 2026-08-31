@@ -32,11 +32,14 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowInvocationResult,
     WorkflowOutcome,

@@ -21,6 +21,7 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.claim_read_action import (
@@ -30,7 +31,6 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

@@ -17,13 +17,19 @@ def test_connected_account_store_reuses_email_identity_and_reactivates() -> None
     store = SqliteConnectedAccountStore(connection)
 
     first = store.ensure_connected(
-        email="User@Example.com", display_name="First", connected_at_ms=1
+        account_id="provider-account-1",
+        email="User@Example.com",
+        display_name="First",
+        connected_at_ms=1,
     )
     connection.execute(
         "UPDATE google_accounts SET disconnected_at_ms=2 WHERE id=?", (first.account_id,)
     )
     second = store.ensure_connected(
-        email="user@example.com", display_name="Second", connected_at_ms=3
+        account_id="provider-account-1",
+        email="user@example.com",
+        display_name="Second",
+        connected_at_ms=3,
     )
 
     assert second.account_id == first.account_id

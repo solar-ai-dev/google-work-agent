@@ -29,7 +29,6 @@ from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     ConfirmationResponseProjectionV1,
     FinalizeIntentV1,
-    PolicyConfirmationReceiptV1,
     UserInterruptV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -48,6 +47,9 @@ from google_work_agent.application.orchestration.post_retrieval_envelopes import
 )
 from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.use_cases.run.guard_run_budget import RunBudgetV2
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 

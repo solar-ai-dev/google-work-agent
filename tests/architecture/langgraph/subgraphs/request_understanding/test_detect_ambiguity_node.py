@@ -23,7 +23,7 @@ def test_detect_ambiguity_node_uses_exact_operation_projection_and_router() -> N
     router = OWNER / "routing/route_after_detect_ambiguity.py"
 
     assert {"project_detect_ambiguity_input", "detect_ambiguity"} <= _calls(node)
-    assert "request_from_state" in _calls(projection)
+    assert "request_from_run_input_state" in _calls(projection)
     assert "route_after_detect_ambiguity" in router.read_text(encoding="utf-8")
 
 

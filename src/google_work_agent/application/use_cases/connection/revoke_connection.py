@@ -1,15 +1,16 @@
 """Revoke connector credentials through crash-safe operational replay."""
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
 from google_work_agent.application.use_cases.operational_replay import execute_operational_command
+from google_work_agent.ports.connector.connected_account_store import ConnectedAccountStore
 from google_work_agent.ports.connector.oauth_credential_port import (
     OAuthCredentialPort,
     RevokeResultV1,
 )
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
 )
@@ -35,12 +36,14 @@ class RevokeConnectionHandler:
         *,
         credentials: OAuthCredentialPort,
         replay: OperationalCommandReplayPort,
-        unit_of_work_factory: Callable[[], UnitOfWork],
+        connected_account_store_factory: Callable[
+            [], AbstractContextManager[ConnectedAccountStore]
+        ],
         now_ms: Callable[[], int],
     ) -> None:
         self._credentials = credentials
         self._replay = replay
-        self._unit_of_work_factory = unit_of_work_factory
+        self._connected_account_store_factory = connected_account_store_factory
         self._now_ms = now_ms
 
     def __call__(self, command: RevokeConnectionCommand) -> RevokeConnectionResult:
@@ -63,13 +66,12 @@ class RevokeConnectionHandler:
             ),
             execute=execute,
         )
-        with self._unit_of_work_factory() as unit_of_work:
-            if not unit_of_work.connected_accounts.disconnect(
+        with self._connected_account_store_factory() as store:
+            if not store.disconnect(
                 account_id=command.account_id,
                 disconnected_at_ms=self._now_ms(),
             ):
                 raise LookupError(f"connected account not found: {command.account_id}")
-            unit_of_work.commit()
         return RevokeConnectionResult(
             revocation=RevokeResultV1(**cast(Any, outcome.bounded_result)),
             operation_ref=outcome.operation_ref,

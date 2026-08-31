@@ -52,7 +52,7 @@ def test_approval_history_reader_projects_inactive_approval_history() -> None:
     approvals.update_if_status(
         "approval-1", ApprovalStatusV1.ACTIVE, {"status": ApprovalStatusV1.REVOKED}
     )
-    reader = SqliteApprovalHistoryReader(approvals)
+    reader = SqliteApprovalHistoryReader(connection)
 
     assert reader.get("approval-1").status is ApprovalStatusV1.REVOKED  # type: ignore[union-attr]
     assert tuple(item.id for item in reader.list_for_action("action-1")) == ("approval-1",)

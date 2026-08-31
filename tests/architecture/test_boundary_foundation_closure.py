@@ -93,7 +93,12 @@ def test_exact_24_canonical_port_method_surfaces() -> None:
         port = next(
             node
             for node in module.body
-            if isinstance(node, ast.ClassDef) and node.name.endswith("Port")
+            if isinstance(node, ast.ClassDef)
+            and (
+                node.name == "CheckpointPort"
+                if relative_path == "ports/system/checkpoint_port.py"
+                else node.name.endswith("Port")
+            )
         )
         actual_methods = {
             node.name
@@ -101,6 +106,18 @@ def test_exact_24_canonical_port_method_surfaces() -> None:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         assert actual_methods == expected_methods, relative_path
+
+
+def test_initial_workflow_binding_port_is_narrower_than_checkpoint_port() -> None:
+    module = ast.parse((SRC / "ports/system/checkpoint_port.py").read_text(encoding="utf-8"))
+    initial = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == "InitialWorkflowBindingPort"
+    )
+    assert {node.name for node in initial.body if isinstance(node, ast.FunctionDef)} == {
+        "create_workflow_binding"
+    }
 
 
 def test_google_mcp_dispatch_has_exact_signed_registry_operation_set() -> None:

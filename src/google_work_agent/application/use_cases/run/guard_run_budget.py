@@ -399,10 +399,7 @@ def approve_semantic_revision(
     budget = validate_run_budget_v2(run_budget)
     canonical = validate_semantic_failure_signature_v1(signature)
     key = canonical["node_id"] + "\x1f" + "\x1f".join(canonical["failure_reason_codes"])
-    if (
-        budget["semantic_revisions_used_by_failure"].get(key, 0)
-        >= SEMANTIC_REVISION_SAME_FAILURE
-    ):
+    if budget["semantic_revisions_used_by_failure"].get(key, 0) >= SEMANTIC_REVISION_SAME_FAILURE:
         return _deny(budget, BudgetReasonCode.SEMANTIC_SAME_FAILURE_LIMIT_EXHAUSTED)
     updated = dict(budget)
     revisions = dict(budget["semantic_revisions_used_by_failure"])
@@ -416,9 +413,7 @@ def promote_budget_profile(current_profile: object, requested_profile: object) -
     return requested if _PROFILE_ORDER[requested] > _PROFILE_ORDER[current] else current
 
 
-def promote_run_budget_profile(
-    run_budget: object, requested_profile: object
-) -> RunBudgetV2:
+def promote_run_budget_profile(run_budget: object, requested_profile: object) -> RunBudgetV2:
     return _promote(validate_run_budget_v2(run_budget), _require_profile(requested_profile))
 
 
@@ -431,9 +426,13 @@ def _promote(budget: RunBudgetV2, requested: BudgetProfile) -> RunBudgetV2:
 
 
 def _effective_profile_limit(profile: BudgetProfile, budget: object) -> int:
-    if isinstance(budget, dict) and int(budget.get("planning_revisions_used", 0)) > 0 and (
-        int(budget.get("additional_retrieval_rounds_used", 0)) > 0
-        or profile is BudgetProfile.RETRIEVAL_HEAVY
+    if (
+        isinstance(budget, dict)
+        and int(budget.get("planning_revisions_used", 0)) > 0
+        and (
+            int(budget.get("additional_retrieval_rounds_used", 0)) > 0
+            or profile is BudgetProfile.RETRIEVAL_HEAVY
+        )
     ):
         return ABSOLUTE_MAX_LLM_CALLS
     return _PROFILE_LIMITS[profile]

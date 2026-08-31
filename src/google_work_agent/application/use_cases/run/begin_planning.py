@@ -9,6 +9,7 @@ from json import dumps, loads
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.plan.persistence_projection import load_plan_record
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
@@ -24,8 +25,8 @@ from google_work_agent.domain.run.model import (
     next_allowed_run_commands,
 )
 from google_work_agent.domain.run.transitions.begin_planning import transition_begin_planning
-from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     ContextAdjustmentControlV1,
     RunExecutionRefV1,
@@ -71,11 +72,13 @@ class BeginPlanningHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         resume_target_registry: ResumeTargetIssuer,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_factory = id_factory
         self._resume_target_registry = resume_target_registry
@@ -206,8 +209,8 @@ class BeginPlanningHandler:
             else None
         )
 
-    @staticmethod
     def _revision_error(
+        self,
         *,
         unit_of_work: UnitOfWork,
         command: BeginPlanningCommand,
@@ -224,7 +227,7 @@ class BeginPlanningHandler:
         if command.context_adjustment is not None:
             if command.expected_retrieval_revision is None:
                 return "expected_retrieval_revision is required for context adjustment"
-            head = unit_of_work.checkpoints.load_retrieval_head(command.run_id)
+            head = self._checkpoint_port.load_retrieval_head(command.run_id)
             if head is None or head.retrieval_revision != command.expected_retrieval_revision:
                 return "retrieval revision mismatch"
         return None
@@ -238,8 +241,8 @@ class BeginPlanningHandler:
         control = command.context_adjustment
         if control is None:
             raise AssertionError("context adjustment control is required")
-        head = unit_of_work.checkpoints.load_retrieval_head(command.run_id)
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        head = self._checkpoint_port.load_retrieval_head(command.run_id)
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         if head is None or binding is None:
             raise RuntimeError(
                 "context adjustment requires durable workflow binding and retrieval head"

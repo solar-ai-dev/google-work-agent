@@ -59,8 +59,8 @@ class OllamaTransport(Protocol):
         raise NotImplementedError
 
 
-def _no_instruction_text(prompt_ref: PromptReference) -> str:
-    del prompt_ref
+def _no_instruction_text(prompt_ref: PromptReference, prompt_input: Mapping[str, object]) -> str:
+    del prompt_ref, prompt_input
     return ""
 
 
@@ -73,7 +73,7 @@ class _OllamaStructuredInferenceMechanics:
     members real inherited descriptors, which collides with this dataclass's
     own field ordering).
 
-    ``resolve_instruction_text`` is called here, immediately before dispatch,
+    ``assemble_instruction_text`` is called here, immediately before dispatch,
     and its result lives only as a local variable for the duration of this
     call -- it is never attached to ``prompt_ref`` (which flows into
     ``AgentLocalStateV1``/trace_context/LangGraph checkpoints via
@@ -87,7 +87,9 @@ class _OllamaStructuredInferenceMechanics:
     endpoint: str
     model_id: str
     runtime: ActualRuntime = ActualRuntime.LOCAL_GPU
-    resolve_instruction_text: Callable[[PromptReference], str] = field(default=_no_instruction_text)
+    assemble_instruction_text: Callable[[PromptReference, Mapping[str, object]], str] = field(
+        default=_no_instruction_text
+    )
 
     def invoke_structured(
         self,
@@ -99,7 +101,7 @@ class _OllamaStructuredInferenceMechanics:
         api_key: str | None,
     ) -> ProviderResponsePayload:
         del api_key
-        instruction_text = self.resolve_instruction_text(prompt_ref)
+        instruction_text = self.assemble_instruction_text(prompt_ref, prompt_input)
         return self.transport.invoke_structured(
             endpoint=self.endpoint,
             model_id=self.model_id,
@@ -122,7 +124,7 @@ class _OllamaStructuredInferenceMechanics:
         api_key: str | None,
     ) -> ToolCallProviderResponse:
         del api_key
-        instruction_text = self.resolve_instruction_text(prompt_ref)
+        instruction_text = self.assemble_instruction_text(prompt_ref, prompt_input)
         return self.transport.invoke_tool_call(
             endpoint=self.endpoint,
             model_id=self.model_id,

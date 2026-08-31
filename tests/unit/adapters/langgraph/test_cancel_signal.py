@@ -33,22 +33,28 @@ def test_pending_review_settlement_runs_only_after_review_output_exists() -> Non
         "stage": "REVIEW_PENDING_SETTLEMENT",
     }
 
-    assert runtime._route_next_node(
-        cast(
-            GraphState,
-            {
-                "__target__": "stage_three",
-                "__workflow_control__": control,
-            },
+    assert (
+        runtime._route_next_node(
+            cast(
+                GraphState,
+                {
+                    "__target__": "stage_three",
+                    "__workflow_control__": control,
+                },
+            )
         )
-    ) == "stage_three"
-    assert runtime._route_next_node(
-        cast(
-            GraphState,
-            {
-                "__target__": "waiting_approval",
-                "__workflow_control__": control,
-                "plan_review": {"status": "PASS"},
-            },
+        == "stage_three"
+    )
+    assert (
+        runtime._route_next_node(
+            cast(
+                GraphState,
+                {
+                    "__target__": "waiting_approval",
+                    "__workflow_control__": control,
+                    "plan_review": {"status": "PASS"},
+                },
+            )
         )
-    ) == "review_entry"
+        == "review_entry"
+    )

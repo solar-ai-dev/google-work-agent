@@ -14,7 +14,9 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
 ActionNecessityV1 = Literal["REQUIRED", "NOT_REQUIRED", "UNDETERMINED"]
@@ -233,8 +235,7 @@ def _unique_refs(values: Iterable[StateArtifactRefV1]) -> list[StateArtifactRefV
 def _sorted_refs(values: Sequence[StateArtifactRefV1]) -> list[StateArtifactRefV1]:
     identities = sorted((value["artifact_id"], value["revision"]) for value in values)
     return [
-        {"artifact_id": artifact_id, "revision": revision}
-        for artifact_id, revision in identities
+        {"artifact_id": artifact_id, "revision": revision} for artifact_id, revision in identities
     ]
 
 

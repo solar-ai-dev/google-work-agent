@@ -59,7 +59,9 @@ def test_evidence_repository_bounded_run_and_action_reads() -> None:
     assert [item.id for item in repository.list_for_action("action-1")] == ["evidence-1"]
     assert [
         item.id
-        for item in repository.list_for_retrieval_artifact("run-1", "retrieval-2")
+        for item in repository.list_for_run("run-1")
+        if item.locator_json is not None
+        and '"retrieval_artifact_id":"retrieval-2"' in item.locator_json
     ] == ["evidence-2"]
     with pytest.raises(ValueError):
         repository.list_for_run("run-1", limit=501)

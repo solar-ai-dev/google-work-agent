@@ -10,6 +10,7 @@ Ollama was running and the model was installed.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from io import BytesIO
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -305,7 +306,7 @@ def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
     assert "options" not in sent_body
 
 
-def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
+def test_provider_assembles_instruction_text_only_as_a_local_call_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``PromptReference`` must never carry instruction text.
@@ -335,7 +336,7 @@ def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
     assert not hasattr(prompt_ref, "instruction_text")
 
     captured: list[Request] = []
-    resolve_calls: list[str] = []
+    assembly_calls: list[tuple[str, Mapping[str, object]]] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
         del timeout
@@ -344,8 +345,8 @@ def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
 
     monkeypatch.setattr("google_work_agent.adapters.llm.ollama.transport.urlopen", fake_urlopen)
 
-    def resolve_instruction_text(ref: PromptReference) -> str:
-        resolve_calls.append(ref.prompt_id)
+    def assemble_instruction_text(ref: PromptReference, prompt_input: Mapping[str, object]) -> str:
+        assembly_calls.append((ref.prompt_id, prompt_input))
         return "Resolved instructions for " + ref.prompt_id
 
     provider = OllamaStructuredInferenceAdapter(
@@ -353,17 +354,17 @@ def test_provider_resolves_instruction_text_only_as_a_local_call_boundary(
         transport=OllamaHTTPClient(),
         endpoint="http://127.0.0.1:11434",
         model_id="qwen2.5:3b",
-        resolve_instruction_text=resolve_instruction_text,
+        assemble_instruction_text=assemble_instruction_text,
     )
 
     provider.invoke_structured(
         prompt_ref=prompt_ref,
-        prompt_input={},
+        prompt_input={"request": "current run"},
         output_schema=OutputSchemaDefinition(schema_version="1", json_schema={}),
         runtime_policy=RuntimePolicy(),
         api_key=None,
     )
 
-    assert resolve_calls == ["a.b"]
+    assert assembly_calls == [("a.b", {"request": "current run"})]
     sent_body = json.loads(captured[0].data.decode("utf-8"))
     assert sent_body["system"] == "Resolved instructions for a.b"

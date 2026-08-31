@@ -7,7 +7,7 @@ from datetime import date, datetime, time
 from typing import Protocol, cast
 from zoneinfo import ZoneInfo
 
-from google_work_agent.application.policy_kernels.calendar_conflict import (
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarConflictDecision,
     CalendarConflictFreshness,
     CalendarEventCandidate,

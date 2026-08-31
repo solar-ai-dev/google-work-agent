@@ -62,7 +62,8 @@ def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
     )
     launcher = (ROOT / "launcher/dev.py").read_text(encoding="utf-8")
 
-    assert "unit_of_work.checkpoints.create_workflow_binding(" in start_run
+    assert "unit_of_work.workflow_bindings.create_workflow_binding(" in start_run
+    assert "unit_of_work.checkpoints" not in start_run
     assert "SqliteCheckpointAdapter.for_transaction(" in unit_of_work
     assert 'root / "langgraph-checkpoints.sqlite3"' not in launcher
     assert "checkpoint = SqliteCheckpointAdapter(" in launcher

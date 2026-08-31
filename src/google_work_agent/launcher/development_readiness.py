@@ -15,7 +15,7 @@ from google_work_agent.adapters.connectors.runtime.connector_runtime_registry im
     ConnectorRuntimeRegistry,
 )
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
-from google_work_agent.adapters.persistence import connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.api.container import API_CONTRACT_VERSION
 from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,

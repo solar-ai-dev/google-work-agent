@@ -37,15 +37,3 @@ class PlanRepository(Protocol):
         expected_review_statuses: frozenset[PlanReviewStatus],
         values: dict[str, object],
     ) -> PlanRecord | None: ...
-
-
-def current_plan_tuple(repository: PlanRepository, run_id: str) -> tuple[PlanRecord, ...]:
-    current = repository.get_current(run_id)
-    return () if current is None else (current,)
-
-
-def load_plan_record(repository: PlanRepository, plan_id: str) -> PlanRecord | None:
-    """Select the Plan root from the canonical bounded bundle projection."""
-
-    bundle = repository.load_bundle(plan_id)
-    return None if bundle is None else bundle.plan

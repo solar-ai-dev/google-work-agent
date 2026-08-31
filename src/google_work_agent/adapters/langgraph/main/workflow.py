@@ -130,8 +130,10 @@ from google_work_agent.application.orchestration.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
+)
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
@@ -198,6 +200,9 @@ from google_work_agent.application.use_cases.execution_attempt.mark_failed impor
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
+    latest_attempt_for_action,
+)
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultHandler,
 )
@@ -206,6 +211,13 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
 )
 from google_work_agent.application.use_cases.execution_attempt.store_success import (
     StoreSuccessHandler,
+)
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
+from google_work_agent.application.use_cases.plan.project_dependencies import (
+    project_dependency_ids,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
@@ -277,6 +289,7 @@ from google_work_agent.application.use_cases.run.complete_write_run import (
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
     ContinueCancelResolutionCommandV1,
     ContinueCancelResolutionHandler,
+    ContinueCancelResolutionResultV1,
 )
 from google_work_agent.application.use_cases.run.finalize_cancel import (
     FinalizeCancelCommand,
@@ -328,9 +341,7 @@ from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
 from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -463,12 +474,14 @@ class WorkflowRuntimeCore:
         )
         self._begin_planning_handler = BeginPlanningHandler(
             unit_of_work_factory=canonical_uow_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             id_factory=id_factory,
             resume_target_registry=self._resume_target_registry,
         )
         self._request_confirmation_handler = RequestConfirmationHandler(
             unit_of_work_factory=canonical_uow_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
         )
@@ -559,6 +572,7 @@ class WorkflowRuntimeCore:
         )
         self._refresh_expired_action = RefreshExpiredActionHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             id_factory=id_factory,
             resume_target_registry=self._resume_target_registry,
@@ -595,17 +609,20 @@ class WorkflowRuntimeCore:
         )
         self._require_recovery = RequireRecoveryHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
         )
         self._resolve_recovery = ResolveRecoveryHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             next_id=id_factory,
             resume_target_registry=self._resume_target_registry,
         )
         self._require_write_reauth = RequireReauthHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
         )
         self._lookup_unknown_result = LookupUnknownResultHandler(
@@ -622,6 +639,7 @@ class WorkflowRuntimeCore:
         )
         self._begin_write_verification = BeginVerificationHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
             resume_target_registry=self._resume_target_registry,
         )
@@ -662,6 +680,7 @@ class WorkflowRuntimeCore:
             request_hash=self._request_hash,
             should_stop_for_cancel=self._should_stop_for_cancel,
             list_actions=self._list_actions,
+            has_independent_executable_action=self._has_independent_executable_action,
             execute_read_only_plan=self._execute_read_only_plan,
             execution_phase=self._write_execution_phase,
             has_persisted_cancel_intent=self._has_persisted_cancel_intent,
@@ -693,6 +712,7 @@ class WorkflowRuntimeCore:
         )
         self._finalize_cancel = FinalizeCancelHandler(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=now_ms,
         )
         self._continue_cancel_resolution = ContinueCancelResolutionHandler(
@@ -1418,7 +1438,7 @@ class WorkflowRuntimeCore:
                 return {
                     **typed_state,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             if review_status is PlanReviewStatus.PASSED:
                 decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
@@ -1569,13 +1589,13 @@ class WorkflowRuntimeCore:
                 return {
                     **state,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
-            actions = unit_of_work.actions.list_for_plan(plan_id)
-            dependencies = {
-                action.id: dependency_ids_for_action(unit_of_work.actions, actions, action.id)
-                for action in actions
-            }
+            bundle = unit_of_work.plans.load_bundle(plan_id)
+            if bundle is None:
+                raise LookupError(f"plan not found: {plan_id}")
+            actions = bundle.actions
+            dependencies = project_dependency_ids(bundle)
 
         # G3 RunBudgetV2 (docs/06 SS11, docs/15 SS8.2): mandatory Modify
         # Review re-invokes Review with one more real Provider call because
@@ -1592,7 +1612,7 @@ class WorkflowRuntimeCore:
             return {
                 **state,
                 "__target__": "end",
-                "execution_summary": {"result": "MODIFY_REVIEW_BUDGET_EXHAUSTED"},
+                "__workflow_control__": _workflow_control("MODIFY_REVIEW_BUDGET_EXHAUSTED"),
             }
 
         draft = deepcopy(_require_state_value(state["plan_draft"], "plan_draft"))
@@ -1645,13 +1665,13 @@ class WorkflowRuntimeCore:
                 return {
                     **reviewed,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             if not self._begin_modify_replan(reviewed):
                 return {
                     **reviewed,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             reviewed = cast(GraphState, dict(reviewed))
             reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
@@ -1659,7 +1679,9 @@ class WorkflowRuntimeCore:
             reviewed["__modify_review_version__"] = None
             reviewed["__modify_review_risks__"] = None
             reviewed["__target__"] = "end"
-            reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+            reviewed["__workflow_control__"] = _workflow_control(
+                "MODIFY_ROUTE_RECONSIDERATION_REPLAN"
+            )
             return reviewed
 
         review = cast(
@@ -1677,7 +1699,7 @@ class WorkflowRuntimeCore:
                 return {
                     **reviewed,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             reviewed = cast(GraphState, dict(reviewed))
             reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
@@ -1685,7 +1707,9 @@ class WorkflowRuntimeCore:
             reviewed["__modify_review_version__"] = None
             reviewed["__modify_review_risks__"] = None
             reviewed["__target__"] = "end"
-            reviewed["execution_summary"] = {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+            reviewed["__workflow_control__"] = _workflow_control(
+                "MODIFY_ROUTE_RECONSIDERATION_REPLAN"
+            )
             return reviewed
         if not self._store_modify_review_result(
             reviewed,
@@ -1695,7 +1719,7 @@ class WorkflowRuntimeCore:
             return {
                 **reviewed,
                 "__target__": "end",
-                "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
             }
         if review["status"] in {
             ReviewResult.REVISE.value,
@@ -1705,7 +1729,7 @@ class WorkflowRuntimeCore:
                 return {
                     **reviewed,
                     "__target__": "end",
-                    "execution_summary": {"result": "STALE_MODIFY_REVIEW"},
+                    "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             reviewed = cast(GraphState, dict(reviewed))
             reviewed["__replan_from_plan_id__"] = cast(str, reviewed["__modify_review_plan_id__"])
@@ -1845,7 +1869,7 @@ class WorkflowRuntimeCore:
             # unrecognized contract (see supervisor.py's
             # TOOL_ROUTE_CONTRACT_VIOLATION handling) -- "recovery" is
             # always mapped for every profile, so this cannot recurse.
-            merged["execution_summary"] = {"result": "CONTRACT_VIOLATION"}
+            merged["__workflow_control__"] = _workflow_control("CONTRACT_VIOLATION")
             merged["workflow_phase"] = WorkflowPhase.RECOVERY.value
             merged["__logical_target__"] = "recovery"
             merged["__target__"] = "recovery"
@@ -2227,8 +2251,11 @@ class WorkflowRuntimeCore:
             "__target__": "response_synthesis",
             "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.VERIFICATION.value,
-            "execution_summary": {"result": "READ_EXECUTED", "plan_id": plan_id},
-            "verification_summary": {"action_statuses": verification_statuses},
+            "__workflow_control__": _workflow_control(
+                "READ_EXECUTED",
+                plan_id=plan_id,
+                action_statuses=verification_statuses,
+            ),
         }
 
     def _start_analysis_for_main(self, run_id: str) -> Any:
@@ -2388,6 +2415,43 @@ class WorkflowRuntimeCore:
                 sorted(unit_of_work.actions.list_for_plan(plan_id), key=lambda item: item.position)
             )
 
+    def _has_independent_executable_action(self, plan_id: str, failed_action_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            return any(
+                action.id != failed_action_id
+                and action.status == ActionStatusV1.APPROVED.value
+                and unit_of_work.actions.is_dependency_ready(action.id)
+                for action in unit_of_work.actions.list_for_plan(plan_id)
+            )
+
+    def continue_graphless_bootstrap_cancel(
+        self, command: ContinueCancelResolutionCommandV1
+    ) -> ContinueCancelResolutionResultV1:
+        """Advance cancellation when no durable workflow handoff exists yet."""
+
+        result = self._continue_cancel_resolution(command)
+        if result.outcome != "READY_TO_FINALIZE":
+            return result
+        run_version = self._current_run_version(command.run_id)
+        payload = {
+            "kind": "graphless_bootstrap_cancel",
+            "run_id": command.run_id,
+            "expected_run_version": run_version,
+        }
+        finalized = self._finalize_cancel(
+            FinalizeCancelCommand(
+                command_id=f"system:cancel-resolution:finalize:{command.run_id}:{run_version}",
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=command.run_id,
+                expected_run_version=run_version,
+            )
+        )
+        return ContinueCancelResolutionResultV1(
+            1,
+            "FINALIZED" if finalized.applied else "WAITING_FOR_SETTLEMENT",
+            finalized.run_status,
+        )
+
     def _continue_cancel_resolution_for_main(self, run_id: str) -> dict[str, object]:
         result = self._continue_cancel_resolution(ContinueCancelResolutionCommandV1(1, run_id))
         if result.outcome in {"READY_TO_FINALIZE", "FINALIZED"}:
@@ -2400,8 +2464,10 @@ class WorkflowRuntimeCore:
             "__target__": target,
             "__logical_target__": target,
             "workflow_phase": "CANCEL_RESOLUTION",
-            "execution_summary": {
-                "result": result.outcome,
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "CANCEL_RESOLUTION",
+                "reason": result.outcome,
                 "run_status": result.run_status,
                 "progressed_action_id": result.progressed_action_id,
             },
@@ -2527,16 +2593,10 @@ class WorkflowRuntimeCore:
 
     def _latest_attempt(self, action_id: str) -> ExecutionAttemptRecord:
         with self._unit_of_work_factory() as unit_of_work:
-            approvals = unit_of_work.approval_history.list_for_action(action_id)
-            attempts = [
-                attempt
-                for approval in approvals
-                if (attempt := unit_of_work.execution_attempts.get_latest_for_approval(approval.id))
-                is not None
-            ]
-            if not attempts:
+            attempt = latest_attempt_for_action(unit_of_work, action_id)
+            if attempt is None:
                 raise LookupError(f"execution attempt not found for action: {action_id}")
-            return max(attempts, key=lambda item: (item.attempt_no, item.started_at_ms))
+            return attempt
 
     def _mark_stalled_claims_as_unknown(self, run_id: str) -> bool:
         # A CLAIMED attempt has not crossed BeginExecutionAttempt, so provider
@@ -2634,6 +2694,17 @@ class WorkflowRuntimeCore:
 
     def _request_hash(self, payload: dict[str, object]) -> str:
         return sha256(dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _workflow_control(reason: str, **details: object) -> dict[str, object]:
+    """Project deterministic control diagnostics without forging Domain facts."""
+
+    return {
+        "schema_version": 1,
+        "stage": "MAIN_CONTROL",
+        "reason": reason,
+        **details,
+    }
 
 
 from google_work_agent.adapters.langgraph.main.artifact_freshness import (  # noqa: E402

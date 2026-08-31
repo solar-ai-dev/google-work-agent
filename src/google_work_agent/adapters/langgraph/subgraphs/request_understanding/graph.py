@@ -9,7 +9,7 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.state import request_from_state
+from google_work_agent.adapters.langgraph.main.state import request_from_run_input_state
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.detect_ambiguity_node import (  # noqa: E501
     detect_ambiguity_node,
@@ -121,7 +121,7 @@ class RequestUnderstandingSubgraph:
     def _identify_goal_node(
         self, state: RequestUnderstandingStateV2
     ) -> RequestUnderstandingStateV2:
-        request = request_from_state(cast(Any, state))
+        request = request_from_run_input_state(cast(Any, state))
         invocation_id = self._invocation_id(state)
         is_first_node = invocation_id is None
         if is_first_node:
@@ -161,7 +161,7 @@ class RequestUnderstandingSubgraph:
     def _detect_ambiguity_node(
         self, state: RequestUnderstandingStateV2
     ) -> RequestUnderstandingStateV2:
-        request = request_from_state(cast(Any, state))
+        request = request_from_run_input_state(cast(Any, state))
         patch = detect_ambiguity_node(
             state,
             llm_runtime=self._llm_runtime,
@@ -275,7 +275,7 @@ class RequestUnderstandingSubgraph:
             state=cast(MultiAgentGraphState, state),
             result=output,
         )
-        request = request_from_state(cast(Any, state))
+        request = request_from_run_input_state(cast(Any, state))
         update: GraphStateUpdateV1 = {
             "request_intent": intent,
             "workflow_phase": WorkflowPhase.REQUEST_ANALYSIS.value,

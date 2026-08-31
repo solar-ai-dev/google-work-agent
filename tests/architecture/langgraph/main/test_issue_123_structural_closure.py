@@ -54,8 +54,6 @@ def test_broad_finalize_handler_and_direct_finalize_routes_are_retired() -> None
 
 
 def test_terminal_controls_are_not_resume_targets() -> None:
-    registry = (SRC / "adapters/langgraph/registry/node_registry.py").read_text(
-        encoding="utf-8"
-    )
+    registry = (SRC / "adapters/langgraph/registry/node_registry.py").read_text(encoding="utf-8")
     for node in ("RESPONSE_SYNTHESIS", "TERMINAL_COMMIT", "FINALIZE"):
-        assert f'MainResumeStageIdV1.{node}' not in registry
+        assert f"MainResumeStageIdV1.{node}" not in registry

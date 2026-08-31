@@ -97,12 +97,8 @@ def test_resource_routes_use_injected_exact_handlers_only() -> None:
 
 
 def test_resource_support_has_no_legacy_query_facade() -> None:
-    access = _read(
-        SRC / "application" / "use_cases" / "resource" / "connector_resource_access.py"
-    )
-    opaque = _read(
-        SRC / "application" / "use_cases" / "resource" / "opaque_continuation_access.py"
-    )
+    access = _read(SRC / "application" / "use_cases" / "resource" / "connector_resource_access.py")
+    opaque = _read(SRC / "application" / "use_cases" / "resource" / "opaque_continuation_access.py")
     for method in (
         "def get_gmail_thread_detail(",
         "def list_gmail_threads(",
@@ -122,15 +118,11 @@ def test_trace_handler_is_the_only_application_trace_append_authority() -> None:
     emit_source = _read(trace_dir / "emit_trace_event.py")
     assert "unit_of_work.traces.append(" in emit_source
     assert "from pathlib import" not in emit_source
-    assert (
-        SRC / "adapters" / "system" / "sanitized_jsonl_log.py"
-    ).is_file()
+    assert (SRC / "adapters" / "system" / "sanitized_jsonl_log.py").is_file()
 
 
 def test_runtime_mode_guard_precedes_replay_reservation() -> None:
-    source = _read(
-        SRC / "application" / "use_cases" / "runtime_mode" / "update_runtime_mode.py"
-    )
+    source = _read(SRC / "application" / "use_cases" / "runtime_mode" / "update_runtime_mode.py")
     guard = source.index("if self._has_active_run()")
     replay = source.index("execute_operational_command(", guard)
     assert guard < replay

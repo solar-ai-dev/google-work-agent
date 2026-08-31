@@ -7,9 +7,11 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -45,6 +47,10 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan_review,
     revoke_active_approvals,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -66,8 +72,8 @@ from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -115,6 +121,7 @@ class ModifyActionHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         gateway: TaskListGateway | CalendarConflictGateway,
         id_generator: UUIDPort,
@@ -123,6 +130,7 @@ class ModifyActionHandler:
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
@@ -453,10 +461,10 @@ class ModifyActionHandler:
         run_id: str,
         trigger_command_id: str,
     ) -> str:
-        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        binding = self._checkpoint_port.load_workflow_binding(run_id)
         if binding is None:
             raise RuntimeError("action modification requires a durable workflow binding")
-        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
             run_id, binding.langgraph_thread_id
         )
         if checkpoint is None:

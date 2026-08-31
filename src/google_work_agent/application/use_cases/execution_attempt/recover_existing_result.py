@@ -244,9 +244,7 @@ class RecoverExistingResultHandler:
         return _to_result(response)
 
 
-def _merge_response_metadata(
-    existing_json: str | None, *, operation: str, resource_id: str
-) -> str:
+def _merge_response_metadata(existing_json: str | None, *, operation: str, resource_id: str) -> str:
     if existing_json is None:
         metadata: dict[str, object] = {}
     else:

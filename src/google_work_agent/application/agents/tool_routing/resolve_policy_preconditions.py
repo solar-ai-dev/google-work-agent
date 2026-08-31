@@ -15,8 +15,10 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
 )
-from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
 from google_work_agent.application.orchestration.scope_expansion import ScopeExpansionResolver
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 
 
 @dataclass(frozen=True, slots=True)

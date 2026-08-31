@@ -60,6 +60,7 @@ from tests.integration.persistence.test_write_actions import (
     sqlite_unit_of_work_factory,
 )
 from tests.integration.persistence.test_write_risk import _register_preflight_resume_target
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
@@ -76,6 +77,7 @@ def test_production_request_cancel_stops_at_cancel_requested_and_stages_resoluti
     scheduled: list[str] = []
     result = RequestCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
         resume_target_registry=ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
@@ -304,6 +306,7 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
 
     finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         FinalizeRunCancellationCommand(
@@ -657,6 +660,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
         )
     MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         MarkWriteActionUnknownResultCommand(
@@ -689,6 +693,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     )
     finalized = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         FinalizeRunCancellationCommand(
@@ -804,6 +809,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
         )
     MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         MarkWriteActionUnknownResultCommand(
@@ -838,6 +844,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
     assert _cancel_marker_count(write_database) == 1
     recovery_required = FinalizeCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         FinalizeRunCancellationCommand(
@@ -875,6 +882,7 @@ def test_unknown_recovery_preserves_one_cancel_marker_and_finalizes_through_doma
         connection.close()
     resumed = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         ResolveRecoveryCommandV1(

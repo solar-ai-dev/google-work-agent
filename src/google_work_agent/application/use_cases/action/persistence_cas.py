@@ -1,5 +1,6 @@
 """Action-owner-local lifecycle projections over repository CAS methods."""
 
+from google_work_agent.application.use_cases.plan.persistence_projection import load_plan_record
 from google_work_agent.domain.action.model import Action, ActionStatusV1, canonicalize_action_risk
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.execution_attempt.model import (
@@ -7,7 +8,6 @@ from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptStatusV1,
 )
 from google_work_agent.domain.plan.model import Plan, PlanStatusV1
-from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

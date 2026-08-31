@@ -10,6 +10,12 @@ from google_work_agent.ports.system.contracts.retrieval_head import RetrievalHea
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 
 
+class InitialWorkflowBindingPort(Protocol):
+    """The sole checkpoint write allowed to participate in StartRun's Domain UoW."""
+
+    def create_workflow_binding(self, binding: WorkflowBindingV1) -> None: ...
+
+
 class CheckpointPort(Protocol):
     def create_workflow_binding(self, binding: WorkflowBindingV1) -> None: ...
 

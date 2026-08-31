@@ -108,6 +108,7 @@ def approve(
     handler = ApproveActionHandler(
         get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,
@@ -144,6 +145,7 @@ def modify(
         raise RuntimeError("modify action gateway is not configured")
     handler = ModifyActionHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         gateway=dependencies.action_gateway,
         id_generator=dependencies.id_generator,
@@ -178,6 +180,7 @@ def reject(
     _prepare(request, payload=payload, dependencies=dependencies)
     result = RejectActionHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,
@@ -210,6 +213,7 @@ def prepare_retry(
     _prepare(request, payload=payload, dependencies=dependencies)
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,

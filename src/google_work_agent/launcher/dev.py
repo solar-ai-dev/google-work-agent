@@ -57,8 +57,12 @@ from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import Llm
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
+from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
+    sqlite_connected_account_store_factory,
+)
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_read_unit_of_work_factory,
     sqlite_unit_of_work_factory,
@@ -107,18 +111,17 @@ from google_work_agent.application.orchestration.connector_read_projection impor
 from google_work_agent.application.orchestration.provider_dispatch_budget import (
     account_provider_dispatch,
 )
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
+    PromptRegistry,
     default_prompt_manifest_path,
-    resolve_instruction_text,
 )
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
-from google_work_agent.application.use_cases.action.cancel_pending_action import (
-    CancelPendingActionCommand,
-    CancelPendingActionHandler,
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
     CreateStagedAttachmentHandler,
@@ -167,7 +170,6 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
     DispatchConnectorWriteHandler,
 )
 from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
-    ReconcileInflightExecutionsCommand,
     drain_inflight_executions_to_quiescence,
 )
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
@@ -225,15 +227,7 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 )
 from google_work_agent.application.use_cases.run.adjust_context import AdjustContextHandler
 from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningHandler
-from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
-    ContinueCancelResolutionCommandV1,
-    ContinueCancelResolutionHandler,
-)
 from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
-from google_work_agent.application.use_cases.run.finalize_cancel import (
-    FinalizeCancelCommand,
-    FinalizeCancelHandler,
-)
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
@@ -264,7 +258,6 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
 from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
     EmitTraceEventHandler,
 )
-from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.launcher.connector_composition import build_connectors
 from google_work_agent.launcher.development_constants import (
     PROJECT_ROOT,
@@ -568,7 +561,7 @@ def build_container(
     bootstrap_secret: str | None = None,
     service_instance_id: str | None = None,
     safe_mode_controller: SafeModeController | None = None,
-    test_keyring_path: Path | None = None,
+    mcp_module_name: str | None = None,
     keyring_store: SecretStorePort | None = None,
 ) -> ApiContainer:
     """Assemble the development service with real local adapters."""
@@ -605,7 +598,7 @@ def build_container(
             attachment_staging_dir=attachment_staging_dir,
             python_executable=Path(sys.executable).resolve(),
             working_directory=PROJECT_ROOT,
-            test_keyring_path=test_keyring_path,
+            **({} if mcp_module_name is None else {"mcp_module_name": mcp_module_name}),
         )
     except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
@@ -614,12 +607,13 @@ def build_container(
     google_provider = google_connector.oauth_port
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
     read_unit_of_work_factory = sqlite_read_unit_of_work_factory(database_path)
+    connected_account_store_factory = sqlite_connected_account_store_factory(database_path)
     get_execution_context = GetExecutionContextHandler(
         unit_of_work_factory=read_unit_of_work_factory
     )
     get_connection_status = GetConnectionStatusHandler(
         google_provider,
-        unit_of_work_factory=unit_of_work_factory,
+        connected_account_store_factory=connected_account_store_factory,
         now_ms=clock.now_ms,
     )
 
@@ -866,18 +860,6 @@ def build_container(
         ):
             return
         target = binding.resume_target
-        if (
-            target is not None
-            and target.kind == "MAIN_CONTROL"
-            and target.stage_id == "CANCEL_RESOLUTION"
-        ):
-            for _ in range(256):
-                cancel_result = continue_cancel_resolution(
-                    ContinueCancelResolutionCommandV1(1, binding.run_id)
-                )
-                if cancel_result.outcome != "PROGRESSED":
-                    break
-            return
         try:
             correlation = WorkflowCorrelationContext(
                 request_id=admission.admission_id,
@@ -1016,59 +998,6 @@ def build_container(
         service_instance_id=service_instance_id,
         now_ms=clock.now_ms,
     )
-    cancel_pending_action = CancelPendingActionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=clock.now_ms,
-    )
-    finalize_cancel = FinalizeCancelHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=clock.now_ms,
-    )
-    continue_cancel_resolution = ContinueCancelResolutionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        settle_pending_action=lambda action_id, version: (
-            cancel_pending_action(
-                CancelPendingActionCommand(
-                    command_id=f"system:cancel-resolution:action:{action_id}:{version}",
-                    request_hash=calculate_canonical_json_hash(
-                        {"action_id": action_id, "expected_version": version}
-                    ),
-                    action_id=action_id,
-                    expected_version=version,
-                )
-            ).applied
-        ),
-        reconcile_inflight_action=lambda _action_id: (
-            production_runtime.reconcile_inflight_executions(
-                ReconcileInflightExecutionsCommand(1, 256)
-            ).progressed_count
-            > 0
-        ),
-        verify_executed_action=lambda _action_id: (
-            production_runtime.reconcile_inflight_executions(
-                ReconcileInflightExecutionsCommand(1, 256)
-            ).progressed_count
-            > 0
-        ),
-        resolve_unknown_action=lambda _action_id: (
-            production_runtime.reconcile_inflight_executions(
-                ReconcileInflightExecutionsCommand(1, 256)
-            ).progressed_count
-            > 0
-        ),
-        finalize_cancel=lambda run_id, version: (
-            finalize_cancel(
-                FinalizeCancelCommand(
-                    command_id=f"system:cancel-resolution:finalize:{run_id}:{version}",
-                    request_hash=calculate_canonical_json_hash(
-                        {"run_id": run_id, "expected_run_version": version}
-                    ),
-                    run_id=run_id,
-                    expected_run_version=version,
-                )
-            ).applied
-        ),
-    )
     project_context_preview = ProjectContextPreviewHandler(
         unit_of_work_factory=read_unit_of_work_factory,
         checkpoint=checkpoint,
@@ -1120,6 +1049,7 @@ def build_container(
         graph_version=RESUME_CONTRACT_VERSION,
         schedule_run_execution=production_runtime.schedule_run_execution,
         resume_target_registry=resume_target_registry,
+        checkpoint_port=checkpoint,
         approve_action_service=None,
         modify_action_service=None,
         reject_action_service=None,
@@ -1164,7 +1094,7 @@ def build_container(
         revoke_connection_handler=RevokeConnectionHandler(
             credentials=google_provider,
             replay=operational_replay,
-            unit_of_work_factory=unit_of_work_factory,
+            connected_account_store_factory=connected_account_store_factory,
             now_ms=clock.now_ms,
         ),
         list_resources_handler=ListResourcesHandler(resource_access),
@@ -1212,6 +1142,7 @@ def build_container(
             project_context_preview=project_context_preview,
             begin_planning=BeginPlanningHandler(
                 unit_of_work_factory=unit_of_work_factory,
+                checkpoint_port=checkpoint,
                 now_ms=clock.now_ms,
                 id_factory=id_generator.new_uuid,
                 resume_target_registry=resume_target_registry,
@@ -1221,6 +1152,7 @@ def build_container(
         project_recovery_options_handler=ProjectRecoveryOptionsHandler(read_unit_of_work_factory),
         project_error_actions_handler=ProjectErrorActionsHandler(
             unit_of_work_factory=read_unit_of_work_factory,
+            checkpoint_port=checkpoint,
             resume_target_registry=resume_target_registry,
         ),
         project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
@@ -1282,7 +1214,9 @@ def build_container(
             has_active_run=production_runtime.workflow_execution.has_active_runs,
         ),
         operational_command_replay=operational_replay,
-        continue_cancel_resolution_handler=continue_cancel_resolution,
+        continue_cancel_resolution_handler=getattr(
+            workflow_runtime, "continue_graphless_bootstrap_cancel", None
+        ),
         startup_callbacks=(
             _reconcile_inflight_executions,
             _drain_workflow_handoffs,
@@ -1358,6 +1292,7 @@ def _build_llm_runtime(
     settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
     )
+    prompt_registry = PromptRegistry(prompt_manifest_path)
 
     def runtime_settings() -> AppSettings:
         return _project_runtime_settings(settings_service.get_settings())
@@ -1400,8 +1335,8 @@ def _build_llm_runtime(
             provider_name="gemini",
             transport=gemini_transport,
             model=DEFAULT_GEMINI_MODEL_ID,
-            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
-                prompt_ref.prompt_id, prompt_manifest_path
+            assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
+                prompt_ref, prompt_input, registry=prompt_registry
             ),
         ),
         ollama_provider_factory=lambda model, settings: OllamaStructuredInferenceAdapter(
@@ -1409,8 +1344,8 @@ def _build_llm_runtime(
             transport=ollama_transport,
             endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
             model_id=model.model_id,
-            resolve_instruction_text=lambda prompt_ref: resolve_instruction_text(
-                prompt_ref.prompt_id, prompt_manifest_path
+            assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
+                prompt_ref, prompt_input, registry=prompt_registry
             ),
         ),
         runtime_policy=RuntimePolicy(),

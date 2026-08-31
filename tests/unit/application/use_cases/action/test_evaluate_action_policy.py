@@ -2,12 +2,12 @@ from typing import Literal
 
 import pytest
 
-from google_work_agent.application.orchestration.contracts import (
-    PolicyConfirmationReceiptV1,
-)
 from google_work_agent.application.use_cases.action.evaluate_action_policy import (
     EvaluateActionPolicyHandler,
     EvaluateActionPolicyQueryV1,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
@@ -49,9 +49,7 @@ def _receipt(
         "interrupt_id": "interrupt-1",
         "confirmation_kind": kind,
         "decision": decision,
-        "semantic_owner_id": (
-            "TOOL_ROUTE" if kind == "SCOPE_EXPANSION" else "WORK_ANALYSIS"
-        ),
+        "semantic_owner_id": ("TOOL_ROUTE" if kind == "SCOPE_EXPANSION" else "WORK_ANALYSIS"),
         "decision_context_hash": calculate_canonical_json_hash(
             {
                 "run_id": query.run_id,

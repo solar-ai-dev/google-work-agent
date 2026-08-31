@@ -25,8 +25,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRoutePlanV2,
 )
 from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    MultiAgentGraphState,
+    FinalizeIntentV1,
+    UserInterruptV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -43,6 +43,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     SourcePlanningOutputV1,
     SubgraphReturnV2,
     SufficiencyResultV2,
+    WorkflowSignalV1,
 )
 from google_work_agent.application.orchestration.post_retrieval_envelopes import (
     PlanningResultV2,
@@ -52,9 +53,15 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
     validate_run_budget_v2,
 )
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
-from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    SelectedResourceRef,
+    WorkflowStartRequest,
+)
 
 type WorkflowPhaseV2 = Literal[
     "INITIALIZE",
@@ -87,9 +94,54 @@ class RunInputV1(TypedDict):
     requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
 
 
-class ParentGraphState(MultiAgentGraphState):
+class ExecutionSummaryV1(TypedDict):
+    """Domain-backed execution fact projected solely for Main routing."""
+
+    schema_version: Required[Literal[1]]
+    action_id: str
+    execution_attempt_id: str
+    routing_outcome: Literal["EXECUTED", "FAILED", "UNKNOWN_RESULT"]
+    delivery_certainty: Literal["NOT_SENT", "MAY_HAVE_BEEN_SENT", "SENT_RESPONSE_LOST"] | None
+    source_action_version: int
+
+
+class VerificationSummaryV1(TypedDict):
+    """Domain-backed verification fact projected solely for Main routing."""
+
+    schema_version: Required[Literal[1]]
+    action_id: str
+    verification_id: str
+    routing_outcome: Literal["VERIFIED", "MISMATCH"]
+    source_action_version: int
+
+
+class ParentGraphState(TypedDict):
     """State projected from a native subgraph back to the parent graph."""
 
+    schema_version: int
+    run_id: str
+    conversation_id: str
+    thread_id: str
+    workflow_phase: str
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    retrieval_result: RetrievalResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV2 | None
+    approved_plan_id: str | None
+    execution_summary: ExecutionSummaryV1 | None
+    verification_summary: VerificationSummaryV1 | None
+    finalize_intent: FinalizeIntentV1 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
+    retry_budget: RunBudgetV2
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
     __request__: WorkflowStartRequest
     __target__: str
     __logical_target__: str
@@ -258,6 +310,68 @@ def request_from_state(state: Mapping[str, object]) -> WorkflowStartRequest:
     if not isinstance(request, WorkflowStartRequest):
         raise TypeError("workflow state is missing WorkflowStartRequest")
     return request
+
+
+def request_from_run_input_state(state: Mapping[str, object]) -> WorkflowStartRequest:
+    """Rebuild the Request-Understanding input from immutable ``run_input``.
+
+    Correlation identifiers remain runtime envelope metadata. User semantics,
+    selected resources, mode, and budget come only from the current Run state.
+    """
+    envelope = request_from_state(state)
+    raw_input = state.get("run_input")
+    if not isinstance(raw_input, Mapping):
+        raise TypeError("workflow state is missing RunInputV1")
+    entry_mode = raw_input.get("entry_mode")
+    user_request = raw_input.get("user_request")
+    requested_mode = raw_input.get("requested_mode")
+    raw_refs = raw_input.get("selected_resource_refs")
+    if entry_mode not in {"AGENT_SEARCH", "RESOURCE_SELECTED"}:
+        raise ValueError("run_input.entry_mode is invalid")
+    if not isinstance(user_request, str) or not user_request.strip():
+        raise ValueError("run_input.user_request is required")
+    if requested_mode not in {"AUTO", "LOCAL_GPU", "API_LLM"}:
+        raise ValueError("run_input.requested_mode is invalid")
+    if not isinstance(raw_refs, list):
+        raise TypeError("run_input.selected_resource_refs must be a list")
+    selected_resources: list[SelectedResourceRef] = []
+    for index, raw_ref in enumerate(raw_refs):
+        if not isinstance(raw_ref, Mapping):
+            raise TypeError(f"run_input.selected_resource_refs[{index}] must be an object")
+        source = raw_ref.get("source")
+        resource_type = raw_ref.get("resource_type")
+        resource_id = raw_ref.get("resource_id")
+        parent_resource_id = raw_ref.get("parent_resource_id")
+        required_values = (source, resource_type, resource_id)
+        if not all(isinstance(value, str) and value for value in required_values):
+            raise ValueError(f"run_input.selected_resource_refs[{index}] is incomplete")
+        if parent_resource_id is not None and not isinstance(parent_resource_id, str):
+            raise TypeError(
+                f"run_input.selected_resource_refs[{index}].parent_resource_id must be a string"
+            )
+        selected_resources.append(
+            SelectedResourceRef(
+                source=source,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                parent_resource_id=parent_resource_id,
+            )
+        )
+    run_budget = state.get("retry_budget")
+    if not isinstance(run_budget, dict):
+        raise TypeError("workflow state is missing RunBudgetV2")
+    return WorkflowStartRequest(
+        run_id=envelope.run_id,
+        conversation_id=envelope.conversation_id,
+        workflow_key=envelope.workflow_key,
+        entry_mode=entry_mode,
+        requested_mode=requested_mode,
+        request_text=user_request,
+        selected_resource_ids=tuple(item.resource_id for item in selected_resources),
+        correlation=envelope.correlation,
+        run_budget=dict(run_budget),
+        selected_resources=tuple(selected_resources),
+    )
 
 
 def _stored_resource_type_for_acquired_resource(

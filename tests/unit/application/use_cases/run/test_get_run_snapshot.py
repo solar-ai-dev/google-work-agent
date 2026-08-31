@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
@@ -37,9 +38,9 @@ def test_run_snapshot_projects_durable_terminal_kind_and_run_messages_after_rest
             "('m-2', 'conversation-1', 'run-1', 'ASSISTANT', 'done', 3)"
         )
 
-    result = GetRunSnapshotHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(database_path)
-    )(GetRunSnapshotQuery("run-1"))
+    result = GetRunSnapshotHandler(unit_of_work_factory=sqlite_unit_of_work_factory(database_path))(
+        GetRunSnapshotQuery("run-1")
+    )
 
     assert result is not None
     assert result.run.run_id == "run-1"

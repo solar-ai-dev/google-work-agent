@@ -50,8 +50,8 @@ def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
     )
     handoff_id = f"test-start-{request.run_id}"
     with factory() as unit_of_work:
-        if unit_of_work.checkpoints.load_workflow_binding(request.run_id) is None:
-            unit_of_work.checkpoints.create_workflow_binding(
+        if checkpoint.load_workflow_binding(request.run_id) is None:
+            unit_of_work.workflow_bindings.create_workflow_binding(
                 WorkflowBindingV1(
                     schema_version=1,
                     workflow_key=request.workflow_key,
@@ -213,6 +213,7 @@ def resume_confirmation_with_handoff(
         )
         resume_handler = ResumeConfirmationHandler(
             unit_of_work_factory=factory,
+            checkpoint_port=runtime._checkpoint_port,  # noqa: SLF001
             now_ms=lambda: 2_000,
             id_factory=lambda: f"test-handoff-{command_id}",
             resume_target_registry=registry,

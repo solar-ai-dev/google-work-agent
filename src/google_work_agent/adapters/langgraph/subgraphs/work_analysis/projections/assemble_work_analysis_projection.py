@@ -13,7 +13,9 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.contracts import PolicyConfirmationReceiptV1
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 
 
 class AssembleWorkAnalysisInput(TypedDict):

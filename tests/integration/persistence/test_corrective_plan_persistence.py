@@ -15,7 +15,8 @@ from google_work_agent.adapters.langgraph.main.state import ParentGraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
@@ -23,13 +24,14 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 from google_work_agent.application.orchestration.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.legacy_write.write_actions import SaveWritePlanService
 from tests.support.resolve_recovery_adapter import (
     RecoveryResolutionKind,
@@ -216,6 +218,7 @@ class _CorrectivePersistenceHarness:
 def _resolve_corrective(database_path: Path) -> None:
     result = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=lambda: 6,
     )(
         ResolveMismatchRecoveryCommand(

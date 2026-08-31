@@ -66,6 +66,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     ClaimWriteActionCommand,
     WriteActionResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
 from google_work_agent.domain.approval.model import ApprovalStatusV1
@@ -84,7 +85,6 @@ from google_work_agent.ports.connector.claim_context_contract import (
     validate_claim_ttl_ms,
 )
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.attachment_staging_port import (
     AttachmentStagingError,

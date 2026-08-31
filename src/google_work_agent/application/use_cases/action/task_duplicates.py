@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, cast
 
-from google_work_agent.application.policy_kernels.task_duplicate import (
+from google_work_agent.application.use_cases.action.task_duplicate_policy import (
     DuplicateDecision,
     DuplicateFreshness,
     TaskDuplicateCandidate,

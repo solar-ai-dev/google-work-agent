@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from google_work_agent.adapters.persistence import connect_sqlite, sqlite_unit_of_work_factory
+from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repository import (
     SqliteAuditEventRepository,
 )
@@ -18,6 +18,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
     SqliteExecutionAttemptRepository,
 )
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )

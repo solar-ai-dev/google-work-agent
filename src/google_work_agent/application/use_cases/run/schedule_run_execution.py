@@ -147,9 +147,7 @@ class ScheduleRunExecutionHandler:
                 return _rejected("NOT_COMMITTED")
             if is_preempting_run_status(
                 run.status
-            ) and not handoff_matches_preempting_run_authority(
-                run.status, handoff
-            ):
+            ) and not handoff_matches_preempting_run_authority(run.status, handoff):
                 return _rejected("BINDING_MISMATCH")
             binding = self._resolve_binding(handoff, command.submission_kind)
             if existing is not None:

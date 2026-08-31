@@ -75,6 +75,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_recovery_co
     RecoverUnknownUpdateActionCommand,
     ResolveUnknownWriteAsFailedCommand,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -112,8 +113,8 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceGatewayError,
     ResourceSnapshot,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 
 class MarkWriteActionUnknownResultService:
@@ -121,9 +122,11 @@ class MarkWriteActionUnknownResultService:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
 
     def __call__(self, command: MarkWriteActionUnknownResultCommand) -> WriteActionResponse:
@@ -212,6 +215,7 @@ class MarkWriteActionUnknownResultService:
                     execution_attempt_id=attempt.id,
                 ),
                 now_ms=now_ms,
+                checkpoint_port=self._checkpoint_port,
             )
             if not recovery.applied:
                 raise RuntimeError("unknown-result recovery transition was not applied")

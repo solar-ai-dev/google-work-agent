@@ -13,15 +13,15 @@ import pytest
 from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
     McpConnectorWriteAdapter,
 )
-from google_work_agent.adapters.persistence import (
-    apply_migrations,
-    connect_sqlite,
-    sqlite_unit_of_work_factory,
-)
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
+)
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
@@ -100,6 +100,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     TimeRange,
 )
 from tests.integration.persistence.review_support import record_pass_review
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import (
     FakeClockPort,
     FakeGoogleGateway,
@@ -1341,6 +1342,7 @@ def _mark_effect_unknown(
 ) -> WriteActionResponse:
     return MarkWriteActionUnknownResultService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         MarkWriteActionUnknownResultCommand(

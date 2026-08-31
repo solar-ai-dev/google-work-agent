@@ -4,10 +4,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -20,9 +20,7 @@ class ContinueCancelResolutionCommandV1:
 @dataclass(frozen=True, slots=True)
 class ContinueCancelResolutionResultV1:
     schema_version: Literal[1]
-    outcome: Literal[
-        "READY_TO_FINALIZE", "FINALIZED", "PROGRESSED", "WAITING_FOR_SETTLEMENT"
-    ]
+    outcome: Literal["READY_TO_FINALIZE", "FINALIZED", "PROGRESSED", "WAITING_FOR_SETTLEMENT"]
     run_status: str
     progressed_action_id: str | None = None
 

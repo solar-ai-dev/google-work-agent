@@ -25,14 +25,3 @@ class ActionRepository(Protocol):
         values: dict[str, object],
     ) -> bool: ...
     def list_for_plan(self, plan_id: str) -> tuple[ActionRecord, ...]: ...
-
-
-def dependency_ids_for_action(
-    repository: ActionRepository,
-    actions: tuple[ActionRecord, ...],
-    action_id: str,
-) -> tuple[str, ...]:
-    """Derive reverse dependency membership from the canonical public query."""
-    return tuple(
-        action.id for action in actions if action_id in repository.list_dependents(action.id)
-    )

@@ -264,9 +264,7 @@ class ReviewSubgraph:
             lambda invoke: inspect_action_scope_and_route_node(state, invoke=invoke),
         )
 
-    def _inspect_constraints_and_policy_summary_node(
-        self, state: ReviewState
-    ) -> ReviewState:
+    def _inspect_constraints_and_policy_summary_node(self, state: ReviewState) -> ReviewState:
         return self._run_semantic_node(
             state,
             state,

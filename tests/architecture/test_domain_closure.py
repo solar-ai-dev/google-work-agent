@@ -80,14 +80,36 @@ TRANSITION_AUTHORITIES = {
 }
 
 GUARD_AUTHORITIES = {
+    "action.approve_action",
+    "action.cancel_pending_action",
+    "action.claim_read_action",
+    "action.complete_read_action",
     "action.current_plan_authority",
+    "action.fail_read_action",
+    "action.finalize_read_action",
+    "action.modify_action",
+    "action.prepare_write_retry",
+    "action.refresh_expired_action",
+    "action.reject_action",
+    "approval.expire_approval",
     "claim.claim_execution",
+    "execution_attempt.abort_claimed_execution",
+    "execution_attempt.begin_execution_attempt",
+    "execution_attempt.mark_failed",
+    "execution_attempt.mark_unknown_result",
+    "execution_attempt.recover_existing_result",
+    "execution_attempt.resolve_as_failed",
+    "execution_attempt.store_success",
+    "plan.publish_plan",
+    "plan.publish_read_only_plan",
     "recovery.require_recovery",
     "recovery.resolve_recovery",
     "run.begin_planning",
     "run.begin_retrieval",
+    "run.begin_verification",
     "run.block_run",
     "run.complete_answer_only_run",
+    "run.complete_read_only_run",
     "run.complete_write_run",
     "run.finalize_cancel",
     "run.request_cancel",
@@ -97,6 +119,7 @@ GUARD_AUTHORITIES = {
     "run.resume_confirmation",
     "run.start_analysis",
     "run.start_run",
+    "verification.store_verification",
 }
 
 APPLICATION_OWNER_AUTHORITIES = {
@@ -229,13 +252,13 @@ def test_exact_transition_tree_has_thirty_nine_mirrored_operations() -> None:
     assert actual_authorities == TRANSITION_AUTHORITIES
 
 
-def test_required_guard_tree_has_seventeen_mirrored_behavioral_owners() -> None:
+def test_required_guard_tree_has_forty_mirrored_behavioral_owners() -> None:
     sources = sorted(path for path in DOMAIN.glob("*/guards/*.py") if path.name != "__init__.py")
     mirrors = sorted(
         path for path in (ROOT / "tests" / "unit" / "domain").glob("*/guards/test_*.py")
     )
-    assert len(sources) == 17
-    assert len(mirrors) == 17
+    assert len(sources) == 40
+    assert len(mirrors) == 40
     expected_mirrors = {path.relative_to(DOMAIN).with_name(f"test_{path.name}") for path in sources}
     actual_mirrors = {path.relative_to(ROOT / "tests" / "unit" / "domain") for path in mirrors}
     assert actual_mirrors == expected_mirrors
@@ -326,7 +349,8 @@ def test_child_mutations_require_explicit_current_plan_facts(module_name: str) -
     )
     parameters = signature(operation).parameters
     if module_name == "approval.transitions.expire_approval":
-        expiry_input = module.ApprovalExpiryInput
+        guard_module = import_module("google_work_agent.domain.approval.guards.expire_approval")
+        expiry_input = guard_module.ApprovalExpiryInput
         annotations = expiry_input.__annotations__
         assert "plan_status" in annotations
         assert "plan_is_current" in annotations

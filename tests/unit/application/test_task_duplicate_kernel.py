@@ -2,7 +2,7 @@
 
 import pytest
 
-from google_work_agent.application.policy_kernels.task_duplicate import (
+from google_work_agent.application.use_cases.action.task_duplicate_policy import (
     DuplicateDecision,
     TaskDuplicateCandidate,
     evaluate_task_duplicate,

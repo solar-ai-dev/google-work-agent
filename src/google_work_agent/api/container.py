@@ -62,6 +62,7 @@ class ApiContainer:
     graph_version: str = "resume-contract-v1"
     schedule_run_execution: Any | None = None
     resume_target_registry: Any | None = None
+    checkpoint_port: Any | None = None
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
     settings_port: Any | None = None

@@ -69,7 +69,6 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
         "get",
         "get_snapshot",
         "find_open_by_conversation",
-        "list_for_conversation_bounded",
         "update_if_version_and_status",
     }
     plan_methods = {
@@ -97,7 +96,6 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
         "insert_claimed",
         "get",
         "get_active_for_approval",
-        "get_latest_for_approval",
         "list_reconciliation_candidates",
         "update_if_version_and_status",
     }
@@ -108,7 +106,6 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
     }
     evidence_methods = {
         "insert_bounded",
-        "list_for_retrieval_artifact",
         "list_for_run",
         "list_for_action",
     }

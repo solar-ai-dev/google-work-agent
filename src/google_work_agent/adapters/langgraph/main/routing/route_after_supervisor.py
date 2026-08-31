@@ -47,9 +47,7 @@ _COMMON_ROUTES = {
     RESPONSE_SYNTHESIS_TARGET: RouteTranslation("response_synthesis", "response_synthesis"),
     SupervisorTarget.REAUTH.value: RouteTranslation("end", "end"),
     SupervisorTarget.RECOVERY.value: RouteTranslation("recovery", "recovery"),
-    SupervisorTarget.FINALIZE.value: RouteTranslation(
-        "response_synthesis", "response_synthesis"
-    ),
+    SupervisorTarget.FINALIZE.value: RouteTranslation("response_synthesis", "response_synthesis"),
 }
 
 
@@ -79,9 +77,7 @@ _PROFILE_ROUTES = {
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
         ),
-        SupervisorTarget.WORK_ANALYSIS.value: RouteTranslation(
-            "work_analysis", "single_workflow"
-        ),
+        SupervisorTarget.WORK_ANALYSIS.value: RouteTranslation("work_analysis", "single_workflow"),
         SupervisorTarget.SOLUTION_PLANNING.value: RouteTranslation(
             "planning_entry", "planning_entry"
         ),
@@ -101,12 +97,8 @@ _PROFILE_ROUTES = {
     GraphProfile.THREE_STAGE: {
         **_COMMON_ROUTES,
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "stage_one"),
-        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation(
-            "context_retriever", "stage_one"
-        ),
-        SupervisorTarget.API_ACQUISITION.value: RouteTranslation(
-            "context_retriever", "stage_one"
-        ),
+        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation("context_retriever", "stage_one"),
+        SupervisorTarget.API_ACQUISITION.value: RouteTranslation("context_retriever", "stage_one"),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
         ),

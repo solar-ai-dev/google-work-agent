@@ -180,6 +180,7 @@ class ResponseSynthesisMixin:
         canonical_decision = canonicalize_answer_only_decision(canonical_decision)
         return super()._merge_decision(state, update, canonical_decision)
 
+
 __all__ = [
     "ResponseSynthesisMixin",
     "canonicalize_answer_only_decision",

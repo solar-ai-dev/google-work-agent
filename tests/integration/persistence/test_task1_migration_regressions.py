@@ -1,10 +1,10 @@
 import shutil
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import (
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import (
     apply_migrations,
     calculate_migration_checksum,
-    connect_sqlite,
 )
 
 RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")

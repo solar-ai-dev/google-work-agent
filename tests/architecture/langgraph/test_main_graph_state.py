@@ -4,7 +4,9 @@ from typing import get_type_hints
 
 from google_work_agent.adapters.langgraph.main import state as state_module
 from google_work_agent.adapters.langgraph.main.state import (
+    ExecutionSummaryV1,
     MultiAgentGraphStateV2,
+    VerificationSummaryV1,
     initial_graph_state,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
@@ -54,3 +56,21 @@ def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
     assert state["langgraph_thread_id"] == "thread-1"
     assert state["run_input"]["user_request"] == "Summarize my work."
     assert "context_result" not in state
+
+
+def test_domain_backed_summary_contracts_are_exact_and_main_owned() -> None:
+    assert set(get_type_hints(ExecutionSummaryV1)) == {
+        "schema_version",
+        "action_id",
+        "execution_attempt_id",
+        "routing_outcome",
+        "delivery_certainty",
+        "source_action_version",
+    }
+    assert set(get_type_hints(VerificationSummaryV1)) == {
+        "schema_version",
+        "action_id",
+        "verification_id",
+        "routing_outcome",
+        "source_action_version",
+    }

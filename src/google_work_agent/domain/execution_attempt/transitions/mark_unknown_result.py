@@ -1,6 +1,9 @@
 """Joint uncertain-result transition authority."""
 
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.guards.mark_unknown_result import (
+    guard_mark_unknown_result,
+)
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptStatusV1,
     ExecutionAttemptTransitionDecision,
@@ -17,28 +20,23 @@ def transition_mark_unknown_result(
     attempt_version: int,
     expected_attempt_version: int,
 ) -> ExecutionAttemptTransitionDecision:
-    if action_version != expected_action_version or attempt_version != expected_attempt_version:
+    conflict = guard_mark_unknown_result(
+        action_status,
+        action_version=action_version,
+        expected_action_version=expected_action_version,
+        attempt_status=attempt_status,
+        attempt_version=attempt_version,
+        expected_attempt_version=expected_attempt_version,
+    )
+    if conflict is not None:
         return ExecutionAttemptTransitionDecision(
             False,
-            ResultCode.VERSION_CONFLICT,
+            conflict[0],
             action_status,
             action_version,
             attempt_status,
             attempt_version,
-            "expected version does not match current version",
-        )
-    if (
-        action_status is not ActionStatusV1.EXECUTING
-        or attempt_status is not ExecutionAttemptStatusV1.EXECUTING
-    ):
-        return ExecutionAttemptTransitionDecision(
-            False,
-            ResultCode.STATE_CONFLICT,
-            action_status,
-            action_version,
-            attempt_status,
-            attempt_version,
-            "MarkUnknownResult requires Action EXECUTING and Attempt EXECUTING",
+            conflict[1],
         )
     return ExecutionAttemptTransitionDecision(
         True,

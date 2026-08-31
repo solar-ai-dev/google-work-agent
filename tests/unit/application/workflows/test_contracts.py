@@ -60,8 +60,6 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "plan_draft",
         "plan_review",
         "approved_plan_id",
-        "execution_summary",
-        "verification_summary",
         "finalize_intent",
         "user_interrupt",
         "policy_confirmation_receipts",
@@ -69,7 +67,7 @@ def test_multi_agent_graph_state_fields_match_workflow_document() -> None:
         "prompt_context",
         "trace_context",
     } == MULTI_AGENT_GRAPH_STATE_FIELDS
-    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 24
+    assert len(MULTI_AGENT_GRAPH_STATE_FIELDS) == 22
 
 
 def test_multi_agent_graph_state_has_no_implementation_only_fields() -> None:

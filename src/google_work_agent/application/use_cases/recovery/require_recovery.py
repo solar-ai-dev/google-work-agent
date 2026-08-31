@@ -22,6 +22,7 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunTransitionRejected, next_allowed_run_commands
 from google_work_agent.ports.persistence.recovery_repository import RecoveryContextV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import RegisteredResumeTargetRefV2
 
 
@@ -59,13 +60,16 @@ class RequireRecoveryHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        checkpoint_port: CheckpointPort,
         resume_target_registry: ResumeTargetIssuer | None = None,
     ) -> None:
         self._f = unit_of_work_factory
         self._n = now_ms
+        self._checkpoint_port = checkpoint_port
         self._resume_target_registry = resume_target_registry
 
     def __call__(self, command: RequireRecoveryCommand) -> RequireRecoveryResult:
+        checkpoint_update = None
         with self._f() as u:
             checkpoint = None
             if (
@@ -73,11 +77,11 @@ class RequireRecoveryHandler:
                 and command.registered_resume_target is None
                 and self._resume_target_registry is not None
             ):
-                binding = u.checkpoints.load_workflow_binding(command.run_id)
+                binding = self._checkpoint_port.load_workflow_binding(command.run_id)
                 checkpoint = (
                     None
                     if binding is None
-                    else u.checkpoints.load_same_run_checkpoint(
+                    else self._checkpoint_port.load_same_run_checkpoint(
                         command.run_id, binding.langgraph_thread_id
                     )
                 )
@@ -88,25 +92,31 @@ class RequireRecoveryHandler:
                             binding.graph_profile, "RECOVERY", binding.graph_version
                         ),
                     )
-            r = self.apply_in_unit_of_work(u, command, now_ms=self._n())
+            r = self.apply_in_unit_of_work(
+                u, command, now_ms=self._n(), checkpoint_port=self._checkpoint_port
+            )
             if (
                 r.applied
                 and checkpoint is not None
                 and command.registered_resume_target is not None
             ):
-                u.checkpoints.store_same_run_checkpoint(
-                    replace(
-                        checkpoint,
-                        registered_resume_target=command.registered_resume_target,
-                        created_at_ms=self._n(),
-                    )
+                checkpoint_update = replace(
+                    checkpoint,
+                    registered_resume_target=command.registered_resume_target,
+                    created_at_ms=self._n(),
                 )
             u.commit()
-            return r
+        if checkpoint_update is not None:
+            self._checkpoint_port.store_same_run_checkpoint(checkpoint_update)
+        return r
 
     @staticmethod
     def apply_in_unit_of_work(
-        unit_of_work: UnitOfWork, command: RequireRecoveryCommand, *, now_ms: int
+        unit_of_work: UnitOfWork,
+        command: RequireRecoveryCommand,
+        *,
+        now_ms: int,
+        checkpoint_port: CheckpointPort,
     ) -> RequireRecoveryResult:
         """Canonical RequireRecovery semantic writer for an enclosing short UoW.
 
@@ -190,7 +200,9 @@ class RequireRecoveryHandler:
                 RecoveryContextV1,
                 {
                     **context,
-                    "last_recheck_input_hash": current_recheck_input_hash(unit_of_work, context),
+                    "last_recheck_input_hash": current_recheck_input_hash(
+                        unit_of_work, context, checkpoint_port=checkpoint_port
+                    ),
                 },
             )
             unit_of_work.recovery_contexts.store_context(context, allocate_version=current is None)
@@ -262,7 +274,12 @@ def build_recovery_context(
     return cast(RecoveryContextV1, context)
 
 
-def current_recheck_input_hash(unit_of_work: UnitOfWork, context: RecoveryContextV1) -> str:
+def current_recheck_input_hash(
+    unit_of_work: UnitOfWork,
+    context: RecoveryContextV1,
+    *,
+    checkpoint_port: CheckpointPort,
+) -> str:
     """Derive Recovery progress only from current durable server-owned facts."""
     action_id = context.get("action_id")
     attempt_id = context.get("execution_attempt_id")
@@ -273,11 +290,11 @@ def current_recheck_input_hash(unit_of_work: UnitOfWork, context: RecoveryContex
         if attempt_id is None
         else unit_of_work.verifications.get_latest_for_attempt(attempt_id)
     )
-    binding = unit_of_work.checkpoints.load_workflow_binding(context["run_id"])
+    binding = checkpoint_port.load_workflow_binding(context["run_id"])
     checkpoint = (
         None
         if binding is None
-        else unit_of_work.checkpoints.load_same_run_checkpoint(
+        else checkpoint_port.load_same_run_checkpoint(
             context["run_id"], binding.langgraph_thread_id
         )
     )

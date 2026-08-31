@@ -6,18 +6,12 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Protocol, cast
 
-from google_work_agent.application.policy_kernels.calendar_conflict import (
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarEventCandidate,
     CalendarInterval,
     CalendarIntervalKind,
     CalendarWorkHours,
     classify_calendar_event,
-)
-from google_work_agent.application.policy_kernels.feasibility import (
-    FeasibilityDecision,
-    FeasibilityFreshness,
-    derive_deadline_cutoff,
-    evaluate_feasibility,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_PAGE_SIZE,
@@ -27,6 +21,12 @@ from google_work_agent.application.use_cases.action.calendar_conflicts import (
     calendar_freebusy_intervals,
     calendar_freebusy_payload_intervals,
     residual_calendar_freebusy,
+)
+from google_work_agent.application.use_cases.action.feasibility_policy import (
+    FeasibilityDecision,
+    FeasibilityFreshness,
+    derive_deadline_cutoff,
+    evaluate_feasibility,
 )
 from google_work_agent.domain.action.model import PolicyViolationError, normalize_action_risk
 from google_work_agent.ports.connector.contracts.google_workspace import (

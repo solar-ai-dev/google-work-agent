@@ -7,7 +7,8 @@ from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import SqliteUnitOfWork
 from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
@@ -84,9 +85,7 @@ class _CheckpointFacts:
 
 class _ApproveUnitOfWork(SqliteUnitOfWork):
     def __enter__(self) -> SqliteUnitOfWork:
-        entered = super().__enter__()
-        entered.checkpoints = _CheckpointFacts()  # type: ignore[assignment]
-        return entered
+        return super().__enter__()
 
 
 class _FailingInsertProxy:
@@ -164,6 +163,7 @@ def _handler(
     return ApproveActionHandler(
         get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=cast(Callable[[], UnitOfWork], lambda: uow_type(database_path)),
+        checkpoint_port=_CheckpointFacts(),
         now_ms=lambda: 1000,
         id_generator=DeterministicUUID(
             queued_ids=("approval-1", "handoff-1"), require_queued_ids=True

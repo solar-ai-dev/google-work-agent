@@ -27,9 +27,7 @@ class AdjustContextRequestV1(ApiModel):
                     "EXCLUDE_EVIDENCE requires segment_ids and forbids requested_information"
                 )
         elif segment_ids or not (self.requested_information or "").strip():
-            raise ValueError(
-                "RETRIEVE_MORE requires no segment_ids and requested_information"
-            )
+            raise ValueError("RETRIEVE_MORE requires no segment_ids and requested_information")
         return self
 
 

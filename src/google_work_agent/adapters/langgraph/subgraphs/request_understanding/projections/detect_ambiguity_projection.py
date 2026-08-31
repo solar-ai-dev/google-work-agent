@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import NotRequired, TypedDict
 
-from google_work_agent.adapters.langgraph.main.state import request_from_state
+from google_work_agent.adapters.langgraph.main.state import request_from_run_input_state
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingStateV2,
 )
@@ -28,7 +28,7 @@ def project_detect_ambiguity_input(state: RequestUnderstandingStateV2) -> Detect
     if candidate is None:
         raise ValueError("request-understanding goal candidate is required")
     projected: DetectAmbiguityInput = {
-        "request": request_from_state(state),
+        "request": request_from_run_input_state(state),
         "goal_candidate": candidate,
     }
     prompt_context = state.get("prompt_context", {})

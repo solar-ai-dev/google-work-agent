@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from json import dumps
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
@@ -38,7 +39,6 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

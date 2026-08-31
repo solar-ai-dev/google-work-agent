@@ -1,9 +1,15 @@
 """SQLite implementation of the owner-local connected-account support surface."""
 
 import sqlite3
-from hashlib import sha256
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from pathlib import Path
 
-from google_work_agent.ports.persistence.connected_account_store import ConnectedAccount
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.ports.connector.connected_account_store import (
+    ConnectedAccount,
+    ConnectedAccountStore,
+)
 
 
 class SqliteConnectedAccountStore:
@@ -27,10 +33,16 @@ class SqliteConnectedAccountStore:
         )
 
     def ensure_connected(
-        self, *, email: str, display_name: str | None, connected_at_ms: int
+        self,
+        *,
+        account_id: str,
+        email: str,
+        display_name: str | None,
+        connected_at_ms: int,
     ) -> ConnectedAccount:
         normalized_email = email.strip().lower()
-        account_id = _account_id_for_email(normalized_email)
+        if not account_id:
+            raise ValueError("connector account_id is required")
         self._connection.execute(
             """UPDATE google_accounts
                SET disconnected_at_ms = MAX(connected_at_ms, ?)
@@ -68,6 +80,18 @@ class SqliteConnectedAccountStore:
         return row is not None and row["disconnected_at_ms"] is not None
 
 
-def _account_id_for_email(email: str) -> str:
-    digest = sha256(email.encode("utf-8")).hexdigest()
-    return f"acct-{digest[:24]}"
+def sqlite_connected_account_store_factory(
+    database_path: Path,
+) -> Callable[[], AbstractContextManager[ConnectedAccountStore]]:
+    @contextmanager
+    def _factory() -> Iterator[ConnectedAccountStore]:
+        with connect_sqlite(database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            try:
+                yield SqliteConnectedAccountStore(connection)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    return _factory

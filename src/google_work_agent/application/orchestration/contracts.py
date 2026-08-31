@@ -11,6 +11,9 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 
 # ``handoff_contracts`` imports this module for shared budget types.  Keep the
 # runtime annotation resolvable without creating that reverse import cycle;
@@ -30,7 +33,6 @@ if TYPE_CHECKING:
         RequestIntentV2,
         RetrievalResultV1,
         SourceFetchPlanV1,
-        StateArtifactMetaV1,
         WorkflowSignalV1,
     )
 else:
@@ -56,8 +58,6 @@ class MultiAgentGraphState(TypedDict):
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
-    execution_summary: dict[str, object] | None
-    verification_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
@@ -81,8 +81,6 @@ class GraphStateUpdateV1(TypedDict, total=False):
     plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
-    execution_summary: dict[str, object] | None
-    verification_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
@@ -265,28 +263,6 @@ class UserInterruptV1(TypedDict):
     reason_code: str
     known_context_summary: str
     options: list[UserInterruptOptionV1]
-
-
-class PolicyConfirmationReceiptV1(TypedDict):
-    """Immutable proof that a real, validated user response resolved one
-    SCOPE_EXPANSION/DUPLICATE_OVERRIDE/CONFLICT_OVERRIDE Confirmation
-    (06-agent-workflow.md SS3.7 PolicyConfirmationReceiptV1). LLM/Agent code
-    never constructs this -- only the Application/Confirmation Controller
-    layer does, from an already-validated ConfirmationResponseProjectionV1.
-    ``decision_context_hash`` binds the receipt to the exact scope-expansion
-    request content it answered, so a stale or forged receipt fails closed
-    when re-verified against different content.
-    """
-
-    schema_version: Required[Literal[1]]
-    meta: StateArtifactMetaV1
-    interrupt_id: str
-    confirmation_kind: Literal["SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"]
-    decision: Literal["APPROVED", "DECLINED"]
-    semantic_owner_id: Literal["TOOL_ROUTE", "WORK_ANALYSIS"]
-    decision_context_hash: str
-    affected_route_ids: list[str]
-    affected_resource_refs: list[str]
 
 
 class FinalizeIntentV1(TypedDict):

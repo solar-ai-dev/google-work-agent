@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from threading import Lock
 from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
@@ -49,6 +50,7 @@ class _WriteContext:
     owner_scope: str
     resume_target: RegisteredResumeTargetRefV2
     retrieval_requirements: tuple[RetrievalCacheRequirementV1, ...]
+    pre_reauth_status: RunStatusV1 | None
 
 
 _WRITE_CONTEXT: ContextVar[_WriteContext | None] = ContextVar(
@@ -84,6 +86,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             owns_connection=True,
             target_resolver=target_resolver,
         )
+        self._database_path: Path | None = database_path
         self._delegate.setup()
         self._setup_checkpoint_storage(commit=True)
 
@@ -150,6 +153,23 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         self._owns_connection = owns_connection
         self._target_resolver = target_resolver
         self._is_closed = False
+        self._database_path = None
+        self._projection_update_lock = Lock()
+        self._projection_updates: dict[tuple[str, str], GraphCheckpointEnvelopeV1] = {}
+        self._active_context_lock = Lock()
+        self._active_contexts: dict[tuple[str, str], _WriteContext] = {}
+
+    @contextmanager
+    def _read_connection(self) -> Iterator[sqlite3.Connection]:
+        if self._database_path is None:
+            yield self._connection
+            return
+        connection = sqlite3.connect(self._database_path, check_same_thread=False)
+        connection.row_factory = sqlite3.Row
+        try:
+            yield connection
+        finally:
+            connection.close()
 
     def _setup_checkpoint_storage(self, *, commit: bool) -> None:
         with self._delegate.lock:
@@ -188,8 +208,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             }
             if "pre_reauth_status" not in columns:
                 self._connection.execute(
-                    "ALTER TABLE workflow_checkpoint_envelopes "
-                    "ADD COLUMN pre_reauth_status TEXT;"
+                    "ALTER TABLE workflow_checkpoint_envelopes ADD COLUMN pre_reauth_status TEXT;"
                 )
             self._connection.execute(
                 """CREATE INDEX IF NOT EXISTS ix_workflow_checkpoint_latest
@@ -268,12 +287,13 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         )
 
     def load_workflow_binding(self, run_id: str) -> WorkflowBindingV1 | None:
-        row = self._connection.execute(
-            """SELECT workflow_key, run_id, langgraph_thread_id, graph_profile,
-                      graph_version, requested_mode, created_at_ms
-               FROM workflow_bindings WHERE run_id=?;""",
-            (run_id,),
-        ).fetchone()
+        with self._read_connection() as connection:
+            row = connection.execute(
+                """SELECT workflow_key, run_id, langgraph_thread_id, graph_profile,
+                          graph_version, requested_mode, created_at_ms
+                   FROM workflow_bindings WHERE run_id=?;""",
+                (run_id,),
+            ).fetchone()
         if row is None:
             return None
         return WorkflowBindingV1(
@@ -304,21 +324,44 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             admission.effective_binding.run_id,
             admission.effective_binding.langgraph_thread_id,
         )
-        token = _WRITE_CONTEXT.set(
-            _WriteContext(
-                admission=admission,
-                applied_handoff_id=applied_handoff_id,
-                owner_scope=owner_scope,
-                resume_target=resume_target,
-                retrieval_requirements=()
-                if latest is None
-                else latest.retrieval_cache_requirements,
-            )
+        context = _WriteContext(
+            admission=admission,
+            applied_handoff_id=applied_handoff_id,
+            owner_scope=owner_scope,
+            resume_target=resume_target,
+            retrieval_requirements=() if latest is None else latest.retrieval_cache_requirements,
+            pre_reauth_status=None if latest is None else latest.pre_reauth_status,
         )
+        key = (
+            admission.effective_binding.run_id,
+            admission.effective_binding.langgraph_thread_id,
+        )
+        with self._projection_update_lock:
+            self._projection_updates.pop(key, None)
+        with self._active_context_lock:
+            self._active_contexts[key] = context
+        token = _WRITE_CONTEXT.set(context)
         try:
             yield
         finally:
             _WRITE_CONTEXT.reset(token)
+            with self._active_context_lock:
+                if self._active_contexts.get(key) == context:
+                    self._active_contexts.pop(key, None)
+            with self._projection_update_lock:
+                pending_update = self._projection_updates.get(key)
+            if pending_update is not None:
+                latest = self.load_same_run_checkpoint(*key)
+                if latest is not None:
+                    self.store_same_run_checkpoint(
+                        replace(
+                            latest,
+                            owner_scope=pending_update.owner_scope,
+                            registered_resume_target=pending_update.registered_resume_target,
+                            pre_reauth_status=pending_update.pre_reauth_status,
+                            created_at_ms=pending_update.created_at_ms,
+                        )
+                    )
 
     def get_tuple(self, config: Any) -> Any:
         return self._delegate.get_tuple(config)
@@ -343,6 +386,30 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             get_checkpoint_metadata(config, metadata), ensure_ascii=False
         ).encode("utf-8", "ignore")
         context = _WRITE_CONTEXT.get()
+        if context is None:
+            with self._active_context_lock:
+                context = next(
+                    (
+                        active
+                        for (_run_id, active_thread_id), active in self._active_contexts.items()
+                        if active_thread_id == thread_id
+                    ),
+                    None,
+                )
+        pending_update = None
+        pending_key = None
+        if context is not None:
+            binding = context.admission.effective_binding
+            pending_key = (binding.run_id, binding.langgraph_thread_id)
+            with self._projection_update_lock:
+                pending_update = self._projection_updates.get(pending_key)
+            if pending_update is not None:
+                context = replace(
+                    context,
+                    owner_scope=pending_update.owner_scope,
+                    resume_target=pending_update.registered_resume_target or context.resume_target,
+                    pre_reauth_status=pending_update.pre_reauth_status,
+                )
         with self._delegate.lock:
             cursor = self._connection.cursor()
             try:
@@ -366,6 +433,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                     self._insert_projection(
                         cursor,
                         context=context,
+                        projection_override=pending_update,
                         checkpoint=checkpoint,
                         checkpoint_ns=checkpoint_ns,
                         checkpoint_id=checkpoint_id,
@@ -404,6 +472,33 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
 
     def store_same_run_checkpoint(self, checkpoint: GraphCheckpointEnvelopeV1) -> None:
         """Update evidence on an existing native checkpoint; never create a second blob."""
+        context = _WRITE_CONTEXT.get()
+        if context is None:
+            with self._active_context_lock:
+                context = self._active_contexts.get(
+                    (checkpoint.run_id, checkpoint.langgraph_thread_id)
+                )
+        if (
+            context is not None
+            and context.admission.effective_binding.run_id == checkpoint.run_id
+            and checkpoint.registered_resume_target is not None
+        ):
+            # A LangGraph node runs while the native saver lock is held. Stage the
+            # typed projection in the execution context; the saver persists it with
+            # the native checkpoint produced after the node returns.
+            _WRITE_CONTEXT.set(
+                replace(
+                    context,
+                    owner_scope=checkpoint.owner_scope,
+                    resume_target=checkpoint.registered_resume_target,
+                    pre_reauth_status=checkpoint.pre_reauth_status,
+                )
+            )
+            with self._projection_update_lock:
+                self._projection_updates[(checkpoint.run_id, checkpoint.langgraph_thread_id)] = (
+                    checkpoint
+                )
+            return
         with self._delegate.lock:
             cursor = self._connection.cursor()
             owns_transaction = not self._connection.in_transaction
@@ -454,7 +549,6 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 )
                 if cursor.rowcount != 1:
                     raise CheckpointConflictError("typed checkpoint projection is missing")
-                context = _WRITE_CONTEXT.get()
                 if (
                     context is not None
                     and context.admission.effective_binding.run_id == checkpoint.run_id
@@ -465,6 +559,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                             context,
                             owner_scope=checkpoint.owner_scope,
                             resume_target=checkpoint.registered_resume_target,
+                            pre_reauth_status=checkpoint.pre_reauth_status,
                         )
                     )
                 if owns_transaction:
@@ -479,8 +574,8 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
     def load_same_run_checkpoint(
         self, run_id: str, thread_id: str
     ) -> GraphCheckpointEnvelopeV1 | None:
-        with self._delegate.lock:
-            row = self._connection.execute(
+        with self._read_connection() as connection:
+            row = connection.execute(
                 """SELECT e.*, c.checkpoint AS checkpoint_blob
                 FROM workflow_checkpoint_envelopes e JOIN checkpoints c
                   ON c.thread_id=e.langgraph_thread_id
@@ -490,7 +585,20 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 ORDER BY e.checkpoint_generation DESC LIMIT 1;""",
                 (run_id, thread_id),
             ).fetchone()
-        return None if row is None else _to_checkpoint(row)
+        if row is None:
+            return None
+        checkpoint = _to_checkpoint(row)
+        with self._projection_update_lock:
+            pending_update = self._projection_updates.get((run_id, thread_id))
+        if pending_update is None:
+            return checkpoint
+        return replace(
+            checkpoint,
+            owner_scope=pending_update.owner_scope,
+            registered_resume_target=pending_update.registered_resume_target,
+            pre_reauth_status=pending_update.pre_reauth_status,
+            created_at_ms=pending_update.created_at_ms,
+        )
 
     def store_retrieval_head(self, head: RetrievalHeadV1) -> None:
         """Store metadata only when it names an existing native checkpoint."""
@@ -507,8 +615,8 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 cursor.close()
 
     def load_retrieval_head(self, run_id: str) -> RetrievalHeadV1 | None:
-        with self._delegate.lock:
-            row = self._connection.execute(
+        with self._read_connection() as connection:
+            row = connection.execute(
                 """SELECT run_id, langgraph_thread_id, retrieval_revision,
                           retrieval_artifact_id, checkpoint_id, checkpoint_generation
                    FROM workflow_retrieval_heads WHERE run_id=?;""",
@@ -558,12 +666,13 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 self._connection.commit()
 
     def load_external_llm_scope(self, run_id: str) -> ExternalLlmTransferScopeV1 | None:
-        row = self._connection.execute(
-            """SELECT run_id, scope_revision, scope_hash,
-                      source_kinds_json, data_classes_json
-               FROM workflow_external_llm_scopes WHERE run_id=?;""",
-            (run_id,),
-        ).fetchone()
+        with self._read_connection() as connection:
+            row = connection.execute(
+                """SELECT run_id, scope_revision, scope_hash,
+                          source_kinds_json, data_classes_json
+                   FROM workflow_external_llm_scopes WHERE run_id=?;""",
+                (run_id,),
+            ).fetchone()
         if row is None:
             return None
         return ExternalLlmTransferScopeV1(
@@ -633,6 +742,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
         cursor: sqlite3.Cursor,
         *,
         context: _WriteContext,
+        projection_override: GraphCheckpointEnvelopeV1 | None,
         checkpoint: Mapping[str, Any],
         checkpoint_ns: str,
         checkpoint_id: str,
@@ -665,17 +775,24 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             else context.resume_target
         )
         target = (
-            fallback
-            if self._target_resolver is None
-            else self._target_resolver(
-                checkpoint,
-                binding.graph_profile,
-                binding.graph_version,
-                fallback,
+            projection_override.registered_resume_target
+            if projection_override is not None
+            and projection_override.registered_resume_target is not None
+            else (
+                fallback
+                if self._target_resolver is None
+                else self._target_resolver(
+                    checkpoint,
+                    binding.graph_profile,
+                    binding.graph_version,
+                    fallback,
+                )
             )
         )
         owner_scope: str
-        if isinstance(target, AgentNodeResumeTargetV2):
+        if projection_override is not None:
+            owner_scope = projection_override.owner_scope
+        elif isinstance(target, AgentNodeResumeTargetV2):
             owner_scope = target.semantic_owner_id
         elif inherits_active_lineage:
             owner_scope = str(prior["owner_scope"])
@@ -706,7 +823,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 admission.handoff_run_sequence,
                 _requirements_json(context.retrieval_requirements),
                 self._now_ms(),
-                None,
+                None if context.pre_reauth_status is None else context.pre_reauth_status.value,
             ),
         )
         head = _retrieval_head_from_checkpoint(
@@ -860,9 +977,7 @@ def _to_checkpoint(row: sqlite3.Row) -> GraphCheckpointEnvelopeV1:
         created_at_ms=int(row["created_at_ms"]),
         checkpoint_blob=bytes(row["checkpoint_blob"]),
         pre_reauth_status=(
-            None
-            if row["pre_reauth_status"] is None
-            else RunStatusV1(str(row["pre_reauth_status"]))
+            None if row["pre_reauth_status"] is None else RunStatusV1(str(row["pre_reauth_status"]))
         ),
     )
 

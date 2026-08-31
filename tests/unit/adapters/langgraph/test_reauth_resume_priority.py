@@ -15,8 +15,8 @@ def _state() -> GraphState:
     return cast(
         GraphState,
         {
-            "execution_summary": {
-                "result": "REAUTH_REQUIRED",
+            "__workflow_control__": {
+                "stage": "REAUTH_REQUIRED",
                 "action_id": "action-1",
             }
         },
@@ -102,7 +102,7 @@ def test_reauth_resume_requires_explicit_checkpoint_proof() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls)
     state = _state()
-    state["execution_summary"] = {"result": "OTHER", "action_id": "action-1"}
+    state["__workflow_control__"] = {"stage": "OTHER", "action_id": "action-1"}
 
     result = coordinator._continue_from_domain_facts(values=state, run_id="run-1")
 

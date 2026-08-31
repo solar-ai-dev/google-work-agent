@@ -2,21 +2,15 @@ from __future__ import annotations
 
 from typing import Literal, Required, TypedDict
 
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
+from google_work_agent.application.agents.state_artifact import (
+    StateArtifactRefV1 as StateArtifactRefV1,
+)
+
 ConstraintKindValue = Literal[
     "PERSON", "EMAIL", "DATE", "TIME", "RESOURCE", "SCOPE", "USER_REQUIREMENT"
 ]
 ActionEffectValue = Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
-
-
-class StateArtifactRefV1(TypedDict):
-    artifact_id: str
-    revision: int
-
-
-class StateArtifactMetaV1(TypedDict):
-    artifact_id: str
-    revision: int
-    based_on: list[StateArtifactRefV1]
 
 
 class ConstraintV1(TypedDict):

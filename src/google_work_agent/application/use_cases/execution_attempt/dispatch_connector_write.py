@@ -15,6 +15,10 @@ from google_work_agent.application.use_cases.claim.build_claim_context import (
     ClaimContextV2,
     claim_context_payload,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
@@ -27,7 +31,6 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
     ConnectorWriteResultV1,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -86,10 +89,7 @@ class DispatchConnectorWriteHandler:
             raise PermissionError("claim persistence identity binding mismatch")
         if claim.tool_name != command.tool_id:
             raise PermissionError("claim tool binding mismatch")
-        if (
-            calculate_canonical_json_hash(command.tool_arguments)
-            != claim.execution_arguments_hash
-        ):
+        if calculate_canonical_json_hash(command.tool_arguments) != claim.execution_arguments_hash:
             raise PermissionError("final connector arguments hash mismatch")
 
         with self._unit_of_work_factory() as unit_of_work:

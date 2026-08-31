@@ -117,6 +117,7 @@ def start_run(
     )
     handler = StartRunHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_factory=dependencies.id_generator.new_uuid,
         graph_profile=dependencies.graph_profile,
@@ -239,9 +240,7 @@ def get_run_snapshot(
     canonical_projection = asdict(snapshot)
     recovery = canonical_projection["recovery"]
     canonical_projection["recovery"] = (
-        None
-        if recovery is None
-        else RecoveryUiProjectionV1.model_validate(recovery).model_dump()
+        None if recovery is None else RecoveryUiProjectionV1.model_validate(recovery).model_dump()
     )
     run_projection = canonical_projection.pop("run")
     projection = {
@@ -333,6 +332,7 @@ def cancel_run(
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
     result = RequestCancelHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_generator=dependencies.id_generator,
         resume_target_registry=dependencies.resume_target_registry,
@@ -381,6 +381,7 @@ def resume_run(
             raise RuntimeError("operational command replay is not configured")
         safe = ResumeSafeCheckpointHandler(
             unit_of_work_factory=dependencies.unit_of_work_factory,
+            checkpoint_port=dependencies.checkpoint_port,
             resume_target_registry=dependencies.resume_target_registry,
             schedule_run_execution=dependencies.schedule_run_execution,
             id_factory=dependencies.id_generator.new_uuid,
@@ -410,6 +411,7 @@ def resume_run(
     if payload.resume_kind == "RECOVERY_RECHECK":
         recovery = ResolveRecoveryHandler(
             unit_of_work_factory=dependencies.unit_of_work_factory,
+            checkpoint_port=dependencies.checkpoint_port,
             now_ms=dependencies.clock.now_ms,
             next_id=dependencies.id_generator.new_uuid,
             resume_target_registry=dependencies.resume_target_registry,
@@ -439,6 +441,7 @@ def resume_run(
         )
     handler = ResumeAfterReauthHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         resolve_resume_authority=dependencies.resolve_resume_authority,
         id_generator=dependencies.id_generator,
@@ -479,6 +482,7 @@ def confirm_run(
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
     resume_handler = ResumeConfirmationHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         id_factory=dependencies.id_generator.new_uuid,
         resume_target_registry=dependencies.resume_target_registry,
@@ -526,6 +530,7 @@ def resolve_recovery(
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=dependencies.unit_of_work_factory,
+        checkpoint_port=dependencies.checkpoint_port,
         now_ms=dependencies.clock.now_ms,
         next_id=dependencies.id_generator.new_uuid,
         resume_target_registry=dependencies.resume_target_registry,

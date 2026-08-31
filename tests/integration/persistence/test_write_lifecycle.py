@@ -59,6 +59,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.resolve_recovery_adapter import (
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,
@@ -74,6 +75,7 @@ def test_contract_recovery_recheck_without_new_durable_fact_makes_no_progress(
     clock = FakeClockPort(1_000)
     required = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         RequireRecoveryCommand(
@@ -89,6 +91,7 @@ def test_contract_recovery_recheck_without_new_durable_fact_makes_no_progress(
     )
     resolved = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
     )(
         ResolveRecoveryCommandV1(
@@ -104,7 +107,10 @@ def test_contract_recovery_recheck_without_new_durable_fact_makes_no_progress(
 
     assert required.applied is True
     assert required.current_status == RunStatusV1.RECOVERY_REQUIRED.value
-    assert required.next_allowed_commands == (RunCommand.REQUEST_CANCEL.value,)
+    assert required.next_allowed_commands == (
+        RunCommand.REQUIRE_REAUTH.value,
+        RunCommand.REQUEST_CANCEL.value,
+    )
     assert resolved.applied is False
     assert resolved.result_code == ResultCode.NO_PROGRESS.value
     assert resolved.current_status == RunStatusV1.RECOVERY_REQUIRED.value
@@ -612,6 +618,7 @@ def test_accept_partial_preserves_mismatch_and_cancels_pending_actions(
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -682,6 +689,7 @@ def test_corrective_recovery_creates_fresh_plan_revision_without_reusing_facts(
         connection.close()
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
 
@@ -759,6 +767,7 @@ def test_mismatch_recovery_create_corrective_plan_fails_closed_when_cancel_inten
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -815,6 +824,7 @@ def test_mismatch_recovery_accept_partial_fails_closed_when_cancel_intent_active
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -853,6 +863,7 @@ def test_fail_recovery_transitions_recovery_required_to_failed(
     )
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -899,6 +910,7 @@ def test_fail_recovery_creates_no_new_plan_revision(
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -949,6 +961,7 @@ def test_fail_recovery_creates_no_new_approval_claim_or_provider_write(
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -997,6 +1010,7 @@ def test_fail_recovery_preserves_verified_action_facts_in_partial_run(
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(
@@ -1037,6 +1051,7 @@ def test_fail_recovery_same_command_and_payload_is_idempotent(
     )
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     command = ResolveMismatchRecoveryCommand(
@@ -1076,6 +1091,7 @@ def test_fail_recovery_same_command_different_payload_is_fail_closed(
     )
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     first = service(
@@ -1124,6 +1140,7 @@ def test_fail_recovery_terminal_blocks_accept_partial_and_corrective_replan(
     )
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     failed = service(
@@ -1196,6 +1213,7 @@ def test_fail_recovery_fails_closed_when_cancel_intent_active(
 
     service = ResolveMismatchRecoveryService(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
+        checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=lambda: 2000,
     )
     result = service(

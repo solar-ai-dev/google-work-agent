@@ -182,9 +182,7 @@ def _classify(
     if answer_text is not None:
         result = cast(
             TerminalResultKindV1,
-            "PARTIAL"
-            if intent_result == "PARTIAL" or durable_result == "PARTIAL"
-            else "SUCCESS",
+            "PARTIAL" if intent_result == "PARTIAL" or durable_result == "PARTIAL" else "SUCCESS",
         )
         return "COMPLETE_ANSWER_ONLY", "ANSWER_DRAFT", result, answer_text, []
     if action_effect_types and all(item == "READ" for item in action_effect_types):

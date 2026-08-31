@@ -53,7 +53,9 @@ def _suspend_patch(reason: str) -> dict[str, object]:
     return {
         "__logical_target__": "end",
         "__target__": "end",
-        "execution_summary": {
+        "__workflow_control__": {
+            "schema_version": 1,
+            "stage": "DOMAIN_RECONCILE_SUSPENDED",
             "result": "DOMAIN_RECONCILE_SUSPENDED",
             "reason_code": reason,
         },

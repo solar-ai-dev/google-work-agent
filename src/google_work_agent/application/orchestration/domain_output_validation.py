@@ -25,7 +25,6 @@ from google_work_agent.application.agents.review.validate_review import validate
 from google_work_agent.application.orchestration.contracts import (
     DomainValidationOutputV1,
     DomainValidationResult,
-    PolicyConfirmationReceiptV1,
     validate_domain_validation_output_v1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -44,6 +43,9 @@ from google_work_agent.application.tool_registry.signed_tool_registry import (
 from google_work_agent.application.use_cases.action.validate_action_arguments import (
     ValidateActionArgumentsHandler,
     ValidateActionArgumentsQueryV1,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.domain.action.model import EffectType
 

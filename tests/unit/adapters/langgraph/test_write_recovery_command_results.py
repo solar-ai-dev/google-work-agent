@@ -88,6 +88,7 @@ def _action_response(*, applied: bool, status: ActionStatusV1) -> WriteActionRes
             ("RECOVER_EXISTING_RESULT",) if status is ActionStatusV1.UNKNOWN_RESULT else ()
         ),
         attempt_id="attempt-1",
+        verification_id=("verification-1" if status is ActionStatusV1.VERIFIED else None),
     )
 
 
@@ -147,7 +148,7 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
 
     result = coordinator.recover_unknown(cast(dict, {"run_id": "run-1"}))
 
-    assert cast(dict, result["execution_summary"])["result"] == "DOMAIN_RECONCILE"
+    assert cast(dict, result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
     assert result["__target__"] == "end"
     assert phase.recover_calls == 1
     assert completion_calls == 0
@@ -180,7 +181,7 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
 
     result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
 
-    assert cast(dict, result["execution_summary"])["source"] == "BEGIN_VERIFICATION"
+    assert cast(dict, result["__workflow_control__"])["source"] == "BEGIN_VERIFICATION"
     assert phase.verify_calls == 0
     assert completion_calls == 0
 
@@ -204,7 +205,7 @@ def test_verification_applied_false_stops_completion_and_additional_verification
 
     result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
 
-    assert cast(dict, result["execution_summary"])["result"] == "DOMAIN_RECONCILE"
+    assert cast(dict, result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
     assert phase.verify_calls == 1
     assert completion_calls == 0
 
@@ -228,8 +229,8 @@ def test_completion_not_ready_is_not_reported_restart_reconciled() -> None:
 
     result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
 
-    summary = cast(dict, result["execution_summary"])
-    assert summary["result"] == "RECOVERY_NOT_COMPLETABLE"
-    assert summary["result"] != "RESTART_RECONCILED"
+    summary = cast(dict, result["__workflow_control__"])
+    assert summary["reason"] == "RECOVERY_NOT_COMPLETABLE"
+    assert summary["reason"] != "RESTART_RECONCILED"
     assert phase.verify_calls == 1
     assert completion_calls == 1

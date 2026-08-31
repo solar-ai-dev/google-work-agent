@@ -3,11 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.persistence import (
-    apply_migrations,
-    connect_sqlite,
-    sqlite_unit_of_work_factory,
-)
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunHandler,
@@ -256,9 +254,12 @@ def test_legacy_receipt_replay_restores_durable_terminal_result_kind(
     assert first.result_kind == replay.result_kind == "SUCCESS"
     connection = connect_sqlite(answer_only_database)
     try:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         connection.close()
 

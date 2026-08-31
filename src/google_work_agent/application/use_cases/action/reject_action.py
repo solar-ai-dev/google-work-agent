@@ -13,6 +13,10 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
     revoke_active_approvals,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -33,8 +37,8 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -71,6 +75,7 @@ class RejectActionHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetIssuer,
@@ -78,6 +83,7 @@ class RejectActionHandler:
         project_run_event: ProjectRunEventHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
@@ -237,10 +243,10 @@ class RejectActionHandler:
         run_id: str,
         trigger_command_id: str,
     ) -> str:
-        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        binding = self._checkpoint_port.load_workflow_binding(run_id)
         if binding is None:
             raise RuntimeError("action rejection requires a durable workflow binding")
-        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
             run_id, binding.langgraph_thread_id
         )
         if checkpoint is None:

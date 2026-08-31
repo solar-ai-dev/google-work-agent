@@ -14,7 +14,8 @@ from fastapi.testclient import TestClient
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
@@ -83,7 +84,7 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
             bootstrap_secret=bootstrap_secret,
             service_instance_id=service_instance_id,
             safe_mode_controller=safe_mode_controller,
-            test_keyring_path=tmp_path / "test-keyring.json",
+            mcp_module_name="tests.fakes.google_workspace_mcp_server",
             keyring_store=SessionMemorySecretStore(),
         )
 
@@ -131,7 +132,7 @@ def test_start_run_reaches_the_durable_execution_runtime_after_core_initializati
     container = _shell(
         core_builder=lambda **kwargs: build_container(
             runtime_root=runtime_root,
-            test_keyring_path=runtime_root / "test-keyring.json",
+            mcp_module_name="tests.fakes.google_workspace_mcp_server",
             keyring_store=SessionMemorySecretStore(),
             **kwargs,
         )
@@ -180,7 +181,7 @@ def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: 
             bootstrap_secret=bootstrap_secret,
             service_instance_id=service_instance_id,
             safe_mode_controller=safe_mode_controller,
-            test_keyring_path=tmp_path / "test-keyring.json",
+            mcp_module_name="tests.fakes.google_workspace_mcp_server",
             keyring_store=SessionMemorySecretStore(),
         )
 

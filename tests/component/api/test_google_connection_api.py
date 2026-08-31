@@ -25,7 +25,11 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     StdioMCPClientAdapter,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
+    sqlite_connected_account_store_factory,
+)
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_unit_of_work_factory,
 )
@@ -82,7 +86,6 @@ class _LlmStatusStub:
 def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
-    keyring_path = tmp_path / "test-keyring.json"
     fixture_manifest = (
         Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
     )
@@ -104,9 +107,9 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
                 max_restart_count=1,
                 environment="DEVELOPMENT",
                 service_instance_id="svc-google-api",
+                module_name="tests.fakes.google_workspace_mcp_server",
                 working_directory=str(Path(__file__).resolve().parents[3]),
                 extra_environment={
-                    "GWA_TEST_KEYRING_PATH": str(keyring_path.resolve()),
                     "GWA_PRODUCT_FIXTURE_MANIFEST": str(fixture_manifest.resolve()),
                     "GOOGLE_OAUTH_CLIENT_ID": "test-desktop-client-id",
                     "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
@@ -140,6 +143,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
     connection.commit()
     connection.close()
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    connected_account_store_factory = sqlite_connected_account_store_factory(database_path)
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         create_conversation_handler=lambda command: command,
@@ -196,7 +200,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         revoke_connection_handler=RevokeConnectionHandler(
             credentials=provider,
             replay=operational_replay,
-            unit_of_work_factory=unit_of_work_factory,
+            connected_account_store_factory=connected_account_store_factory,
             now_ms=clock.now_ms,
         ),
         get_runtime_status_handler=GetRuntimeStatusHandler(

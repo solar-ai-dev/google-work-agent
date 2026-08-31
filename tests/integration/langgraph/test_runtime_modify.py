@@ -488,7 +488,7 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
         reviewed = _run_persisted_review(runtime, prepared)
 
         assert reviewed["__target__"] == "end"
-        assert reviewed["execution_summary"] == {"result": "MODIFY_ROUTE_RECONSIDERATION_REPLAN"}
+        assert reviewed.get("execution_summary") is None
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
             bundle = unit_of_work.plans.load_bundle(plan_id)
             plan = None if bundle is None else bundle.plan
@@ -805,7 +805,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         stale_domain_result = domain_validation(stale_review)
 
         assert stale_domain_result["__target__"] == "end"
-        assert stale_domain_result["execution_summary"] == {"result": "STALE_MODIFY_REVIEW"}
+        assert stale_domain_result["__workflow_control__"]["reason"] == "STALE_MODIFY_REVIEW"
         with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
             bundle = unit_of_work.plans.load_bundle(plan_id)
             plan = None if bundle is None else bundle.plan

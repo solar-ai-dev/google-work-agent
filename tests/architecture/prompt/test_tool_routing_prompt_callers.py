@@ -108,8 +108,7 @@ def test_tool_routing_graph_has_no_separate_revision_prompt_authority() -> None:
 
 def test_profile_composition_has_no_product_prompt_authority() -> None:
     profile_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (SINGLE_PROFILE, THREE_STAGE_PROFILE)
+        path.read_text(encoding="utf-8") for path in (SINGLE_PROFILE, THREE_STAGE_PROFILE)
     )
 
     assert "load_prompt_reference" not in profile_source

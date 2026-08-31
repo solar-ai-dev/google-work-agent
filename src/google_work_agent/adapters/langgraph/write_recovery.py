@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.state import (
+    ExecutionSummaryV1,
+    GraphState,
+    VerificationSummaryV1,
+)
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
@@ -98,11 +102,12 @@ class WriteRecoveryCoordinator:
                 "__target__": "verification",
                 "__logical_target__": "verification",
                 "workflow_phase": WorkflowPhase.VERIFICATION.value,
-                "execution_summary": {
-                    "result": "RECOVERED_AWAITING_VERIFICATION",
-                    "action_id": action.id,
-                },
-                "verification_summary": {"action_statuses": [response.action_status]},
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    attempt_id=response.attempt_id or attempt_id,
+                    source_action_version=response.action_version,
+                ),
+                "verification_summary": None,
             }
         if response.action_status != ActionStatusV1.VERIFIED.value:
             return self._suspend_action_response(
@@ -118,11 +123,12 @@ class WriteRecoveryCoordinator:
                 "__target__": "response_synthesis",
                 "__logical_target__": "response_synthesis",
                 "workflow_phase": WorkflowPhase.RECOVERY.value,
-                "execution_summary": {
-                    "result": "RECOVERED",
-                    "action_id": action.id,
-                },
-                "verification_summary": {"action_statuses": [response.action_status]},
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    attempt_id=response.attempt_id or attempt_id,
+                    source_action_version=response.action_version,
+                ),
+                "verification_summary": _verification_summary(response),
             }
 
         # The recovered action is verified but other actions can still be
@@ -132,8 +138,13 @@ class WriteRecoveryCoordinator:
             **state,
             "__target__": "action_execution",
             "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-            "execution_summary": {"result": "RECOVERED_ACTION", "action_id": action.id},
-            "verification_summary": {"action_statuses": [response.action_status]},
+            "execution_summary": _execution_summary(
+                action_id=action.id,
+                attempt_id=response.attempt_id or attempt_id,
+                source_action_version=response.action_version,
+            ),
+            "verification_summary": _verification_summary(response),
+            "__workflow_control__": _workflow_control("RECOVERED_ACTION"),
         }
 
     def recover_executed(self, state: GraphState, run_id: str) -> GraphState:
@@ -169,10 +180,11 @@ class WriteRecoveryCoordinator:
                 verification_started = True
 
             try:
+                attempt_id = self._latest_attempt_id(action.id)
                 verified = self._execution_phase.verify_executed(
                     action_id=action.id,
                     action_version=action.version,
-                    attempt_id=self._latest_attempt_id(action.id),
+                    attempt_id=attempt_id,
                     request_kind="verify_after_restart",
                 )
             except GoogleWorkspaceGatewayError as error:
@@ -191,12 +203,13 @@ class WriteRecoveryCoordinator:
                     **state,
                     "__target__": "end",
                     "workflow_phase": WorkflowPhase.VERIFICATION.value,
-                    "execution_summary": {
-                        "result": "REAUTH_REQUIRED",
+                    "__workflow_control__": {
+                        "schema_version": 1,
+                        "stage": "REAUTH_REQUIRED",
+                        "reason": "REAUTH_REQUIRED",
                         "action_id": action.id,
                         "safe_error_code": failure.safe_error_code,
                     },
-                    "verification_summary": {"action_statuses": statuses},
                 }
             if not verified.applied:
                 return self._suspend_action_response(
@@ -207,6 +220,18 @@ class WriteRecoveryCoordinator:
                     verification_statuses=statuses,
                 )
             statuses.append(verified.action_status)
+            state = cast(
+                GraphState,
+                {
+                    **state,
+                    "execution_summary": _execution_summary(
+                        action_id=action.id,
+                        attempt_id=verified.attempt_id or attempt_id,
+                        source_action_version=verified.action_version,
+                    ),
+                    "verification_summary": _verification_summary(verified),
+                },
+            )
 
         if not self._write_run_completion_ready(latest_plan.id, run_id):
             if any(
@@ -218,11 +243,11 @@ class WriteRecoveryCoordinator:
                     "__target__": "preflight",
                     "__logical_target__": "preflight",
                     "workflow_phase": WorkflowPhase.PREFLIGHT.value,
-                    "execution_summary": {
-                        "result": "VERIFICATION_COMPLETE_NEXT_ACTION",
-                        "plan_id": latest_plan.id,
-                    },
-                    "verification_summary": {"action_statuses": statuses},
+                    "__workflow_control__": _workflow_control(
+                        "VERIFICATION_COMPLETE_NEXT_ACTION",
+                        plan_id=latest_plan.id,
+                        action_statuses=statuses,
+                    ),
                 }
             return self._suspend(
                 state=state,
@@ -235,11 +260,11 @@ class WriteRecoveryCoordinator:
             "__target__": "response_synthesis",
             "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
-            "execution_summary": {
-                "result": "RESTART_RECONCILED",
-                "plan_id": latest_plan.id,
-            },
-            "verification_summary": {"action_statuses": statuses},
+            "__workflow_control__": _workflow_control(
+                "RESTART_RECONCILED",
+                plan_id=latest_plan.id,
+                action_statuses=statuses,
+            ),
         }
 
     def _suspend_action_response(
@@ -305,8 +330,10 @@ class WriteRecoveryCoordinator:
                 if target == "end" or target == "recovery"
                 else WorkflowPhase.PREFLIGHT.value
             ),
-            "execution_summary": {
-                "result": "DOMAIN_RECONCILE",
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "DOMAIN_RECONCILE",
+                "reason": "DOMAIN_RECONCILE",
                 "source": source,
                 "result_code": result.result_code.value,
                 "current_status": result.current_status.value,
@@ -314,8 +341,8 @@ class WriteRecoveryCoordinator:
                 "next_allowed_commands": list(next_allowed),
                 "reconcile_destination": decision.target,
                 "reconcile_outcome": decision.outcome,
+                "verification_statuses": verification_statuses,
             },
-            "verification_summary": {"action_statuses": verification_statuses},
         }
 
     def _reconcile_run_response(
@@ -342,8 +369,10 @@ class WriteRecoveryCoordinator:
                 if target == "end" or target == "recovery"
                 else WorkflowPhase.PREFLIGHT.value
             ),
-            "execution_summary": {
-                "result": "DOMAIN_RECONCILE",
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "DOMAIN_RECONCILE",
+                "reason": "DOMAIN_RECONCILE",
                 "source": source,
                 "result_code": response.result_code,
                 "current_status": response.run_status,
@@ -351,8 +380,8 @@ class WriteRecoveryCoordinator:
                 "next_allowed_commands": list(response.next_allowed_commands),
                 "reconcile_destination": decision.target,
                 "reconcile_outcome": decision.outcome,
+                "verification_statuses": verification_statuses or [],
             },
-            "verification_summary": {"action_statuses": verification_statuses or []},
         }
 
     @staticmethod
@@ -367,6 +396,54 @@ class WriteRecoveryCoordinator:
             **state,
             "__target__": "end",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
-            "execution_summary": {"result": outcome, **facts},
-            "verification_summary": {"action_statuses": verification_statuses or []},
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "RECOVERY_SUSPENDED",
+                "reason": outcome,
+                **facts,
+                "verification_statuses": verification_statuses or [],
+            },
         }
+
+
+def _workflow_control(reason: str, **details: object) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "stage": "WRITE_RECOVERY",
+        "reason": reason,
+        **details,
+    }
+
+
+def _execution_summary(
+    *, action_id: str, attempt_id: str, source_action_version: int
+) -> ExecutionSummaryV1:
+    return {
+        "schema_version": 1,
+        "action_id": action_id,
+        "execution_attempt_id": attempt_id,
+        "routing_outcome": "EXECUTED",
+        "delivery_certainty": None,
+        "source_action_version": source_action_version,
+    }
+
+
+def _verification_summary(response: WriteActionResponse) -> VerificationSummaryV1:
+    verification_id = response.verification_id
+    if not isinstance(verification_id, str) or not verification_id:
+        raise ValueError("Domain-backed verification summary requires verification_id")
+    if response.action_status not in {
+        ActionStatusV1.VERIFIED.value,
+        ActionStatusV1.MISMATCH.value,
+    }:
+        raise ValueError("verification summary requires VERIFIED or MISMATCH status")
+    return cast(
+        VerificationSummaryV1,
+        {
+            "schema_version": 1,
+            "action_id": response.action_id,
+            "verification_id": verification_id,
+            "routing_outcome": response.action_status,
+            "source_action_version": response.action_version,
+        },
+    )

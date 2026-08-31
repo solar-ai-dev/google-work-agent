@@ -7,7 +7,7 @@ from typing import cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.state import ExecutionSummaryV1, GraphState
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
@@ -34,6 +34,7 @@ class WriteExecutionNode:
         request_hash: Callable[[dict[str, object]], str],
         should_stop_for_cancel: Callable[[str], bool],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
+        has_independent_executable_action: Callable[[str, str], bool],
         execute_read_only_plan: Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState],
         execution_phase: WriteExecutionPhaseCoordinator,
         has_persisted_cancel_intent: Callable[[str], bool],
@@ -42,6 +43,7 @@ class WriteExecutionNode:
         self._request_hash = request_hash
         self._should_stop_for_cancel = should_stop_for_cancel
         self._list_actions = list_actions
+        self._has_independent_executable_action = has_independent_executable_action
         self._execute_read_only_plan = execute_read_only_plan
         self._execution_phase = execution_phase
         self._has_persisted_cancel_intent = has_persisted_cancel_intent
@@ -130,8 +132,11 @@ class WriteExecutionNode:
             "__target__": "response_synthesis",
             "__logical_target__": "response_synthesis",
             "workflow_phase": WorkflowPhase.VERIFICATION.value,
-            "execution_summary": {"result": "EXECUTED", "plan_id": plan_id},
-            "verification_summary": {"action_statuses": verification_statuses},
+            "__workflow_control__": _workflow_control(
+                "WRITE_RUN_COMPLETABLE",
+                plan_id=plan_id,
+                action_statuses=verification_statuses,
+            ),
         }
 
     def _execute_action(
@@ -210,8 +215,10 @@ class WriteExecutionNode:
                 **state,
                 "__target__": "end",
                 "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {
-                    "result": "PREFLIGHT_BLOCKED",
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "PREFLIGHT_BLOCKED",
+                    "reason": "PREFLIGHT_BLOCKED",
                     "action_id": action.id,
                     "safe_error_code": phase_result.safe_error_code,
                 },
@@ -238,8 +245,15 @@ class WriteExecutionNode:
                 **state,
                 "__target__": "end",
                 "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {
-                    "result": "REAUTH_REQUIRED",
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    result=phase_result,
+                    routing_outcome="FAILED",
+                ),
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "REAUTH_REQUIRED",
+                    "reason": "REAUTH_REQUIRED",
                     "action_id": action.id,
                     "action_status": phase_result.action_status,
                     "result_code": phase_result.result_code,
@@ -250,11 +264,15 @@ class WriteExecutionNode:
                 **state,
                 "__target__": "recovery",
                 "workflow_phase": WorkflowPhase.RECOVERY.value,
-                "execution_summary": {
-                    "result": phase_result.result_code,
-                    "action_id": action.id,
-                    "safe_error_code": phase_result.safe_error_code,
-                },
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    result=phase_result,
+                    routing_outcome="UNKNOWN_RESULT",
+                ),
+                "__workflow_control__": _workflow_control(
+                    phase_result.result_code or "UNKNOWN_RESULT",
+                    safe_error_code=phase_result.safe_error_code,
+                ),
             }
         if phase_result.disposition is WriteExecutionDisposition.EXECUTED:
             verification_statuses.append(ActionStatusV1.EXECUTED.value)
@@ -263,25 +281,36 @@ class WriteExecutionNode:
                 "__target__": "verification",
                 "__logical_target__": "verification",
                 "workflow_phase": WorkflowPhase.VERIFICATION.value,
-                "execution_summary": {
-                    "result": "EXECUTED_AWAITING_VERIFICATION",
-                    "action_id": action.id,
-                    "attempt_id": phase_result.attempt_id,
-                },
-                "verification_summary": {"action_statuses": verification_statuses},
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    result=phase_result,
+                    routing_outcome="EXECUTED",
+                ),
+                "verification_summary": None,
             }
         if phase_result.disposition is WriteExecutionDisposition.FAILED:
             verification_statuses.append(ActionStatusV1.FAILED.value)
+            continue_execution = self._has_independent_executable_action(plan_id, action.id)
             return {
                 **state,
-                "__target__": "end",
+                "__target__": "preflight" if continue_execution else "end",
+                "__logical_target__": "preflight" if continue_execution else "end",
                 "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
-                "execution_summary": {
-                    "result": "FAILED_RETRY_OR_CANCEL_REQUIRED",
-                    "action_id": action.id,
-                    "result_code": phase_result.result_code,
-                },
-                "verification_summary": {"action_statuses": verification_statuses},
+                "execution_summary": _execution_summary(
+                    action_id=action.id,
+                    result=phase_result,
+                    routing_outcome="FAILED",
+                ),
+                "__workflow_control__": _workflow_control(
+                    (
+                        "FAILED_CONTINUE_INDEPENDENT"
+                        if continue_execution
+                        else "FAILED_RETRY_OR_CANCEL_REQUIRED"
+                    ),
+                    action_id=action.id,
+                    result_code=phase_result.result_code,
+                    action_statuses=verification_statuses,
+                ),
             }
 
         verification_statuses.append(
@@ -322,8 +351,10 @@ class WriteExecutionNode:
             return {
                 "__target__": "end",
                 "__logical_target__": "end",
-                "execution_summary": {
-                    "result": "PREFLIGHT_BLOCKED",
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "PREFLIGHT_BLOCKED",
+                    "reason": "PREFLIGHT_BLOCKED",
                     "action_id": action_id,
                     "safe_error_code": result.safe_error_code,
                 },
@@ -332,8 +363,10 @@ class WriteExecutionNode:
             return {
                 "__target__": "end",
                 "__logical_target__": "end",
-                "execution_summary": {
-                    "result": "REAUTH_REQUIRED",
+                "__workflow_control__": {
+                    "schema_version": 1,
+                    "stage": "REAUTH_REQUIRED",
+                    "reason": "REAUTH_REQUIRED",
                     "action_id": action_id,
                     "result_code": result.result_code,
                 },
@@ -342,7 +375,7 @@ class WriteExecutionNode:
             return {
                 "__target__": "end",
                 "__logical_target__": "end",
-                "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
+                "__workflow_control__": _workflow_control("CANCEL_REQUESTED", plan_id=plan_id),
             }
         return {
             "__target__": "domain_reconcile",
@@ -380,8 +413,10 @@ class WriteExecutionNode:
             **state,
             "__target__": decision.target,
             "workflow_phase": self._phase_for_reconcile_target(decision.target),
-            "execution_summary": {
-                "result": "DOMAIN_RECONCILE",
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "DOMAIN_RECONCILE",
+                "reason": "DOMAIN_RECONCILE",
                 "action_id": action_id,
                 "aggregate": aggregate.value,
                 "result_code": getattr(phase_result, "result_code", None),
@@ -422,12 +457,14 @@ class WriteExecutionNode:
             **state,
             "__target__": target,
             "workflow_phase": self._phase_for_reconcile_target(target),
-            "execution_summary": {
-                "result": "WRITE_RUN_NOT_COMPLETABLE",
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "WRITE_RUN_NOT_COMPLETABLE",
+                "reason": "WRITE_RUN_NOT_COMPLETABLE",
                 "reconcile_outcome": outcome,
                 "plan_id": plan_id,
+                "action_statuses": verification_statuses,
             },
-            "verification_summary": {"action_statuses": verification_statuses},
         }
 
     def _completion_is_ready(
@@ -440,9 +477,7 @@ class WriteExecutionNode:
         return bool(
             actions
             and len(verification_statuses) == len(actions)
-            and all(
-                status == ActionStatusV1.VERIFIED.value for status in verification_statuses
-            )
+            and all(status == ActionStatusV1.VERIFIED.value for status in verification_statuses)
             and not self._has_persisted_cancel_intent(run_id)
         )
 
@@ -466,8 +501,11 @@ class WriteExecutionNode:
             "__target__": "cancel_resolution",
             "__logical_target__": "cancel_resolution",
             "workflow_phase": "CANCEL_RESOLUTION",
-            "execution_summary": {"result": "CANCEL_REQUESTED", "plan_id": plan_id},
-            "verification_summary": {"action_statuses": verification_statuses},
+            "__workflow_control__": _workflow_control(
+                "CANCEL_REQUESTED",
+                plan_id=plan_id,
+                action_statuses=verification_statuses,
+            ),
         }
 
     @staticmethod
@@ -475,3 +513,40 @@ class WriteExecutionNode:
         if not isinstance(value, str) or not value:
             raise ValueError(f"{field_name} is required")
         return value
+
+
+def _workflow_control(reason: str, **details: object) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "stage": "WRITE_EXECUTION",
+        "reason": reason,
+        **details,
+    }
+
+
+def _execution_summary(
+    *,
+    action_id: str,
+    result: WriteExecutionPhaseResult,
+    routing_outcome: str,
+) -> ExecutionSummaryV1:
+    attempt_id = result.attempt_id
+    source_action_version = result.current_version
+    if not isinstance(attempt_id, str) or not attempt_id:
+        raise ValueError("Domain-backed execution summary requires execution_attempt_id")
+    if not isinstance(source_action_version, int):
+        raise ValueError("Domain-backed execution summary requires source_action_version")
+    delivery_certainty = result.delivery_certainty
+    if routing_outcome == "FAILED" and delivery_certainty is None:
+        delivery_certainty = "NOT_SENT"
+    return cast(
+        ExecutionSummaryV1,
+        {
+            "schema_version": 1,
+            "action_id": action_id,
+            "execution_attempt_id": attempt_id,
+            "routing_outcome": routing_outcome,
+            "delivery_certainty": delivery_certainty,
+            "source_action_version": source_action_version,
+        },
+    )

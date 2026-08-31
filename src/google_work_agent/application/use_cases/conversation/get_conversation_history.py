@@ -17,6 +17,8 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 DEFAULT_HISTORY_MESSAGE_LIMIT = 200
 DEFAULT_HISTORY_RUN_LIMIT = 200
+HISTORY_RUN_SCAN_PAGE_SIZE = 200
+HISTORY_RUN_SCAN_MULTIPLIER = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,10 +68,19 @@ class GetConversationHistoryHandler:
             ListConversationMessagesQuery(conversation_id=query.conversation_id)
         )
         with self._unit_of_work_factory() as unit_of_work:
-            run_records = unit_of_work.runs.list_for_conversation_bounded(
-                query.conversation_id,
+            run_ids = _recent_run_ids(
+                unit_of_work,
+                conversation_id=query.conversation_id,
                 limit=self._history_run_limit,
             )
+            open_run = unit_of_work.runs.find_open_by_conversation(query.conversation_id)
+            if open_run is not None and open_run.id not in run_ids:
+                run_ids.insert(0, open_run.id)
+                del run_ids[self._history_run_limit :]
+            run_records = tuple(
+                run for run_id in run_ids if (run := unit_of_work.runs.get(run_id)) is not None
+            )
+        run_records = tuple(sorted(run_records, key=lambda item: (item.started_at_ms, item.id)))
         runs = tuple(
             ConversationHistoryRunItem(
                 run_id=run_record.id,
@@ -97,3 +108,34 @@ class GetConversationHistoryHandler:
             runs=runs,
             truncated=message_result.truncated,
         )
+
+
+def _recent_run_ids(
+    unit_of_work: UnitOfWork,
+    *,
+    conversation_id: str,
+    limit: int,
+) -> list[str]:
+    """Derive bounded recent Run identities through the exact Message keyset surface."""
+
+    run_ids: list[str] = []
+    cursor: str | None = None
+    scanned = 0
+    scan_limit = max(HISTORY_RUN_SCAN_PAGE_SIZE, limit * HISTORY_RUN_SCAN_MULTIPLIER)
+    while len(run_ids) < limit and scanned < scan_limit:
+        page_size = min(HISTORY_RUN_SCAN_PAGE_SIZE, scan_limit - scanned)
+        messages, next_cursor = unit_of_work.messages.list_by_conversation_keyset(
+            conversation_id=conversation_id,
+            cursor=cursor,
+            page_size=page_size,
+        )
+        scanned += len(messages)
+        for message in messages:
+            if message.run_id is not None and message.run_id not in run_ids:
+                run_ids.append(message.run_id)
+                if len(run_ids) >= limit:
+                    break
+        if next_cursor is None:
+            break
+        cursor = next_cursor
+    return run_ids

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from google_work_agent.application.policy_kernels.calendar_conflict import (
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarConflictDecision,
     CalendarEventCandidate,
     CalendarInterval,

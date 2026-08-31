@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
+)
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CalendarConflictValidator,
     approval_calendar_conflict_authority,

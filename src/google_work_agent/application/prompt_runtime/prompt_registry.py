@@ -322,35 +322,6 @@ def load_prompt_reference_for_evaluation(prompt_id: str, manifest_path: Path) ->
     return _load_migration_prompt_reference(prompt_id, payload, enforce_runtime_active=False)
 
 
-def resolve_instruction_text(prompt_id: str, manifest_path: Path | None = None) -> str:
-    path = (manifest_path or _DEFAULT_MANIFEST_PATH).resolve()
-    payload = _load_json_object(path, "prompt manifest")
-    if _is_canonical_manifest(payload):
-        contract_path = (
-            path.parent / "prompt_runtime_input_contract_v1.json"
-            if path.parent != _PACKAGE_DIR
-            else default_prompt_input_contract_path()
-        )
-        return _canonical_registry(path, contract_path.resolve()).source_text(prompt_id)
-    slot = _find_migration_slot(prompt_id, payload)
-    assembled_path = _optional_string(slot.get("assembled_path"))
-    if assembled_path is None:
-        return ""
-    full_path = (_REPO_ROOT / assembled_path).resolve()
-    try:
-        raw = full_path.read_bytes()
-    except OSError as error:
-        raise PromptRegistryError(
-            f"{prompt_id} assembled prompt file is missing: {assembled_path}"
-        ) from error
-    expected_hash = _optional_string(slot.get("assembled_hash")) or _optional_string(
-        slot.get("content_hash")
-    )
-    if expected_hash is not None and hashlib.sha256(raw).hexdigest() != expected_hash:
-        raise PromptRegistryError(f"{prompt_id} assembled prompt content hash mismatch")
-    return raw.decode("utf-8")
-
-
 def discover_canonical_prompt_manifest_path(prompts_agent_dir: Path) -> Path:
     """Migration-only discovery for the versioned predecessor Prompt packs."""
 
@@ -542,5 +513,4 @@ __all__ = [
     "discover_canonical_prompt_manifest_path",
     "load_prompt_reference",
     "load_prompt_reference_for_evaluation",
-    "resolve_instruction_text",
 ]

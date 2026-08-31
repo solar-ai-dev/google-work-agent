@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
@@ -19,6 +22,7 @@ def test_first_call_atomically_persists_run_transition_context_and_audit(
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(_command("cmd-1", "fp-1"))
@@ -43,6 +47,7 @@ def test_replay_with_same_request_hash_returns_cached_result_without_remutating(
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     first = handler(_command("cmd-1", "fp-1"))
@@ -58,6 +63,7 @@ def test_replay_with_different_request_hash_is_rejected_as_duplicate(tmp_path: P
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     handler(_command("cmd-1", "fp-1"))
@@ -83,6 +89,7 @@ def test_terminal_run_is_not_applied_and_writes_no_context_or_audit(tmp_path: Pa
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(_command("cmd-1", "fp-1"))
@@ -102,7 +109,11 @@ def test_second_independent_recovery_declaration_bumps_context_version(
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
-    handler = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 10)
+    handler = RequireRecoveryHandler(
+        unit_of_work_factory=factory,
+        now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
+    )
     handler(_command("cmd-1", "fp-1"))
     with connect_sqlite(database_path) as connection:
         connection.execute("UPDATE runs SET status = 'ANALYZING' WHERE id = 'r-1';")
@@ -131,7 +142,11 @@ def test_second_independent_recovery_declaration_bumps_context_version(
 def test_clear_then_recreate_allocates_next_tombstone_version(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
-    handler = RequireRecoveryHandler(unit_of_work_factory=factory, now_ms=lambda: 10)
+    handler = RequireRecoveryHandler(
+        unit_of_work_factory=factory,
+        now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
+    )
     handler(_command("cmd-1", "fp-1"))
     with factory() as unit_of_work:
         unit_of_work.recovery_contexts.clear_context("r-1", 0)

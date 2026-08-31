@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.application.orchestration.contracts import (
@@ -18,9 +18,14 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
+if TYPE_CHECKING:
+    from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+
 
 class ResumeCheckpointMixin:
     """Expose persisted resume targets and continue only Handler-decided resumes."""
+
+    _checkpoint_port: CheckpointPort
 
     def resolve_resume_authority(
         self, *, run_id: str, workflow_key: str, resume_kind: str
@@ -168,8 +173,7 @@ class ResumeCheckpointMixin:
         return self._route_translator.translate(target.value).node
 
     def resolve_pending_confirmation(self, run_id: str) -> dict[str, object] | None:
-        with self._unit_of_work_factory() as unit_of_work:
-            binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        binding = self._checkpoint_port.load_workflow_binding(run_id)
         if binding is None:
             return None
         snapshot = self._graph.get_state(

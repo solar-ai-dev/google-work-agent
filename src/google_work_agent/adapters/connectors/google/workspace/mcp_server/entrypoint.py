@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from typing import cast
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
@@ -40,9 +41,13 @@ class _VerifiedToolContractError(RuntimeError):
         self.certainty = certainty
 
 
-def _run_server() -> None:
+def run_server(
+    state_factory: Callable[[], workspace_tools.GoogleWorkspaceCredentialProvider] = (
+        compose_server_state
+    ),
+) -> None:
     try:
-        state = compose_server_state()
+        state = state_factory()
     except RuntimeError:
         state = None
     for raw_line in sys.stdin:
@@ -306,14 +311,14 @@ def _validate_declared_surface() -> None:
 
 class GoogleWorkspaceMcpServerEntrypoint:
     def run(self) -> None:
-        _run_server()
+        run_server()
 
 
 def main() -> None:
     GoogleWorkspaceMcpServerEntrypoint().run()
 
 
-__all__ = ["GoogleWorkspaceMcpServerEntrypoint", "main"]
+__all__ = ["GoogleWorkspaceMcpServerEntrypoint", "main", "run_server"]
 
 
 if __name__ == "__main__":

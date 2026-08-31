@@ -194,6 +194,7 @@ def test_merge_decision_fails_closed_for_unroutable_supervisor_target(tmp_path: 
         )
         assert merged["__target__"] == "recovery"
         assert merged["__logical_target__"] == "recovery"
-        assert merged["execution_summary"] == {"result": "CONTRACT_VIOLATION"}
+        assert merged["__workflow_control__"]["reason"] == "CONTRACT_VIOLATION"
+        assert merged["execution_summary"] is None
     finally:
         runtime.close()

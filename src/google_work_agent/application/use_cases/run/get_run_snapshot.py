@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.project_recovery_options import (
     ProjectRecoveryOptionsHandler,
     ProjectRecoveryOptionsQueryV1,
@@ -32,11 +33,11 @@ from google_work_agent.domain.action.model import (
     EffectType,
     next_allowed_action_commands,
 )
+from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -144,8 +145,11 @@ class GetRunSnapshotHandler:
             run = unit_of_work.runs.get_snapshot(query.run_id)
             if run is None:
                 return None
-            message_records = unit_of_work.messages.list_for_run_bounded(
-                run.id, limit=self._message_limit
+            message_records = _messages_for_run(
+                unit_of_work,
+                conversation_id=run.conversation_id,
+                run_id=run.id,
+                limit=self._message_limit,
             )
             plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.id), default=None)
@@ -326,6 +330,32 @@ def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionS
             if approval_allowed or item is not ActionCommand.APPROVE_ACTION
         ),
     )
+
+
+def _messages_for_run(
+    unit_of_work: UnitOfWork,
+    *,
+    conversation_id: str,
+    run_id: str,
+    limit: int,
+) -> tuple[MessageRecord, ...]:
+    """Project one Run's messages via the exact Conversation keyset query."""
+
+    cursor: str | None = None
+    matches: list[MessageRecord] = []
+    remaining_scan_budget = limit * 10
+    while remaining_scan_budget > 0 and len(matches) < limit:
+        page_size = min(limit, remaining_scan_budget)
+        page, cursor = unit_of_work.messages.list_by_conversation_keyset(
+            conversation_id=conversation_id,
+            cursor=cursor,
+            page_size=page_size,
+        )
+        matches.extend(message for message in page if message.run_id == run_id)
+        remaining_scan_budget -= len(page)
+        if cursor is None or not page:
+            break
+    return tuple(sorted(matches[:limit], key=lambda item: (item.created_at_ms, item.id)))
 
 
 __all__ = [

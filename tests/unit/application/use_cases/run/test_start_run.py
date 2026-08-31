@@ -6,8 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.support.checkpoint import sqlite_checkpoint
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.start_run import StartRunCommand, StartRunHandler
 
@@ -21,8 +23,7 @@ def _database(tmp_path: Path) -> Path:
             "VALUES ('account-1', 'u@example.com', 1)"
         )
         connection.execute(
-            "INSERT INTO conversations VALUES "
-            "('conversation-1', 'account-1', 'Inbox', 1, 1)"
+            "INSERT INTO conversations VALUES ('conversation-1', 'account-1', 'Inbox', 1, 1)"
         )
     return path
 
@@ -55,6 +56,7 @@ def test_start_run_rejects_noncanonical_input_before_any_durable_write(
     database_path = _database(tmp_path)
     handler = StartRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=lambda: 10,
         id_factory=lambda: "must-not-be-used",
         graph_profile="SIX_ROLE_BASELINE",
@@ -73,6 +75,7 @@ def test_start_run_freezes_current_settings_into_durable_run_budget(tmp_path: Pa
     database_path = _database(tmp_path)
     handler = StartRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=lambda: 1234,
         id_factory=iter(("run-1", "message-1", "workflow-1", "handoff-1")).__next__,
         graph_profile="SIX_ROLE_BASELINE",

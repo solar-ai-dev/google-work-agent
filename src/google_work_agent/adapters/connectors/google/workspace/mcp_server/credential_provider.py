@@ -223,7 +223,7 @@ class GoogleWorkspaceCredentialProvider:
         self.oauth_settings = GoogleOAuthSettings.load(
             runtime_environment=os.environ.get("GWA_MCP_ENVIRONMENT", ""),
         )
-        self.keyring = keyring or _credential_store_from_environment()
+        self.keyring = keyring or OsKeyringSecretStoreAdapter()
         if self.keyring.get(GOOGLE_REFRESH_TOKEN_KEY) is not None:
             self.connection_state = CredentialState.CONNECTED
 
@@ -759,44 +759,6 @@ def _google_api_post(
     state: GoogleWorkspaceCredentialProvider, url: str, body: dict[str, object]
 ) -> dict[str, object]:
     return _google_api_call(state, "POST", url, body=body)
-
-
-def _credential_store_from_environment() -> SecretStorePort:
-    test_keyring_path = os.environ.get("GWA_TEST_KEYRING_PATH")
-    if test_keyring_path:
-        return _TestFileSecretStorePort(Path(test_keyring_path))
-    return OsKeyringSecretStoreAdapter()
-
-
-class _TestFileSecretStorePort(SecretStorePort):
-    """Test-only cross-process store selected by an explicit test environment variable."""
-
-    def __init__(self, path: Path) -> None:
-        self._path = path
-
-    def put(self, key: str, secret_bytes: bytes) -> None:
-        values = self._read()
-        values[key] = secret_bytes.decode("utf-8")
-        self._write(values)
-
-    def get(self, key: str) -> bytes | None:
-        value = self._read().get(key)
-        return None if value is None else value.encode("utf-8")
-
-    def delete(self, key: str) -> None:
-        values = self._read()
-        values.pop(key, None)
-        self._write(values)
-
-    def _read(self) -> dict[str, str]:
-        if not self._path.is_file():
-            return {}
-        payload = json.loads(self._path.read_text(encoding="utf-8"))
-        return {str(key): str(value) for key, value in cast(dict[str, object], payload).items()}
-
-    def _write(self, values: dict[str, str]) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(values, sort_keys=True), encoding="utf-8")
 
 
 def _object_list(value: object) -> list[dict[str, object]]:

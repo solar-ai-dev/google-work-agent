@@ -32,7 +32,9 @@ from google_work_agent.launcher.development_constants import (
     MCP_MANIFEST_VERSION,
 )
 
-TEST_KEYRING_PATH_ENV = "GWA_TEST_KEYRING_PATH"
+GOOGLE_WORKSPACE_MCP_MODULE = (
+    "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +52,7 @@ def build_connectors(
     attachment_staging_dir: Path,
     python_executable: Path,
     working_directory: Path,
-    test_keyring_path: Path | None = None,
+    mcp_module_name: str = GOOGLE_WORKSPACE_MCP_MODULE,
 ) -> DevelopmentConnectorBundle:
     tool_registry = load_signed_tool_registry()
     installed_manifest = load_installed_connector_manifest()
@@ -78,15 +80,9 @@ def build_connectors(
             max_restart_count=1,
             environment="DEVELOPMENT",
             service_instance_id=service_instance_id,
+            module_name=mcp_module_name,
             working_directory=str(working_directory),
-            extra_environment={
-                ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
-                **(
-                    {}
-                    if test_keyring_path is None
-                    else {TEST_KEYRING_PATH_ENV: str(test_keyring_path.resolve())}
-                ),
-            },
+            extra_environment={ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir)},
         ),
         expected_tool_descriptors=tuple(
             tool_registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)

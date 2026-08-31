@@ -95,9 +95,7 @@ class SqliteConversationRepository:
         next_cursor = None
         if len(rows) > page_size and items:
             last = items[-1]
-            next_cursor = (
-                f"{last.conversation.updated_at_ms}:{last.conversation.id}"
-            )
+            next_cursor = f"{last.conversation.updated_at_ms}:{last.conversation.id}"
         return items, next_cursor
 
     def touch_updated_at(self, conversation_id: str, *, updated_at_ms: int) -> None:

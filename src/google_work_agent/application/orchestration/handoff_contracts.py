@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, Required, TypedDict
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.state_artifact import (
+    StateArtifactMetaV1 as StateArtifactMetaV1,
+)
+from google_work_agent.application.agents.state_artifact import (
+    StateArtifactRefV1 as StateArtifactRefV1,
+)
 from google_work_agent.application.orchestration.contracts import AdditionalAcquisitionRequestV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
@@ -65,59 +74,6 @@ ConstraintKindValue = Literal[
 class ClarificationOptionV1(TypedDict):
     option_id: str
     label: str
-
-
-class StateArtifactRefV1(TypedDict):
-    """Lineage pointer to one revision of an official State Artifact.
-
-    Canonical (06-agent-workflow.md §2.4). Owned here (not tool_routing.py,
-    its original home): every State Artifact -- RequestIntentV2 included --
-    carries this same lineage shape, so the contract belongs with the other
-    cross-node handoff types, not with one specific consumer's module.
-    """
-
-    artifact_id: str
-    revision: int
-
-
-class StateArtifactMetaV1(TypedDict):
-    artifact_id: str
-    revision: int
-    based_on: list[StateArtifactRefV1]
-
-
-class ConstraintV1(TypedDict):
-    kind: ConstraintKindValue
-    field: str
-    value: str | list[str]
-
-
-class AmbiguityV1(TypedDict):
-    requires_confirmation: bool
-    reason_codes: list[str]
-    missing_fields: list[str]
-
-
-class RequestIntentV2(TypedDict):
-    """Canonical Request Understanding output (06-agent-workflow.md §3.1).
-
-    Request Understanding structures user meaning only -- it does not judge
-    whether the product actually supports the requested resource/effect
-    (that capability/policy judgment belongs to Tool Route's Signed Registry
-    binding, which BLOCKs unsupported combinations deterministically) and it
-    does not carry an explicit ANSWER/ACTION disposition (that authority is
-    ToolRoutePlanV2.output_plan.output_mode).
-    """
-
-    schema_version: Required[Literal[2]]
-    meta: StateArtifactMetaV1
-    goal: str
-    completion_conditions: list[str]
-    constraints: list[ConstraintV1]
-    requested_effect_hints: list[ActionEffectValue]
-    requested_resource_hints: list[str]
-    analysis_requirement: Literal["NONE", "REQUIRED"]
-    ambiguity: AmbiguityV1
 
 
 class ClarificationQuestionV1(TypedDict):
@@ -299,10 +255,19 @@ class RetrievalSourceStatusV1(TypedDict):
     resource_type: str
     status: Literal["COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED"]
     evidence_refs: list[str]
-    failure_kind: Literal[
-        "AUTH", "SCOPE", "RATE_LIMIT", "TIMEOUT", "PROVIDER",
-        "NOT_FOUND", "BUDGET", "OTHER",
-    ] | None
+    failure_kind: (
+        Literal[
+            "AUTH",
+            "SCOPE",
+            "RATE_LIMIT",
+            "TIMEOUT",
+            "PROVIDER",
+            "NOT_FOUND",
+            "BUDGET",
+            "OTHER",
+        ]
+        | None
+    )
 
 
 class RetrievalResultV1(TypedDict):
@@ -457,7 +422,7 @@ class ActionPlanDraftV1(TypedDict):
     llm_provider_result: NotRequired[dict[str, object]]
 
 
-class ReviewIssueV1(TypedDict):
+class LegacyPlanReviewIssueV1(TypedDict):
     schema_version: Required[Literal[2]]
     issue_id: str
     kind: str
@@ -469,11 +434,14 @@ class ReviewIssueV1(TypedDict):
     reason_codes: list[str]
 
 
+ReviewIssueV1 = LegacyPlanReviewIssueV1
+
+
 class PlanReviewResultV1(TypedDict):
     schema_version: Required[Literal[2]]
     status: ReviewStatusValue
     summary: str
-    issues: list[ReviewIssueV1]
+    issues: list[LegacyPlanReviewIssueV1]
     confirmation: dict[str, object] | None
     blockers: list[str]
     additional_acquisition_request: AdditionalAcquisitionRequestV1 | None

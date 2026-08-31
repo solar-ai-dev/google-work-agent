@@ -48,21 +48,6 @@ class SqliteEvidenceRepository:
         ).fetchall()
         return tuple(self._record(r) for r in rows)
 
-    def list_for_retrieval_artifact(
-        self, run_id: str, retrieval_artifact_id: str, *, limit: int = 100
-    ) -> tuple[EvidenceRecord, ...]:
-        if not 1 <= limit <= 100:
-            raise ValueError("context preview limit must be between 1 and 100")
-        rows = self._connection.execute(
-            "SELECT id, run_id, origin_type, resource_ref_id, message_id, kind, excerpt, "
-            "locator_json, created_at_ms FROM evidence WHERE run_id=? "
-            "AND locator_json IS NOT NULL "
-            "AND json_extract(locator_json, '$.retrieval_artifact_id')=? "
-            "ORDER BY created_at_ms, id LIMIT ?;",
-            (run_id, retrieval_artifact_id, limit),
-        ).fetchall()
-        return tuple(self._record(row) for row in rows)
-
     @staticmethod
     def _record(r: sqlite3.Row) -> EvidenceRecord:
         return EvidenceRecord(

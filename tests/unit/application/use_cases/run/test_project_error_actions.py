@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.project_error_actions import (
     ProjectErrorActionsHandler,
@@ -68,6 +71,14 @@ def _database(tmp_path: Path, *, delivery_certainty: str) -> Path:
             ) VALUES ('attempt-1', 'approval-1', 1, 'FAILED', 1, ?, 4, 5)""",
             (f'{{"delivery_certainty":"{delivery_certainty}"}}',),
         )
+        connection.execute(
+            """INSERT INTO audit_events (
+                run_id, action_id, actor_type, actor_id, event_type, outcome,
+                metadata_json, created_at_ms
+            ) VALUES ('run-1', 'action-1', 'AGENT', 'claim_execution',
+                      'EXECUTION_CLAIMED', 'TRANSITION_APPLIED',
+                      '{"attempt_id":"attempt-1"}', 4)"""
+        )
         connection.execute("UPDATE runs SET status = 'FAILED' WHERE id = 'run-1'")
     return path
 
@@ -75,6 +86,7 @@ def _database(tmp_path: Path, *, delivery_certainty: str) -> Path:
 def _project(path: Path):  # type: ignore[no-untyped-def]
     return ProjectErrorActionsHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(path),
+        checkpoint_port=sqlite_checkpoint(path),
         resume_target_registry=_Registry(),  # type: ignore[arg-type]
     )(ProjectErrorActionsQueryV1("run-1"))
 

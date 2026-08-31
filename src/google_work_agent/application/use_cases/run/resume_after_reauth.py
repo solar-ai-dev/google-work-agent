@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from typing import cast
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -30,8 +31,8 @@ from google_work_agent.domain.run.transitions.resume_after_reauth import (
     transition_resume_after_reauth,
 )
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
 from google_work_agent.ports.system.uuid_port import UUIDPort
 
@@ -67,14 +68,17 @@ class ResumeAfterReauthHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         resolve_resume_authority: Callable[..., Mapping[str, object] | None],
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetValidator,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
     ) -> None:
+        self._checkpoint_port = checkpoint_port
         self._persistence = _ResumePersistence(
             unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint_port,
             now_ms=now_ms,
             resolve_resume_authority=resolve_resume_authority,
             id_generator=id_generator,
@@ -115,11 +119,11 @@ class ResumeAfterReauthHandler:
         if run is None:
             raise LookupError(f"run not found: {command.run_id}")
         resume_status = RunStatusV1(cast(str, authority["resume_status"]))
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         checkpoint = (
             None
             if binding is None
-            else unit_of_work.checkpoints.load_same_run_checkpoint(
+            else self._checkpoint_port.load_same_run_checkpoint(
                 command.run_id, binding.langgraph_thread_id
             )
         )
@@ -252,6 +256,7 @@ class ResumeAfterReauthHandler:
                 contract_or_checkpoint_fingerprint=fingerprint,
             ),
             now_ms=now_ms,
+            checkpoint_port=self._checkpoint_port,
         )
         if not recovery.applied:
             raise RuntimeError("reauth recovery fail-safe transition was not applied")
@@ -266,8 +271,8 @@ class ResumeAfterReauthHandler:
             False,
         )
 
-    @staticmethod
     def _require_recovery(
+        self,
         *,
         unit_of_work: UnitOfWork,
         command: _ResumePersistenceCommand,
@@ -298,6 +303,7 @@ class ResumeAfterReauthHandler:
                 contract_or_checkpoint_fingerprint=fingerprint,
             ),
             now_ms=now_ms,
+            checkpoint_port=self._checkpoint_port,
         )
         return (
             _PersistedRunDecision(

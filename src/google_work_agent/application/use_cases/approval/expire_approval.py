@@ -11,9 +11,13 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.guards.expire_approval import ApprovalExpiryInput
 from google_work_agent.domain.approval.transitions.expire_approval import (
-    ApprovalExpiryInput,
     transition_expire_approval,
 )
 from google_work_agent.domain.audit_event.model import AuditEvent
@@ -21,7 +25,6 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

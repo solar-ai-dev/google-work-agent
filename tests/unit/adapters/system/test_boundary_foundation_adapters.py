@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
 from google_work_agent.adapters.system.filesystem_diagnostics import (
     FilesystemDiagnosticsAdapter,

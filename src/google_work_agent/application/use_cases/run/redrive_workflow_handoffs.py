@@ -80,12 +80,13 @@ class RedriveWorkflowHandoffsHandler:
         self, command: RedriveWorkflowHandoffsCommand | None = None
     ) -> RedriveWorkflowHandoffsResult:
         command = command or RedriveWorkflowHandoffsCommand()
-        if command.limit < 1:
-            raise ValueError("redrive limit must be positive")
+        if command.limit < 1 or command.limit > 255:
+            raise ValueError("redrive limit must be between 1 and 255")
         with self._unit_of_work_factory() as unit_of_work:
-            actionable_count = unit_of_work.workflow_handoffs.count_redriveable()
-            candidates = unit_of_work.workflow_handoffs.list_redriveable(command.limit)
-        has_more = actionable_count > len(candidates)
+            bounded = unit_of_work.workflow_handoffs.list_redriveable(command.limit + 1)
+        has_more = len(bounded) > command.limit
+        candidates = bounded[: command.limit]
+        actionable_count = len(candidates) + int(has_more)
 
         accepted = 0
         blocked_binding = 0
@@ -99,9 +100,7 @@ class RedriveWorkflowHandoffsHandler:
             if current_run is None or (
                 is_preempting_run_status(current_run.status)
                 and handoff.status != "BLOCKED_BINDING"
-                and not handoff_matches_preempting_run_authority(
-                    current_run.status, handoff
-                )
+                and not handoff_matches_preempting_run_authority(current_run.status, handoff)
             ):
                 continue
             if (

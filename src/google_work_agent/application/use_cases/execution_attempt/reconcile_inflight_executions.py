@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from json import loads
 from typing import Literal, cast
 
+from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
+    AbortClaimedExecutionCommandV1,
+    AbortClaimedExecutionHandler,
+)
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultCommand,
     MarkUnknownResultHandler,
@@ -19,6 +23,7 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
     ResolveAsFailedCommand,
     ResolveAsFailedHandler,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
     LookupUnknownResultHandler,
     LookupUnknownResultQueryV1,
@@ -41,8 +46,8 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainResumeStageIdV1,
     RunExecutionRefV1,
@@ -72,7 +77,9 @@ class ReconcileInflightExecutionsHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         mark_unknown_result: MarkUnknownResultHandler,
+        abort_claimed_execution: AbortClaimedExecutionHandler,
         require_recovery: RequireRecoveryHandler,
         lookup_unknown_result: LookupUnknownResultHandler,
         recover_existing_result: RecoverExistingResultHandler,
@@ -82,7 +89,9 @@ class ReconcileInflightExecutionsHandler:
         id_generator: UUIDPort,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._mark_unknown_result = mark_unknown_result
+        self._abort_claimed_execution = abort_claimed_execution
         self._require_recovery = require_recovery
         self._lookup_unknown_result = lookup_unknown_result
         self._recover_existing_result = recover_existing_result
@@ -109,6 +118,34 @@ class ReconcileInflightExecutionsHandler:
         )
 
     def _reconcile(self, candidate: ExecutionReconciliationCandidateV1) -> int:
+        if candidate.kind == "PRE_BEGIN_ORPHAN":
+            with self._unit_of_work_factory() as unit_of_work:
+                action = unit_of_work.actions.get(candidate.action_id)
+                attempt = unit_of_work.execution_attempts.get(candidate.execution_attempt_id)
+            if action is None or attempt is None:
+                return 0
+            error_detail = "process ended before BeginExecutionAttempt committed"
+            payload = {
+                "action_id": action.id,
+                "attempt_id": attempt.id,
+                "expected_action_version": action.version,
+                "expected_attempt_version": attempt.version,
+                "error_code": "PROCESS_RESTART_BEFORE_BEGIN",
+                "error_detail": error_detail,
+            }
+            result = self._abort_claimed_execution(
+                AbortClaimedExecutionCommandV1(
+                    command_id=f"system:execution-attempt-reconcile:{attempt.id}:abort",
+                    request_hash=calculate_canonical_json_hash(payload),
+                    action_id=action.id,
+                    attempt_id=attempt.id,
+                    expected_action_version=action.version,
+                    expected_attempt_version=attempt.version,
+                    error_code="PROCESS_RESTART_BEFORE_BEGIN",
+                    error_detail=error_detail,
+                )
+            )
+            return int(result.applied)
         if candidate.kind == "POST_BEGIN_ORPHAN":
             with self._unit_of_work_factory() as unit_of_work:
                 action = unit_of_work.actions.get(candidate.action_id)
@@ -279,10 +316,10 @@ class ReconcileInflightExecutionsHandler:
             existing = unit_of_work.workflow_handoffs.get_by_trigger_command_id(trigger)
             if existing is not None:
                 return False
-            binding = unit_of_work.checkpoints.load_workflow_binding(candidate.run_id)
+            binding = self._checkpoint_port.load_workflow_binding(candidate.run_id)
             if binding is None:
                 return False
-            checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+            checkpoint = self._checkpoint_port.load_same_run_checkpoint(
                 candidate.run_id, binding.langgraph_thread_id
             )
             if checkpoint is None:

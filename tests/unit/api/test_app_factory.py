@@ -1,5 +1,5 @@
 from dataclasses import replace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
@@ -169,6 +169,7 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
         launcher_probe_verifier=StaticLauncherProbeVerifier(LauncherProbeDecision(allowed=True)),
         schedule_run_execution=lambda command: command,
         resume_target_registry=resume_target_registry,
+        checkpoint_port=MagicMock(),
         issue_selection_handle=IssueSelectionHandle(
             signing_secret=signing_secret,
             service_instance_id="svc-test",

@@ -49,6 +49,7 @@ from tests.integration.persistence.test_write_actions import (
     pytest,
     sqlite_unit_of_work_factory,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import DeterministicUUID
 
 pytest_plugins = ("tests.integration.persistence.test_write_actions",)
@@ -68,6 +69,7 @@ def _stale_lifecycle_dependencies(database_path: Path, clock: FakeClockPort) -> 
         ),
         "refresh_expired_action": RefreshExpiredActionHandler(
             unit_of_work_factory=factory,
+            checkpoint_port=sqlite_checkpoint(database_path),
             now_ms=clock.now_ms,
             id_factory=DeterministicUUID(prefix="preflight-review").new_uuid,
             resume_target_registry=registry,

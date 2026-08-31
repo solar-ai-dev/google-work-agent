@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarConflictDecision,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -57,6 +59,7 @@ from google_work_agent.application.use_cases.claim.write_execution_integrity imp
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.domain.action.model import (
     ActionStatusV1,
     EffectType,
@@ -75,7 +78,6 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

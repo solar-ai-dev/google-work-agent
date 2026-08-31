@@ -19,6 +19,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -37,8 +38,8 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,11 +61,13 @@ class FinalizeCancelHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        checkpoint_port: CheckpointPort | None = None,
         message_id_factory: Callable[[], str] | None = None,
         build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._checkpoint_port = checkpoint_port
         self._message_id_factory = message_id_factory or (lambda: str(uuid4()))
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
@@ -189,6 +192,8 @@ class FinalizeCancelHandler:
                     "execution_attempt_id": unknown_attempt.id,
                     "attempt_version": unknown_attempt.version,
                 }
+                if self._checkpoint_port is None:
+                    raise RuntimeError("checkpoint_port is required for cancel recovery")
                 recovery_run = RequireRecoveryHandler.apply_in_unit_of_work(
                     unit_of_work,
                     RequireRecoveryCommand(
@@ -212,6 +217,7 @@ class FinalizeCancelHandler:
                         execution_attempt_id=unknown_attempt.id,
                     ),
                     now_ms=now_ms,
+                    checkpoint_port=self._checkpoint_port,
                 )
                 response = WriteRunResponse(
                     applied=False,

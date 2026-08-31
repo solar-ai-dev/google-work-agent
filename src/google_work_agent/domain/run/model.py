@@ -67,6 +67,7 @@ class RunCreate:
 class RunCommand(StrEnum):
     """Run lifecycle transition commands."""
 
+    START_RUN = "START_RUN"
     START_ANALYSIS = "START_ANALYSIS"
     BEGIN_RETRIEVAL = "BEGIN_RETRIEVAL"
     BEGIN_PLANNING = "BEGIN_PLANNING"
@@ -80,6 +81,7 @@ class RunCommand(StrEnum):
     REQUEST_CANCEL = "REQUEST_CANCEL"
     FINALIZE_CANCEL = "FINALIZE_CANCEL"
     REQUIRE_REAUTH = "REQUIRE_REAUTH"
+    RESUME_AFTER_REAUTH = "RESUME_AFTER_REAUTH"
 
 
 TERMINAL_RUN_STATUSES = frozenset(
@@ -117,6 +119,57 @@ def next_allowed_run_commands(current_status: RunStatusV1) -> tuple[RunCommand, 
         allowed.append(RunCommand.BEGIN_RETRIEVAL)
     if current_status in {RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING}:
         allowed.append(RunCommand.BEGIN_PLANNING)
+    if current_status in {
+        RunStatusV1.ANALYZING,
+        RunStatusV1.RETRIEVING,
+        RunStatusV1.PLANNING,
+        RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.VERIFYING,
+    }:
+        allowed.append(RunCommand.REQUEST_CONFIRMATION)
+    if current_status is RunStatusV1.WAITING_CONFIRMATION:
+        allowed.append(RunCommand.RESUME_CONFIRMATION)
+    if current_status in {
+        RunStatusV1.ANALYZING,
+        RunStatusV1.RETRIEVING,
+        RunStatusV1.PLANNING,
+    }:
+        allowed.append(RunCommand.COMPLETE_ANSWER_ONLY_RUN)
+    if current_status is RunStatusV1.EXECUTING:
+        allowed.append(RunCommand.COMPLETE_READ_ONLY_RUN)
+    if current_status in {
+        RunStatusV1.CREATED,
+        RunStatusV1.ANALYZING,
+        RunStatusV1.RETRIEVING,
+        RunStatusV1.WAITING_CONFIRMATION,
+        RunStatusV1.PLANNING,
+        RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.VERIFYING,
+    }:
+        allowed.append(RunCommand.BLOCK_RUN)
+    if current_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.CANCEL_REQUESTED}:
+        allowed.append(RunCommand.BEGIN_VERIFICATION)
+    if current_status in {RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING}:
+        allowed.append(RunCommand.COMPLETE_WRITE_RUN)
+    if current_status in {
+        RunStatusV1.CANCEL_REQUESTED,
+        RunStatusV1.VERIFYING,
+        RunStatusV1.REAUTH_REQUIRED,
+    }:
+        allowed.append(RunCommand.FINALIZE_CANCEL)
+    if current_status in {
+        RunStatusV1.ANALYZING,
+        RunStatusV1.RETRIEVING,
+        RunStatusV1.PLANNING,
+        RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.EXECUTING,
+        RunStatusV1.VERIFYING,
+        RunStatusV1.CANCEL_REQUESTED,
+        RunStatusV1.RECOVERY_REQUIRED,
+    }:
+        allowed.append(RunCommand.REQUIRE_REAUTH)
+    if current_status is RunStatusV1.REAUTH_REQUIRED:
+        allowed.append(RunCommand.RESUME_AFTER_REAUTH)
     if current_status not in TERMINAL_RUN_STATUSES:
         allowed.append(RunCommand.REQUEST_CANCEL)
     return tuple(allowed)

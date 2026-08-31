@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.adapters.persistence import (
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import (
     apply_migrations,
     calculate_migration_checksum,
-    connect_sqlite,
     discover_migrations,
 )
 from google_work_agent.adapters.persistence.persistence_exceptions import (

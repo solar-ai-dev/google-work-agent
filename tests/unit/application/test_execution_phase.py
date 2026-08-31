@@ -5,6 +5,9 @@ from typing import Any, cast
 
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionResult
+from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
+    AbortClaimedExecutionResultV1,
+)
 from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
     ClassifyDispatchResultHandler,
 )
@@ -31,6 +34,7 @@ from google_work_agent.application.use_cases.verification.verify_effect import (
     VerificationResultV1,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
@@ -288,6 +292,26 @@ def test_not_sent_failure_does_not_begin_verification() -> None:
     assert "begin_verification" not in calls
 
 
+def test_begin_rejection_aborts_claimed_attempt_before_connector_dispatch() -> None:
+    calls: list[str] = []
+    result = _coordinator(
+        calls=calls,
+        begin_error=PermissionError("claim parent authority is no longer current"),
+    ).execute(_request())
+
+    assert result.disposition is WriteExecutionDisposition.FAILED
+    assert result.action_status == ActionStatusV1.FAILED.value
+    assert calls == [
+        "preflight",
+        "claim",
+        "prepare",
+        "build_claim_context",
+        "begin",
+        "abort",
+    ]
+    assert "dispatch" not in calls
+
+
 def test_auth_failure_not_sent_marks_failed_before_reauth() -> None:
     calls: list[str] = []
     result = _coordinator(
@@ -435,6 +459,7 @@ def _coordinator(
     preflight_result: object | None = None,
     claim_call: _RecordedCall | None = None,
     classify_dispatch_result: object | None = None,
+    begin_error: Exception | None = None,
 ) -> WriteExecutionPhaseCoordinator:
     snapshot = ResourceSnapshot(
         fixture_snapshot_id="snapshot-1",
@@ -493,9 +518,24 @@ def _coordinator(
                 name="begin",
                 calls=calls,
                 result=SimpleNamespace(attempt=SimpleNamespace(version=1)),
+                error=begin_error,
             ),
         ),
-        abort_claimed_execution=cast(Any, _RecordedCall(name="abort", calls=calls)),
+        abort_claimed_execution=cast(
+            Any,
+            _RecordedCall(
+                name="abort",
+                calls=calls,
+                result=AbortClaimedExecutionResultV1(
+                    applied=True,
+                    result_code=ResultCode.TRANSITION_APPLIED,
+                    action_status=ActionStatusV1.FAILED,
+                    action_version=3,
+                    attempt_status=ExecutionAttemptStatusV1.FAILED,
+                    attempt_version=1,
+                ),
+            ),
+        ),
         connector_execution=cast(
             ConnectorWriteProjection,
             _ConnectorExecution(calls=calls, snapshot=snapshot, execute_error=execute_error),

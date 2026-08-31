@@ -30,6 +30,13 @@ from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
+from google_work_agent.application.use_cases.plan.project_dependencies import (
+    project_dependency_ids,
+)
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
     RecordReviewResultHandler,
@@ -50,8 +57,6 @@ from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 
 
 def persist_reserved_corrective_write_plan(
@@ -765,6 +770,10 @@ def _validate_persisted_materialization(
         raise ValueError("persisted corrective Plan identity/summary drifted")
 
     persisted_actions = unit_of_work.actions.list_for_plan(plan.id)
+    bundle = unit_of_work.plans.load_bundle(plan.id)
+    if bundle is None:
+        raise LookupError(f"corrective Plan disappeared: {plan.id}")
+    persisted_dependencies = project_dependency_ids(bundle)
     expected_actions = {
         action_id_map[action["action_id"]]: action for action in deterministic_plan["actions"]
     }
@@ -799,11 +808,7 @@ def _validate_persisted_materialization(
             or persisted_action.arguments_json != canonicalize_json_value(candidate["arguments"])
             or persisted_action.expected_json != canonicalize_json_value(candidate["expected"])
             or persisted_action.connector_id != persisted_connector_ids[persisted_action.id]
-            or set(
-                dependency_ids_for_action(
-                    unit_of_work.actions, persisted_actions, persisted_action.id
-                )
-            )
+            or set(persisted_dependencies.get(persisted_action.id, ()))
             != set(expected_dependencies)
         ):
             raise ValueError("persisted corrective Action projection drifted")

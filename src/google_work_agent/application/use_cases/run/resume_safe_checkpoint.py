@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import cast
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -18,8 +19,8 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run, RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     JsonValue,
@@ -51,17 +52,16 @@ _UNRESOLVED_WRITE_STATUSES = frozenset(
 def safe_checkpoint_resume_is_allowed(
     *,
     unit_of_work: UnitOfWork,
+    checkpoint_port: CheckpointPort,
     run: Run,
     resume_target_registry: ResumeTargetValidator,
 ) -> bool:
     """Read-only eligibility projection shared with Error UI actions."""
-    binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+    binding = checkpoint_port.load_workflow_binding(run.id)
     checkpoint = (
         None
         if binding is None
-        else unit_of_work.checkpoints.load_same_run_checkpoint(
-            run.id, binding.langgraph_thread_id
-        )
+        else checkpoint_port.load_same_run_checkpoint(run.id, binding.langgraph_thread_id)
     )
     if ResumeSafeCheckpointHandler._checkpoint_mismatch(run, binding, checkpoint) is not None:
         return False
@@ -76,9 +76,9 @@ def safe_checkpoint_resume_is_allowed(
         run_id=run.id,
         expected_run_version=run.version,
     )
-    return ResumeSafeCheckpointHandler._guard(
-        unit_of_work, command, run.status, run.version
-    ) is None
+    return (
+        ResumeSafeCheckpointHandler._guard(unit_of_work, command, run.status, run.version) is None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +105,7 @@ class ResumeSafeCheckpointHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         resume_target_registry: ResumeTargetValidator,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         id_factory: Callable[[], str],
@@ -112,6 +113,7 @@ class ResumeSafeCheckpointHandler:
         now_ms: Callable[[], int],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
         self._id_factory = id_factory
@@ -142,9 +144,7 @@ class ResumeSafeCheckpointHandler:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
-            existing = unit_of_work.workflow_handoffs.get_by_trigger_command_id(
-                command.command_id
-            )
+            existing = unit_of_work.workflow_handoffs.get_by_trigger_command_id(command.command_id)
             if replay.decision == "RECOVER_RESERVED" and existing is not None:
                 handoff_id = existing.handoff_id
                 result_ref = handoff_id
@@ -187,13 +187,11 @@ class ResumeSafeCheckpointHandler:
         command: ResumeSafeCheckpointCommand,
         run: Run,
     ) -> ResumeSafeCheckpointResult:
-        binding = unit_of_work.checkpoints.load_workflow_binding(run.id)
+        binding = self._checkpoint_port.load_workflow_binding(run.id)
         checkpoint = (
             None
             if binding is None
-            else unit_of_work.checkpoints.load_same_run_checkpoint(
-                run.id, binding.langgraph_thread_id
-            )
+            else self._checkpoint_port.load_same_run_checkpoint(run.id, binding.langgraph_thread_id)
         )
         mismatch = self._checkpoint_mismatch(run, binding, checkpoint)
         if mismatch is None:
@@ -211,6 +209,7 @@ class ResumeSafeCheckpointHandler:
                 unit_of_work,
                 recovery_command,
                 now_ms=self._now_ms(),
+                checkpoint_port=self._checkpoint_port,
             )
             unit_of_work.commit()
             return ResumeSafeCheckpointResult(
@@ -239,6 +238,7 @@ class ResumeSafeCheckpointHandler:
                 unit_of_work,
                 recovery_command,
                 now_ms=self._now_ms(),
+                checkpoint_port=self._checkpoint_port,
             )
             unit_of_work.commit()
             return ResumeSafeCheckpointResult(

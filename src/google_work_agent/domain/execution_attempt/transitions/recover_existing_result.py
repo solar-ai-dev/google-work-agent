@@ -1,6 +1,9 @@
 """Joint existing-result recovery transition authority."""
 
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.guards.recover_existing_result import (
+    guard_recover_existing_result,
+)
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttemptStatusV1,
     ExecutionAttemptTransitionDecision,
@@ -18,38 +21,24 @@ def transition_recover_existing_result(
     expected_attempt_version: int,
     existing_result_confirmed: bool = True,
 ) -> ExecutionAttemptTransitionDecision:
-    if not existing_result_confirmed:
+    conflict = guard_recover_existing_result(
+        action_status,
+        action_version=action_version,
+        expected_action_version=expected_action_version,
+        attempt_status=attempt_status,
+        attempt_version=attempt_version,
+        expected_attempt_version=expected_attempt_version,
+        existing_result_confirmed=existing_result_confirmed,
+    )
+    if conflict is not None:
         return ExecutionAttemptTransitionDecision(
             False,
-            ResultCode.STATE_CONFLICT,
+            conflict[0],
             action_status,
             action_version,
             attempt_status,
             attempt_version,
-            "RecoverExistingResult requires lookup evidence",
-        )
-    if action_version != expected_action_version or attempt_version != expected_attempt_version:
-        return ExecutionAttemptTransitionDecision(
-            False,
-            ResultCode.VERSION_CONFLICT,
-            action_status,
-            action_version,
-            attempt_status,
-            attempt_version,
-            "expected version does not match current version",
-        )
-    if (
-        action_status is not ActionStatusV1.UNKNOWN_RESULT
-        or attempt_status is not ExecutionAttemptStatusV1.UNKNOWN_RESULT
-    ):
-        return ExecutionAttemptTransitionDecision(
-            False,
-            ResultCode.STATE_CONFLICT,
-            action_status,
-            action_version,
-            attempt_status,
-            attempt_version,
-            "RecoverExistingResult requires Action and Attempt UNKNOWN_RESULT",
+            conflict[1],
         )
     return ExecutionAttemptTransitionDecision(
         True,

@@ -23,6 +23,7 @@ def _request_with_run_composition() -> tuple[Request, object]:
         graph_version="resume-contract-v1",
         resume_target_registry=object(),
         schedule_run_execution=object(),
+        checkpoint_port=object(),
         workflow_runtime=object(),
         clock=FakeClockPort(1),
         id_generator=object(),

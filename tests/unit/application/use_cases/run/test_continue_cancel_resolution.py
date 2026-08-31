@@ -44,9 +44,7 @@ def test_expired_action_is_settled_before_finalize_cancel() -> None:
 
     handler = ContinueCancelResolutionHandler(
         unit_of_work_factory=_Uow,  # type: ignore[arg-type]
-        settle_pending_action=lambda action_id, version: (
-            calls.append((action_id, version)) or True
-        ),
+        settle_pending_action=lambda action_id, version: calls.append((action_id, version)) or True,
         reconcile_inflight_action=lambda _action_id: False,
         verify_executed_action=lambda _action_id: False,
         resolve_unknown_action=lambda _action_id: False,

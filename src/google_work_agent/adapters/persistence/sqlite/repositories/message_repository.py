@@ -53,28 +53,6 @@ class SqliteMessageRepository:
             next_cursor = f"{last.created_at_ms}:{last.id}"
         return items, next_cursor
 
-    def list_for_run_bounded(
-        self, run_id: str, *, limit: int
-    ) -> tuple[MessageRecord, ...]:
-        if limit < 1:
-            raise ValueError("message limit must be positive")
-        rows = self._connection.execute(
-            """
-            SELECT id, conversation_id, run_id, role, content, created_at_ms
-            FROM (
-                SELECT id, conversation_id, run_id, role, content, created_at_ms
-                FROM messages
-                WHERE run_id = ?
-                ORDER BY created_at_ms DESC, id DESC
-                LIMIT ?
-            ) AS bounded_messages
-            ORDER BY created_at_ms ASC, id ASC
-            ;
-            """,
-            (run_id, limit),
-        ).fetchall()
-        return tuple(_record_from_row(row) for row in rows)
-
     def _insert(self, message: MessageRecord) -> None:
         self._connection.execute(
             """

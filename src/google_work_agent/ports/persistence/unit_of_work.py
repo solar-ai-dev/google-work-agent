@@ -9,7 +9,6 @@ from google_work_agent.ports.persistence.approval_repository import ApprovalRepo
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventRepository
 from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
-from google_work_agent.ports.persistence.connected_account_store import ConnectedAccountStore
 from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
 from google_work_agent.ports.persistence.evidence_repository import EvidenceRepository
 from google_work_agent.ports.persistence.execution_attempt_repository import (
@@ -26,11 +25,10 @@ from google_work_agent.ports.persistence.verification_repository import Verifica
 from google_work_agent.ports.persistence.workflow_handoff_repository import (
     WorkflowHandoffRepository,
 )
-from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.checkpoint_port import InitialWorkflowBindingPort
 
 
 class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
-    connected_accounts: ConnectedAccountStore
     conversations: ConversationRepository
     runs: RunRepository
     messages: MessageRepository
@@ -49,7 +47,7 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     workflow_handoffs: WorkflowHandoffRepository
     recovery_contexts: RecoveryRepository
     retention: RetentionRepository
-    checkpoints: CheckpointPort
+    workflow_bindings: InitialWorkflowBindingPort
 
     def commit(self) -> None: ...
     def rollback(self) -> None: ...

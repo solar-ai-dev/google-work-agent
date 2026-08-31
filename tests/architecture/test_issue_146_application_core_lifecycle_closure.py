@@ -31,10 +31,7 @@ def test_issue_146_owns_exactly_fifty_ledger_and_map_rows() -> None:
 
 
 def test_issue_146_exact_sources_tests_symbols_and_production_callers_exist() -> None:
-    production = {
-        path: path.read_text(encoding="utf-8")
-        for path in SOURCE.rglob("*.py")
-    }
+    production = {path: path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py")}
     for identifier, row in _owned_ledger_rows().items():
         directory, filename, symbols, test_path = row[8], row[9], row[10], row[11]
         owner = SOURCE / directory / filename
@@ -56,16 +53,12 @@ def test_issue_146_exact_sources_tests_symbols_and_production_callers_exist() ->
 
 
 def test_issue_146_run_budget_has_one_semantic_authority_and_no_v1_residual() -> None:
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py")
-    )
+    source_text = "\n".join(path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py"))
     assert "RunBudgetV1" not in source_text
     assert "validate_run_budget_v1" not in source_text
     assert 'budget_json="{}"' not in source_text
 
-    contracts = (
-        SOURCE / "application/orchestration/contracts.py"
-    ).read_text(encoding="utf-8")
+    contracts = (SOURCE / "application/orchestration/contracts.py").read_text(encoding="utf-8")
     forbidden_reexports = (
         "BudgetDecision",
         "BudgetProfile",
@@ -75,13 +68,11 @@ def test_issue_146_run_budget_has_one_semantic_authority_and_no_v1_residual() ->
     )
     assert all(name not in contracts for name in forbidden_reexports)
 
-    guard = (
-        SOURCE / "application/use_cases/run/guard_run_budget.py"
-    ).read_text(encoding="utf-8")
+    guard = (SOURCE / "application/use_cases/run/guard_run_budget.py").read_text(encoding="utf-8")
     assert guard.count("class GuardRunBudgetHandler") == 1
-    dispatch = (
-        SOURCE / "application/orchestration/provider_dispatch_budget.py"
-    ).read_text(encoding="utf-8")
+    dispatch = (SOURCE / "application/orchestration/provider_dispatch_budget.py").read_text(
+        encoding="utf-8"
+    )
     assert "GuardRunBudgetHandler()(" in dispatch
 
 
@@ -95,14 +86,12 @@ def test_issue_146_application_does_not_import_concrete_adapters() -> None:
 
 
 def test_issue_146_sqlite_queries_use_a_read_only_uow_boundary() -> None:
-    unit_of_work = (
-        SOURCE / "adapters/persistence/sqlite/unit_of_work.py"
-    ).read_text(encoding="utf-8")
+    unit_of_work = (SOURCE / "adapters/persistence/sqlite/unit_of_work.py").read_text(
+        encoding="utf-8"
+    )
     assert "def sqlite_read_unit_of_work_factory(" in unit_of_work
     assert 'connection.execute("PRAGMA query_only = ON;")' in unit_of_work
     assert 'connection.execute("BEGIN;")' in unit_of_work
 
     run_routes = (SOURCE / "api/routes/runs.py").read_text(encoding="utf-8")
-    assert run_routes.count(
-        "unit_of_work_factory=dependencies.read_unit_of_work_factory"
-    ) == 2
+    assert run_routes.count("unit_of_work_factory=dependencies.read_unit_of_work_factory") == 2

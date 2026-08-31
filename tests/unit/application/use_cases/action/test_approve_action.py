@@ -41,6 +41,7 @@ def _handler(unit_of_work: MagicMock, id_generator: MagicMock) -> ApproveActionH
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
         id_generator=id_generator,
+        checkpoint_port=unit_of_work.checkpoints,
         resume_target_registry=SimpleNamespace(
             issue_main_stage=lambda profile, stage, version: MainControlResumeTargetV2(
                 "MAIN_CONTROL", stage, profile, version

@@ -7,13 +7,13 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import Literal
 
+from google_work_agent.application.use_cases.plan.persistence_projection import load_plan_record
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 ReviewDispositionV1 = Literal[

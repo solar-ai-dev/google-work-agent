@@ -4,11 +4,11 @@ from datetime import datetime
 
 import pytest
 
-from google_work_agent.application.policy_kernels.calendar_conflict import (
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarInterval,
     CalendarWorkHours,
 )
-from google_work_agent.application.policy_kernels.feasibility import (
+from google_work_agent.application.use_cases.action.feasibility_policy import (
     FeasibilityDecision,
     derive_deadline_cutoff,
     evaluate_feasibility,

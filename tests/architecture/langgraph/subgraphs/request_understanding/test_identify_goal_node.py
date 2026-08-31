@@ -23,7 +23,7 @@ def test_identify_goal_node_uses_exact_operation_projection_and_router() -> None
     router = OWNER / "routing/route_after_identify_goal.py"
 
     assert {"project_identify_goal_input", "identify_goal"} <= _calls(node)
-    assert "request_from_state" in _calls(projection)
+    assert "request_from_run_input_state" in _calls(projection)
     assert "route_after_identify_goal" in router.read_text(encoding="utf-8")
 
 
@@ -37,6 +37,14 @@ def test_identify_goal_prompt_boundary_is_current_run_only() -> None:
     assert '"confirmation_response"' in source
     for forbidden in ("conversation_history", "previous_run", "checkpoint", "resume_payload"):
         assert forbidden not in source
+
+
+def test_identify_goal_projection_consumes_canonical_run_input() -> None:
+    projection = OWNER / "projections/identify_goal_projection.py"
+    source = projection.read_text(encoding="utf-8")
+
+    assert "request_from_run_input_state" in source
+    assert "request_from_state" not in source
 
 
 def test_identify_goal_owns_goal_only_and_does_not_prevalidate_final_intent() -> None:

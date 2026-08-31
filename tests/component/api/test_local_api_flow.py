@@ -17,7 +17,8 @@ from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegi
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -148,6 +149,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
         resume_target_registry=resume_target_registry,
+        checkpoint_port=checkpoint,
         resolve_selection_handle=ResolveSelectionHandle(
             signing_secret=b"s" * 32,
             service_instance_id="svc-test",

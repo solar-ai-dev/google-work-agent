@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
@@ -17,6 +20,7 @@ def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path)
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(_command("cmd-1", RecoveryResolution.RECHECK))
@@ -33,6 +37,7 @@ def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> 
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     first = handler(_command("cmd-1", RecoveryResolution.RECHECK))
@@ -47,6 +52,7 @@ def test_cancel_without_durable_intent_fails_closed_via_domain_guard(tmp_path: P
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(_command("cmd-1", RecoveryResolution.CANCEL))
@@ -63,6 +69,7 @@ def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_gu
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(_command("cmd-1", RecoveryResolution.RECHECK))
@@ -77,6 +84,7 @@ def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) 
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(
@@ -110,6 +118,7 @@ def test_context_version_conflict_does_not_mutate_child_plan_or_context(tmp_path
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(
@@ -165,6 +174,7 @@ def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_pat
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )
 
     result = handler(
@@ -211,6 +221,7 @@ def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: 
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
         next_id=lambda: "terminal-message-1",
     )
 
@@ -259,6 +270,7 @@ def test_fail_rejects_executed_action_awaiting_verification(tmp_path: Path) -> N
     result = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
     )(_command("cmd-fail-unverified", RecoveryResolution.FAIL))
 
     assert not result.applied and result.result_code == "RESOLUTION_NOT_ALLOWED"
@@ -274,6 +286,7 @@ def test_accept_partial_writes_required_completion_audit(tmp_path: Path) -> None
     result = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
         next_id=lambda: "terminal-message-1",
     )(_command("cmd-partial", RecoveryResolution.ACCEPT_PARTIAL))
 

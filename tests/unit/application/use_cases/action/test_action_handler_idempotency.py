@@ -61,6 +61,7 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
         gateway=MagicMock(),
+        checkpoint_port=MagicMock(),
         id_generator=MagicMock(),
         resume_target_registry=MagicMock(),
         schedule_run_execution=MagicMock(),
@@ -98,6 +99,7 @@ def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> No
     result = RejectActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
+        checkpoint_port=MagicMock(),
         id_generator=MagicMock(),
         resume_target_registry=MagicMock(),
         schedule_run_execution=MagicMock(),
@@ -137,6 +139,7 @@ def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> 
     result = PrepareWriteRetryHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 10,
+        checkpoint_port=MagicMock(),
         id_generator=MagicMock(),
         resume_target_registry=MagicMock(),
         schedule_run_execution=MagicMock(),

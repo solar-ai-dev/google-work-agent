@@ -25,7 +25,8 @@ from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegi
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -241,6 +242,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
         resume_target_registry=resume_target_registry,
+        checkpoint_port=checkpoint,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,

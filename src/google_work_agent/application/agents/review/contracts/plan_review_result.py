@@ -7,17 +7,10 @@ from typing import Literal, Required, TypedDict
 from google_work_agent.application.agents.review.contracts.review_findings import (
     ReviewDimensionIdV1,
 )
-
-
-class StateArtifactRefV1(TypedDict):
-    artifact_id: str
-    revision: int
-
-
-class StateArtifactMetaV1(TypedDict):
-    artifact_id: str
-    revision: int
-    based_on: list[StateArtifactRefV1]
+from google_work_agent.application.agents.state_artifact import (
+    StateArtifactMetaV1,
+    StateArtifactRefV1,
+)
 
 
 class ReviewIssueV1(TypedDict):

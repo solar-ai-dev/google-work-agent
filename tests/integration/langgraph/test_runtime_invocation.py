@@ -412,6 +412,7 @@ def _resume_through_application(
         )
         handler = ResumeAfterReauthHandler(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+            checkpoint_port=runtime._checkpoint_port,  # noqa: SLF001
             now_ms=FakeClockPort(2000).now_ms,
             resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
                 run_id=str(kwargs["run_id"]),

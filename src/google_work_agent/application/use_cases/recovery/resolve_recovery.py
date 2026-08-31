@@ -15,6 +15,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     cancel_pending_actions,
     revoke_active_approvals,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     current_recheck_input_hash,
 )
@@ -42,9 +43,10 @@ from google_work_agent.domain.recovery.transitions.resolve_recovery import (
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.recovery_repository import RecoveryContextV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainResumeStageIdV1,
     RunExecutionRefV1,
@@ -164,6 +166,7 @@ class ResolveRecoveryHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         next_id: Callable[[], str] | None = None,
         resume_target_registry: ResumeTargetIssuer | None = None,
@@ -171,6 +174,7 @@ class ResolveRecoveryHandler:
         build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._next_id = next_id
         self._resume_target_registry = resume_target_registry
@@ -179,6 +183,7 @@ class ResolveRecoveryHandler:
 
     def __call__(self, command: ResolveRecoveryCommandV1) -> ResolveRecoveryResult:
         handoff_id: str | None = None
+        checkpoint_update: GraphCheckpointEnvelopeV1 | None = None
         with self._unit_of_work_factory() as unit_of_work:
             now_ms = self._now_ms()
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -236,7 +241,9 @@ class ResolveRecoveryHandler:
                 return result
 
             eligibility = derive_recovery_eligibility(unit_of_work, context)
-            recheck_input_hash = current_recheck_input_hash(unit_of_work, context)
+            recheck_input_hash = current_recheck_input_hash(
+                unit_of_work, context, checkpoint_port=self._checkpoint_port
+            )
             recheck_input_changed = recheck_input_hash != context.get("last_recheck_input_hash")
             decision = transition_resolve_recovery(
                 run.status,
@@ -310,7 +317,7 @@ class ResolveRecoveryHandler:
                     command.run_id, "RECOVERY_TERMINAL"
                 )
             else:
-                handoff_id = self._stage_continuation(
+                handoff_id, checkpoint_update = self._stage_continuation(
                     unit_of_work,
                     command=command,
                     context=context,
@@ -375,6 +382,8 @@ class ResolveRecoveryHandler:
             )
             self._finish_result(unit_of_work, command, result, now_ms)
             unit_of_work.commit()
+        if checkpoint_update is not None:
+            self._checkpoint_port.store_same_run_checkpoint(checkpoint_update)
         if handoff_id is not None and self._schedule_run_execution is not None:
             self._schedule_run_execution(ScheduleRunExecutionCommand(handoff_id=handoff_id))
         return result
@@ -416,11 +425,11 @@ class ResolveRecoveryHandler:
             self._resume_target_registry.validate(target)
         except ValueError:
             return None
-        binding = unit_of_work.checkpoints.load_workflow_binding(context["run_id"])
+        binding = self._checkpoint_port.load_workflow_binding(context["run_id"])
         checkpoint = (
             None
             if binding is None
-            else unit_of_work.checkpoints.load_same_run_checkpoint(
+            else self._checkpoint_port.load_same_run_checkpoint(
                 context["run_id"], binding.langgraph_thread_id
             )
         )
@@ -653,14 +662,14 @@ class ResolveRecoveryHandler:
         context: RecoveryContextV1,
         target_status: RunStatusV1,
         now_ms: int,
-    ) -> str | None:
+    ) -> tuple[str | None, GraphCheckpointEnvelopeV1 | None]:
         if self._next_id is None or self._resume_target_registry is None:
-            return None
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+            return None, None
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         checkpoint = (
             None
             if binding is None
-            else unit_of_work.checkpoints.load_same_run_checkpoint(
+            else self._checkpoint_port.load_same_run_checkpoint(
                 command.run_id, binding.langgraph_thread_id
             )
         )
@@ -678,12 +687,10 @@ class ResolveRecoveryHandler:
                 stage_by_status.get(target_status, "PREFLIGHT"),
                 binding.graph_version,
             )
-        unit_of_work.checkpoints.store_same_run_checkpoint(
-            replace(
-                checkpoint,
-                registered_resume_target=resume_target,
-                created_at_ms=now_ms,
-            )
+        checkpoint_update = replace(
+            checkpoint,
+            registered_resume_target=resume_target,
+            created_at_ms=now_ms,
         )
         handoff_id = self._next_id()
         unit_of_work.workflow_handoffs.stage_pending(
@@ -708,7 +715,7 @@ class ResolveRecoveryHandler:
                 control_payload_hash=None,
             )
         )
-        return handoff_id
+        return handoff_id, checkpoint_update
 
     @staticmethod
     def _replay_or_reject_duplicate(

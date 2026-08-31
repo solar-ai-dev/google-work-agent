@@ -3,13 +3,15 @@
 from importlib import import_module
 from pathlib import Path
 
+from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import DeterministicUUID
 
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
     ContinueCancelResolutionResultV1,
@@ -42,6 +44,7 @@ def test_bootstrap_cancel_supersedes_unadmitted_start_then_uses_graphless_resolu
     continued: list[str] = []
     handler = _handler(
         factory,
+        path,
         continue_cancel=lambda command: (
             continued.append(command.run_id)
             or ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
@@ -92,6 +95,7 @@ def test_bootstrap_cancel_preserves_admitted_start_and_waits_for_its_cancel_gate
     continued: list[str] = []
     handler = _handler(
         factory,
+        path,
         continue_cancel=lambda command: (
             continued.append(command.run_id)
             or ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
@@ -107,14 +111,15 @@ def test_bootstrap_cancel_preserves_admitted_start_and_waits_for_its_cancel_gate
     assert start.execution_admission is not None
 
 
-def _handler(factory: object, *, continue_cancel: object) -> RequestCancelHandler:
+def _handler(
+    factory: object, database_path: Path, *, continue_cancel: object
+) -> RequestCancelHandler:
     return RequestCancelHandler(
         unit_of_work_factory=factory,  # type: ignore[arg-type]
         now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
         id_generator=DeterministicUUID(prefix="handoff"),
-        resume_target_registry=ResumeTargetRegistry(
-            NodeRegistry(graph_version="v1"), "v1"
-        ),
+        resume_target_registry=ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
         schedule_run_execution=lambda _command: RunExecutionAcceptedV1(1, True, "ACCEPTED"),
         continue_cancel_resolution=continue_cancel,  # type: ignore[arg-type]
     )
@@ -146,9 +151,7 @@ def _start_handoff() -> WorkflowHandoffStageV1:
         1,
         "h-start",
         "cmd-start",
-        RunExecutionRefV1(
-            1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None
-        ),
+        RunExecutionRefV1(1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None),
         None,
         0,
         "NONE",

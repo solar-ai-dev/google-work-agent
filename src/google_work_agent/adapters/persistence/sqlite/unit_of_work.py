@@ -1,6 +1,5 @@
 """SQLite transactional unit of work."""
 
-import logging
 import sqlite3
 import time
 from collections.abc import Callable
@@ -14,8 +13,8 @@ from google_work_agent.adapters.persistence.sqlite.approval_history_reader impor
 from google_work_agent.adapters.persistence.sqlite.cancel_intent_reader import (
     SqliteCancelIntentReader,
 )
-from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
-    SqliteConnectedAccountStore,
+from google_work_agent.adapters.persistence.sqlite.post_commit_trace_repository import (
+    PostCommitTraceEventRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
     SqliteActionRepository,
@@ -56,9 +55,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.retention_reposi
 from google_work_agent.adapters.persistence.sqlite.repositories.run_repository import (
     SqliteRunRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repository import (
-    SqliteTraceEventRepository,
-)
 from google_work_agent.adapters.persistence.sqlite.repositories.verification_repository import (
     SqliteVerificationRepository,
 )
@@ -66,51 +62,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff
     SqliteWorkflowHandoffRepository,
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.domain.trace_event.model import TraceEvent
-from google_work_agent.ports.persistence.trace_event_repository import (
-    PersistedTraceEventRecord,
-    TraceEventCursor,
-)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-
-_LOGGER = logging.getLogger(__name__)
-
-
-class _PostCommitTraceBuffer:
-    """Keep diagnostics outside the owning domain-mutation transaction."""
-
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self._connection = connection
-        self._repository = SqliteTraceEventRepository(connection)
-        self._pending: list[TraceEvent] = []
-
-    def append(self, event: TraceEvent) -> None:
-        self._pending.append(event)
-
-    def list_page(
-        self, cursor: TraceEventCursor | None, limit: int
-    ) -> tuple[PersistedTraceEventRecord, ...]:
-        return self._repository.list_page(cursor, limit)
-
-    def purge_before(self, timestamp_ms: int) -> int:
-        return self._repository.purge_before(timestamp_ms)
-
-    def flush_after_commit(self) -> None:
-        pending, self._pending = self._pending, []
-        if not pending:
-            return
-        try:
-            self._connection.execute("BEGIN IMMEDIATE;")
-            for event in pending:
-                self._repository.append(event)
-            self._connection.execute("COMMIT;")
-        except Exception:
-            if self._connection.in_transaction:
-                self._connection.execute("ROLLBACK;")
-            _LOGGER.exception("post-commit diagnostic trace persistence failed")
-
-    def discard_pending(self) -> None:
-        self._pending.clear()
 
 
 class SqliteUnitOfWork:
@@ -137,7 +89,6 @@ class SqliteUnitOfWork:
         else:
             connection.execute("BEGIN IMMEDIATE;")
         self._connection = connection
-        self.connected_accounts = SqliteConnectedAccountStore(connection)
         self.conversations = SqliteConversationRepository(connection)
         self.runs = SqliteRunRepository(connection)
         self.messages = SqliteMessageRepository(connection)
@@ -148,15 +99,15 @@ class SqliteUnitOfWork:
         self.resource_refs = SqliteResourceRefRepository(connection)
         self.evidence = SqliteEvidenceRepository(connection)
         self.approvals = SqliteApprovalRepository(connection)
-        self.approval_history = SqliteApprovalHistoryReader(self.approvals)
+        self.approval_history = SqliteApprovalHistoryReader(connection)
         self.execution_attempts = SqliteExecutionAttemptRepository(connection)
         self.verifications = SqliteVerificationRepository(connection)
         self.audits = SqliteAuditEventRepository(connection)
-        self.traces = _PostCommitTraceBuffer(connection)
+        self.traces = PostCommitTraceEventRepository(connection)
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
         self.recovery_contexts = SqliteRecoveryRepository(connection, now_ms=self._now_ms)
         self.retention = SqliteRetentionRepository(connection)
-        self.checkpoints = (
+        self.workflow_bindings = (
             SqliteCheckpointAdapter.for_read_transaction(connection, now_ms=self._now_ms)
             if self._read_only
             else SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
@@ -168,11 +119,11 @@ class SqliteUnitOfWork:
             raise RuntimeError("unit of work is not active")
         self._connection.execute("COMMIT;")
         self._committed = True
-        if isinstance(self.traces, _PostCommitTraceBuffer):
+        if isinstance(self.traces, PostCommitTraceEventRepository):
             self.traces.flush_after_commit()
 
     def rollback(self) -> None:
-        if isinstance(self.traces, _PostCommitTraceBuffer):
+        if isinstance(self.traces, PostCommitTraceEventRepository):
             self.traces.discard_pending()
         if self._connection is not None and self._connection.in_transaction:
             self._connection.execute("ROLLBACK;")

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps
 from typing import Any, cast
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.run_command_receipts import (
     finish_json_receipt,
@@ -20,8 +21,8 @@ from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventR
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -78,6 +79,7 @@ class _ResumePersistence:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         resolve_resume_authority: Callable[..., ResumeAuthority | None],
         id_generator: UUIDPort,
@@ -86,6 +88,7 @@ class _ResumePersistence:
         apply_transition: Callable[..., tuple[Any, bool]],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._resolve_resume_authority = resolve_resume_authority
         self._id_generator = id_generator
@@ -235,10 +238,10 @@ class _ResumePersistence:
     def _stage_resume_handoff(
         self, unit_of_work: UnitOfWork, command: _ResumePersistenceCommand
     ) -> None:
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         if binding is None:
             raise RuntimeError("resume requires a durable workflow binding")
-        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
             command.run_id, binding.langgraph_thread_id
         )
         if checkpoint is None or checkpoint.registered_resume_target is None:

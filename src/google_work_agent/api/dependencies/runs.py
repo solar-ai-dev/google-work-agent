@@ -25,6 +25,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -42,6 +43,7 @@ class RunRouteDependencies:
     api_contract_version: str
     unit_of_work_factory: Callable[[], UnitOfWork]
     read_unit_of_work_factory: Callable[[], UnitOfWork]
+    checkpoint_port: CheckpointPort
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
@@ -53,9 +55,9 @@ class RunRouteDependencies:
     id_generator: UUIDPort
     settings: SettingsPort | None
     operational_command_replay: OperationalCommandReplayPort | None
-    continue_cancel_resolution: Callable[
-        [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
-    ] | None
+    continue_cancel_resolution: (
+        Callable[[ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1] | None
+    )
     resolve_selection_handle: ResolveSelectionHandle
     resource_connector_id: str
     current_account_id: Callable[[], str | None]
@@ -114,11 +116,17 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         raise RuntimeError("resume-target registry is not configured")
     if container.schedule_run_execution is None:
         raise RuntimeError("workflow execution scheduler is not configured")
+    checkpoint_port = getattr(container, "checkpoint_port", None) or getattr(
+        container.workflow_runtime, "_checkpoint_port", None
+    )
+    if checkpoint_port is None:
+        raise RuntimeError("checkpoint port is not configured")
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
+        checkpoint_port=checkpoint_port,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=cast(
@@ -137,10 +145,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
             getattr(container, "operational_command_replay", None),
         ),
         continue_cancel_resolution=cast(
-            Callable[
-                [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
-            ]
-            | None,
+            Callable[[ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1] | None,
             getattr(container, "continue_cancel_resolution_handler", None),
         ),
         resolve_selection_handle=resolve_selection_handle,

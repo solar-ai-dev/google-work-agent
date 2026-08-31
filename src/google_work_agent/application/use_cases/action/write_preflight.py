@@ -7,9 +7,11 @@ from collections.abc import Callable
 from json import loads
 from typing import Literal, Protocol, cast
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,

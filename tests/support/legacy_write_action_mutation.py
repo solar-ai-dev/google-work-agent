@@ -8,9 +8,11 @@ from json import dumps, loads
 from re import fullmatch
 from typing import cast
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarWorkHours
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -48,6 +50,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan_review,
     revoke_active_approvals,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.run_command_receipts import (
     ActionMutationReceiptResponse as _ActionMutationResponse,
 )
@@ -73,7 +76,6 @@ from google_work_agent.domain.canonical import (
 )
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 _MODIFIABLE_ACTION_STATUSES = frozenset(

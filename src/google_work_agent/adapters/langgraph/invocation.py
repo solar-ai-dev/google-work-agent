@@ -270,12 +270,12 @@ class WorkflowInvocationCoordinator:
             return None
         if self._current_run_status(run_id) != RunStatusV1.REAUTH_REQUIRED.value:
             return None
-        execution_summary = values.get("execution_summary")
-        if not isinstance(execution_summary, Mapping):
+        workflow_control = values.get("__workflow_control__")
+        if not isinstance(workflow_control, Mapping):
             return None
-        if execution_summary.get("result") != "REAUTH_REQUIRED":
+        if workflow_control.get("stage") != "REAUTH_REQUIRED":
             return None
-        action_id = execution_summary.get("action_id")
+        action_id = workflow_control.get("action_id")
         if not isinstance(action_id, str) or not action_id:
             return None
         if self._resume_reauth_execution is None:

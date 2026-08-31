@@ -11,9 +11,7 @@ type TerminalMessageSourceKindV1 = Literal[
     "RECOVERY_RESULT",
     "INVALID_REQUEST",
 ]
-type _TerminalResultKindLiteralV1 = Literal[
-    "SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"
-]
+type _TerminalResultKindLiteralV1 = Literal["SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]
 
 
 @dataclass(frozen=True, slots=True)

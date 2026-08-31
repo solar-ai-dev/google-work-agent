@@ -17,11 +17,13 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2,
 )
 from google_work_agent.application.orchestration.contracts import (
-    PolicyConfirmationReceiptV1,
     UserInterruptV1,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
@@ -42,7 +44,7 @@ class RequestUnderstandingStateV2(RequestUnderstandingInputState, total=False):
     request_intent: RequestIntentV2 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    execution_summary: dict[str, object] | None
+    __workflow_control__: NotRequired[dict[str, object] | None]
 
 
 class RequestUnderstandingParentOutputState(AgentSubgraphInputEnvelope, total=False):
@@ -51,7 +53,7 @@ class RequestUnderstandingParentOutputState(AgentSubgraphInputEnvelope, total=Fa
     request_intent: RequestIntentV2 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    execution_summary: dict[str, object] | None
+    __workflow_control__: NotRequired[dict[str, object] | None]
 
 
 __all__ = [

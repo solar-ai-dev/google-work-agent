@@ -5,7 +5,10 @@ from importlib import import_module
 from json import dumps
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
     work_analysis_confirmation_context_hash,
@@ -30,9 +33,7 @@ def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> N
         resolve_pending_confirmation=lambda _run_id: None,
         resume_confirmation=object(),  # type: ignore[arg-type]
         resume_target_registry=object(),  # type: ignore[arg-type]
-        schedule_run_execution=lambda _command: (_ for _ in ()).throw(
-            AssertionError("not used")
-        ),
+        schedule_run_execution=lambda _command: (_ for _ in ()).throw(AssertionError("not used")),
         id_factory=lambda: "receipt-1",
     )
     based_on = [{"artifact_id": "candidate-1", "revision": 2}]
@@ -148,6 +149,7 @@ def test_applied_confirmation_remains_replayable_after_later_run_state_change(
         unit_of_work.commit()
     resume = ResumeConfirmationHandler(
         unit_of_work_factory=factory,
+        checkpoint_port=sqlite_checkpoint(path),
         now_ms=lambda: 10,
         id_factory=lambda: "unused",
         resume_target_registry=object(),  # type: ignore[arg-type]

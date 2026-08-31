@@ -26,8 +26,10 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 from google_work_agent.application.orchestration.contracts import (
     FinalizeIntentV1,
-    PolicyConfirmationReceiptV1,
     UserInterruptV1,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 
 
@@ -45,7 +47,6 @@ class ToolRouteStateV1(ToolRoutingInputState, total=False):
     tool_route_plan: ToolRoutePlanV2 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    execution_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
 
 
@@ -57,7 +58,6 @@ class ToolRoutingParentOutputState(AgentSubgraphInputEnvelope, total=False):
     workflow_signal: ScopeExpansionRequiredV1 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    execution_summary: dict[str, object] | None
     finalize_intent: FinalizeIntentV1 | None
 
 

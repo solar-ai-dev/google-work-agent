@@ -5,11 +5,9 @@ import pytest
 from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
 )
-from google_work_agent.adapters.persistence import (
-    apply_migrations,
-    connect_sqlite,
-    sqlite_unit_of_work_factory,
-)
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,

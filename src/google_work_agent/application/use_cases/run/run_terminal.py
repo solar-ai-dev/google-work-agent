@@ -18,6 +18,7 @@ from google_work_agent.application.orchestration.contracts import (
     validate_finalize_intent_v1,
 )
 from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
@@ -34,7 +35,6 @@ from google_work_agent.domain.run.model import (
     next_allowed_run_commands,
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

@@ -14,7 +14,8 @@ import itertools
 from collections.abc import Callable
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
@@ -25,6 +26,7 @@ from google_work_agent.application.use_cases.run.start_run import (
     StartRunHandler,
 )
 from google_work_agent.domain.results import ResultCode
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 def _seeded_database(tmp_path: Path) -> Path:
@@ -59,11 +61,12 @@ def _mark_run_terminal(database_path: Path, *, run_id: str, finished_at_ms: int)
 
 
 def _handler(
-    unit_of_work_factory: Callable[[], object], *, now_ms: Callable[[], int]
+    unit_of_work_factory: Callable[[], object], database_path: Path, *, now_ms: Callable[[], int]
 ) -> StartRunHandler:
     counter = itertools.count(1)
     return StartRunHandler(
         unit_of_work_factory=unit_of_work_factory,  # type: ignore[arg-type]
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=now_ms,
         id_factory=lambda: f"id-{next(counter)}",
         graph_profile="SIX_ROLE_BASELINE",
@@ -91,7 +94,7 @@ def test_new_run_in_continuing_conversation_gets_fresh_run_and_thread_id(
     StartRun succeeds rather than hitting the open-run conflict."""
     database_path = _seeded_database(tmp_path)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    handler = _handler(unit_of_work_factory, now_ms=lambda: 1_000)
+    handler = _handler(unit_of_work_factory, database_path, now_ms=lambda: 1_000)
 
     run_a = handler(
         _command(command_id="command-a", request_hash="a" * 64, request_text="오늘 일정 알려줘")
@@ -125,7 +128,7 @@ def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) ->
     conversation_id."""
     database_path = _seeded_database(tmp_path)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    handler = _handler(unit_of_work_factory, now_ms=lambda: 1_000)
+    handler = _handler(unit_of_work_factory, database_path, now_ms=lambda: 1_000)
 
     run_a = handler(
         _command(command_id="command-a", request_hash="a" * 64, request_text="오늘 일정 알려줘")
@@ -155,7 +158,7 @@ def test_start_run_rejects_second_open_run_in_same_conversation(tmp_path: Path) 
     response comes from."""
     database_path = _seeded_database(tmp_path)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    handler = _handler(unit_of_work_factory, now_ms=lambda: 1_000)
+    handler = _handler(unit_of_work_factory, database_path, now_ms=lambda: 1_000)
 
     run_a = handler(
         _command(command_id="command-a", request_hash="a" * 64, request_text="오늘 일정 알려줘")

@@ -10,7 +10,8 @@ from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegi
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,
@@ -49,6 +50,7 @@ def test_safe_resume_replays_same_hash_and_rejects_different_hash(tmp_path: Path
 
     handler = ResumeSafeCheckpointHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=SqliteCheckpointAdapter(database_path, now_ms=lambda: 20),
         resume_target_registry=registry,
         schedule_run_execution=schedule,
         id_factory=lambda: "handoff-safe-1",
@@ -67,18 +69,17 @@ def test_safe_resume_replays_same_hash_and_rejects_different_hash(tmp_path: Path
     assert not conflict.applied
     assert conflict.result_code == "DUPLICATE_COMMAND"
     with sqlite_unit_of_work_factory(database_path)() as unit_of_work:
-        assert unit_of_work.workflow_handoffs.count_redriveable() == 1
+        assert len(unit_of_work.workflow_handoffs.list_redriveable(limit=2)) == 1
 
 
 def test_safe_resume_binding_mismatch_enters_durable_recovery(tmp_path: Path) -> None:
     database_path, registry = _database_with_checkpoint(tmp_path)
     with connect_sqlite(database_path) as connection:
-        connection.execute(
-            "UPDATE workflow_bindings SET graph_version='v2' WHERE run_id='r-1';"
-        )
+        connection.execute("UPDATE workflow_bindings SET graph_version='v2' WHERE run_id='r-1';")
         connection.commit()
     handler = ResumeSafeCheckpointHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
+        checkpoint_port=SqliteCheckpointAdapter(database_path, now_ms=lambda: 20),
         resume_target_registry=registry,
         schedule_run_execution=lambda _command: RunExecutionAcceptedV1(1, True, "ACCEPTED"),
         id_factory=lambda: "unused",

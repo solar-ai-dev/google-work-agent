@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
+from tests.support.checkpoint import sqlite_checkpoint
 
 
 def _seeded_database(tmp_path: Path, *, conversation_updated_at_ms: int) -> Path:
@@ -41,6 +43,7 @@ def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: 
     id_counter = iter(range(1, 100))
     handler = StartRunHandler(
         unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=sqlite_checkpoint(database_path),
         now_ms=lambda: new_now_ms,
         id_factory=lambda: f"id-{next(id_counter)}",
         graph_profile="SIX_ROLE_BASELINE",

@@ -10,6 +10,8 @@ from typing import Protocol, cast
 
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
@@ -21,6 +23,7 @@ from google_work_agent.domain.run.transitions.resume_confirmation import (
     transition_resume_confirmation,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
@@ -93,11 +96,13 @@ class ResumeConfirmationHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         resume_target_registry: ResumeTargetValidator,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_factory = id_factory
         self._resume_target_registry = resume_target_registry
@@ -111,11 +116,11 @@ class ResumeConfirmationHandler:
             run = unit_of_work.runs.get(command.run_id)
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
-            binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+            binding = self._checkpoint_port.load_workflow_binding(command.run_id)
             checkpoint = (
                 None
                 if binding is None
-                else unit_of_work.checkpoints.load_same_run_checkpoint(
+                else self._checkpoint_port.load_same_run_checkpoint(
                     command.run_id, binding.langgraph_thread_id
                 )
             )
@@ -217,7 +222,7 @@ class ResumeConfirmationHandler:
                 None,
                 "compare-and-set rejected ResumeConfirmation",
             )
-        binding = unit_of_work.checkpoints.load_workflow_binding(command.run_id)
+        binding = self._checkpoint_port.load_workflow_binding(command.run_id)
         if binding is None:
             raise RuntimeError("validated confirmation binding disappeared")
         handoff_id = self._id_factory()

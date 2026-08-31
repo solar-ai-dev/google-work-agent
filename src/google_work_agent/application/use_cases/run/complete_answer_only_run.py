@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from json import dumps, loads
 from typing import Literal, cast
 
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
@@ -22,7 +23,6 @@ from google_work_agent.domain.run.transitions.complete_answer_only_run import (
     transition_complete_answer_only_run,
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -262,9 +262,7 @@ class CompleteAnswerOnlyRunHandler:
                 )
             return replace(
                 response,
-                result_kind=cast(
-                    Literal["SUCCESS", "PARTIAL"], run.terminal_result_kind.value
-                ),
+                result_kind=cast(Literal["SUCCESS", "PARTIAL"], run.terminal_result_kind.value),
             )
 
         return self._recover_pending_receipt(unit_of_work, command)

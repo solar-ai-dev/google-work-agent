@@ -120,6 +120,12 @@ def _state(*, llm_calls_used: int) -> dict[str, object]:
             correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
         ),
         "prompt_context": {},
+        "run_input": {
+            "entry_mode": "AGENT_SEARCH",
+            "user_request": "test request",
+            "selected_resource_refs": [],
+            "requested_mode": "AUTO",
+        },
         "trace_context": {
             "agent_node_log": [
                 {

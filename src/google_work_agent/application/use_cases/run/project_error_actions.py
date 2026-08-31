@@ -7,18 +7,21 @@ from dataclasses import dataclass
 from json import JSONDecodeError, loads
 from typing import Literal
 
+from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
+    latest_attempt_for_action,
+)
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
     safe_checkpoint_resume_is_allowed,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import (
-    ExecutionAttempt,
     ExecutionAttemptStatusV1,
 )
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 type ErrorUiActionKindV1 = Literal[
     "PREPARE_RETRY",
@@ -54,14 +57,14 @@ class ProjectErrorActionsHandler:
         self,
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         resume_target_registry: ResumeTargetValidator,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._resume_target_registry = resume_target_registry
 
-    def __call__(
-        self, query: ProjectErrorActionsQueryV1
-    ) -> ProjectErrorActionsResultV1 | None:
+    def __call__(self, query: ProjectErrorActionsQueryV1) -> ProjectErrorActionsResultV1 | None:
         with self._unit_of_work_factory() as unit_of_work:
             run = unit_of_work.runs.get(query.run_id)
             if run is None:
@@ -96,6 +99,7 @@ class ProjectErrorActionsHandler:
                 )
             if safe_checkpoint_resume_is_allowed(
                 unit_of_work=unit_of_work,
+                checkpoint_port=self._checkpoint_port,
                 run=run,
                 resume_target_registry=self._resume_target_registry,
             ):
@@ -122,17 +126,9 @@ class ProjectErrorActionsHandler:
 
 
 def _latest_delivery_certainty(unit_of_work: UnitOfWork, action_id: str) -> str | None:
-    latest: tuple[int, int, ExecutionAttempt] | None = None
-    for approval in unit_of_work.approval_history.list_for_action(action_id):
-        attempt = unit_of_work.execution_attempts.get_latest_for_approval(approval.id)
-        if attempt is None:
-            continue
-        candidate = (approval.approval_no, attempt.attempt_no, attempt)
-        if latest is None or candidate[:2] > latest[:2]:
-            latest = candidate
-    if latest is None:
+    attempt = latest_attempt_for_action(unit_of_work, action_id)
+    if attempt is None:
         return None
-    attempt = latest[2]
     if attempt.status is not ExecutionAttemptStatusV1.FAILED:
         return None
     raw = attempt.response_metadata_json

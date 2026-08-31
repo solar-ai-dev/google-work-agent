@@ -6,12 +6,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.policy_kernels.calendar_conflict import CalendarConflictDecision
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
 from google_work_agent.application.use_cases.action.approval_source_snapshot import (
     build_approval_source_snapshot,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarConflictDecision,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
@@ -46,6 +48,7 @@ from google_work_agent.application.use_cases.claim.write_execution_integrity imp
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -69,8 +72,8 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -109,6 +112,7 @@ class ApproveActionHandler:
         *,
         get_approval_ttl_minutes: Callable[[], int],
         unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
         now_ms: Callable[[], int],
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetIssuer,
@@ -116,6 +120,7 @@ class ApproveActionHandler:
     ) -> None:
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
@@ -554,10 +559,10 @@ class ApproveActionHandler:
         run_id: str,
         trigger_command_id: str,
     ) -> str:
-        binding = unit_of_work.checkpoints.load_workflow_binding(run_id)
+        binding = self._checkpoint_port.load_workflow_binding(run_id)
         if binding is None:
             raise RuntimeError("approval requires a durable workflow binding")
-        checkpoint = unit_of_work.checkpoints.load_same_run_checkpoint(
+        checkpoint = self._checkpoint_port.load_same_run_checkpoint(
             run_id, binding.langgraph_thread_id
         )
         if checkpoint is None:

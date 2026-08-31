@@ -23,12 +23,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Literal
 
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
 if TYPE_CHECKING:
-    from google_work_agent.application.orchestration.contracts import (
-        PolicyConfirmationReceiptV1,
-    )
     from google_work_agent.application.orchestration.handoff_contracts import (
         RequestIntentV2,
     )

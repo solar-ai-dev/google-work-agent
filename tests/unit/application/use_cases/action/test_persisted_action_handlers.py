@@ -66,6 +66,7 @@ def _handoff_dependencies(unit_of_work: MagicMock):
         handoff_id=stage.handoff_id
     )
     return {
+        "checkpoint_port": unit_of_work.checkpoints,
         "id_generator": SimpleNamespace(next_id=lambda: "handoff-1", new_uuid=lambda: "handoff-1"),
         "resume_target_registry": SimpleNamespace(
             issue_main_stage=lambda profile, stage, version: MainControlResumeTargetV2(
@@ -444,6 +445,7 @@ def test_refresh_expired_action_reuses_fresh_source_and_updates_target_ref() -> 
 
     result = RefreshExpiredActionHandler(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
+        checkpoint_port=dependencies["checkpoint_port"],
         now_ms=lambda: 3000,
         id_factory=dependencies["id_generator"].new_uuid,
         resume_target_registry=dependencies["resume_target_registry"],

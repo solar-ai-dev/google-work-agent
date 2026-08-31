@@ -535,8 +535,7 @@ def _obsolete_second_consecutive_confirmation_round_via_same_nested_checkpoint(
         assert round2_task.state.next == ("finalize",)
         round2_interrupt_id = second.payload["user_interrupt"]["interrupt_id"]
         assert (
-            second.payload["user_interrupt"]["origin_target"]
-            == "analysis.assess_information_gaps"
+            second.payload["user_interrupt"]["origin_target"] == "analysis.assess_information_gaps"
         )
         assert round2_interrupt_id != round1_interrupt_id
 

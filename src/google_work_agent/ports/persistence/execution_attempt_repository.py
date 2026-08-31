@@ -9,6 +9,7 @@ from google_work_agent.domain.execution_attempt.model import (
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 
 type ExecutionReconciliationCandidateKindV1 = Literal[
+    "PRE_BEGIN_ORPHAN",
     "POST_BEGIN_ORPHAN",
     "UNKNOWN_RESULT_UNRESOLVED",
     "EXECUTED_AWAITING_VERIFICATION",
@@ -28,7 +29,6 @@ class ExecutionReconciliationCandidateV1:
 class ExecutionAttemptRepository(Protocol):
     def get(self, attempt_id: str) -> ExecutionAttemptRecord | None: ...
     def get_active_for_approval(self, approval_id: str) -> ExecutionAttemptRecord | None: ...
-    def get_latest_for_approval(self, approval_id: str) -> ExecutionAttemptRecord | None: ...
     def insert_claimed(self, record: ExecutionAttemptRecord) -> None: ...
     def update_if_version_and_status(
         self,

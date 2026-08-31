@@ -1,9 +1,9 @@
 import pytest
 
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.approval.guards.expire_approval import ApprovalExpiryInput
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.approval.transitions.expire_approval import (
-    ApprovalExpiryInput,
     transition_expire_approval,
 )
 from google_work_agent.domain.plan.model import PlanStatusV1

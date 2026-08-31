@@ -7,10 +7,13 @@ from dataclasses import dataclass
 from json import JSONDecodeError, loads
 from typing import Literal, cast
 
+from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
+    latest_attempt_for_action,
+)
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
@@ -76,22 +79,20 @@ class ProjectContextPreviewHandler:
             plans = current_plan_tuple(unit_of_work.plans, query.run_id)
             plan = max(plans, key=lambda item: (item.revision_no, item.id), default=None)
             actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
-            evidence = unit_of_work.evidence.list_for_retrieval_artifact(
-                query.run_id,
-                head.retrieval_artifact_id,
-                limit=self._max_items,
-            )
+            evidence = unit_of_work.evidence.list_for_run(query.run_id, limit=500)
             items = tuple(
                 item
                 for record in evidence
-                if (item := _preview_item(
-                    unit_of_work=unit_of_work,
-                    retrieval_artifact_id=head.retrieval_artifact_id,
-                    record=record,
-                    max_excerpt_chars=self._max_excerpt_chars,
-                ))
+                if (
+                    item := _preview_item(
+                        unit_of_work=unit_of_work,
+                        retrieval_artifact_id=head.retrieval_artifact_id,
+                        record=record,
+                        max_excerpt_chars=self._max_excerpt_chars,
+                    )
+                )
                 is not None
-            )
+            )[: self._max_items]
             allowed = _adjustment_allowed(
                 unit_of_work=unit_of_work,
                 run_status=run.status,
@@ -157,9 +158,7 @@ def _preview_item(
         resource_id=resource.resource_id,
         display_label=resource.title or resource.resource_id,
         excerpt=(
-            None
-            if not isinstance(excerpt, str) or not excerpt
-            else excerpt[:max_excerpt_chars]
+            None if not isinstance(excerpt, str) or not excerpt else excerpt[:max_excerpt_chars]
         ),
     )
 
@@ -194,21 +193,20 @@ def _adjustment_allowed(
     ):
         return False
     for action in actions:
-        for approval in unit_of_work.approval_history.list_for_action(action.id):
-            attempt = unit_of_work.execution_attempts.get_latest_for_approval(approval.id)
-            if attempt is None:
-                continue
-            if attempt.status in {
-                ExecutionAttemptStatusV1.CLAIMED,
-                ExecutionAttemptStatusV1.EXECUTING,
-                ExecutionAttemptStatusV1.UNKNOWN_RESULT,
-            }:
-                return False
-            if (
-                attempt.status is ExecutionAttemptStatusV1.SUCCEEDED
-                and unit_of_work.verifications.get_latest_for_attempt(attempt.id) is None
-            ):
-                return False
+        attempt = latest_attempt_for_action(unit_of_work, action.id)
+        if attempt is None:
+            continue
+        if attempt.status in {
+            ExecutionAttemptStatusV1.CLAIMED,
+            ExecutionAttemptStatusV1.EXECUTING,
+            ExecutionAttemptStatusV1.UNKNOWN_RESULT,
+        }:
+            return False
+        if (
+            attempt.status is ExecutionAttemptStatusV1.SUCCEEDED
+            and unit_of_work.verifications.get_latest_for_attempt(attempt.id) is None
+        ):
+            return False
     return True
 
 

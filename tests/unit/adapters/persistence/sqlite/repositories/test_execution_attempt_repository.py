@@ -109,7 +109,7 @@ def test_execution_attempt_repository_exact_active_and_cas_surface() -> None:
     )
 
     assert repository.get("attempt-1") == repository.get_active_for_approval("approval-1")
-    assert repository.get("attempt-1") == repository.get_latest_for_approval("approval-1")
+    assert not hasattr(repository, "get_latest_for_approval")
     assert repository.update_if_version_and_status(
         "attempt-1",
         0,
@@ -169,6 +169,7 @@ def test_reconciliation_candidates_use_exact_phase_markers() -> None:
     connection = _reconciliation_connection()
     repository = SqliteExecutionAttemptRepository(connection)
     phases = (
+        ("pre-begin", "CLAIMED", "EXECUTING"),
         ("orphan", "EXECUTING", "EXECUTING"),
         ("no-begin", "EXECUTING", "EXECUTING"),
         ("unknown", "UNKNOWN_RESULT", "UNKNOWN_RESULT"),
@@ -214,6 +215,7 @@ def test_reconciliation_candidates_use_exact_phase_markers() -> None:
     candidates = repository.list_reconciliation_candidates(10)
 
     assert [(candidate.execution_attempt_id, candidate.kind) for candidate in candidates] == [
+        ("attempt-pre-begin", "PRE_BEGIN_ORPHAN"),
         ("attempt-orphan", "POST_BEGIN_ORPHAN"),
         ("attempt-unknown", "UNKNOWN_RESULT_UNRESOLVED"),
         ("attempt-verification", "EXECUTED_AWAITING_VERIFICATION"),

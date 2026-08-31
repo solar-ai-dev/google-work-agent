@@ -86,7 +86,6 @@ from google_work_agent.application.orchestration.confirmation import build_user_
 from google_work_agent.application.orchestration.contracts import (
     ConfirmationResponseProjectionV1,
     GraphStateUpdateV1,
-    PolicyConfirmationReceiptV1,
     WorkflowPhase,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -109,6 +108,9 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext

@@ -3,14 +3,12 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 
-_PolicyConfirmationKind = Literal[
-    "SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"
-]
+_PolicyConfirmationKind = Literal["SCOPE_EXPANSION", "DUPLICATE_OVERRIDE", "CONFLICT_OVERRIDE"]
 
 
 @dataclass(frozen=True, slots=True)

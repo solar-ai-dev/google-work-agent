@@ -32,9 +32,7 @@ def test_finalize_uses_the_canonical_closed_router() -> None:
     assert "_route_after_finalize" not in graph
     assert route_after_assemble_work_analysis({"final_analysis": {}}) == "end"
     assert (
-        route_after_assemble_work_analysis(
-            {"__work_analysis_retry_confirmation__": True}
-        )
+        route_after_assemble_work_analysis({"__work_analysis_retry_confirmation__": True})
         == "assess_operational_risks"
     )
 

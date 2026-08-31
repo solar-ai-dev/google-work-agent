@@ -26,8 +26,9 @@ class ResolveMismatchRecoveryCommand:
 class ResolveMismatchRecoveryService:
     """Keep historical scenarios exercising the canonical recovery owner."""
 
-    def __init__(self, *, unit_of_work_factory, now_ms) -> None:
+    def __init__(self, *, unit_of_work_factory, checkpoint_port, now_ms) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
 
     def __call__(self, command: ResolveMismatchRecoveryCommand):
@@ -72,6 +73,7 @@ class ResolveMismatchRecoveryService:
                 unit_of_work.commit()
         result = ResolveRecoveryHandler(
             unit_of_work_factory=self._unit_of_work_factory,
+            checkpoint_port=self._checkpoint_port,
             now_ms=self._now_ms,
             next_id=(
                 (lambda: f"message:{command.command_id}")

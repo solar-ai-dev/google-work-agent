@@ -68,6 +68,7 @@ class WriteActionResponse:
     next_allowed_commands: tuple[str, ...]
     approval_id: str | None = None
     attempt_id: str | None = None
+    verification_id: str | None = None
     claim_token: str | None = None
     safe_error_code: str | None = None
     conflict_detail: str | None = None

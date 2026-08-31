@@ -7,6 +7,10 @@ from typing import Literal
 from uuid import uuid4
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
+from google_work_agent.application.use_cases.plan.persistence_projection import (
+    current_plan_tuple,
+    load_plan_record,
+)
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
@@ -21,7 +25,6 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.transitions.complete_read_only_run import (
     transition_complete_read_only_run,
 )
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple, load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 

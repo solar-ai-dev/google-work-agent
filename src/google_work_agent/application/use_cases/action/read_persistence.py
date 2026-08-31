@@ -17,6 +17,10 @@ from google_work_agent.application.use_cases.action.read_contracts import (
     SaveReadOnlyPlanCommand,
     SaveReadOnlyPlanResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import load_plan_record
+from google_work_agent.application.use_cases.plan.project_dependencies import (
+    project_dependency_ids,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionCommand, ActionStatusV1, EffectType
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
@@ -31,8 +35,6 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
-from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 READ_ACTION_TERMINAL_STATUSES = frozenset(
@@ -659,6 +661,10 @@ def _saved_plan_matches(
     if plan.run_id != command.run_id or plan.revision_no != command.revision_no:
         return False
     persisted_actions = unit_of_work.actions.list_for_plan(plan.id)
+    bundle = unit_of_work.plans.load_bundle(plan.id)
+    if bundle is None:
+        return False
+    dependencies = project_dependency_ids(bundle)
     if len(persisted_actions) != len(command.actions):
         return False
     action_by_id = {action.id: action for action in persisted_actions}
@@ -675,9 +681,7 @@ def _saved_plan_matches(
             or action.expected_json != canonicalize_json_value(draft.expected)
         ):
             return False
-        if dependency_ids_for_action(unit_of_work.actions, persisted_actions, action.id) != tuple(
-            sorted(draft.depends_on_action_ids)
-        ):
+        if dependencies.get(action.id, ()) != tuple(sorted(draft.depends_on_action_ids)):
             return False
         linked_evidence = {item.id for item in unit_of_work.evidence.list_for_action(action.id)}
         if not set(draft.evidence_ids).issubset(linked_evidence):
@@ -784,11 +788,11 @@ def _complete_projection_matches(
 
 
 def _inspect_read_plan_state(unit_of_work: UnitOfWork, plan_id: str) -> _AggregateState:
-    actions = unit_of_work.actions.list_for_plan(plan_id)
-    dependencies = {
-        action.id: dependency_ids_for_action(unit_of_work.actions, actions, action.id)
-        for action in actions
-    }
+    bundle = unit_of_work.plans.load_bundle(plan_id)
+    if bundle is None:
+        raise LookupError(f"plan not found: {plan_id}")
+    actions = bundle.actions
+    dependencies = project_dependency_ids(bundle)
     action_statuses = {action.id: ActionStatusV1(action.status) for action in actions}
     if any(
         action_statuses[action.id] is ActionStatusV1.PROPOSED

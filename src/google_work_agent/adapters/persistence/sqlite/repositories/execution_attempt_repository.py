@@ -58,13 +58,6 @@ class SqliteExecutionAttemptRepository:
         ).fetchone()
         return None if r is None else self._record(r)
 
-    def get_latest_for_approval(self, approval_id: str) -> ExecutionAttemptRecord | None:
-        r = self._connection.execute(
-            self._SELECT + " WHERE approval_id=? ORDER BY attempt_no DESC LIMIT 1;",
-            (approval_id,),
-        ).fetchone()
-        return None if r is None else self._record(r)
-
     def insert_claimed(self, record: ExecutionAttemptRecord) -> None:
         self._connection.execute(
             """INSERT INTO execution_attempts (
@@ -136,6 +129,16 @@ class SqliteExecutionAttemptRepository:
             SELECT ea.id AS execution_attempt_id, a.id AS action_id, p.run_id,
                    ea.started_at_ms,
                    CASE
+                     WHEN ea.status='CLAIMED' AND a.status='EXECUTING'
+                          AND NOT EXISTS (
+                            SELECT 1 FROM command_receipts begin_receipt
+                            WHERE begin_receipt.command_type='BeginExecutionAttempt'
+                              AND begin_receipt.aggregate_type='ExecutionAttempt'
+                              AND begin_receipt.aggregate_id=ea.id
+                              AND begin_receipt.status='APPLIED'
+                              AND begin_receipt.result_code='TRANSITION_APPLIED'
+                          )
+                       THEN 'PRE_BEGIN_ORPHAN'
                      WHEN ea.status='EXECUTING' AND a.status='EXECUTING'
                           AND EXISTS (
                             SELECT 1 FROM command_receipts begin_receipt
@@ -200,7 +203,7 @@ class SqliteExecutionAttemptRepository:
             JOIN actions a ON a.id=ap.action_id
             JOIN plans p ON p.id=a.plan_id
             JOIN runs r ON r.id=p.run_id
-            WHERE ea.status IN ('EXECUTING','UNKNOWN_RESULT','SUCCEEDED','FAILED')
+            WHERE ea.status IN ('CLAIMED','EXECUTING','UNKNOWN_RESULT','SUCCEEDED','FAILED')
             )
             SELECT execution_attempt_id, action_id, run_id, kind
             FROM classified

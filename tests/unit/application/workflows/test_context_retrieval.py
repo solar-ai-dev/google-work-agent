@@ -177,9 +177,7 @@ def _selection_output(selected_segment_ids: list[str]) -> EvidenceSelectionResul
                 EvidenceRoleDraftV2,
                 {
                     "segment_id": selected_segment_ids[0],
-                    "role": cast(
-                        Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], "SUPPORTS"
-                    ),
+                    "role": cast(Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"], "SUPPORTS"),
                     "relevance_reason": "Directly answers the request.",
                 },
             )

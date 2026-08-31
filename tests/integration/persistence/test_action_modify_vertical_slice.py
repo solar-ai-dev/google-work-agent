@@ -13,11 +13,9 @@ import pytest
 from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
 )
-from google_work_agent.adapters.persistence import (
-    apply_migrations,
-    connect_sqlite,
-    sqlite_unit_of_work_factory,
-)
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
@@ -30,6 +28,9 @@ from google_work_agent.application.use_cases.action.write_approval_contracts imp
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
+)
+from google_work_agent.application.use_cases.plan.project_dependencies import (
+    project_dependency_ids,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.save_write_plan import (
@@ -56,7 +57,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
 )
-from google_work_agent.ports.persistence.action_repository import dependency_ids_for_action
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from tests.integration.persistence.review_support import record_pass_review
 from tests.support.fakes import FakeClockPort
@@ -1013,10 +1013,9 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     assert publish_response.applied is True
 
     with unit_of_work_factory() as unit_of_work:
-        persisted_actions = unit_of_work.actions.list_for_plan("plan-dep")
-        assert dependency_ids_for_action(
-            unit_of_work.actions, persisted_actions, "action-dependent"
-        ) == ("action-upstream",)
+        bundle = unit_of_work.plans.load_bundle("plan-dep")
+        assert bundle is not None
+        assert project_dependency_ids(bundle)["action-dependent"] == ("action-upstream",)
 
     for action_id, approval_id in (
         ("action-upstream", "approval-upstream"),

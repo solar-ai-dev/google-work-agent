@@ -4,7 +4,8 @@ from typing import TypedDict
 import pytest
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.persistence import apply_migrations, connect_sqlite
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.run.begin_planning import (
@@ -82,6 +83,7 @@ def test_phase_handlers_apply_receipt_audit_and_run_cas_atomically(tmp_path: Pat
     retrieval = BeginRetrievalHandler(unit_of_work_factory=factory, now_ms=lambda: 11)
     planning = BeginPlanningHandler(
         unit_of_work_factory=factory,
+        checkpoint_port=SqliteCheckpointAdapter(path, now_ms=lambda: 12),
         now_ms=lambda: 12,
         id_factory=lambda: "unused-handoff",
         resume_target_registry=_ResumeTargetRegistry(),
@@ -154,6 +156,7 @@ def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path:
 
     handler = BeginPlanningHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
+        checkpoint_port=SqliteCheckpointAdapter(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "unused-handoff",
         resume_target_registry=_ResumeTargetRegistry(),
@@ -236,6 +239,7 @@ def test_published_reentry_with_inflight_action_has_zero_domain_mutation(tmp_pat
 
     handler = BeginPlanningHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
+        checkpoint_port=SqliteCheckpointAdapter(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "unused-handoff",
         resume_target_registry=_ResumeTargetRegistry(),
@@ -359,6 +363,7 @@ def test_context_adjustment_uses_retrieval_head_and_stages_resume_atomically(
 
     handler = BeginPlanningHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(path, now_ms=lambda: 10),
+        checkpoint_port=SqliteCheckpointAdapter(path, now_ms=lambda: 10),
         now_ms=lambda: 10,
         id_factory=lambda: "context-handoff-1",
         resume_target_registry=_ResumeTargetRegistry(),

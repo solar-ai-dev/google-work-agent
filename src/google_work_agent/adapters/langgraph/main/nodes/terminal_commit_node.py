@@ -61,9 +61,7 @@ def _is_committed(facts: Mapping[str, object]) -> bool:
     return facts.get("status") in _TERMINAL_STATUSES
 
 
-def _verify_committed(
-    facts: Mapping[str, object], intent: TerminalCommitIntentV1
-) -> None:
+def _verify_committed(facts: Mapping[str, object], intent: TerminalCommitIntentV1) -> None:
     status = facts.get("status")
     result_kind = facts.get("terminal_result_kind")
     final_message_count = facts.get("final_message_count")

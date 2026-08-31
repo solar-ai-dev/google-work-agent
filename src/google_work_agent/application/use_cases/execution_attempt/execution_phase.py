@@ -84,6 +84,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     WriteActionResponse,
     WriteRunResponse,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import load_plan_record
 from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
     LookupUnknownResultHandler,
     LookupUnknownResultQueryV1,
@@ -130,7 +131,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
-from google_work_agent.ports.persistence.plan_repository import load_plan_record
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -167,6 +167,8 @@ class WriteExecutionPhaseResult:
     attempt_id: str | None = None
     approval_id: str | None = None
     claimed_action_version: int | None = None
+    delivery_certainty: str | None = None
+    verification_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -455,25 +457,38 @@ class WriteExecutionPhaseCoordinator:
                 result_code=ResultCode.STATE_CONFLICT.value,
                 current_version=claim.claimed_action_version,
             )
-        prepared = self._connector_execution.prepare_write(
-            tool_name=action.tool_name,
-            arguments=cast(dict[str, object], loads(action.arguments_json)),
-            recovery_fingerprint=approval.recovery_fingerprint,
-        )
-        claim_context = self._build_claim_context(
-            BuildClaimContextQueryV1(
-                schema_version=1,
-                action_id=action.id,
-                approval_id=approval.id,
-                execution_attempt_id=attempt_id,
+        try:
+            prepared = self._connector_execution.prepare_write(
                 tool_name=action.tool_name,
-                approval_arguments_hash=action.arguments_hash,
-                final_tool_arguments=prepared.arguments,
-                service_instance_id=self._service_instance_id,
-                mcp_process_instance_id=self._mcp_process_instance_id(),
+                arguments=cast(dict[str, object], loads(action.arguments_json)),
+                recovery_fingerprint=approval.recovery_fingerprint,
             )
-        )
-        claim_payload = claim_context_payload(claim_context)
+            claim_context = self._build_claim_context(
+                BuildClaimContextQueryV1(
+                    schema_version=1,
+                    action_id=action.id,
+                    approval_id=approval.id,
+                    execution_attempt_id=attempt_id,
+                    tool_name=action.tool_name,
+                    approval_arguments_hash=action.arguments_hash,
+                    final_tool_arguments=prepared.arguments,
+                    service_instance_id=self._service_instance_id,
+                    mcp_process_instance_id=self._mcp_process_instance_id(),
+                )
+            )
+            claim_payload = claim_context_payload(claim_context)
+        except (
+            GoogleWorkspaceGatewayError,
+            LookupError,
+            PermissionError,
+            RuntimeError,
+            ValueError,
+        ) as error:
+            return self._abort_before_dispatch(
+                request=request,
+                claim=claim,
+                error=error,
+            )
         if self._should_stop_for_cancel(request.run_id):
             abort_payload = {
                 "action_id": request.action_id,
@@ -507,14 +522,21 @@ class WriteExecutionPhaseCoordinator:
                 current_version=aborted.action_version,
             )
 
-        begun = self._begin_execution_attempt(
-            BeginExecutionAttemptCommand(
-                command_id=f"begin-execution-attempt:{attempt_id}",
-                request_hash=calculate_canonical_json_hash(claim_payload),
-                action_id=request.action_id,
-                claim_payload=claim_payload,
+        try:
+            begun = self._begin_execution_attempt(
+                BeginExecutionAttemptCommand(
+                    command_id=f"begin-execution-attempt:{attempt_id}",
+                    request_hash=calculate_canonical_json_hash(claim_payload),
+                    action_id=request.action_id,
+                    claim_payload=claim_payload,
+                )
             )
-        )
+        except (LookupError, PermissionError, RuntimeError, ValueError) as error:
+            return self._abort_before_dispatch(
+                request=request,
+                claim=claim,
+                error=error,
+            )
         dispatch = AuthorizedWriteDispatch(
             prepared=PreparedWriteDispatch(action.tool_name, prepared.arguments),
             claim_context=claim_context,
@@ -598,6 +620,66 @@ class WriteExecutionPhaseCoordinator:
             current_version=stored.action_version,
             next_allowed_commands=stored.next_allowed_commands,
             attempt_id=stored.attempt_id,
+        )
+
+    def _abort_before_dispatch(
+        self,
+        *,
+        request: WriteExecutionPhaseRequest,
+        claim: WriteExecutionPhaseResult,
+        error: Exception,
+    ) -> WriteExecutionPhaseResult:
+        """Settle a durable CLAIMED attempt when no dispatch authority was committed."""
+
+        if claim.attempt_id is None or claim.claimed_action_version is None:
+            raise ValueError("pre-dispatch abort requires the claimed Attempt projection")
+        error_code = (
+            error.code.value
+            if isinstance(error, GoogleWorkspaceGatewayError)
+            else "PRE_DISPATCH_REJECTED"
+        )
+        error_detail = str(error) or type(error).__name__
+        payload = {
+            "action_id": request.action_id,
+            "attempt_id": claim.attempt_id,
+            "expected_action_version": claim.claimed_action_version,
+            "expected_attempt_version": 0,
+            "error_code": error_code,
+            "error_detail": error_detail,
+        }
+        aborted = self._abort_claimed_execution(
+            AbortClaimedExecutionCommandV1(
+                command_id=f"abort-before-dispatch:{claim.attempt_id}",
+                request_hash=calculate_canonical_json_hash(payload),
+                action_id=request.action_id,
+                attempt_id=claim.attempt_id,
+                expected_action_version=claim.claimed_action_version,
+                expected_attempt_version=0,
+                error_code=error_code,
+                error_detail=error_detail,
+            )
+        )
+        if not aborted.applied:
+            return WriteExecutionPhaseResult(
+                disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
+                action_status=aborted.action_status.value,
+                result_code=aborted.result_code.value,
+                current_status=aborted.action_status.value,
+                current_version=aborted.action_version,
+                attempt_id=claim.attempt_id,
+            )
+        return WriteExecutionPhaseResult(
+            disposition=(
+                WriteExecutionDisposition.CANCEL_REQUESTED
+                if aborted.action_status is ActionStatusV1.CANCELLED
+                else WriteExecutionDisposition.FAILED
+            ),
+            action_status=aborted.action_status.value,
+            result_code=aborted.result_code.value,
+            safe_error_code=error_code,
+            current_status=aborted.action_status.value,
+            current_version=aborted.action_version,
+            attempt_id=claim.attempt_id,
         )
 
     def recover_unknown(
@@ -920,9 +1002,7 @@ class WriteExecutionPhaseCoordinator:
         resource_ref = (
             None
             if resource_ref_id is None
-            else self._resolve_resource_ref(
-                ResolveResourceRefQuery(resource_ref_id)
-            ).resource_ref
+            else self._resolve_resource_ref(ResolveResourceRefQuery(resource_ref_id)).resource_ref
         )
         expected = cast(dict[str, object], loads(action.expected_json))
         if action.effect_type == "SEND" and approval is not None:
@@ -1018,6 +1098,7 @@ class WriteExecutionPhaseCoordinator:
                     action_version=stored.action_version,
                     next_allowed_commands=(),
                     attempt_id=attempt_id,
+                    verification_id=stored.verification_id,
                     conflict_detail=recovery.conflict_detail,
                 )
         return WriteActionResponse(
@@ -1028,6 +1109,7 @@ class WriteExecutionPhaseCoordinator:
             action_version=stored.action_version,
             next_allowed_commands=(),
             attempt_id=attempt_id,
+            verification_id=stored.verification_id,
             conflict_detail=stored.conflict_detail,
         )
 
@@ -1071,6 +1153,8 @@ class WriteExecutionPhaseCoordinator:
                     current_status=failed.action_status,
                     current_version=failed.action_version,
                     next_allowed_commands=failed.next_allowed_commands,
+                    attempt_id=attempt_id,
+                    delivery_certainty=DeliveryCertainty.NOT_SENT.value,
                 )
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.FAILED,
@@ -1080,6 +1164,8 @@ class WriteExecutionPhaseCoordinator:
                 current_status=failed.action_status,
                 current_version=failed.action_version,
                 next_allowed_commands=failed.next_allowed_commands,
+                attempt_id=attempt_id,
+                delivery_certainty=DeliveryCertainty.NOT_SENT.value,
             )
 
         unknown = self._mark_write_unknown(
@@ -1124,6 +1210,8 @@ class WriteExecutionPhaseCoordinator:
                 current_status=recovered.action_status,
                 current_version=recovered.action_version,
                 next_allowed_commands=recovered.next_allowed_commands,
+                attempt_id=attempt_id,
+                delivery_certainty=error.delivery_certainty.value,
             )
         return WriteExecutionPhaseResult(
             disposition=WriteExecutionDisposition.UNKNOWN_RESULT,
@@ -1133,6 +1221,8 @@ class WriteExecutionPhaseCoordinator:
             current_status=unknown.action_status,
             current_version=unknown.action_version,
             next_allowed_commands=unknown.next_allowed_commands,
+            attempt_id=attempt_id,
+            delivery_certainty=error.delivery_certainty.value,
         )
 
     def _handle_verification_error(

@@ -295,7 +295,7 @@ class _UnitOfWork:
         self.audits = _AuditCollector()
         self.workflow_handoffs = _WorkflowHandoffRepo()
         self.resource_refs = _ResourceRefRepo()
-        self.checkpoints = _CheckpointPort()
+        self.workflow_bindings = _CheckpointPort()
         self.commit_count = 0
 
     def __enter__(self) -> _UnitOfWork:
@@ -520,7 +520,7 @@ def _seed_complete_aggregate(
         applied_checkpoint_generation=None,
         version=0,
     )
-    uow.checkpoints.create_workflow_binding(
+    uow.workflow_bindings.create_workflow_binding(
         WorkflowBindingV1(
             schema_version=1,
             workflow_key=workflow_key,
@@ -541,6 +541,7 @@ def _handler(uow: _UnitOfWork) -> StartRunHandler:
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        checkpoint_port=uow.workflow_bindings,
     )
 
 
@@ -554,7 +555,7 @@ def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None
     assert uow.runs.add_count == 1
     assert uow.messages.add_count == 1
     assert uow.workflow_handoffs.stage_count == 1
-    assert len(uow.checkpoints.bindings) == 1
+    assert len(uow.workflow_bindings.bindings) == 1
     assert len(uow.traces.items) == 1
     assert len(uow.audits.items) == 1
     assert uow.command_receipts.reserve_count == 1
@@ -760,6 +761,7 @@ def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None
     uow.command_receipts.record = replace(_received(command), created_at_ms=0)
     handler = StartRunHandler(
         unit_of_work_factory=lambda: uow,
+        checkpoint_port=uow.workflow_bindings,
         now_ms=lambda: 10**15,
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",

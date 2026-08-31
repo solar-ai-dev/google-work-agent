@@ -329,10 +329,7 @@ def _route_tool_routing(
         return _decision(
             target=SupervisorTarget.RECOVERY,
             next_phase=WorkflowPhase.RECOVERY,
-            state_update=_base_state_update(
-                WorkflowPhase.RECOVERY,
-                execution_summary={"result": "CONTRACT_VIOLATION"},
-            ),
+            state_update=_base_state_update(WorkflowPhase.RECOVERY),
             reason_code="TOOL_ROUTE_CONTRACT_VIOLATION",
         )
     plan = result["tool_route_plan"]
@@ -344,10 +341,7 @@ def _route_tool_routing(
             return _decision(
                 target=SupervisorTarget.RECOVERY,
                 next_phase=WorkflowPhase.RECOVERY,
-                state_update=_base_state_update(
-                    WorkflowPhase.RECOVERY,
-                    execution_summary={"result": "CONTRACT_VIOLATION"},
-                ),
+                state_update=_base_state_update(WorkflowPhase.RECOVERY),
                 reason_code="TOOL_ROUTE_PLAN_MISSING",
             )
         return _decision(

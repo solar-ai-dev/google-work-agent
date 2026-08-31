@@ -17,6 +17,7 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.approval.model import Approval, ApprovalStatusV1
@@ -32,7 +33,6 @@ from google_work_agent.domain.execution_attempt.transitions.begin_execution_atte
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.persistence.plan_repository import current_plan_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -106,9 +106,7 @@ class BeginExecutionAttemptHandler:
             attempt = require_attempt(unit_of_work, str(payload["execution_attempt_id"]))
             action_version = stored.get("action_version", approval.action_version + 1)
             action_updated_at_ms = stored.get("action_updated_at_ms", attempt.started_at_ms)
-            approval_consumed_at_ms = stored.get(
-                "approval_consumed_at_ms", attempt.started_at_ms
-            )
+            approval_consumed_at_ms = stored.get("approval_consumed_at_ms", attempt.started_at_ms)
             if (
                 not isinstance(action_version, int)
                 or not isinstance(action_updated_at_ms, int)

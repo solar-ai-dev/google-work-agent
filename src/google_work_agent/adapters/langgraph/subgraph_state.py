@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import NotRequired, TypedDict
 
-from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState, RunInputV1
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionDependencyCandidateV1,
     ActionPlanDraftV2,
@@ -51,7 +51,6 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.application.orchestration.contracts import (
     AgentLocalStateV1,
     MultiAgentGraphState,
-    PolicyConfirmationReceiptV1,
     UserInterruptV1,
 )
 from google_work_agent.application.orchestration.handoff_contracts import (
@@ -85,6 +84,9 @@ from google_work_agent.application.orchestration.retrieval_v2_contracts import (
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
+from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
+    PolicyConfirmationReceiptV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 
@@ -114,6 +116,7 @@ class AgentSubgraphInputEnvelope(TypedDict, total=False):
 class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):
     """Parent projection for Request Understanding."""
 
+    run_input: RunInputV1
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
