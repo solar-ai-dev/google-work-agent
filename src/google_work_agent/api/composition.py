@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
 import sqlite3
 import sys
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, cast
 
 from google_work_agent.adapters.connectors.google.workspace.composition import (
@@ -38,7 +39,10 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     build_manifest_payload_for_descriptors,
     calculate_file_sha256,
 )
-from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
+from google_work_agent.adapters.keyring.os_keyring_secret_store import (
+    OsKeyringSecretStoreAdapter,
+    keyring_service_name,
+)
 from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
 )
@@ -434,6 +438,7 @@ from google_work_agent.ports.llm.llm_runtime_status_port import (
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.artifact_signature_verifier import ArtifactSignatureDecision
 from google_work_agent.ports.system.attachment_staging_port import AttachmentStagingPort
 from google_work_agent.ports.system.backup_port import BackupPort
 from google_work_agent.ports.system.browser_launcher_port import BrowserLauncherPort
@@ -893,6 +898,64 @@ class _CallableUuidPort:
         return self.factory()
 
 
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_VERSION_PATTERN = re.compile(r"\d+(?:\.\d+){1,3}")
+_PLACEHOLDER_MODEL_IDS = {"approved-model", "model", "placeholder", "todo"}
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedReleaseFile:
+    file_path: str
+    file_size: int
+    sha256: str
+
+    @classmethod
+    def from_payload(cls, payload: object) -> _VerifiedReleaseFile:
+        if not isinstance(payload, dict) or set(payload) != {
+            "file_path",
+            "file_size",
+            "sha256",
+        }:
+            raise ValueError("verified release file schema is invalid")
+        file_path = payload["file_path"]
+        file_size = payload["file_size"]
+        sha256 = payload["sha256"]
+        path = PurePosixPath(file_path) if isinstance(file_path, str) else PurePosixPath()
+        if (
+            not isinstance(file_path, str)
+            or not file_path
+            or path.is_absolute()
+            or path.as_posix() != file_path
+            or ".." in path.parts
+            or not isinstance(file_size, int)
+            or isinstance(file_size, bool)
+            or file_size < 0
+            or not isinstance(sha256, str)
+            or _SHA256_PATTERN.fullmatch(sha256) is None
+        ):
+            raise ValueError("verified release file value is invalid")
+        return cls(file_path=file_path, file_size=file_size, sha256=sha256)
+
+    def resolve_verified(self, install_root: Path) -> Path:
+        candidate = (install_root / Path(*PurePosixPath(self.file_path).parts)).resolve()
+        try:
+            candidate.relative_to(install_root)
+        except ValueError as error:
+            raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID") from error
+        try:
+            if not candidate.is_file() or candidate.stat().st_size != self.file_size:
+                raise CoreInitializationError("RELEASE_ARTIFACT_TAMPERED")
+        except OSError as error:
+            raise CoreInitializationError("RELEASE_ARTIFACT_MISSING") from error
+        try:
+            actual_sha256 = calculate_file_sha256(candidate)
+        except OSError as error:
+            raise CoreInitializationError("RELEASE_ARTIFACT_MISSING") from error
+        if actual_sha256 != self.sha256:
+            raise CoreInitializationError("RELEASE_ARTIFACT_TAMPERED")
+        return candidate
+
+
 @dataclass(frozen=True, slots=True)
 class ProductionRuntimeConfig:
     """Environment inputs supplied by a launcher without selecting dependencies."""
@@ -911,6 +974,8 @@ class ProductionRuntimeConfig:
     configuration_source: Literal["SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"]
     mcp_module_name: str | None = None
     keyring_store: SecretStorePort | None = None
+    verified_release_files: tuple[_VerifiedReleaseFile, ...] = ()
+    code_signature_verified_paths: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         values = (
@@ -924,6 +989,24 @@ class ProductionRuntimeConfig:
         )
         if any(not value.strip() for value in values):
             raise ValueError("runtime configuration fields must be non-empty")
+        if self.configuration_source == "SIGNED_RELEASE_MANIFEST":
+            paths = [entry.file_path for entry in self.verified_release_files]
+            if not paths or len(paths) != len(set(paths)):
+                raise ValueError("signed runtime release file set is invalid")
+            if not self.code_signature_verified_paths.issubset(paths):
+                raise ValueError("signed runtime code signature proof is invalid")
+
+    def verified_frontend_site(self) -> _VerifiedFrontendSite | None:
+        """Project only release-indexed frontend assets before deferred core startup."""
+
+        if self.configuration_source != "SIGNED_RELEASE_MANIFEST":
+            return None
+        return _build_verified_frontend_site(
+            install_root=self.working_directory.resolve(),
+            release_files={
+                entry.file_path: entry for entry in self.verified_release_files
+            },
+        )
 
     @classmethod
     def development(
@@ -961,6 +1044,8 @@ class ProductionRuntimeConfig:
         *,
         runtime_root: Path,
         working_directory: Path,
+        verified_release_files: object,
+        code_signature_verified_paths: object,
     ) -> ProductionRuntimeConfig:
         """Project the closed Launcher handoff without ambient overrides."""
 
@@ -994,6 +1079,16 @@ class ProductionRuntimeConfig:
                 raise ValueError(f"signed build configuration field is invalid: {field}")
             return value
 
+        if not isinstance(verified_release_files, list):
+            raise ValueError("verified release file set is invalid")
+        release_files = tuple(
+            _VerifiedReleaseFile.from_payload(entry) for entry in verified_release_files
+        )
+        if not isinstance(code_signature_verified_paths, list) or not all(
+            isinstance(path, str) for path in code_signature_verified_paths
+        ):
+            raise ValueError("code signature proof is invalid")
+
         return cls(
             runtime_root=runtime_root,
             working_directory=working_directory,
@@ -1009,6 +1104,8 @@ class ProductionRuntimeConfig:
             policy_version=required_string("policy_version"),
             database_migration_version=required_string("database_migration_version"),
             configuration_source="SIGNED_RELEASE_MANIFEST",
+            verified_release_files=release_files,
+            code_signature_verified_paths=frozenset(code_signature_verified_paths),
         )
 
 
@@ -1053,6 +1150,61 @@ class DevelopmentConnectorBundle:
     google_connector: GoogleWorkspaceConnector
 
 
+@dataclass(frozen=True, slots=True)
+class _LauncherVerifiedArtifactSignatureVerifier:
+    install_root: Path
+    release_files: Mapping[str, _VerifiedReleaseFile]
+    verified_paths: frozenset[str]
+
+    def verify(
+        self,
+        *,
+        executable_path: str,
+        expected_binary_sha256: str,
+    ) -> ArtifactSignatureDecision:
+        try:
+            relative = Path(executable_path).resolve().relative_to(self.install_root).as_posix()
+        except ValueError:
+            return ArtifactSignatureDecision(False, "artifact escaped install root")
+        release_file = self.release_files.get(relative)
+        allowed = (
+            relative in self.verified_paths
+            and release_file is not None
+            and release_file.sha256 == expected_binary_sha256
+        )
+        return ArtifactSignatureDecision(allowed, None if allowed else "signature proof missing")
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedFrontendSite:
+    root: Path
+    allowed_files: Mapping[str, _VerifiedReleaseFile]
+
+    @property
+    def index_path(self) -> Path:
+        index = self.resolve_asset("")
+        if index is None:
+            raise CoreInitializationError("FRONTEND_ARTIFACT_TAMPERED")
+        return index
+
+    def resolve_asset(self, path: str) -> Path | None:
+        requested = path if path else "index.html"
+        relative = PurePosixPath(requested)
+        if (
+            relative.is_absolute()
+            or relative.as_posix() != requested
+            or ".." in relative.parts
+        ):
+            return None
+        binding = self.allowed_files.get(f"frontend/{requested}")
+        if binding is None:
+            return None
+        try:
+            return binding.resolve_verified(self.root.parent)
+        except CoreInitializationError:
+            return None
+
+
 def _google_oauth_scopes(registry: SignedToolRegistry) -> tuple[str, ...]:
     scopes = {
         "openid",
@@ -1063,6 +1215,121 @@ def _google_oauth_scopes(registry: SignedToolRegistry) -> tuple[str, ...]:
             continue
         scopes.update(entry.required_scopes)
     return tuple(sorted(scopes))
+
+
+def _required_release_file(
+    release_files: Mapping[str, _VerifiedReleaseFile], relative: str
+) -> _VerifiedReleaseFile:
+    try:
+        return release_files[relative]
+    except KeyError as error:
+        raise CoreInitializationError("RELEASE_ARTIFACT_MISSING") from error
+
+
+def _verify_installed_runtime_path(
+    path: Path,
+    *,
+    install_root: Path,
+    release_files: Mapping[str, _VerifiedReleaseFile],
+) -> None:
+    try:
+        relative = path.resolve().relative_to(install_root).as_posix()
+    except ValueError as error:
+        raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID") from error
+    _required_release_file(release_files, relative).resolve_verified(install_root)
+
+
+def _load_installed_approved_models(
+    *,
+    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
+    install_root: Path,
+    release_files: Mapping[str, _VerifiedReleaseFile],
+) -> dict[str, ApprovedModelInfo]:
+    relative = "manifests/model-manifest-v1.json"
+    if deployment_profile == "API_ONLY":
+        if relative in release_files:
+            raise CoreInitializationError("API_ONLY_MODEL_MANIFEST_FORBIDDEN")
+        return {}
+    binding = _required_release_file(release_files, relative)
+    manifest_path = binding.resolve_verified(install_root)
+    try:
+        decoded = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_runtime_object,
+        )
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        raise CoreInitializationError("MODEL_MANIFEST_INVALID") from error
+    if not isinstance(decoded, dict) or set(decoded) != {
+        "schema_version",
+        "minimum_ollama_version",
+        "approved_models",
+    }:
+        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
+    minimum_version = decoded.get("minimum_ollama_version")
+    raw_models = decoded.get("approved_models")
+    if (
+        decoded.get("schema_version") != 1
+        or not isinstance(minimum_version, str)
+        or _VERSION_PATTERN.fullmatch(minimum_version) is None
+        or not isinstance(raw_models, list)
+        or not raw_models
+    ):
+        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
+    models: dict[str, ApprovedModelInfo] = {}
+    ordered_ids: list[str] = []
+    for raw_model in raw_models:
+        if not isinstance(raw_model, dict) or set(raw_model) != {
+            "model_id",
+            "model_hash",
+        }:
+            raise CoreInitializationError("MODEL_MANIFEST_INVALID")
+        model_id = raw_model.get("model_id")
+        model_hash = raw_model.get("model_hash")
+        if (
+            not isinstance(model_id, str)
+            or not model_id.strip()
+            or model_id.lower() in _PLACEHOLDER_MODEL_IDS
+            or not isinstance(model_hash, str)
+            or _SHA256_PATTERN.fullmatch(model_hash) is None
+            or len(set(model_hash)) == 1
+            or model_id in models
+        ):
+            raise CoreInitializationError("MODEL_MANIFEST_INVALID")
+        ordered_ids.append(model_id)
+        models[model_id] = ApprovedModelInfo(
+            model_id=model_id,
+            runtime="OLLAMA",
+            manifest_version="1",
+            schema_version="1",
+            minimum_runtime_version=minimum_version,
+            digest=model_hash,
+        )
+    if ordered_ids != sorted(ordered_ids):
+        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
+    return models
+
+
+def _build_verified_frontend_site(
+    *,
+    install_root: Path,
+    release_files: Mapping[str, _VerifiedReleaseFile],
+) -> _VerifiedFrontendSite:
+    _required_release_file(release_files, "frontend/index.html").resolve_verified(
+        install_root
+    )
+    return _VerifiedFrontendSite(
+        root=install_root / "frontend",
+        allowed_files=dict(release_files),
+    )
+
+
+def _unique_runtime_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate installed runtime manifest field")
+        result[key] = value
+    return result
 
 
 def _build_connectors(
@@ -1076,9 +1343,40 @@ def _build_connectors(
     environment: str,
     oauth_client_id: str,
     mcp_module_name: str = GOOGLE_WORKSPACE_MCP_MODULE,
+    configuration_source: Literal[
+        "SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"
+    ] = "EXPLICIT_DEVELOPMENT",
+    verified_release_files: tuple[_VerifiedReleaseFile, ...] = (),
+    code_signature_verified_paths: frozenset[str] = frozenset(),
 ) -> DevelopmentConnectorBundle:
-    tool_registry = load_signed_tool_registry()
-    installed_manifest = load_installed_connector_manifest()
+    signature_verifier = None
+    if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        release_files = {entry.file_path: entry for entry in verified_release_files}
+        installed_binding = _required_release_file(
+            release_files, "manifests/installed-connectors-v1.json"
+        )
+        registry_binding = _required_release_file(
+            release_files, "manifests/signed-tool-registry-v1.json"
+        )
+        installed_path = installed_binding.resolve_verified(working_directory)
+        registry_path = registry_binding.resolve_verified(working_directory)
+        installed_manifest = load_installed_connector_manifest(
+            installed_path,
+            expected_sha256=installed_binding.sha256,
+        )
+        tool_registry = load_signed_tool_registry(
+            registry_path,
+            expected_sha256=registry_binding.sha256,
+        )
+        signature_verifier = _LauncherVerifiedArtifactSignatureVerifier(
+            install_root=working_directory,
+            release_files=release_files,
+            verified_paths=code_signature_verified_paths,
+        )
+    else:
+        release_files = {}
+        tool_registry = load_signed_tool_registry()
+        installed_manifest = load_installed_connector_manifest()
     installed_connector = installed_manifest.get_required(GOOGLE_WORKSPACE_CONNECTOR_ID)
     if (
         installed_connector.provider_namespace != "google"
@@ -1088,13 +1386,34 @@ def _build_connectors(
         )
     ):
         raise ValueError("installed Google Workspace connector binding is invalid")
+    if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        if installed_connector.mcp_schema_version != mcp_manifest_version:
+            raise CoreInitializationError("MCP_SCHEMA_MISMATCH")
+        executable_binding = _required_release_file(
+            release_files, installed_connector.executable_path
+        )
+        projection_binding = _required_release_file(
+            release_files, installed_connector.tool_projection_path
+        )
+        executable_path = executable_binding.resolve_verified(working_directory)
+        mcp_manifest_path = projection_binding.resolve_verified(working_directory)
+        expected_binary_sha256 = executable_binding.sha256
+        expected_manifest_sha256 = projection_binding.sha256
+        module_name = None
+        connector_working_directory = executable_path.parent
+    else:
+        executable_path = python_executable
+        expected_binary_sha256 = calculate_file_sha256(python_executable)
+        expected_manifest_sha256 = calculate_file_sha256(mcp_manifest_path)
+        module_name = mcp_module_name
+        connector_working_directory = working_directory
     runtime_registry = ConnectorRuntimeRegistry()
     descriptor = build_google_workspace_connector_descriptor(
         MCPArtifactConfig(
-            executable_path=str(python_executable),
+            executable_path=str(executable_path),
             manifest_path=str(mcp_manifest_path),
-            expected_binary_sha256=calculate_file_sha256(python_executable),
-            expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
+            expected_binary_sha256=expected_binary_sha256,
+            expected_manifest_sha256=expected_manifest_sha256,
             expected_manifest_version=mcp_manifest_version,
             expected_protocol_version=mcp_manifest_version,
             expected_registry_manifest_hash=tool_registry.entries_hash,
@@ -1103,8 +1422,8 @@ def _build_connectors(
             max_restart_count=1,
             environment=environment,
             service_instance_id=service_instance_id,
-            module_name=mcp_module_name,
-            working_directory=str(working_directory),
+            module_name=module_name,
+            working_directory=str(connector_working_directory),
             extra_environment={
                 ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
                 "GOOGLE_OAUTH_ENV": environment,
@@ -1118,6 +1437,7 @@ def _build_connectors(
     google_connector = GoogleWorkspaceConnector(
         descriptor=descriptor,
         runtime_registry=runtime_registry,
+        signature_verifier=signature_verifier,
     )
     google_connector.start()
     return DevelopmentConnectorBundle(
@@ -1209,6 +1529,7 @@ class DeferredApiContainer:
         environment: str = "DEVELOPMENT",
         api_contract_version: str = API_CONTRACT_VERSION,
         deployment_profile: str = "LOCAL_CAPABLE",
+        frontend_site: Any | None = None,
         core_builder: Callable[..., ApiContainer],
     ) -> None:
         self._core: ApiContainer | None = None
@@ -1232,7 +1553,7 @@ class DeferredApiContainer:
         self.max_request_body_bytes = 64 * 1024
         self.max_attachment_bytes = MAX_STAGED_FILE_BYTES
         self.api_docs_enabled = False
-        self.frontend_site = None
+        self.frontend_site = frontend_site
         self.additional_readiness_checks: tuple[Any, ...] = ()
         self.shutdown_callbacks = (self.close,)
         self.startup_callbacks = (self._initialize,)
@@ -1474,6 +1795,8 @@ def build_production_runtime(
     safe_mode_controller: SafeModeController | None = None,
     mcp_module_name: str | None = None,
     keyring_store: SecretStorePort | None = None,
+    verified_release_files: tuple[_VerifiedReleaseFile, ...] = (),
+    code_signature_verified_paths: frozenset[str] = frozenset(),
 ) -> ApiContainer:
     """Assemble the local service from authenticated or explicit development inputs."""
 
@@ -1486,10 +1809,33 @@ def build_production_runtime(
     safe_mode = safe_mode_controller or SafeModeController()
     root = runtime_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
+    install_root = working_directory.resolve()
+    release_files = {entry.file_path: entry for entry in verified_release_files}
     database_path = root / "data" / "google_work_agent.db"
     database_path.parent.mkdir(parents=True, exist_ok=True)
-    mcp_manifest_path = _write_mcp_manifest(root)
+    mcp_manifest_path = (
+        root / "mcp-manifest.json"
+        if configuration_source == "SIGNED_RELEASE_MANIFEST"
+        else _write_mcp_manifest(root)
+    )
     prompt_manifest_path = default_prompt_manifest_path()
+    frontend_site = None
+    approved_models: dict[str, ApprovedModelInfo] | None = None
+    if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        _verify_installed_runtime_path(
+            prompt_manifest_path,
+            install_root=install_root,
+            release_files=release_files,
+        )
+        frontend_site = _build_verified_frontend_site(
+            install_root=install_root,
+            release_files=release_files,
+        )
+        approved_models = _load_installed_approved_models(
+            deployment_profile=deployment_profile,
+            install_root=install_root,
+            release_files=release_files,
+        )
     clock = SystemClockAdapter()
     id_generator = Uuid4Adapter()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
@@ -1502,7 +1848,6 @@ def build_production_runtime(
     operational_replay = FilesystemOperationalCommandReplayAdapter(
         root / "operational-command-replay"
     )
-
     try:
         with connect_sqlite(database_path) as connection:
             migration_results = apply_migrations(connection, now_ms=clock.now_ms)
@@ -1516,6 +1861,32 @@ def build_production_runtime(
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
     try:
+        resume_target_registry = ResumeTargetRegistry(
+            node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+            graph_version=RESUME_CONTRACT_VERSION,
+        )
+        checkpoint = SqliteCheckpointAdapter(
+            database_path,
+            now_ms=clock.now_ms,
+            target_resolver=NativeCheckpointTargetResolver(resume_target_registry),
+        )
+        checkpoint_control = LangGraphCheckpointControlAdapter(
+            checkpoint_port=checkpoint,
+            native_saver=checkpoint,
+        )
+    except Exception as error:
+        raise CoreInitializationError("CHECKPOINT_INITIALIZATION_FAILED") from error
+    try:
+        active_keyring_store = keyring_store or OsKeyringSecretStoreAdapter(
+            service_name=keyring_service_name(
+                environment=oauth_environment.value,
+                credential_type="llm-api-key",
+            )
+        )
+    except RuntimeError as error:
+        raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
+
+    try:
         connector_bundle = _build_connectors(
             mcp_manifest_path=mcp_manifest_path,
             mcp_manifest_version=mcp_manifest_version,
@@ -1525,11 +1896,24 @@ def build_production_runtime(
             working_directory=working_directory.resolve(),
             environment=oauth_environment.value,
             oauth_client_id=oauth_client_id,
+            configuration_source=configuration_source,
+            verified_release_files=verified_release_files,
+            code_signature_verified_paths=code_signature_verified_paths,
             **({} if mcp_module_name is None else {"mcp_module_name": mcp_module_name}),
         )
+    except CoreInitializationError:
+        raise
     except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
+    except (LookupError, OSError, ValueError) as error:
+        raise CoreInitializationError("MCP_MANIFEST_INVALID") from error
     connector_registry = connector_bundle.runtime_registry
+    mcp_manifest_path = Path(
+        connector_bundle.google_connector.descriptor.artifact_config.manifest_path
+    )
+    mcp_executable_path = Path(
+        connector_bundle.google_connector.descriptor.artifact_config.executable_path
+    )
     if connector_bundle.tool_registry.contract_version != policy_version:
         connector_registry.close_all()
         raise CoreInitializationError("POLICY_VERSION_MISMATCH")
@@ -1555,15 +1939,16 @@ def build_production_runtime(
             prompt_manifest_path=prompt_manifest_path,
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
-            keyring_store=keyring_store,
+            keyring_store=active_keyring_store,
             environment=oauth_environment.value,
             release_version=release_version,
             deployment_profile=deployment_profile,
             allow_development_model=configuration_source == "EXPLICIT_DEVELOPMENT",
+            approved_models=approved_models,
         )
     except RuntimeError as error:
         connector_registry.close_all()
-        raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
+        raise CoreInitializationError("LLM_RUNTIME_INITIALIZATION_FAILED") from error
     runtime_mode = ProcessRuntimeModeAdapter(
         initial_mode=cast(Any, settings_service.get_settings().preferred_llm_mode)
     )
@@ -1622,19 +2007,6 @@ def build_production_runtime(
     write_projection = ConnectorWriteProjection(
         dispatch_connector_write=dispatch_connector_write,
         connector_reader=read_projection,
-    )
-    resume_target_registry = ResumeTargetRegistry(
-        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
-        graph_version=RESUME_CONTRACT_VERSION,
-    )
-    checkpoint = SqliteCheckpointAdapter(
-        database_path,
-        now_ms=clock.now_ms,
-        target_resolver=NativeCheckpointTargetResolver(resume_target_registry),
-    )
-    checkpoint_control = LangGraphCheckpointControlAdapter(
-        checkpoint_port=checkpoint,
-        native_saver=checkpoint,
     )
     structured_inference_router = cast(StructuredInferenceRuntimeRouter, llm_runtime)
     structured_inference_router.checkpoint = checkpoint
@@ -2149,8 +2521,9 @@ def build_production_runtime(
             api_contract_version=api_contract_version,
             mcp_manifest_version=mcp_manifest_version,
             mcp_manifest_path=mcp_manifest_path,
+            mcp_executable_path=mcp_executable_path,
             prompt_active=prompt_active,
-            keyring_store=keyring_store,
+            keyring_store=active_keyring_store,
         ),
         api_access_guard=LocalApiAccessGuard(
             expected_host=f"{host}:{port}",
@@ -2391,6 +2764,7 @@ def build_production_runtime(
             has_active_run=production_runtime.workflow_execution.has_active_runs,
         ),
         operational_command_replay=operational_replay,
+        frontend_site=frontend_site,
         continue_cancel_resolution_handler=continue_cancel_resolution,
         startup_callbacks=(
             _reconcile_inflight_executions,
@@ -2415,6 +2789,7 @@ def _build_llm_runtime(
     release_version: str,
     deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
     allow_development_model: bool,
+    approved_models: Mapping[str, ApprovedModelInfo] | None = None,
     keyring_store: SecretStorePort | None = None,
 ) -> tuple[
     StructuredInferenceRuntimeRouter,
@@ -2435,7 +2810,13 @@ def _build_llm_runtime(
     credential_service = LlmCredentialRouter(
         provider_name="gemini",
         environment=environment,
-        keyring_store=keyring_store or OsKeyringSecretStoreAdapter(),
+        keyring_store=keyring_store
+        or OsKeyringSecretStoreAdapter(
+            service_name=keyring_service_name(
+                environment=environment,
+                credential_type="llm-api-key",
+            )
+        ),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()
@@ -2447,7 +2828,9 @@ def _build_llm_runtime(
         api_connection_service=GeminiConnectionService(transport=gemini_transport),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
         approved_models=(
-            {
+            dict(approved_models)
+            if approved_models is not None
+            else {
                 DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
                     model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
                     runtime="OLLAMA",

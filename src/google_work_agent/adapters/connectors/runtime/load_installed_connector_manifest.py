@@ -66,7 +66,7 @@ def load_installed_connector_manifest(
     manifest_bytes = manifest_path.read_bytes()
     if expected_sha256 is not None and sha256(manifest_bytes).hexdigest() != expected_sha256:
         raise ValueError("Installed Connector manifest release hash mismatch")
-    decoded = json.loads(manifest_bytes)
+    decoded = json.loads(manifest_bytes, object_pairs_hook=_unique_object)
     if not isinstance(decoded, dict):
         raise ValueError("InstalledConnectorManifestV1 must be an object")
     payload = cast(dict[str, object], decoded)
@@ -85,6 +85,11 @@ def load_installed_connector_manifest(
 
 def _entry(payload: dict[str, object]) -> InstalledConnectorEntryV1:
     _require_exact_fields(payload, _ENTRY_FIELDS, "InstalledConnectorEntryV1")
+    if payload.get("schema_version") != 1 or any(
+        not isinstance(payload.get(field), str)
+        for field in _ENTRY_FIELDS - {"schema_version"}
+    ):
+        raise ValueError("InstalledConnectorEntryV1 field type mismatch")
     return InstalledConnectorEntryV1(
         schema_version=cast(int, payload["schema_version"]),  # type: ignore[arg-type]
         connector_id=str(payload["connector_id"]),
@@ -117,6 +122,15 @@ def _require_exact_fields(
             f"{contract_name} fields mismatch: missing={sorted(expected - actual)}, "
             f"extra={sorted(actual - expected)}"
         )
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate installed connector manifest field: {key}")
+        result[key] = value
+    return result
 
 
 __all__ = [

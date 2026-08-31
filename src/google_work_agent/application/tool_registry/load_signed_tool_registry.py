@@ -42,7 +42,7 @@ def load_signed_tool_registry(
     manifest_bytes = manifest_path.read_bytes()
     if expected_sha256 is not None and sha256(manifest_bytes).hexdigest() != expected_sha256:
         raise ValueError("Signed Tool Registry release hash mismatch")
-    decoded = json.loads(manifest_bytes)
+    decoded = json.loads(manifest_bytes, object_pairs_hook=_unique_object)
     if not isinstance(decoded, dict):
         raise ValueError("SignedToolRegistryManifestV1 must be an object")
     payload = cast(dict[str, object], decoded)
@@ -70,6 +70,11 @@ def load_signed_tool_registry(
 
 def _entry_from_payload(payload: dict[str, object]) -> SignedToolRegistryEntryV1:
     _require_exact_fields(payload, _ENTRY_FIELDS, "SignedToolRegistryEntryV1")
+    if payload.get("schema_version") != 1 or any(
+        not isinstance(payload.get(field), str)
+        for field in _ENTRY_FIELDS - {"schema_version", "required_scopes"}
+    ):
+        raise ValueError("SignedToolRegistryEntryV1 field type mismatch")
     required_scopes = payload["required_scopes"]
     if not isinstance(required_scopes, list) or not all(
         isinstance(value, str) for value in required_scopes
@@ -105,6 +110,15 @@ def _require_object(value: object, contract_name: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{contract_name} must be an object")
     return cast(dict[str, object], value)
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate signed tool registry field: {key}")
+        result[key] = value
+    return result
 
 
 __all__ = ["load_signed_tool_registry"]

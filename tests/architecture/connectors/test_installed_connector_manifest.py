@@ -28,3 +28,10 @@ def test_installed_manifest_rejects_duplicate_and_unsafe_paths(tmp_path) -> None
         load_installed_connector_manifest(path)
     with pytest.raises(ValueError, match="release hash mismatch"):
         load_installed_connector_manifest(source, expected_sha256="0" * 64)
+
+    path.write_text(
+        '{"schema_version":1,"schema_version":1,"connectors":[]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate installed connector"):
+        load_installed_connector_manifest(path)

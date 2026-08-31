@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import cast
 
@@ -14,6 +14,9 @@ from installer.windows.upgrade_policy import WindowsUpgradePolicy
 
 from google_work_agent.adapters.connectors.runtime.load_installed_connector_manifest import (
     load_installed_connector_manifest,
+)
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    build_manifest_payload_for_descriptors,
 )
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 from release.generate_model_manifest import ModelManifestV1
@@ -131,12 +134,13 @@ def _materialize_connector_artifacts(
         descriptors = registry.descriptor_expectations(connector.connector_id)
         if not descriptors:
             raise ValueError(f"installed connector has no signed tools: {connector.connector_id}")
-        projection = {
-            "schema_version": 1,
-            "connector_id": connector.connector_id,
-            "registry_manifest_hash": registry.entries_hash,
-            "tools": [asdict(descriptor) for descriptor in descriptors],
-        }
+        projection = build_manifest_payload_for_descriptors(
+            connector_id=connector.connector_id,
+            registry_manifest_hash=registry.entries_hash,
+            descriptors=tuple(descriptors),
+        )
+        if projection["manifest_version"] != connector.mcp_schema_version:
+            raise ValueError("installed connector MCP schema version mismatch")
         projection_path = _safe_child(destination, connector.tool_projection_path)
         _write_canonical_json(projection_path, projection)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from release.assemble_application_bundle import assemble_application_bundle
 from release.generate_release_manifest import (
     ReleaseManifestParameters,
@@ -21,7 +22,7 @@ def _parameters() -> ReleaseManifestParameters:
         oauth_env="DEVELOPMENT",
         oauth_client_id="desktop-client.apps.googleusercontent.com",
         api_contract_version="1",
-        mcp_schema_version="1",
+        mcp_schema_version="2026-08-07.p0",
         policy_version="2026-08-06.p0",
         database_migration_version="0018",
     )
@@ -60,3 +61,31 @@ def test_release_manifest_is_closed_sorted_and_deterministic(tmp_path: Path) -> 
     assert "release-manifest.json" not in paths
     assert "release-manifest.sig" not in paths
     assert all("\\" not in path and not Path(path).is_absolute() for path in paths)
+
+
+def test_release_manifest_rejects_mcp_schema_different_from_installed_projection(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "bundle"
+    assemble_application_bundle(
+        profile=DeploymentProfile.API_ONLY,
+        inputs=create_bundle_inputs(tmp_path / "inputs"),
+        output_root=bundle,
+    )
+    parameters = _parameters()
+
+    with pytest.raises(ValueError, match="MCP schema versions differ"):
+        generate_release_manifest(
+            bundle_root=bundle,
+            parameters=ReleaseManifestParameters(
+                app_version=parameters.app_version,
+                build_channel=parameters.build_channel,
+                deployment_profile=parameters.deployment_profile,
+                oauth_env=parameters.oauth_env,
+                oauth_client_id=parameters.oauth_client_id,
+                api_contract_version=parameters.api_contract_version,
+                mcp_schema_version="wrong-version",
+                policy_version=parameters.policy_version,
+                database_migration_version=parameters.database_migration_version,
+            ),
+        )

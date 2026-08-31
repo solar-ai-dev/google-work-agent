@@ -40,3 +40,11 @@ def test_signed_registry_loader_rejects_manifest_drift(tmp_path) -> None:
         load_signed_tool_registry(path)
     with pytest.raises(ValueError, match="release hash mismatch"):
         load_signed_tool_registry(source, expected_sha256="0" * 64)
+
+    path.write_text(
+        '{"schema_version":1,"schema_version":1,"contract_version":"1",'
+        '"entries":[],"entries_hash":"x"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate signed tool registry"):
+        load_signed_tool_registry(path)

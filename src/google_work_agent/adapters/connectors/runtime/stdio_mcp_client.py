@@ -64,7 +64,10 @@ class MCPServerManifest:
         raw = path.read_bytes()
         if len(raw) > MANIFEST_MESSAGE_LIMIT_BYTES:
             raise ValueError("MCP manifest exceeds size limit")
-        decoded = json.loads(normalize_manifest_bytes(raw).decode("utf-8"))
+        decoded = json.loads(
+            normalize_manifest_bytes(raw).decode("utf-8"),
+            object_pairs_hook=_unique_object,
+        )
         if not isinstance(decoded, dict) or set(decoded) != {
             "manifest_version",
             "protocol_version",
@@ -74,6 +77,14 @@ class MCPServerManifest:
         }:
             raise ValueError("MCP manifest field set mismatch")
         payload = cast(dict[str, object], decoded)
+        for field in (
+            "manifest_version",
+            "protocol_version",
+            "connector_id",
+            "registry_manifest_hash",
+        ):
+            if not isinstance(payload.get(field), str) or not str(payload[field]).strip():
+                raise ValueError(f"MCP manifest field is invalid: {field}")
         raw_tools = payload.get("tools")
         if not isinstance(raw_tools, list) or not raw_tools:
             raise ValueError("MCP manifest tools must be a non-empty list")
@@ -125,6 +136,17 @@ def _descriptor_from_payload(payload: dict[str, object]) -> MCPToolDescriptorV1:
         "registry_entry_hash",
     }:
         raise ValueError("MCP tool descriptor field set mismatch")
+    if payload.get("schema_version") != 1 or any(
+        not isinstance(payload.get(field), str) or not str(payload[field]).strip()
+        for field in (
+            "connector_id",
+            "tool_id",
+            "input_schema_ref",
+            "output_schema_ref",
+            "registry_entry_hash",
+        )
+    ):
+        raise ValueError("MCP tool descriptor field type mismatch")
     return MCPToolDescriptorV1(
         schema_version=cast(Any, payload["schema_version"]),
         connector_id=str(payload["connector_id"]),
@@ -141,6 +163,15 @@ def _require_json_object(value: object, contract_name: str) -> dict[str, object]
     return cast(dict[str, object], value)
 
 
+def _unique_object(pairs: list[tuple[str, object]]) -> JsonObject:
+    result: JsonObject = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate MCP JSON field: {key}")
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class MCPArtifactConfig:
     executable_path: str
@@ -155,11 +186,11 @@ class MCPArtifactConfig:
     max_restart_count: int
     environment: str
     service_instance_id: str
-    module_name: str = (
+    module_name: str | None = (
         "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
     )
     working_directory: str | None = None
-    environment_allowlist: tuple[str, ...] = ("SYSTEMROOT", "WINDIR", "PATH", "TMP", "TEMP")
+    environment_allowlist: tuple[str, ...] = ("SYSTEMROOT", "WINDIR", "TMP", "TEMP")
     extra_environment: dict[str, str] | None = None
 
 
@@ -438,7 +469,9 @@ class StdioMCPClientAdapter:
     def _start_process(self) -> None:
         self._status = MCPProcessStatus.STARTING
         env = self._build_child_environment()
-        command = [self._config.executable_path, "-m", self._config.module_name]
+        command = [self._config.executable_path]
+        if self._config.module_name is not None:
+            command.extend(("-m", self._config.module_name))
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -450,9 +483,24 @@ class StdioMCPClientAdapter:
             env=env,
         )
         self._process = process
-        threading.Thread(target=self._read_stdout, daemon=True).start()
-        threading.Thread(target=self._read_stderr, daemon=True).start()
-        self._perform_handshake()
+        try:
+            threading.Thread(target=self._read_stdout, daemon=True).start()
+            threading.Thread(target=self._read_stderr, daemon=True).start()
+            self._perform_handshake()
+        except Exception:
+            self._settle_failed_start(process)
+            raise
+
+    def _settle_failed_start(self, process: subprocess.Popen[str]) -> None:
+        self._status = MCPProcessStatus.FAILED
+        try:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        finally:
+            self._process = None
 
     def _perform_handshake(self) -> None:
         self._status = MCPProcessStatus.HANDSHAKING
@@ -500,14 +548,9 @@ class StdioMCPClientAdapter:
             value = os.environ.get(key)
             if value is not None:
                 child_env[key] = value
-        working_directory = Path(self._config.working_directory or os.getcwd())
-        source_path = str((working_directory / "src").resolve())
-        existing_pythonpath = child_env.get("PYTHONPATH")
-        child_env["PYTHONPATH"] = (
-            source_path
-            if not existing_pythonpath
-            else os.pathsep.join((source_path, existing_pythonpath))
-        )
+        if self._config.module_name is not None:
+            working_directory = Path(self._config.working_directory or os.getcwd())
+            child_env["PYTHONPATH"] = str((working_directory / "src").resolve())
         child_env["GWA_MCP_MANIFEST_PATH"] = self._config.manifest_path
         child_env["GWA_MCP_ENVIRONMENT"] = self._config.environment
         if self._config.extra_environment is not None:
@@ -650,8 +693,11 @@ class StdioMCPClientAdapter:
                 self._last_safe_error_code = MCPClientPortErrorCode.MALFORMED_RESPONSE.value
                 continue
             try:
-                message = cast(JsonObject, json.loads(line))
-            except json.JSONDecodeError:
+                message = cast(
+                    JsonObject,
+                    json.loads(line, object_pairs_hook=_unique_object),
+                )
+            except (json.JSONDecodeError, ValueError):
                 self._last_safe_error_code = MCPClientPortErrorCode.MALFORMED_RESPONSE.value
                 continue
             self._stdout_queue.put(message)

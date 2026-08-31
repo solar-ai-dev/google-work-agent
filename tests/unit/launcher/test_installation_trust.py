@@ -23,9 +23,11 @@ def _write_signed_installation(root: Path) -> bytes:
     service.write_bytes(b"verified-service")
     frontend.write_bytes(b"verified-frontend")
     files = []
-    for relative, path in (
-        ("service/GoogleWorkAgentService.exe", service),
-        ("frontend/index.html", frontend),
+    for relative, path in sorted(
+        (
+            ("service/GoogleWorkAgentService.exe", service),
+            ("frontend/index.html", frontend),
+        )
     ):
         content = path.read_bytes()
         files.append(
@@ -63,7 +65,11 @@ def _write_signed_installation(root: Path) -> bytes:
 def test_signed_manifest_chain_projects_only_authenticated_build_fields(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
 
-    installation = verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+    installation = verify_installation(
+        tmp_path.resolve(),
+        trusted_public_key_pem=public_key,
+        code_signature_verifier=lambda _path: True,
+    )
     config = load_signed_build_config(installation)
 
     assert config.app_version == "1.2.3"
@@ -114,3 +120,54 @@ def test_missing_embedded_release_key_never_falls_back_to_unsigned_startup(
         verify_installation(tmp_path.resolve())
 
     assert error.value.safe_code == "RELEASE_PUBLIC_KEY_UNAVAILABLE"
+
+
+def test_unlisted_runtime_override_fails_before_code_execution(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    override = tmp_path / "runtime" / "override-config.json"
+    override.parent.mkdir()
+    override.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(
+        InstallationVerificationError,
+        match="INSTALLATION_ARTIFACT_SET_MISMATCH",
+    ):
+        verify_installation(
+            tmp_path.resolve(),
+            trusted_public_key_pem=public_key,
+            code_signature_verifier=lambda _path: True,
+        )
+
+
+def test_invalid_authenticode_fails_closed_after_manifest_verification(
+    tmp_path: Path,
+) -> None:
+    public_key = _write_signed_installation(tmp_path)
+
+    with pytest.raises(
+        InstallationVerificationError,
+        match="INSTALLATION_CODE_SIGNATURE_INVALID",
+    ):
+        verify_installation(
+            tmp_path.resolve(),
+            trusted_public_key_pem=public_key,
+            code_signature_verifier=lambda _path: False,
+        )
+
+
+def test_exact_installer_generated_uninstaller_pair_requires_code_signature(
+    tmp_path: Path,
+) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    (tmp_path / "unins000.exe").write_bytes(b"signed-uninstaller")
+    (tmp_path / "unins000.dat").write_bytes(b"uninstall-metadata")
+    verified_paths: list[Path] = []
+
+    installation = verify_installation(
+        tmp_path.resolve(),
+        trusted_public_key_pem=public_key,
+        code_signature_verifier=lambda path: not verified_paths.append(path),
+    )
+
+    assert tmp_path / "unins000.exe" in installation.code_signature_verified_files
+    assert tmp_path / "unins000.exe" in verified_paths

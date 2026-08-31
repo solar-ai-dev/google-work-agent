@@ -55,6 +55,14 @@ def build_windows_installer(
     installation = verify_installation(
         bundle_root.resolve(),
         trusted_public_key_pem=trusted_release_public_key_pem,
+        code_signature_verifier=(
+            None
+            if code_signature_verifier is None
+            else lambda path: code_signature_verifier.verify(
+                path,
+                require_timestamp=True,
+            )
+        ),
     )
     manifest = installation.manifest
     _require_manifest_covers_current_bundle(installation.install_root, manifest["files"])

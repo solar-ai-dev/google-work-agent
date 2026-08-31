@@ -117,6 +117,22 @@ def test_startup_and_shutdown_callbacks_preserve_required_order() -> None:
     assert shutdown < stop_runtime < close_graph < close_connectors
 
 
+def test_installed_core_dependencies_initialize_before_ready_in_canonical_order() -> None:
+    source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
+    runtime = source[
+        source.index("def build_production_runtime(") : source.index(
+            "\ndef _build_llm_runtime("
+        )
+    ]
+    migration = runtime.index("apply_migrations(")
+    checkpoint = runtime.index("checkpoint = SqliteCheckpointAdapter(")
+    keyring = runtime.index("active_keyring_store =")
+    connector = runtime.index("connector_bundle = _build_connectors(")
+    llm = runtime.index("llm_runtime, settings_service")
+
+    assert migration < checkpoint < keyring < connector < llm
+
+
 def test_sqlite_checkpoint_adapter_is_the_only_production_sqlite_saver_owner() -> None:
     owners: list[Path] = []
     import_line = "from langgraph.checkpoint.sqlite import SqliteSaver"

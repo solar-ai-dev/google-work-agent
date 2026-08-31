@@ -33,6 +33,7 @@ class LocalServiceReadinessAggregator(ReadinessAggregator):
     api_contract_version: str
     mcp_manifest_version: str
     mcp_manifest_path: Path | None = None
+    mcp_executable_path: Path | None = None
     prompt_active: bool = True
     keyring_store: SecretStorePort | None = None
 
@@ -127,9 +128,9 @@ class LocalServiceReadinessAggregator(ReadinessAggregator):
             )
         return ReadinessCheckResult(name="keyring_adapter", state=ReadinessState.READY)
 
-    @staticmethod
-    def _mcp_executable_check() -> ReadinessCheckResult:
-        if Path(sys.executable).is_file():
+    def _mcp_executable_check(self) -> ReadinessCheckResult:
+        executable = self.mcp_executable_path or Path(sys.executable)
+        if executable.is_absolute() and executable.is_file():
             return ReadinessCheckResult(name="mcp_executable", state=ReadinessState.READY)
         return ReadinessCheckResult(
             name="mcp_executable",

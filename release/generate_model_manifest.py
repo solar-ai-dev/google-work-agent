@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_VERSION_PATTERN = re.compile(r"\d+(?:\.\d+){1,3}")
 _PLACEHOLDER_MODEL_IDS = {"approved-model", "model", "placeholder", "todo"}
 
 
@@ -34,8 +35,8 @@ class ModelManifestV1:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported ModelManifestV1 schema_version")
-        if not self.minimum_ollama_version.strip():
-            raise ValueError("minimum_ollama_version is required")
+        if _VERSION_PATTERN.fullmatch(self.minimum_ollama_version) is None:
+            raise ValueError("minimum_ollama_version must be a concrete dotted version")
         if not self.approved_models:
             raise ValueError("LOCAL_CAPABLE requires at least one approved model")
         model_ids = [entry.model_id for entry in self.approved_models]

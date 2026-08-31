@@ -71,6 +71,11 @@ def start_service(
     executable = (installation.install_root / Path(*_SERVICE_RELATIVE_PATH.split("/"))).resolve()
     if executable not in installation.verified_files or not executable.is_file():
         raise ServiceStartError("SERVICE_EXECUTABLE_UNVERIFIED")
+    if (
+        build_config.build_channel.upper() != "DEVELOPMENT"
+        and executable not in installation.code_signature_verified_files
+    ):
+        raise ServiceStartError("SERVICE_EXECUTABLE_SIGNATURE_UNVERIFIED")
     service_dir = executable.parent
     environment = {
         key: value for key in _ALLOWED_PARENT_ENVIRONMENT if (value := os.environ.get(key))
@@ -82,6 +87,12 @@ def start_service(
             "service_instance_id": service_instance_id,
             "bootstrap_secret": bootstrap_secret,
             "signed_build_config": asdict(build_config),
+            "verified_release_files": installation.manifest["files"],
+            "code_signature_verified_paths": [
+                path.relative_to(installation.install_root).as_posix()
+                for path in installation.code_signature_verified_files
+                if path in installation.verified_files
+            ],
         },
         sort_keys=True,
         separators=(",", ":"),

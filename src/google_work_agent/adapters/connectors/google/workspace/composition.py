@@ -20,6 +20,9 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     StdioMCPClientAdapter,
 )
 from google_work_agent.ports.connector.mcp_client_port import MCPToolDescriptorV1
+from google_work_agent.ports.system.artifact_signature_verifier import (
+    ArtifactSignatureVerifier,
+)
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
 
@@ -44,11 +47,13 @@ class GoogleWorkspaceConnector:
         *,
         descriptor: MCPConnectorDescriptor,
         runtime_registry: ConnectorRuntimeRegistry,
+        signature_verifier: ArtifactSignatureVerifier | None = None,
     ) -> None:
         if descriptor.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:
             raise ValueError("Google Workspace connector descriptor id mismatch")
         self._descriptor = descriptor
         self._runtime_registry = runtime_registry
+        self._signature_verifier = signature_verifier
         self._client: StdioMCPClientAdapter | None = None
 
     @property
@@ -91,6 +96,7 @@ class GoogleWorkspaceConnector:
             self._client = StdioMCPClientAdapter(
                 descriptor=self._descriptor,
                 runtime_registry=self._runtime_registry,
+                signature_verifier=self._signature_verifier,
             )
         return self._client
 

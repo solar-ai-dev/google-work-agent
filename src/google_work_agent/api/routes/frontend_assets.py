@@ -30,12 +30,15 @@ def create_frontend_asset_router(frontend_site: FrontendSite | None) -> APIRoute
             else:
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return response
+        index = frontend_site.resolve_asset("")
+        if index is None:
+            return JSONResponse(status_code=404, content={"detail": "not found"})
         if "." not in path and path:
-            response = FileResponse(frontend_site.index_path)
+            response = FileResponse(index)
             response.headers["Cache-Control"] = "no-cache"
             return response
         if path == "":
-            response = FileResponse(frontend_site.index_path)
+            response = FileResponse(index)
             response.headers["Cache-Control"] = "no-cache"
             return response
         return JSONResponse(status_code=404, content={"detail": "not found"})

@@ -47,7 +47,9 @@ def test_probe_uses_get_for_version_and_tags(monkeypatch: pytest.MonkeyPatch) ->
     requests: list[Request] = []
     responses = [
         json.dumps({"version": "0.32.6"}).encode("utf-8"),
-        json.dumps({"models": [{"name": "qwen2.5:3b"}]}).encode("utf-8"),
+        json.dumps(
+            {"models": [{"name": "qwen2.5:3b", "digest": "sha256:" + "a" * 64}]}
+        ).encode("utf-8"),
     ]
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -68,6 +70,7 @@ def test_probe_uses_get_for_version_and_tags(monkeypatch: pytest.MonkeyPatch) ->
     ]
     assert result.availability is AvailabilityState.AVAILABLE
     assert result.metadata["version"] == "0.32.6"
+    assert result.metadata["model_digest"] == "sha256:" + "a" * 64
 
 
 def test_probe_reports_model_not_found_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:

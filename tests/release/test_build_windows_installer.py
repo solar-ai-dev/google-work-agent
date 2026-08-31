@@ -71,7 +71,7 @@ def test_build_installer_consumes_verified_signed_profile_bundle(tmp_path: Path)
             oauth_env="PRODUCTION",
             oauth_client_id="desktop-client.apps.googleusercontent.com",
             api_contract_version="1",
-            mcp_schema_version="1",
+            mcp_schema_version="2026-08-07.p0",
             policy_version="2026-08-06.p0",
             database_migration_version="0018",
         ),
@@ -117,7 +117,7 @@ def test_build_installer_rejects_file_added_after_manifest_signing(tmp_path: Pat
         oauth_env="PRODUCTION",
         oauth_client_id="desktop-client.apps.googleusercontent.com",
         api_contract_version="1",
-        mcp_schema_version="1",
+        mcp_schema_version="2026-08-07.p0",
         policy_version="2026-08-06.p0",
         database_migration_version="0018",
     )
@@ -133,7 +133,7 @@ def test_build_installer_rejects_file_added_after_manifest_signing(tmp_path: Pat
     )
     (bundle / "runtime/override-config.json").write_text("{}", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="signed bundle artifact set mismatch"):
+    with pytest.raises(RuntimeError, match="INSTALLATION_ARTIFACT_SET_MISMATCH"):
         build_windows_installer(
             bundle_root=bundle,
             output_dir=tmp_path / "installer",

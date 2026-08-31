@@ -39,6 +39,8 @@ def test_api_only_bundle_materializes_exact_connector_tool_artifacts(tmp_path: P
         entry["tool_id"] for entry in registry["entries"]
     }
     assert projection["registry_manifest_hash"] == registry["entries_hash"]
+    assert projection["manifest_version"] == "2026-08-07.p0"
+    assert projection["protocol_version"] == "2026-08-07.p0"
     assert not any(path.endswith((".py", ".pyc", ".map")) for path in paths)
 
 

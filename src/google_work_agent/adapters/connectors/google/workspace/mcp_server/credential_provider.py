@@ -32,7 +32,10 @@ from urllib.request import Request, urlopen
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MANIFEST_MESSAGE_LIMIT_BYTES,
 )
-from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
+from google_work_agent.adapters.keyring.os_keyring_secret_store import (
+    OsKeyringSecretStoreAdapter,
+    keyring_service_name,
+)
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
     AttachmentStagingError,
@@ -96,9 +99,8 @@ GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
-GOOGLE_KEYRING_SERVICE = "GoogleWorkAgent/DEVELOPMENT"
-GOOGLE_REFRESH_TOKEN_ACCOUNT = "google-oauth-refresh-token"
-GOOGLE_REFRESH_TOKEN_KEY = f"{GOOGLE_KEYRING_SERVICE}/{GOOGLE_REFRESH_TOKEN_ACCOUNT}"
+GOOGLE_REFRESH_TOKEN_ACCOUNT = "google_workspace"
+GOOGLE_REFRESH_TOKEN_KEY = GOOGLE_REFRESH_TOKEN_ACCOUNT
 REQUIRED_SCOPES = (
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -220,10 +222,24 @@ class GoogleWorkspaceCredentialProvider:
         self.last_oauth_error_description: str | None = None
         self.active_flow: _OAuthFlow | None = None
         self.operational_results: dict[str, dict[str, object]] = {}
+        raw_environment = os.environ.get("GOOGLE_OAUTH_ENV", "")
+        if not raw_environment and keyring is not None:
+            raw_environment = OAuthEnvironment.DEVELOPMENT.value
+        try:
+            self.oauth_environment = OAuthEnvironment(
+                raw_environment.upper()
+            )
+        except ValueError as error:
+            raise RuntimeError("GOOGLE_OAUTH_ENV_INVALID") from error
         self.oauth_settings = GoogleOAuthSettings.load(
-            runtime_environment=os.environ.get("GWA_MCP_ENVIRONMENT", ""),
+            runtime_environment=self.oauth_environment.value,
         )
-        self.keyring = keyring or OsKeyringSecretStoreAdapter()
+        self.keyring = keyring or OsKeyringSecretStoreAdapter(
+            service_name=keyring_service_name(
+                environment=self.oauth_environment.value,
+                credential_type="google-oauth",
+            )
+        )
         if self.keyring.get(GOOGLE_REFRESH_TOKEN_KEY) is not None:
             self.connection_state = CredentialState.CONNECTED
 
@@ -237,7 +253,7 @@ class GoogleWorkspaceCredentialProvider:
             "granted_scopes": list(REQUIRED_SCOPES) if connected else [],
             "missing_scopes": [],
             "reauth_required": self.connection_state is CredentialState.REAUTH_REQUIRED,
-            "oauth_environment": OAuthEnvironment.DEVELOPMENT.value,
+            "oauth_environment": self.oauth_environment.value,
             "last_checked_at_ms": self.last_checked_at_ms,
             "safe_error_code": self.last_oauth_error_code,
             "safe_error_description": self.last_oauth_error_description,
@@ -1039,7 +1055,7 @@ def _control_call(
                 "authorization_url": _authorization_url(flow),
                 "callback_url": flow.callback_url,
                 "expires_at_ms": flow.expires_at_ms,
-                "oauth_environment": OAuthEnvironment.DEVELOPMENT.value,
+                "oauth_environment": state.oauth_environment.value,
                 "scopes": list(REQUIRED_SCOPES),
             },
         )

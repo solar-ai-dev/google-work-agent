@@ -43,7 +43,7 @@ def _parameters() -> ReleaseManifestParameters:
         oauth_env="PRODUCTION",
         oauth_client_id="desktop-client.apps.googleusercontent.com",
         api_contract_version="1",
-        mcp_schema_version="1",
+        mcp_schema_version="2026-08-07.p0",
         policy_version="2026-08-06.p0",
         database_migration_version="0018",
     )
@@ -80,7 +80,9 @@ def test_signing_happens_before_manifest_hash_and_tampering_fails_closed(tmp_pat
     assert evidence.manifest_path == bundle / "release-manifest.json"
     assert evidence.manifest_signature_path == bundle / "release-manifest.sig"
     installation = verify_installation(
-        bundle.resolve(), trusted_public_key_pem=signer.public_key_pem
+        bundle.resolve(),
+        trusted_public_key_pem=signer.public_key_pem,
+        code_signature_verifier=lambda _path: True,
     )
     assert len(installation.verified_files) > 5
     (bundle / "service/GoogleWorkAgentService.exe").write_bytes(b"post-sign mutation")

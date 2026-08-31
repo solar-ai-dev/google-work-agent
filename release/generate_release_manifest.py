@@ -9,6 +9,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
+from google_work_agent.adapters.connectors.runtime.load_installed_connector_manifest import (
+    load_installed_connector_manifest,
+)
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    PROTOCOL_VERSION,
+    MCPServerManifest,
+)
 from release.profiles import DeploymentProfile
 from release.profiles.api_only import build_api_only_profile
 from release.profiles.local_capable import build_local_capable_profile
@@ -122,6 +129,7 @@ def generate_release_manifest(
         else build_local_capable_profile()
     )
     profile.validate(relative_paths)
+    _validate_connector_contract(root, parameters.mcp_schema_version)
     manifest = ReleaseManifestV1(
         schema_version=1,
         app_version=parameters.app_version,
@@ -140,6 +148,24 @@ def generate_release_manifest(
         raise ValueError("release manifest must be written at the bundle root")
     destination.write_bytes(manifest.to_canonical_bytes() + b"\n")
     return manifest
+
+
+def _validate_connector_contract(root: Path, mcp_schema_version: str) -> None:
+    installed = load_installed_connector_manifest(
+        root / "manifests" / "installed-connectors-v1.json"
+    )
+    for connector in installed.connectors:
+        if connector.mcp_schema_version != mcp_schema_version:
+            raise ValueError("release and installed connector MCP schema versions differ")
+        projection = MCPServerManifest.load(
+            root / Path(*PurePosixPath(connector.tool_projection_path).parts)
+        )
+        if (
+            projection.connector_id != connector.connector_id
+            or projection.manifest_version != mcp_schema_version
+            or projection.protocol_version != PROTOCOL_VERSION
+        ):
+            raise ValueError("installed connector MCP projection contract mismatch")
 
 
 def _iter_release_files(root: Path) -> tuple[Path, ...]:

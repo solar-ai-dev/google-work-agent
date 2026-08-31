@@ -169,12 +169,15 @@ class OllamaHTTPClient(OllamaTransport):
             )
         raw_models = models.get("models", [])
         model_items = raw_models if isinstance(raw_models, list) else []
-        model_names = {
-            str(item.get("name"))
-            for item in model_items
-            if isinstance(item, dict) and "name" in item
-        }
-        if model_id and model_id not in model_names:
+        matching_model = next(
+            (
+                item
+                for item in model_items
+                if isinstance(item, dict) and str(item.get("name")) == model_id
+            ),
+            None,
+        )
+        if model_id and matching_model is None:
             return ProbeResult(
                 availability=AvailabilityState.DEGRADED,
                 safe_error_code="MODEL_NOT_FOUND",
@@ -186,6 +189,11 @@ class OllamaHTTPClient(OllamaTransport):
             metadata={
                 "version": version.get("version"),
                 "model_present": True if model_id else None,
+                "model_digest": (
+                    matching_model.get("digest")
+                    if isinstance(matching_model, dict)
+                    else None
+                ),
             },
         )
 

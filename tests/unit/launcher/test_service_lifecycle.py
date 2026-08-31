@@ -79,12 +79,25 @@ def test_service_start_uses_verified_executable_and_stdin_only_for_secret(
     executable = tmp_path / "install" / "service" / "GoogleWorkAgentService.exe"
     executable.parent.mkdir(parents=True)
     executable.write_bytes(b"service")
+    uninstaller = tmp_path / "install" / "unins000.exe"
+    uninstaller.write_bytes(b"uninstaller")
     installation = VerifiedInstallation(
         install_root=(tmp_path / "install").resolve(),
         manifest_path=tmp_path / "install" / "release-manifest.json",
         signature_path=tmp_path / "install" / "release-manifest.sig",
-        manifest=MappingProxyType({}),
+        manifest=MappingProxyType(
+            {
+                "files": [
+                    {
+                        "file_path": "service/GoogleWorkAgentService.exe",
+                        "file_size": executable.stat().st_size,
+                        "sha256": "0" * 64,
+                    }
+                ]
+            }
+        ),
         verified_files=(executable.resolve(),),
+        code_signature_verified_files=(executable.resolve(), uninstaller.resolve()),
     )
     layout = prepare_data_directory(tmp_path / "data", acl_initializer=lambda _path: None)
     reservation = allocate_dynamic_port()
@@ -121,6 +134,10 @@ def test_service_start_uses_verified_executable_and_stdin_only_for_secret(
     assert "one-time-secret" not in json.dumps(captured["env"])
     assert payload["bootstrap_secret"] == "one-time-secret"
     assert payload["signed_build_config"]["oauth_client_id"] == "desktop-client-id"
+    assert payload["verified_release_files"] == installation.manifest["files"]
+    assert payload["code_signature_verified_paths"] == [
+        "service/GoogleWorkAgentService.exe"
+    ]
     assert "client_secret" not in payload["signed_build_config"]
     assert process.stdin.closed_by_launcher is True
 
