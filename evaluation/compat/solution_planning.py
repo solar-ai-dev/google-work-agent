@@ -6,7 +6,7 @@ import copy
 from collections.abc import Callable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Protocol, TypedDict, cast
+from typing import Final, Protocol, TypedDict, cast
 
 import google_work_agent.application.agents.retrieval.contracts.schema_validation as _schema
 from evaluation.compat.work_analysis_result_v1 import (

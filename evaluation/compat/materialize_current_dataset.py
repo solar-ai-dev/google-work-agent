@@ -133,9 +133,7 @@ def _migrate_case(source: dict[str, object]) -> CanonicalCaseV7:
         expected_retrieval_trajectory=cast(
             JsonValue, retrieval.get("expected_read_trajectory", [])
         ),
-        expected_tool_trajectory=cast(
-            JsonValue, workflow.get("expected_e2e_tool_trajectory", [])
-        ),
+        expected_tool_trajectory=cast(JsonValue, workflow.get("expected_e2e_tool_trajectory", [])),
         policy_result=cast(JsonValue, safety),
         allowed_actions=_json_list(planning.get("actions", []), "planning.actions"),
         forbidden_actions=_json_list(safety.get("forbidden_actions", []), "forbidden_actions"),

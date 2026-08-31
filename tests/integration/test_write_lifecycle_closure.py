@@ -40,7 +40,7 @@ def test_corrective_recovery_reserves_durable_plan_without_runtime_payload_autho
 def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
     source = inspect.getsource(LangGraphWorkflowRuntime._resume_corrective_plan)
 
-    assert "SupervisorTarget.PLANNING.value" in source
+    assert "SupervisorTarget.SOLUTION_PLANNING.value" in source
     assert "_route_translator.translate" in source
     assert 'as_node="recovery"' in source
     assert 'resume_payload.get("plan_id")' in source

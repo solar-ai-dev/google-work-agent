@@ -32,7 +32,7 @@ def test_detect_ambiguity_has_its_own_prompt_call_and_bounded_input() -> None:
     source = operation.read_text(encoding="utf-8")
 
     assert '"request_understanding.detect_ambiguity"' in source
-    assert "invoke_structured" in _calls(operation)
+    assert "infer" in _calls(operation)
     assert '"user_request"' in source
     assert '"goal_candidate"' in source
     assert '"confirmation_response"' in source

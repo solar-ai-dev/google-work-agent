@@ -127,15 +127,18 @@ def _control_writes(
     goto_node: str | None,
 ) -> list[tuple[str, object]]:
     if control.kind == "CONFIRMATION_RESPONSE":
-        command: Command[str] = Command(
-            resume={
-                "confirmation_response": dict(control.confirmation_response),
-                "policy_confirmation_receipt": (
-                    None
-                    if control.policy_confirmation_receipt is None
-                    else dict(control.policy_confirmation_receipt)
-                ),
-            }
+        command = cast(
+            Command[str],
+            Command(
+                resume={
+                    "confirmation_response": dict(control.confirmation_response),
+                    "policy_confirmation_receipt": (
+                        None
+                        if control.policy_confirmation_receipt is None
+                        else dict(control.policy_confirmation_receipt)
+                    ),
+                }
+            ),
         )
     else:
         raw_control = cast(dict[str, object], asdict(control))
@@ -168,10 +171,9 @@ def _control_writes(
                 update["pending_user_retrieval_need"] = dict(retrieval_need)
             else:
                 raise ValueError("unknown context adjustment kind")
-        command = (
-            Command[str](goto=goto_node, update=update)
-            if goto_node
-            else Command[str](update=update)
+        command = cast(
+            Command[str],
+            Command(goto=goto_node, update=update) if goto_node else Command(update=update),
         )
     writes = list(map_command(command))
     if any(task_id != NULL_TASK_ID for task_id, _, _ in writes):

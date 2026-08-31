@@ -18,7 +18,6 @@ from tests.integration.langgraph.test_runtime import (
     _clear_intent,
     _make_runtime,
     _make_runtime_with_llm,
-    _plan,
     _QueuedLLMRuntime,
     _runtime_active_manifest_path,
     _seed_runtime_database,
@@ -162,7 +161,6 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
 ) -> None:
     llm_runtime = _QueuedLLMRuntime(
         [
-            [_plan("TASKS", {"task_list_id": "task-list-default"})],
             _selection_output(),
             _sufficiency_output("SUFFICIENT"),
             _analysis_output(),

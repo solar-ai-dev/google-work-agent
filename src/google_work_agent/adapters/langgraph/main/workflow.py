@@ -339,10 +339,8 @@ class WorkflowRuntimeCore:
     """LangGraph runtime with selectable Stage 18 graph profiles."""
 
     if TYPE_CHECKING:
-
-        def _has_persisted_cancel_intent(self, run_id: str) -> bool: ...
-
-        def discard_run_transients(self, run_id: str) -> None: ...
+        _has_persisted_cancel_intent: Callable[[str], bool]
+        discard_run_transients: Callable[[str], None]
 
     def __init__(
         self,

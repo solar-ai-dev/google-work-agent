@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
@@ -72,6 +72,10 @@ from google_work_agent.application.use_cases.run.account_provider_dispatch impor
     account_provider_dispatch,
 )
 from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
+from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import (
+    StructuredInferenceResultV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
@@ -100,6 +104,33 @@ class _ToolRouteQueuedLLMRuntime:
 
     def invoke_structured(self, **kwargs: object) -> Any:
         return self._invoke(**kwargs)
+
+    def infer(
+        self,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        result = self._invoke(
+            requested_mode=requested_mode,
+            prompt_ref=prompt_ref,
+            prompt_input=input_projection,
+            output_schema=output_schema_ref,
+        )
+        if not isinstance(result.structured_output, dict):
+            raise RuntimeError("canonical structured inference fixture must return an object")
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=result.structured_output,
+            provider=result.provider,
+            model=result.model,
+            actual_runtime=result.actual_runtime.value,
+            input_tokens=result.input_tokens or 0,
+            output_tokens=result.output_tokens or 0,
+            latency_ms=result.latency_ms,
+            fallback_reason=result.fallback_reason,
+        )
 
     def invoke_tool_call(self, **kwargs: object) -> Any:
         return self._invoke(**kwargs)

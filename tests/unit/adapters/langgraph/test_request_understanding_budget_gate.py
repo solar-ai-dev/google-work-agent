@@ -8,8 +8,8 @@ ensure_llm_call_budget-before / consume_llm_call_budget-after pattern).
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any, cast
+from collections.abc import Iterator, Mapping
+from typing import Any, Literal, cast
 
 import pytest
 
@@ -28,7 +28,11 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,
+    OutputSchemaDefinition,
     PromptReference,
+)
+from google_work_agent.ports.llm.structured_inference_port import (
+    StructuredInferenceResultV1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
@@ -54,6 +58,9 @@ class _NeverCalledAgent:
     """Fails the test if the Provider boundary is ever reached."""
 
     def invoke_structured(self, *args: object, **kwargs: object) -> Any:
+        raise AssertionError("LLM runtime must not be called once the Run budget is exhausted")
+
+    def infer(self, *args: object, **kwargs: object) -> Any:
         raise AssertionError("LLM runtime must not be called once the Run budget is exhausted")
 
 
@@ -87,6 +94,27 @@ class _RepairingAgent:
             "analysis_requirement": "REQUIRED",
         }
         return result
+
+    def infer(
+        self,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        del requested_mode, prompt_ref, input_projection, output_schema_ref
+        result = self.invoke_structured()
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=result.structured_output,
+            provider="test-provider",
+            model="test-model",
+            actual_runtime="LOCAL_GPU",
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=0,
+            fallback_reason=None,
+        )
 
 
 @pytest.fixture(autouse=True)
