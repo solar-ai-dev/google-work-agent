@@ -5,7 +5,6 @@ import {
   getSettings,
   patchSettings,
   storeLLMApiKey,
-  testLLMConnection,
 } from "../../api";
 import { ApiClientError } from "../../api/client";
 import type { GoogleConnectionResponse, RuntimeSummary } from "../../api/contract";
@@ -27,24 +26,20 @@ export function SettingsDrawer(props: Props): JSX.Element {
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
   const [requestedRuntimeMode, setRequestedRuntimeMode] = useState("API_LLM");
   const [externalLLMConsent, setExternalLLMConsent] = useState(false);
-  const [ollamaEndpoint, setOllamaEndpoint] = useState("");
-  const [approvedModelId, setApprovedModelId] = useState("");
   const [llmState, setLLMState] = useState<Record<string, unknown> | null>(null);
   const [llmStatusMessage, setLLMStatusMessage] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_MEMORY">("KEYRING");
+  const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
 
   const loadRuntimeSettings = useCallback(async (): Promise<void> => {
     setSettingsLoading(true);
     setSettingsError(null);
     try {
       const [settingsResponse, llmResponse] = await Promise.all([getSettings(), getLLMConnection()]);
-      const settings = asRecord(settingsResponse.settings);
-      setRequestedRuntimeMode(String(settings.requested_runtime_mode ?? "API_LLM"));
+      const settings = asRecord(settingsResponse);
+      setRequestedRuntimeMode(String(settings.preferred_llm_mode ?? "AUTO"));
       setExternalLLMConsent(Boolean(settings.external_llm_consent));
-      setOllamaEndpoint(String(settings.ollama_endpoint ?? ""));
-      setApprovedModelId(String(settings.approved_model_id ?? ""));
-      setLLMState(asRecord(llmResponse.llm));
+      setLLMState(asRecord(llmResponse));
     } catch (error) {
       setSettingsError(error instanceof ApiClientError ? error.message : "설정 정보를 불러오지 못했습니다.");
     } finally {
@@ -56,7 +51,7 @@ export function SettingsDrawer(props: Props): JSX.Element {
     void loadRuntimeSettings();
   }, [loadRuntimeSettings]);
 
-  const llmSummary = useMemo(() => readLLMState(props.runtime?.llm), [props.runtime?.llm]);
+  const llmSummary = useMemo(() => readRuntimeState(props.runtime), [props.runtime]);
   const connectionSummary = useMemo(() => readLLMState(llmState), [llmState]);
 
   async function handleSaveLLMSettings(): Promise<void> {
@@ -65,10 +60,8 @@ export function SettingsDrawer(props: Props): JSX.Element {
     try {
       await patchSettings({
         command_id: `settings-${Date.now()}`,
-        requested_runtime_mode: requestedRuntimeMode,
+        preferred_llm_mode: requestedRuntimeMode as "AUTO" | "LOCAL_GPU" | "API_LLM",
         external_llm_consent: externalLLMConsent,
-        ollama_endpoint: ollamaEndpoint.trim() || null,
-        approved_model_id: approvedModelId.trim() || null,
       });
       await Promise.all([props.onRuntimeRefresh(), loadRuntimeSettings()]);
       setSettingsSavedMessage("LLM 설정을 저장했습니다.");
@@ -106,8 +99,8 @@ export function SettingsDrawer(props: Props): JSX.Element {
     setLLMStatusMessage(null);
     setSettingsError(null);
     try {
-      const response = await testLLMConnection();
-      setLLMState(asRecord(response.llm));
+      const response = await getLLMConnection();
+      setLLMState(asRecord(response));
       await props.onRuntimeRefresh();
       setLLMStatusMessage("LLM 연결 상태를 다시 확인했습니다.");
     } catch (error) {
@@ -131,21 +124,19 @@ export function SettingsDrawer(props: Props): JSX.Element {
         </section>
         <section className="info-card">
           <strong>Google</strong>
-          <p>{props.google?.connected ? props.google.account_email : "연결되지 않음"}</p>
+          <p>{props.google?.connection_status === "CONNECTED" ? props.google.display_email : "연결되지 않음"}</p>
           <div className="button-row">
-            {!props.google?.connected && props.onConnect ? <button className="button-primary" type="button" onClick={props.onConnect}>Google 로그인</button> : null}
-            {props.google?.connected ? <button className="button-danger" type="button" onClick={props.onDisconnect}>연결 해제</button> : null}
+            {props.google?.connection_status !== "CONNECTED" && props.onConnect ? <button className="button-primary" type="button" onClick={props.onConnect}>Google 로그인</button> : null}
+            {props.google?.connection_status === "CONNECTED" ? <button className="button-danger" type="button" onClick={props.onDisconnect}>연결 해제</button> : null}
           </div>
-          {props.google?.missing_scopes.length ? <p className="status-warn">누락 Scope: {props.google.missing_scopes.join(", ")}</p> : null}
-          {props.google?.safe_error_code ? <p className="status-warn">{props.google.safe_error_code}</p> : null}
-          {props.google?.safe_error_description ? <p className="status-warn">{props.google.safe_error_description}</p> : null}
+          {props.google?.missing_required_scopes.length ? <p className="status-warn">누락 Scope: {props.google.missing_required_scopes.join(", ")}</p> : null}
         </section>
         <section className="info-card">
           <strong>Runtime</strong>
           <div className="muted">Deployment {props.runtime?.deployment_profile ?? "-"}</div>
-          <div className="muted">MCP {props.runtime?.mcp ?? "-"}</div>
-          <div className="muted">API LLM {props.runtime?.api_llm ?? "-"}</div>
-          <div className="muted">Ollama {props.runtime?.ollama ?? "-"}</div>
+          <div className="muted">Google {props.runtime?.connectors[0]?.connection_status ?? "-"}</div>
+          <div className="muted">API LLM {props.runtime?.llm_providers.find((item) => item.provider === "API_LLM")?.availability ?? "-"}</div>
+          <div className="muted">Local GPU {props.runtime?.llm_providers.find((item) => item.provider === "LOCAL_GPU")?.availability ?? "-"}</div>
         </section>
         <section className="info-card">
           <strong>LLM</strong>
@@ -163,14 +154,6 @@ export function SettingsDrawer(props: Props): JSX.Element {
             <input type="checkbox" checked={externalLLMConsent} onChange={(event) => setExternalLLMConsent(event.target.checked)} disabled={settingsLoading} />
             <span>외부 LLM 사용 동의</span>
           </label>
-          <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
-            <span className="muted">Ollama endpoint</span>
-            <input value={ollamaEndpoint} onChange={(event) => setOllamaEndpoint(event.target.value)} placeholder="http://127.0.0.1:11434" disabled={settingsLoading} />
-          </label>
-          <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
-            <span className="muted">Approved model id</span>
-            <input value={approvedModelId} onChange={(event) => setApprovedModelId(event.target.value)} placeholder="approved-model" disabled={settingsLoading} />
-          </label>
           <div className="button-row" style={{ marginTop: "0.75rem" }}>
             <button className="button-primary" type="button" onClick={() => void handleSaveLLMSettings()}>LLM 설정 저장</button>
             <button className="button-secondary" type="button" onClick={() => void handleTestLLMConnection()}>연결 테스트</button>
@@ -184,8 +167,8 @@ export function SettingsDrawer(props: Props): JSX.Element {
           <strong>API Key</strong>
           <label style={{ display: "grid", gap: "0.35rem" }}>
             <span className="muted">Storage mode</span>
-            <select value={storageMode} onChange={(event) => setStorageMode(event.target.value === "SESSION_MEMORY" ? "SESSION_MEMORY" : "KEYRING")}>
-              <option value="KEYRING">KEYRING</option><option value="SESSION_MEMORY">SESSION_MEMORY</option>
+            <select value={storageMode} onChange={(event) => setStorageMode(event.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}>
+              <option value="KEYRING">KEYRING</option><option value="SESSION_ONLY">SESSION_ONLY</option>
             </select>
           </label>
           <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
@@ -212,16 +195,31 @@ function readLLMState(value: Record<string, unknown> | null | undefined): {
   approvedModelState: string | null;
 } {
   const llm = asRecord(value);
-  const apiProvider = asRecord(llm.api_provider);
-  const ollama = asRecord(llm.ollama);
+  const configured = llm.configured === true;
   return {
-    buildProfile: typeof llm.build_profile === "string" ? llm.build_profile : null,
-    actualRuntime: typeof llm.actual_runtime === "string" ? llm.actual_runtime : null,
-    availableModes: Array.isArray(llm.available_modes) ? llm.available_modes.filter((item): item is string => typeof item === "string") : [],
-    apiCredentialState: typeof apiProvider.credential_state === "string" ? apiProvider.credential_state : null,
-    apiAvailability: typeof apiProvider.availability === "string" ? apiProvider.availability : null,
-    ollamaAvailability: typeof ollama.availability === "string" ? ollama.availability : null,
-    approvedModelState: typeof ollama.approved_model_state === "string" ? ollama.approved_model_state : null,
+    buildProfile: null,
+    actualRuntime: null,
+    availableModes: [],
+    apiCredentialState: configured ? "CONFIGURED" : "NOT_CONFIGURED",
+    apiAvailability: typeof llm.validation_status === "string" ? llm.validation_status : null,
+    ollamaAvailability: null,
+    approvedModelState: null,
+  };
+}
+
+function readRuntimeState(value: RuntimeSummary | null | undefined): ReturnType<typeof readLLMState> {
+  const apiProvider = value?.llm_providers.find((item) => item.provider === "API_LLM");
+  const localProvider = value?.llm_providers.find((item) => item.provider === "LOCAL_GPU");
+  return {
+    buildProfile: value?.deployment_profile ?? null,
+    actualRuntime: value?.runtime_mode.actual_runtime ?? null,
+    availableModes: value?.llm_providers
+      .filter((item) => item.availability === "READY")
+      .map((item) => item.provider) ?? [],
+    apiCredentialState: apiProvider?.configured ? "CONFIGURED" : "NOT_CONFIGURED",
+    apiAvailability: apiProvider?.availability ?? null,
+    ollamaAvailability: localProvider?.availability ?? null,
+    approvedModelState: localProvider?.model_id ?? null,
   };
 }
 

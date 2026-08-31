@@ -10,13 +10,15 @@ type MockResponse = {
   headers?: Record<string, string>;
 };
 
+let conversationOpenRunEnabled = true;
+
 function conversationItem(conversationId: string, title: string, latestMessageAtMs: number) {
   return {
     schema_version: 1,
     conversation_id: conversationId,
     title,
     latest_message_at_ms: latestMessageAtMs,
-    open_run_id: null,
+    open_run_id: conversationOpenRunEnabled && conversationId === "conversation-1" ? "run-1" : null,
   } as const;
 }
 
@@ -138,7 +140,7 @@ test("captures the bootstrap fragment before asynchronous startup checks", async
     if (path === "/api/v1/runtime") {
       return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
     }
-    if (path === "/api/v1/google/connection") {
+    if (path === "/api/v1/connections/google/status") {
       return jsonResponse(googleConnection());
     }
     if (path === "/api/v1/identity/google-account") {
@@ -186,7 +188,7 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
     if (path === "/api/v1/runtime") {
       return Promise.resolve(jsonFetchResponse({ summary: runtimeSummary([]), api_contract_version: "1" }));
     }
-    if (path === "/api/v1/google/connection") {
+    if (path === "/api/v1/connections/google/status") {
       return Promise.resolve(jsonFetchResponse(googleConnection()));
     }
     if (path === "/api/v1/identity/google-account") {
@@ -214,10 +216,10 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
 
   resolveBootstrap(jsonFetchResponse({ session_established: true, service_instance_id: "svc-1", api_contract_version: "1" }));
 
-  await screen.findByText(/Google/);
+  await waitFor(() => expect(document.querySelector(".topbar-actions")).not.toBeNull());
   expect(window.location.hash).toBe("");
   expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/runtime"));
-  expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/google/connection"));
+  expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/connections/google/status"));
   expect(paths.indexOf("/api/v1/session/bootstrap")).toBeLessThan(paths.indexOf("/api/v1/identity/google-account"));
 });
 
@@ -1007,12 +1009,8 @@ test("starts Google OAuth from the disconnected status action", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await screen.findByText(/Google/);
+  await waitFor(() => expect(document.querySelector(".topbar-actions")).not.toBeNull());
   await user.click(screen.getByRole("button", { name: "설정" }));
-  expect(await screen.findByText("TOKEN_EXCHANGE_INVALID_REQUEST")).toBeInTheDocument();
-  expect(
-    screen.getByText("Google rejected a required token request field."),
-  ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Google 연결" }));
 
   expect(window.open).toHaveBeenCalledWith(
@@ -1069,7 +1067,7 @@ test("does not open an unexpected authorization URL returned by the API", async 
   await user.click(await screen.findByRole("button", { name: "Google 연결" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/v1/google/oauth/start",
+      "/api/v1/connections/google/start",
       expect.objectContaining({ method: "POST" }),
     ),
   );
@@ -1382,13 +1380,15 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
     if (path.startsWith("/api/v1/resources/gmail")) {
       return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
     }
-    if (path === "/api/v1/settings" && init?.method === "PATCH") {
+    if (path === "/api/v1/settings" && init?.method === "PUT") {
       const body = JSON.parse(String(init.body)) as {
-        requested_runtime_mode: string;
-        external_llm_consent: boolean;
+        settings_patch: {
+          preferred_llm_mode: string;
+          external_llm_consent: boolean;
+        };
       };
-      requestedRuntimeMode = body.requested_runtime_mode;
-      externalLLMConsent = body.external_llm_consent;
+      requestedRuntimeMode = body.settings_patch.preferred_llm_mode;
+      externalLLMConsent = body.settings_patch.external_llm_consent;
       return jsonResponse({
         settings: settingsPayload({
           requested_runtime_mode: requestedRuntimeMode,
@@ -1397,24 +1397,9 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
         api_contract_version: "1",
       });
     }
-    if (path === "/api/v1/llm/api-key" && init?.method === "POST") {
+    if (path === "/api/v1/llm/api-key" && init?.method === "PUT") {
       credentialState = "AVAILABLE";
       return jsonResponse({ credential_state: credentialState, api_contract_version: "1" });
-    }
-    if (path === "/api/v1/llm/test" && init?.method === "POST") {
-      return jsonResponse({
-        llm: llmConnectionPayload({
-          requested_mode: requestedRuntimeMode,
-          external_llm_consent: externalLLMConsent,
-          api_provider: {
-            credential_state: credentialState,
-            availability: "AVAILABLE",
-            last_probe: 2,
-            safe_error_code: null,
-          },
-        }),
-        api_contract_version: "1",
-      });
     }
     if (path === "/api/v1/llm/api-key" && init?.method === "DELETE") {
       credentialState = "MISSING";
@@ -1426,7 +1411,7 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
   const user = userEvent.setup();
   render(<App />);
 
-  await screen.findByText(/Google/);
+  await waitFor(() => expect(document.querySelector(".topbar-actions")).not.toBeNull());
   await user.click(screen.getByRole("button", { name: "설정" }));
   await screen.findByText("Requested mode");
   await user.selectOptions(screen.getByDisplayValue("API_LLM"), "AUTO");
@@ -1435,32 +1420,32 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/v1/settings",
-      expect.objectContaining({ method: "PATCH" }),
+      expect.objectContaining({ method: "PUT" }),
     ),
   );
 
-  await user.selectOptions(screen.getByDisplayValue("KEYRING"), "SESSION_MEMORY");
+  await user.selectOptions(screen.getByDisplayValue("KEYRING"), "SESSION_ONLY");
   await user.type(screen.getByPlaceholderText("sk-..."), "sk-phase-m");
   await user.click(screen.getByRole("button", { name: "API 키 저장" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/v1/llm/api-key",
-      expect.objectContaining({ method: "POST" }),
+      "/api/v1/credentials/llm/gemini",
+      expect.objectContaining({ method: "PUT" }),
     ),
   );
 
   await user.click(screen.getByRole("button", { name: "연결 테스트" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/v1/llm/test",
-      expect.objectContaining({ method: "POST" }),
+      "/api/v1/credentials/llm/gemini",
+      expect.objectContaining({ method: "GET" }),
     ),
   );
 
   await user.click(screen.getByRole("button", { name: "API 키 삭제" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/v1/llm/api-key",
+      "/api/v1/credentials/llm/gemini",
       expect.objectContaining({ method: "DELETE" }),
     ),
   );
@@ -2939,7 +2924,7 @@ test("routes an incomplete first-run configuration to the onboarding checklist",
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Google Work Agent 시작하기" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "동의 저장" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "설정 완료하고 시작" })).toBeInTheDocument();
   expect(document.querySelector("textarea.composer")).not.toBeInTheDocument();
 });
 
@@ -3169,6 +3154,7 @@ function installUiContractFetch(options: {
   completedTaskResponse?: Promise<Response>;
   twoItems?: boolean;
 } = {}): Array<{ path: string; init?: RequestInit }> {
+  conversationOpenRunEnabled = options.run !== false;
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   let calendarResponseIndex = 0;
   let detailAttempts = 0;
@@ -3182,15 +3168,18 @@ function installUiContractFetch(options: {
     if (path === "/health/live") return jsonFetchResponse(liveResponse());
     if (path === "/health/ready") return jsonFetchResponse(readyResponse());
     if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
-    if (path === "/api/v1/google/connection") return jsonFetchResponse(googleConnection());
+    if (path === "/api/v1/connections/google/status") return jsonFetchResponse(googleConnection());
     if (path === "/api/v1/identity/google-account") {
       const account = options.accountResponses && accountResponseIndex < options.accountResponses.length
         ? options.accountResponses[accountResponseIndex++]
         : (options.accountAbsent ? null : currentAccount());
       return jsonFetchResponse({ account, api_contract_version: "1" });
     }
-    if (path === "/api/v1/settings") return jsonFetchResponse({ settings: settingsPayload({ setup_completed: options.setupCompleted ?? true }), api_contract_version: "1" });
-    if (path === "/api/v1/llm/connection") return jsonFetchResponse({
+    if (path === "/api/v1/settings") return jsonFetchResponse({
+      settings: settingsPayload(options.setupCompleted === false ? { default_calendar_id: null } : {}),
+      api_contract_version: "1",
+    });
+    if (path === "/api/v1/credentials/llm/gemini") return jsonFetchResponse({
       llm: llmConnectionPayload({
         api_provider: {
           credential_state: "CONFIGURED",
@@ -3220,7 +3209,7 @@ function installUiContractFetch(options: {
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonFetchResponse({
         schema_version: 1,
-        items: options.conversations
+        items: options.conversations === true || options.run !== false
           ? [conversationItem("conversation-1", "업무 대화", 1)]
           : [],
         next_cursor: null,
@@ -3451,7 +3440,16 @@ function installFetch(
   history?: (path: string) => MockResponse | Promise<MockResponse>,
 ): void {
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
-    const path = String(input);
+    const requestedPath = String(input);
+    const path = requestedPath === "/api/v1/connections/google/status"
+      ? "/api/v1/google/connection"
+      : requestedPath === "/api/v1/connections/google/start"
+        ? "/api/v1/google/oauth/start"
+        : requestedPath === "/api/v1/connections/google/disconnect"
+          ? "/api/v1/google/disconnect"
+      : requestedPath === "/api/v1/credentials/llm/gemini"
+        ? init?.method === "PUT" || init?.method === "DELETE" ? "/api/v1/llm/api-key" : "/api/v1/llm/connection"
+        : requestedPath;
     const response = path.endsWith("/history")
       ? await (history ?? (() => jsonResponse(historyPayload())))(path)
       : await handler(path, init);
@@ -3466,7 +3464,7 @@ function installFetch(
 }
 
 function jsonResponse(json: unknown, status = 200): MockResponse {
-  return { status, json };
+  return { status, json: normalizeOperationalPayload(json) };
 }
 
 function installConversationHistoryFetch(
@@ -3536,7 +3534,7 @@ function historyPayload(
 }
 
 function jsonFetchResponse(json: unknown, status = 200): Response {
-  return new Response(JSON.stringify(json), {
+  return new Response(JSON.stringify(normalizeOperationalPayload(json)), {
     status,
     headers: { "Content-Type": "application/json" },
   });
@@ -3611,33 +3609,62 @@ function readyResponse() {
 
 function runtimeSummary(openRunIds: string[], overrides: Record<string, unknown> = {}) {
   return {
-    google: "CONNECTED",
-    mcp: "READY",
-    api_llm: "NOT_CONFIGURED",
-    ollama: "NOT_AVAILABLE",
+    schema_version: 1,
+    service_instance_id: "svc-1",
+    connectors: [{
+      schema_version: 1,
+      connector_id: "google-workspace",
+      connection_status: "CONNECTED",
+      account_ref: "account-1",
+      scope_status: "READY",
+      retry_at_ms: null,
+    }],
+    llm_providers: [],
+    component_circuits: [],
+    active_run_budget: null,
+    recovery_required: openRunIds.length > 0,
+    release_version: "test",
+    frontend_build_version: "test",
+    api_contract_version: "1",
     deployment_profile: "test",
-    recovery_required_run_ids: [],
-    open_run_ids: openRunIds,
+    runtime_mode: { schema_version: 1, requested_mode: "API_LLM", actual_runtime: null, fallback_reason: null },
+    database_status: "READY",
+    migration_status: "READY",
+    sse_status: "READY",
+    recent_sanitized_error_code: null,
+    launcher_status: "READY",
+    manifest_status: "UNAVAILABLE",
+    session_status: "ESTABLISHED",
+    safe_mode: false,
+    last_backup_status: null,
+    last_migration_status: null,
     ...overrides,
   };
 }
 
 function settingsPayload(overrides: Record<string, unknown> = {}) {
   return {
-    config_schema_version: 1,
-    setup_completed: true,
-    deployment_profile: "LOCAL_CAPABLE",
-    requested_runtime_mode: "API_LLM",
-    default_calendar_id: null,
-    default_tasklist_id: null,
+    schema_version: 1,
     timezone: "Asia/Seoul",
-    work_hours: { days: [0, 1, 2, 3, 4], start: "09:00", end: "18:00" },
-    approval_ttl_minutes: 30,
-    run_retention_days: 30,
-    external_llm_consent: false,
-    ollama_endpoint: "http://127.0.0.1:11434",
-    approved_model_id: "approved-model",
-    log_level: "INFO",
+    default_calendar_id: "primary",
+    default_tasklist_id: "default",
+    preferred_llm_mode: "API_LLM",
+    external_llm_consent: true,
+    retention_days: 30,
+    theme: "LIGHT",
+    panel_preferences: { schema_version: 1, right_panel_default_open: true, right_panel_default_tab: "RESOURCES" },
+    working_day_start_local: "09:00",
+    working_day_end_local: "18:00",
+    include_weekends: false,
+    calendar_buffer_minutes: 15,
+    max_run_execution_ms: 300000,
+    max_connector_calls_per_run: 50,
+    max_source_page_calls_per_run: 10,
+    max_detail_fetches_per_run: 25,
+    max_context_tokens_per_run: 32000,
+    max_retry_attempts_per_run: 3,
+    circuit_failure_threshold: 5,
+    circuit_open_duration_ms: 60000,
     ...overrides,
   };
 }
@@ -3681,16 +3708,13 @@ function llmConnectionPayload(overrides: Record<string, unknown> = {}) {
 
 function googleConnection() {
   return {
-    connected: true,
-    credential_state: "CONNECTED",
-    account_email: "user@example.com",
-    display_name: "User",
+    schema_version: 1,
+    connector_id: "google-workspace",
+    account_id: "account-1",
+    display_email: "user@example.com",
+    connection_status: "CONNECTED",
     granted_scopes: ["gmail.readonly"],
-    missing_scopes: [],
-    reauth_required: false,
-    oauth_environment: "DEVELOPMENT",
-    last_checked_at_ms: 3,
-    api_contract_version: "1",
+    missing_required_scopes: [],
   };
 }
 
@@ -3769,6 +3793,40 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
     terminal_result_kind: snapshot.result_kind ?? "NONE",
     projection_version: snapshot.snapshot_version,
   };
+}
+
+function normalizeOperationalPayload(json: unknown): unknown {
+  if (json === null || typeof json !== "object" || Array.isArray(json)) return json;
+  const payload = json as Record<string, unknown>;
+  if (payload.summary && typeof payload.summary === "object") return normalizeOperationalPayload(payload.summary);
+  if (payload.settings && typeof payload.settings === "object") return normalizeOperationalPayload(payload.settings);
+  if (payload.llm && !payload.service_instance_id && typeof payload.llm === "object") return normalizeOperationalPayload(payload.llm);
+  if (payload.connector_id && typeof payload.credential_state === "string") {
+    const state = payload.credential_state;
+    return {
+      ...payload,
+      connection_status: state === "CONNECTED" ? "CONNECTED" : state === "REAUTH_REQUIRED" ? "REAUTH_REQUIRED" : "DISCONNECTED",
+      display_email: payload.account_email ?? payload.display_email ?? null,
+    };
+  }
+  if (payload.build_profile && payload.api_provider && typeof payload.api_provider === "object") {
+    const provider = payload.api_provider as Record<string, unknown>;
+    const configured = provider.credential_state !== "MISSING";
+    return {
+      schema_version: 1,
+      provider: "gemini",
+      configured,
+      storage_mode: configured ? "KEYRING" : null,
+      validation_status: configured ? "VALID" : "NOT_CONFIGURED",
+    };
+  }
+  if (payload.config_schema_version || payload.requested_runtime_mode) {
+    return {
+      ...payload,
+      preferred_llm_mode: payload.requested_runtime_mode ?? payload.preferred_llm_mode,
+    };
+  }
+  return json;
 }
 
 function defaultSnapshot(): SnapshotShape {

@@ -51,9 +51,10 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
 
   useEffect(() => () => subscriptionRef.current?.(), []);
 
-  const refreshConversations = useCallback(async (): Promise<void> => {
+  const refreshConversations = useCallback(async (): Promise<ConversationItem[]> => {
     const response = await listConversations();
     setConversations(response.items);
+    return response.items;
   }, []);
 
   const beginConversationProjection = useCallback((conversationId: string | null): number => {

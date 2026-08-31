@@ -11,34 +11,54 @@ USE_CASES = ROOT / "src" / "google_work_agent" / "application" / "use_cases"
 
 RUNTIME_CONTROL_BINDINGS = (
     ("runtime_summaries.py", "get_runtime", "GetRuntimeStatusHandler"),
-    ("identities.py", "get_current_google_account", "GetConnectionStatusHandler"),
+    ("runtime_summaries.py", "update_runtime_mode", "UpdateRuntimeModeHandler"),
+    ("google_connections.py", "start_google_oauth", "StartAuthorizationHandler"),
+    ("google_connections.py", "get_google_connection", "GetConnectionStatusHandler"),
+    ("google_connections.py", "disconnect_google", "RevokeConnectionHandler"),
     ("llm_connections.py", "get_llm_connection", "GetLlmCredentialStatusHandler"),
     ("llm_connections.py", "store_llm_api_key", "StoreLlmCredentialHandler"),
     ("llm_connections.py", "delete_llm_api_key", "DeleteLlmCredentialHandler"),
-    ("llm_connections.py", "test_llm_connection", "TestLLMConnectionHandler"),
     ("settings.py", "get_settings", "GetSettingsHandler"),
     ("settings.py", "patch_settings", "UpdateSettingsHandler"),
     ("settings.py", "list_backups", "ListBackupsHandler"),
     ("settings.py", "create_backup", "CreateBackupHandler"),
     ("settings.py", "restore_backup", "RestoreBackupHandler"),
     ("settings.py", "shutdown", "RequestShutdownHandler"),
-    ("health.py", "ready", "GetReadinessHandler"),
+    ("diagnostics.py", "create_diagnostic_bundle", "CreateDiagnosticBundleHandler"),
 )
+RUNTIME_CONTROL_ROUTES = {
+    ("GET", "/api/v1/runtime"),
+    ("POST", "/api/v1/runtime/mode"),
+    ("POST", "/api/v1/connections/google/start"),
+    ("GET", "/api/v1/connections/google/status"),
+    ("POST", "/api/v1/connections/google/disconnect"),
+    ("PUT", "/api/v1/credentials/llm/{provider}"),
+    ("GET", "/api/v1/credentials/llm/{provider}"),
+    ("DELETE", "/api/v1/credentials/llm/{provider}"),
+    ("GET", "/api/v1/settings"),
+    ("PUT", "/api/v1/settings"),
+    ("GET", "/api/v1/backups"),
+    ("POST", "/api/v1/backups"),
+    ("POST", "/api/v1/restore"),
+    ("POST", "/api/v1/diagnostics/bundles"),
+    ("POST", "/api/v1/control/shutdown"),
+}
 APPLICATION_RUNTIME_CONTROL_OWNERS = (
     "runtime_status",
     "runtime_mode",
     "connection",
     "llm_credential",
-    "llm",
     "setting",
     "backup",
     "shutdown",
 )
 PROVIDER_BOUNDARY_ROUTES = (
     "runtime_summaries.py",
+    "google_connections.py",
     "identities.py",
     "llm_connections.py",
     "settings.py",
+    "diagnostics.py",
     "health.py",
 )
 
@@ -148,7 +168,7 @@ def _matches_module(module: str, prefix: str) -> bool:
 
 def test_all_runtime_control_routes_bind_expected_application_handlers() -> None:
     """VAPI4-001: route endpoint -> canonical Handler -> handle(...) must remain exact."""
-    assert len(RUNTIME_CONTROL_BINDINGS) == 13
+    assert len(RUNTIME_CONTROL_BINDINGS) == 15
     for route_name, endpoint_name, handler_name in RUNTIME_CONTROL_BINDINGS:
         tree = _parse(ROUTES / route_name)
         endpoint = _route_function(tree, endpoint_name)
@@ -161,6 +181,57 @@ def test_all_runtime_control_routes_bind_expected_application_handlers() -> None
         assert _calls_handler(endpoint, handler_name), (
             f"{route_name}:{endpoint_name} must execute {handler_name}"
         )
+
+
+def test_runtime_control_route_surface_is_exact_and_has_no_legacy_alternative() -> None:
+    actual: set[tuple[str, str]] = set()
+    for route_name in {item[0] for item in RUNTIME_CONTROL_BINDINGS}:
+        tree = _parse(ROUTES / route_name)
+        prefix = ""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(
+                isinstance(target, ast.Name) and target.id == "router"
+                for target in node.targets
+            ):
+                continue
+            if isinstance(node.value, ast.Call):
+                for keyword in node.value.keywords:
+                    if keyword.arg == "prefix" and isinstance(keyword.value, ast.Constant):
+                        prefix = str(keyword.value.value)
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call) or not isinstance(
+                    decorator.func, ast.Attribute
+                ):
+                    continue
+                if not isinstance(decorator.func.value, ast.Name) or (
+                    decorator.func.value.id != "router"
+                ):
+                    continue
+                if decorator.func.attr not in {"get", "post", "put", "delete"}:
+                    continue
+                if decorator.args and isinstance(decorator.args[0], ast.Constant):
+                    actual.add((decorator.func.attr.upper(), prefix + str(decorator.args[0].value)))
+    assert actual == RUNTIME_CONTROL_ROUTES
+
+
+def test_runtime_control_mutations_use_payload_command_identity_and_no_legacy_test_authority(
+) -> None:
+    route_source = "\n".join(
+        (ROUTES / name).read_text(encoding="utf-8")
+        for name in {item[0] for item in RUNTIME_CONTROL_BINDINGS}
+    )
+    assert "command_id=request.state.request_id" not in route_source
+    assert '"/llm/test"' not in route_source
+    assert not (USE_CASES / "llm/test_llm_connection.py").exists()
+    legacy_schema = ROOT / (
+        "src/google_work_agent/api/schemas/llm_connections/test_llm_connection.py"
+    )
+    assert not legacy_schema.exists()
 
 
 def test_runtime_and_identity_routes_do_not_call_broad_query_service_semantics() -> None:

@@ -1,12 +1,20 @@
-"""Disconnect-Google response contract."""
+"""Canonical Google revoke wire contracts."""
+
+from typing import Literal
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
-class GoogleDisconnectResponse(ApiModel):
-    disconnected: bool
-    credential_deleted: bool
-    revoke_attempted: bool
-    revoke_succeeded: bool
-    credential_state: str
-    api_contract_version: str
+class RevokeConnectionRequestV1(ApiModel):
+    schema_version: Literal[1]
+    command_id: str
+
+
+class RevokeResultV1(ApiModel):
+    schema_version: Literal[1]
+    revocation_attempted: bool
+    local_credential_deleted: bool
+    connection_status: Literal["DISCONNECTED", "UNAVAILABLE"]
+
+
+__all__ = ["RevokeConnectionRequestV1", "RevokeResultV1"]

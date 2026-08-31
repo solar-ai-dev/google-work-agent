@@ -1,13 +1,19 @@
-"""Start-Google-OAuth response contract."""
+"""Canonical Google OAuth start wire contracts."""
+
+from typing import Literal
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
-class GoogleOAuthStartResponse(ApiModel):
-    flow_id: str
+class StartAuthorizationRequestV1(ApiModel):
+    schema_version: Literal[1]
+    command_id: str
+
+
+class AuthorizationStartV1(ApiModel):
+    schema_version: Literal[1]
     authorization_url: str
-    callback_url: str
-    expires_at_ms: int
-    oauth_environment: str
-    scopes: list[str]
-    api_contract_version: str
+    callback_id: str
+
+
+__all__ = ["AuthorizationStartV1", "StartAuthorizationRequestV1"]

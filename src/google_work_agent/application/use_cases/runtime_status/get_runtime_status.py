@@ -71,6 +71,7 @@ class GetRuntimeStatusQuery:
         "API_LLM",
         "LOCAL_GPU",
     )
+    session_established: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +216,9 @@ class GetRuntimeStatusHandler:
             recent_sanitized_error_code=self._recent_sanitized_error_code(),
             launcher_status=self._launcher_status(),
             manifest_status=self._manifest_status(),
-            session_status=self._session_status(),
+            session_status=(
+                "ESTABLISHED" if query.session_established else self._session_status()
+            ),
             safe_mode=self._safe_mode(),
             last_backup_status=self._last_backup_status(),
             last_migration_status=self._last_migration_status(),

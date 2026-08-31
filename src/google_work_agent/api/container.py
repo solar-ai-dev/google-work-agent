@@ -14,6 +14,7 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
+from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.system.api_access_port import ApiAccessGuard
 from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.observability import OperationalLogSink
@@ -95,7 +96,6 @@ class ApiContainer:
     get_llm_credential_status_handler: Any | None = None
     store_llm_credential_handler: Any | None = None
     delete_llm_credential_handler: Any | None = None
-    test_llm_connection_service: Any | None = None
     get_attachment_handler: Any | None = None
     create_staged_attachment_handler: Any | None = None
     list_conversations_handler: Any | None = None
@@ -120,5 +120,7 @@ class ApiContainer:
     issue_selection_handle: IssueSelectionHandle | None = None
     resolve_selection_handle: ResolveSelectionHandle | None = None
     resource_connector_id: str = "google_workspace"
+    oauth_environment: OAuthEnvironment = OAuthEnvironment.DEVELOPMENT
+    oauth_requested_scopes: tuple[str, ...] = ()
     startup_callbacks: tuple[Callable[[], Awaitable[None]], ...] = ()
     shutdown_callbacks: tuple[Callable[[], None], ...] = ()

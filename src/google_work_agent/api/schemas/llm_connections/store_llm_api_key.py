@@ -1,13 +1,15 @@
-"""Store-LLM-API-key wire contracts."""
+"""Canonical LLM credential store wire contract."""
+
+from typing import Literal
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
 class StoreLLMApiKeyRequest(ApiModel):
+    schema_version: Literal[1]
+    command_id: str
     api_key: str
-    storage_mode: str
+    storage_mode: Literal["KEYRING", "SESSION_ONLY"]
 
 
-class StoreLLMApiKeyResponse(ApiModel):
-    credential_state: str
-    api_contract_version: str
+__all__ = ["StoreLLMApiKeyRequest"]

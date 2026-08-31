@@ -83,7 +83,7 @@ export function App(): JSX.Element {
   const calendar = useCalendar({
     accountId: currentAccount?.account_id,
     calendarId: resourceState.parentId,
-    active: startup.status === "ready" && google?.connected === true && resourceState.tab === "calendar",
+    active: startup.status === "ready" && google?.connection_status === "CONNECTED" && resourceState.tab === "calendar",
     timezone: calendarTimezone,
   });
   const selectedResourceIds = useMemo(
@@ -186,7 +186,7 @@ export function App(): JSX.Element {
   const startupPromiseRef = useRef<Promise<void> | null>(null);
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
     const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
-    setRuntime(runtimeResponse.summary);
+    setRuntime(runtimeResponse);
     setGoogle(googleResponse);
   }, []);
 
@@ -270,19 +270,30 @@ export function App(): JSX.Element {
         getSettings().catch(() => null),
       ]);
       const firstAccountResponse = await getCurrentAccount();
-      const accountResponse = googleResponse.connected && firstAccountResponse.account === null
+      const accountResponse = googleResponse.connection_status === "CONNECTED" && firstAccountResponse.account === null
         ? await getCurrentAccount()
         : firstAccountResponse;
-      setRuntime(runtimeResponse.summary);
+      setRuntime(runtimeResponse);
       setGoogle(googleResponse);
       setCurrentAccount(accountResponse.account);
-      const configuredTimezone = settingsResponse === null ? null : asRecord(settingsResponse.settings).timezone;
-      setSetupCompleted(settingsResponse === null || asRecord(settingsResponse.settings).setup_completed === true);
+      const configuredTimezone = settingsResponse?.timezone ?? null;
+      setSetupCompleted(
+        settingsResponse === null
+        || Boolean(
+          settingsResponse.default_calendar_id
+          && settingsResponse.default_tasklist_id
+          && settingsResponse.timezone,
+        ),
+      );
       if (typeof configuredTimezone === "string" && configuredTimezone) {
         setCalendarTimezone(configuredTimezone);
       }
       if (accountResponse.account?.account_id) {
-        await refreshConversations();
+        const conversationItems = await refreshConversations();
+        const openConversation = conversationItems.find((item) => item.open_run_id !== null);
+        if (openConversation?.open_run_id) {
+          await selectRun(openConversation.open_run_id);
+        }
       }
       setStartup({
         phase: "ready",
@@ -290,10 +301,6 @@ export function App(): JSX.Element {
         message: "UI를 준비했습니다.",
         checks: ready.checks,
       });
-      const openRunId = runtimeResponse.summary.open_run_ids[0];
-      if (openRunId) {
-        await selectRun(openRunId);
-      }
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : "앱을 다시 열어 주세요.";
       setStartup({
@@ -322,26 +329,26 @@ export function App(): JSX.Element {
   }, [runStartup]);
 
   useEffect(() => {
-    if (startup.status === "ready" && google?.connected) {
+    if (startup.status === "ready" && google?.connection_status === "CONNECTED") {
       void gmail.loadCount();
       void tasks.preload();
       void tasks.loadCompleted();
     }
-  }, [gmail.loadCount, google?.connected, startup.status, tasks.loadCompleted, tasks.preload]);
+  }, [gmail.loadCount, google?.connection_status, startup.status, tasks.loadCompleted, tasks.preload]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "gmail") return;
+    if (startup.status !== "ready" || google?.connection_status !== "CONNECTED" || resourceState.tab !== "gmail") return;
     if (!gmail.loaded && !gmail.loading && gmail.error === null) void gmail.loadPage(gmail.pageIndex);
     else if (gmail.loaded && !gmail.countLoading) void gmail.loadCount();
-  }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google?.connected, resourceState.tab, startup.status]);
+  }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google?.connection_status, resourceState.tab, startup.status]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || !google?.connected || resourceState.tab !== "tasks") return;
+    if (startup.status !== "ready" || google?.connection_status !== "CONNECTED" || resourceState.tab !== "tasks") return;
     if (!tasks.loaded && !tasks.loading && tasks.error === null) void tasks.loadPage(tasks.pageIndex);
-  }, [google?.connected, resourceState.tab, startup.status, tasks.error, tasks.loadPage, tasks.loaded, tasks.loading, tasks.pageIndex]);
+  }, [google?.connection_status, resourceState.tab, startup.status, tasks.error, tasks.loadPage, tasks.loaded, tasks.loading, tasks.pageIndex]);
 
   async function handleGoogleConnect(): Promise<void> {
-    if (google?.connected || googleConnectPending) {
+    if (google?.connection_status === "CONNECTED" || googleConnectPending) {
       return;
     }
     setGoogleConnectPending(true);
@@ -361,7 +368,14 @@ export function App(): JSX.Element {
     gmail.reset();
     tasks.reset();
     calendar.reset();
-    setGoogle((current) => current ? { ...current, connected: false } : current);
+    setGoogle((current) => current ? {
+      ...current,
+      account_id: null,
+      display_email: null,
+      connection_status: "DISCONNECTED",
+      granted_scopes: [],
+      missing_required_scopes: [],
+    } : current);
     setCurrentAccount(null);
     setResourceState((current) => ({
       ...current,
@@ -435,8 +449,8 @@ export function App(): JSX.Element {
           <span className="sr-only" aria-live="polite">{statusLine}</span>
         </div>
         <div className="topbar-connection" aria-live="polite">
-          <span className={`pill ${google?.connected ? "connection-connected" : "connection-disconnected"}`}>
-            {google?.connected ? "Google 연결됨" : "Google 미연결"}
+          <span className={`pill ${google?.connection_status === "CONNECTED" ? "connection-connected" : "connection-disconnected"}`}>
+            {google?.connection_status === "CONNECTED" ? "Google 연결됨" : "Google 미연결"}
           </span>
         </div>
         <div className="topbar-actions">
@@ -454,7 +468,7 @@ export function App(): JSX.Element {
               <path d="M12 16.45h.01" />
             </svg>
           </button>
-          {!google?.connected ? (
+          {google?.connection_status !== "CONNECTED" ? (
             <button
               className="button-primary"
               type="button"

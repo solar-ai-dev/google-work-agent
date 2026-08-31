@@ -62,6 +62,7 @@ from google_work_agent.application.use_cases.connection.start_authorization impo
 from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
     GetRuntimeStatusHandler,
 )
+from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import (
@@ -203,6 +204,9 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             connected_account_store_factory=connected_account_store_factory,
             now_ms=clock.now_ms,
         ),
+        current_account_id_provider=lambda: "current",
+        oauth_environment=OAuthEnvironment.DEVELOPMENT,
+        oauth_requested_scopes=("openid",),
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
             oauth=provider,
@@ -231,9 +235,13 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
 
             before = client.get("/api/v1/connections/google/status", headers=headers)
             assert before.status_code == 200
-            assert before.json()["connected"] is False
+            assert before.json()["connection_status"] == "DISCONNECTED"
 
-            started = client.post("/api/v1/connections/google/start", headers=headers, json={})
+            started = client.post(
+                "/api/v1/connections/google/start",
+                headers=headers,
+                json={"schema_version": 1, "command_id": "oauth-start-1"},
+            )
             assert started.status_code == 200
             payload = started.json()
             assert "test-desktop-client-id" not in started.text
@@ -247,7 +255,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
 
             connected = client.get("/api/v1/connections/google/status", headers=headers)
             assert connected.status_code == 200
-            assert connected.json()["connected"] is False
+            assert connected.json()["connection_status"] == "DISCONNECTED"
 
             runtime = client.get("/api/v1/runtime", headers=headers)
             assert runtime.status_code == 200
@@ -280,10 +288,12 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
             }
 
             disconnected = client.post(
-                "/api/v1/connections/google/disconnect", headers=headers, json={}
+                "/api/v1/connections/google/disconnect",
+                headers=headers,
+                json={"schema_version": 1, "command_id": "oauth-disconnect-1"},
             )
             assert disconnected.status_code == 200
-            assert disconnected.json()["disconnected"] is True
+            assert disconnected.json()["connection_status"] == "DISCONNECTED"
     finally:
         transport.close()
 

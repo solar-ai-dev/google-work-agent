@@ -13,7 +13,7 @@ describe("api index wrappers", () => {
     const cases: Array<{
       call: () => Promise<unknown>;
       path: string;
-      method: "GET" | "POST" | "PATCH" | "DELETE";
+      method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
       bodyIncludes?: Record<string, unknown>;
       formIncludes?: Record<string, string>;
     }> = [
@@ -31,17 +31,17 @@ describe("api index wrappers", () => {
       },
       { call: () => api.getRuntime(), path: "/api/v1/runtime", method: "GET" },
       { call: () => api.getSettings(), path: "/api/v1/settings", method: "GET" },
-      { call: () => api.getLLMConnection(), path: "/api/v1/llm/connection", method: "GET" },
+      { call: () => api.getLLMConnection(), path: "/api/v1/credentials/llm/gemini", method: "GET" },
       {
         call: () =>
           api.patchSettings({
             command_id: "settings-1",
-            requested_runtime_mode: "AUTO",
+            preferred_llm_mode: "AUTO",
             external_llm_consent: true,
           }),
         path: "/api/v1/settings",
-        method: "PATCH",
-        bodyIncludes: { command_id: "settings-1", requested_runtime_mode: "AUTO" },
+        method: "PUT",
+        bodyIncludes: { command_id: "settings-1" },
       },
       {
         call: () =>
@@ -49,15 +49,14 @@ describe("api index wrappers", () => {
             api_key: "sk-test",
             storage_mode: "KEYRING",
           }),
-        path: "/api/v1/llm/api-key",
-        method: "POST",
+        path: "/api/v1/credentials/llm/gemini",
+        method: "PUT",
         bodyIncludes: { api_key: "sk-test", storage_mode: "KEYRING" },
       },
-      { call: () => api.deleteLLMApiKey(), path: "/api/v1/llm/api-key", method: "DELETE" },
-      { call: () => api.testLLMConnection(), path: "/api/v1/llm/test", method: "POST" },
-      { call: () => api.getGoogleConnection(), path: "/api/v1/google/connection", method: "GET" },
-      { call: () => api.startGoogleOAuth(), path: "/api/v1/google/oauth/start", method: "POST" },
-      { call: () => api.disconnectGoogle(), path: "/api/v1/google/disconnect", method: "POST" },
+      { call: () => api.deleteLLMApiKey(), path: "/api/v1/credentials/llm/gemini", method: "DELETE" },
+      { call: () => api.getGoogleConnection(), path: "/api/v1/connections/google/status", method: "GET" },
+      { call: () => api.startGoogleOAuth(), path: "/api/v1/connections/google/start", method: "POST" },
+      { call: () => api.disconnectGoogle(), path: "/api/v1/connections/google/disconnect", method: "POST" },
       {
         call: () => api.getCurrentAccount(),
         path: "/api/v1/identity/google-account",

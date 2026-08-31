@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
@@ -218,7 +218,6 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     LLMRuntimeService,
     PromptRepairSchemaRepairer,
-    TestLLMConnectionService,
 )
 from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
     DeleteLlmCredentialHandler,
@@ -335,14 +334,21 @@ from google_work_agent.ports.connector.connector_read_port import ConnectorReadP
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort, MCPClientPortError
-from google_work_agent.ports.connector.oauth_credential_port import OAuthCredentialPort
+from google_work_agent.ports.connector.oauth_credential_port import (
+    ConnectionMetadataV1,
+    OAuthCredentialPort,
+    OAuthEnvironment,
+)
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.llm import (
     ApprovedModelInfo,
     RuntimePolicy,
 )
 from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusPort
+from google_work_agent.ports.llm.llm_runtime_status_port import (
+    LlmRuntimeStatusPort,
+    LlmRuntimeStatusV1,
+)
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.attachment_staging_port import AttachmentStagingPort
@@ -578,6 +584,18 @@ class DevelopmentConnectorBundle:
     google_connector: GoogleWorkspaceConnector
 
 
+def _google_oauth_scopes(registry: SignedToolRegistry) -> tuple[str, ...]:
+    scopes = {
+        "openid",
+        "userinfo.email",
+    }
+    for entry in registry.entries:
+        if entry.connector_id != GOOGLE_WORKSPACE_CONNECTOR_ID:
+            continue
+        scopes.update(entry.required_scopes)
+    return tuple(sorted(scopes))
+
+
 def build_connectors(
     *,
     mcp_manifest_path: Path,
@@ -745,6 +763,27 @@ class DeferredApiContainer:
         self.startup_callbacks = (self._initialize,)
         self.client_address_resolver: Callable[[Any], str | None] | None = None
         self.operational_log_sink = None
+        startup_runtime_mode = ProcessRuntimeModeAdapter("AUTO")
+        startup_circuits = ProcessComponentCircuitStateAdapter()
+        self.get_runtime_status_handler = GetRuntimeStatusHandler(
+            runtime_mode=startup_runtime_mode,
+            oauth=cast(OAuthCredentialPort, _UnavailableStartupOAuthStatus()),
+            llm_status=cast(LlmRuntimeStatusPort, _UnavailableStartupLlmStatus()),
+            circuits=startup_circuits,
+            service_instance_id=service_instance_id,
+            release_version=RELEASE_VERSION,
+            api_contract_version=API_CONTRACT_VERSION,
+            deployment_profile="DEVELOPMENT",
+            recovery_required=lambda: self.safe_mode_controller.snapshot().enabled,
+            database_status=lambda: "UNAVAILABLE",
+            migration_status=self._startup_migration_status,
+            sse_status=lambda: "UNAVAILABLE",
+            recent_sanitized_error_code=self._startup_error_code,
+            launcher_status=lambda: "DEGRADED",
+            manifest_status=lambda: "UNAVAILABLE",
+            safe_mode=lambda: self.safe_mode_controller.snapshot().enabled,
+        )
+        self.update_runtime_mode_handler = None
         self._bootstrap_secret = bootstrap_secret
         self._bootstrap_grant_store = InMemoryBootstrapGrantStore()
         self._session_manager = InMemoryLocalSessionManager()
@@ -765,6 +804,17 @@ class DeferredApiContainer:
         self.launcher_probe_verifier = DevelopmentLauncherProbeVerifier(service_instance_id)
         self.bootstrap_grant_store = self._bootstrap_grant_store
         self.local_session_manager = self._session_manager
+
+    def _startup_error_code(self) -> str | None:
+        reasons = self.safe_mode_controller.snapshot().reason_codes
+        return reasons[0] if reasons else None
+
+    def _startup_migration_status(self) -> Literal["READY", "PENDING", "FAILED"]:
+        return (
+            "FAILED"
+            if "MIGRATION_FAILED" in self.safe_mode_controller.snapshot().reason_codes
+            else "PENDING"
+        )
 
     async def _initialize(self) -> None:
         worker = asyncio.create_task(
@@ -828,6 +878,35 @@ class DeferredApiContainer:
 def _close_container(container: ApiContainer) -> None:
     for callback in container.shutdown_callbacks:
         callback()
+
+
+class _UnavailableStartupOAuthStatus:
+    """Read-only connector facts available before the production core is bound."""
+
+    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+        return ConnectionMetadataV1(
+            schema_version=1,
+            connector_id=connector_id,
+            account_id=None,
+            display_email=None,
+            connection_status="UNAVAILABLE",
+            granted_scopes=(),
+            missing_required_scopes=(),
+        )
+
+
+class _UnavailableStartupLlmStatus:
+    """Read-only LLM facts available before the production core is bound."""
+
+    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
+        return LlmRuntimeStatusV1(
+            schema_version=1,
+            provider=provider,
+            configured=False,
+            availability="UNAVAILABLE",
+            model_id=None,
+            error_code="CORE_INITIALIZATION_INCOMPLETE",
+        )
 
 
 @dataclass(slots=True)
@@ -1495,6 +1574,8 @@ def build_production_container(
         launcher_probe_verifier=DevelopmentLauncherProbeVerifier(service_instance_id),
         bootstrap_grant_store=grant_store,
         local_session_manager=session_manager,
+        oauth_environment=OAuthEnvironment.DEVELOPMENT,
+        oauth_requested_scopes=_google_oauth_scopes(connector_bundle.tool_registry),
         start_authorization_handler=StartAuthorizationHandler(
             credentials=google_provider,
             replay=operational_replay,
@@ -1685,7 +1766,6 @@ def build_production_container(
             credentials=credential_service,
             replay=operational_replay,
         ),
-        test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
         safe_mode_controller=safe_mode,
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=runtime_mode,
@@ -1702,7 +1782,7 @@ def build_production_container(
             migration_status=lambda: "READY",
             sse_status=lambda: "READY",
             launcher_status=lambda: "READY",
-            manifest_status=lambda: "VALID" if prompt_active else "INVALID",
+            manifest_status=lambda: "UNAVAILABLE",
             safe_mode=lambda: safe_mode.snapshot().enabled,
             last_migration_status=lambda: "READY",
         ),

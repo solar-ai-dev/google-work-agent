@@ -1,7 +1,7 @@
-"""Runtime status and requested-mode routes."""
+"""Runtime status and process-local requested-mode routes."""
 
 from dataclasses import asdict
-from typing import cast
+from typing import NoReturn
 
 from fastapi import APIRouter, Header, Request
 
@@ -9,13 +9,19 @@ from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
+from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
 from google_work_agent.api.dependencies.runtime_summaries import RuntimeRouteDependency
+from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
     RuntimeDetailResponseV1,
+    RuntimeModeStatusV1,
 )
 from google_work_agent.api.schemas.runtime_summaries.update_runtime_mode import (
-    RuntimeModeStatusV1,
     UpdateRuntimeModeRequest,
+)
+from google_work_agent.application.use_cases.operational_replay import (
+    OperationalCommandConflict,
+    OperationalCommandUncertain,
 )
 from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode import (
     UpdateRuntimeModeCommand,
@@ -42,51 +48,11 @@ def get_runtime(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    try:
-        handler = dependencies.get_runtime_status_handler()
-    except RuntimeError:
-        handler = None
+    handler = dependencies.get_runtime_status_handler
     if not isinstance(handler, GetRuntimeStatusHandler):
-        safe_mode = dependencies.safe_mode_state()
-        if safe_mode is None or not safe_mode.enabled:
-            raise RuntimeError("RUNTIME_STATUS_UNAVAILABLE")
-        return RuntimeDetailResponseV1(
-            schema_version=1,
-            service_instance_id="unavailable",
-            connectors=[],
-            llm_providers=[],
-            component_circuits=[],
-            active_run_budget=None,
-            recovery_required=True,
-            release_version="unavailable",
-            frontend_build_version="unavailable",
-            api_contract_version=dependencies.api_contract_version,
-            deployment_profile="unavailable",
-            runtime_mode=RuntimeModeStatusV1(
-                schema_version=1,
-                requested_mode="AUTO",
-                actual_runtime=None,
-                fallback_reason=None,
-            ),
-            database_status="UNAVAILABLE",
-            migration_status="FAILED",
-            sse_status="UNAVAILABLE",
-            recent_sanitized_error_code=(
-                safe_mode.reason_codes[0] if safe_mode.reason_codes else None
-            ),
-            launcher_status="DEGRADED",
-            manifest_status="UNAVAILABLE",
-            session_status="ESTABLISHED",
-            safe_mode=True,
-            last_backup_status=None,
-            last_migration_status=None,
-        )
-    result = handler(GetRuntimeStatusQuery())
-    summary = asdict(result)
-    safe_mode = dependencies.safe_mode_state()
-    summary["safe_mode"] = bool(safe_mode and safe_mode.enabled)
-    summary["session_status"] = "ESTABLISHED"
-    return cast(RuntimeDetailResponseV1, RuntimeDetailResponseV1.model_validate(summary))
+        _raise_service_unavailable(request, "RUNTIME_STATUS_UNAVAILABLE")
+    result = handler(GetRuntimeStatusQuery(session_established=True))
+    return RuntimeDetailResponseV1.model_validate(asdict(result))
 
 
 @router.post("/runtime/mode", response_model=RuntimeModeStatusV1)
@@ -102,18 +68,65 @@ def update_runtime_mode(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    handler = dependencies.update_runtime_mode_handler()
+    enforce_runtime_operation(request, operation="SETTINGS")
+    handler = dependencies.update_runtime_mode_handler
     if not isinstance(handler, UpdateRuntimeModeHandler):
-        raise RuntimeError("RUNTIME_MODE_UPDATE_UNAVAILABLE")
-    result = handler(
-        UpdateRuntimeModeCommand(
-            command_id=payload.command_id,
-            requested_mode=payload.requested_mode,
+        _raise_service_unavailable(request, "RUNTIME_MODE_UPDATE_UNAVAILABLE")
+    try:
+        result = handler(
+            UpdateRuntimeModeCommand(
+                command_id=payload.command_id,
+                requested_mode=payload.requested_mode,
+            )
         )
-    )
+    except (OperationalCommandConflict, OperationalCommandUncertain) as error:
+        _raise_operational_failure(error, request_id=request.state.request_id)
+    except RuntimeError as error:
+        if str(error) == "RUNTIME_MODE_CHANGE_BLOCKED_BY_ACTIVE_RUN":
+            raise ApiRequestError(
+                error_code="CONFLICT",
+                user_message="Runtime mode cannot change while a Run is active.",
+                status_code=409,
+                request_id=request.state.request_id,
+                detail_code="RUNTIME_MODE_ACTIVE_RUN",
+            ) from error
+        raise
     return RuntimeModeStatusV1(
         schema_version=1,
         requested_mode=result.requested_mode,
         actual_runtime=None,
         fallback_reason=None,
     )
+
+
+def _raise_service_unavailable(request: Request, detail_code: str) -> NoReturn:
+    raise ApiRequestError(
+        error_code="SERVICE_BUSY",
+        user_message="The runtime service is not available.",
+        status_code=503,
+        request_id=request.state.request_id,
+        detail_code=detail_code,
+    )
+
+
+def _raise_operational_failure(
+    error: OperationalCommandConflict | OperationalCommandUncertain,
+    *,
+    request_id: str,
+) -> NoReturn:
+    conflict = isinstance(error, OperationalCommandConflict)
+    raise ApiRequestError(
+        error_code="CONFLICT" if conflict else "SERVICE_BUSY",
+        user_message=(
+            "The command identity conflicts with an earlier request."
+            if conflict
+            else "The previous runtime-mode operation result is not yet known."
+        ),
+        status_code=409 if conflict else 503,
+        request_id=request_id,
+        retryable=not conflict,
+        detail_code="OPERATION_COMMAND_CONFLICT" if conflict else "OPERATION_RESULT_UNCERTAIN",
+    ) from error
+
+
+__all__ = ["router"]

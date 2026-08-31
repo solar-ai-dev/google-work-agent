@@ -1,8 +1,18 @@
-"""Request-shutdown wire response."""
+"""Canonical graceful-shutdown wire contracts."""
+
+from typing import Literal
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
+class RequestShutdownRequestV1(ApiModel):
+    schema_version: Literal[1]
+    command_id: str
+
+
 class ShutdownResponse(ApiModel):
-    report: dict[str, object]
-    api_contract_version: str
+    schema_version: Literal[1]
+    accepted: bool
+
+
+__all__ = ["RequestShutdownRequestV1", "ShutdownResponse"]

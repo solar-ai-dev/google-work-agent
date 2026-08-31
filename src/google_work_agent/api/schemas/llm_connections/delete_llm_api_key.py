@@ -1,8 +1,13 @@
-"""Delete-LLM-API-key response contract."""
+"""Canonical LLM credential deletion request."""
+
+from typing import Literal
 
 from google_work_agent.api.schemas.model import ApiModel
 
 
-class DeleteLLMApiKeyResponse(ApiModel):
-    credential_state: str
-    api_contract_version: str
+class DeleteLLMApiKeyRequest(ApiModel):
+    schema_version: Literal[1]
+    command_id: str
+
+
+__all__ = ["DeleteLLMApiKeyRequest"]

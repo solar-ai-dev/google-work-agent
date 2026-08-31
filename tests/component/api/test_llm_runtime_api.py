@@ -180,27 +180,35 @@ def test_llm_runtime_routes_mask_secrets(tmp_path: Path) -> None:
             credentials=credential_service,
             replay=operational_replay,
         ),
-        test_llm_connection_service=None,
     )
 
     with TestClient(create_app(container)) as client:
         stored = client.put(
             "/api/v1/credentials/llm/generic",
-            json={"api_key": "sk-test-secret", "storage_mode": CredentialStorageMode.KEYRING.value},
+            json={
+                "schema_version": 1,
+                "command_id": "credential-store-1",
+                "api_key": "sk-test-secret",
+                "storage_mode": CredentialStorageMode.KEYRING.value,
+            },
         )
         assert stored.status_code == 200
-        assert stored.json()["credential_state"] == "VALID"
+        assert stored.json()["validation_status"] == "VALID"
         assert "sk-test-secret" not in stored.text
 
         connection = client.get("/api/v1/credentials/llm/generic")
         assert connection.status_code == 200
-        assert connection.json()["llm"]["storage_mode"] == "KEYRING"
+        assert connection.json()["storage_mode"] == "KEYRING"
         assert "sk-test-secret" not in connection.text
 
-        deleted = client.delete("/api/v1/credentials/llm/generic")
+        deleted = client.request(
+            "DELETE",
+            "/api/v1/credentials/llm/generic",
+            json={"schema_version": 1, "command_id": "credential-delete-1"},
+        )
         assert deleted.status_code == 200
-        assert deleted.json()["credential_state"] == "NOT_CONFIGURED"
+        assert deleted.json()["validation_status"] == "NOT_CONFIGURED"
 
         after_delete = client.get("/api/v1/credentials/llm/generic")
-        assert after_delete.json()["llm"]["validation_status"] == "NOT_CONFIGURED"
+        assert after_delete.json()["validation_status"] == "NOT_CONFIGURED"
         assert "sk-test-secret" not in after_delete.text
