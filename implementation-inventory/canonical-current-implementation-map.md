@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `499b3811e3db7d01ff3ff2d90095186489076aaa`
+**Validation HEAD:** `6bcb980b2fb18ff46ca580bd6709544755fc1063`
 
 ## Purpose
 
@@ -23,6 +23,10 @@ Preservation order:
 
 
 # Cross-feature Core closure
+
+At final remediation SHA `6bcb980b2fb18ff46ca580bd6709544755fc1063`, #172 re-adjudicated all 25 A/B/C historical findings and independently revalidated D **82/82**, E **91/91**, F **262/262**, and G1 **564/564** rows. All eight remediation root groups are complete, unchecked rows are zero, surviving Core findings are zero, and `PRE_API_CORE_GATE = CLEAN`. The final production cut-over preserves the formal **CAP 142/142**, **STR 473/473**, and **NPA 85/85** universe while correcting exact guard ownership, persistence/UoW decomposition, Application semantic owners, credential security, cancel/write continuation, Main summaries, and pre-begin abort handling.
+
+The UoW now exposes only the narrow `InitialWorkflowBindingPort` required for atomic initial Run/workflow binding; runtime checkpoint reads/writes use the separately injected `CheckpointPort`, so checkpoint continuation state cannot become Domain truth through a broad persistence authority. Exact production callers, API composition, LangGraph runtime, recovery/cancellation handlers, and tests are cut over. Core-to-concrete persistence imports, legacy/broad checkpoint UoW callers, duplicate semantic authorities, and surviving old production imports/exports are zero. Final validation passed **2538 tests with 6 skipped**; architecture plus persistence passed **641 tests with 5 skipped**; LangGraph integration passed **121 tests**; Ruff format/check and diff integrity passed. Repository-wide MyPy retains pre-existing baseline typing defects and is not represented as CLEAN.
 
 At production SHA `499b3811e3db7d01ff3ff2d90095186489076aaa`, #152 independently reconciled the complete Core Request-to-Terminal integration and the formal implementation universe: **CAP 142/142**, **STR 473/473**, and **NPA 85/85** (700/700), with no missing or extra Ledger/Map identifier. The canonical producer chain is RunInput -> RequestIntent -> ToolRoutePlan -> RetrievalResult -> WorkAnalysisResult -> AnswerDraft/ActionPlanDraft -> PlanReviewResult -> durable Plan/Action/Approval/Claim/ExecutionAttempt/Verification-or-Recovery -> terminal Run result and final Assistant Message. Current artifact identity, revision/based-on binding, stale rejection, transaction/checkpoint boundaries, and restart/replay behavior are covered by the integrated persistence, LangGraph, retrieval, recovery, profile, and terminal suites.
 
