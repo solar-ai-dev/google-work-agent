@@ -40,9 +40,7 @@ def test_broad_and_pseudo_review_authorities_are_absent_from_production() -> Non
     )
     assert all(not (ROOT / path).exists() for path in removed)
     production = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "src/google_work_agent").rglob("*.py")
-        if "controlled_post_retrieval.py" not in path.as_posix()
+        path.read_text(encoding="utf-8") for path in (ROOT / "src/google_work_agent").rglob("*.py")
     )
     assert "RuntimeActiveReviewSubgraph" not in production
     assert "PlanReviewAgent" not in production

@@ -8,7 +8,7 @@ docs/00-CODE-AGENT-START-HERE.md section 4).
 
 ``output_schema`` is intentionally NOT translated into Gemini's
 ``responseSchema`` (an OpenAPI 3.0 Schema subset): this repository's real
-schemas (``experiments/datasets/google_workspace/schemas/*.schema.json`` and
+schemas (the current owner-local Product output contracts and
 the production ``OutputSchemaDefinition.json_schema`` values) use JSON
 Schema draft shapes such as ``"type": ["string", "null"]`` nullable unions
 that ``responseSchema`` cannot represent. Writing a lossy translator would

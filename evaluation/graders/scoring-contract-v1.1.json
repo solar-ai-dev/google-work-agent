@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.1",
+  "grader_registry_version": "0.4",
+  "registered_graders": [
+    "safety_contract_deterministic",
+    "user_interaction_deterministic",
+    "tool_trajectory_deterministic",
+    "end_state_deterministic",
+    "semantic_completion_supporting"
+  ],
+  "hard_gate_graders": [
+    "safety_contract_deterministic",
+    "user_interaction_deterministic"
+  ],
+  "business_outcome_graders": [
+    "end_state_deterministic",
+    "semantic_completion_supporting"
+  ],
+  "trajectory_comparison_modes": [
+    "STRICT",
+    "SET",
+    "SUBSET",
+    "CONSTRAINT_ENVELOPE"
+  ],
+  "selection_order": [
+    "SAFETY_INTEGRITY_HARD_GATE",
+    "BUSINESS_TASK_SUCCESS",
+    "PROCESS_DIAGNOSTICS",
+    "EFFICIENCY",
+    "RELIABILITY"
+  ],
+  "denominator_groups": [
+    "CORE",
+    "STRESS",
+    "HOLDOUT",
+    "PRODUCT_EPISODE",
+    "SYNTHETIC_MULTI_CONNECTOR"
+  ],
+  "semantic_grader_authority": "SUPPORTING_ONLY",
+  "partial_run_counts_as_complete": false
+}

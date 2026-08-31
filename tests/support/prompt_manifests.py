@@ -194,8 +194,8 @@ def write_draft_manifest(
 
     Tests asserting "an inactive prompt is rejected" must not depend on
     which slots happen to be DRAFT in the real canonical manifest right
-    now -- that status legitimately changes over time as R8.4 Gates
-    promote slots for real (see ``experiments/runner/r84_gate_runner.py``).
+    now -- that status legitimately changes over time as release Gates
+    promote slots in the canonical manifest.
     Forcing DRAFT here keeps the rejection behavior under test
     deterministic regardless of the canonical manifest's current state.
     """

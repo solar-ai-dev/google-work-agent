@@ -211,8 +211,7 @@ def _action_plan_draft_output_schema_for_registry(
     "unregistered" tool names the schema itself forbids). The base
     ``ACTION_PLAN_DRAFT_OUTPUT_SCHEMA`` constant is left untouched for
     callers that only need the generic (registry-agnostic) contract, e.g.
-    ``controlled_post_retrieval.py``'s Gold evaluation dispatch and
-    ``r84_gate_runner.py``'s static Gate dataset mapping.
+    the compatibility Evaluation harness's historical Gold dispatch.
     """
 
     tool_names = sorted(entry.tool_id for entry in tool_registry.entries)
