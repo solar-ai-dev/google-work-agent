@@ -1,6 +1,6 @@
 import base64
 
-from google_work_agent.launcher.bootstrap_secret import create_bootstrap_secret
+from launcher.bootstrap_secret import create_bootstrap_secret
 
 
 def test_create_bootstrap_secret_is_unique_and_has_at_least_256_bits() -> None:

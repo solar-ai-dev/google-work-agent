@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import secrets
 import sqlite3
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -99,11 +98,10 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_read_unit_of_work_factory,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.adapters.runtime import (
-    BuildProfile,
-    FileSettingsStore,
-    SafeModeController,
+from google_work_agent.adapters.readiness.local_service_readiness import (
+    LocalServiceReadinessAggregator,
 )
+from google_work_agent.adapters.runtime import FileSettingsStore, SafeModeController
 from google_work_agent.adapters.system.default_browser_launcher import DefaultBrowserLauncherAdapter
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
@@ -412,9 +410,6 @@ from google_work_agent.application.use_cases.verification.store_verification imp
 from google_work_agent.application.use_cases.verification.verify_effect import (
     VerifyEffectHandler,
 )
-from google_work_agent.launcher.development_readiness import (
-    DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
-)
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
@@ -449,6 +444,9 @@ from google_work_agent.ports.system.component_circuit_state_port import (
     ComponentCircuitStatePort,
 )
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
 from google_work_agent.ports.system.contracts.runtime import (
     AppSettings,
     WorkHours,
@@ -901,9 +899,117 @@ class ProductionRuntimeConfig:
 
     runtime_root: Path
     working_directory: Path
+    release_version: str
+    build_channel: str
+    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"]
+    oauth_environment: OAuthEnvironment
+    oauth_client_id: str
+    api_contract_version: str
     mcp_manifest_version: str
+    policy_version: str
+    database_migration_version: str
+    configuration_source: Literal["SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"]
     mcp_module_name: str | None = None
     keyring_store: SecretStorePort | None = None
+
+    def __post_init__(self) -> None:
+        values = (
+            self.release_version,
+            self.build_channel,
+            self.oauth_client_id,
+            self.api_contract_version,
+            self.mcp_manifest_version,
+            self.policy_version,
+            self.database_migration_version,
+        )
+        if any(not value.strip() for value in values):
+            raise ValueError("runtime configuration fields must be non-empty")
+
+    @classmethod
+    def development(
+        cls,
+        *,
+        runtime_root: Path,
+        working_directory: Path,
+        mcp_manifest_version: str,
+        mcp_module_name: str | None = None,
+        keyring_store: SecretStorePort | None = None,
+    ) -> ProductionRuntimeConfig:
+        """Create the only explicit non-installed configuration mode."""
+
+        return cls(
+            runtime_root=runtime_root,
+            working_directory=working_directory,
+            release_version="0.1.0-dev",
+            build_channel="DEVELOPMENT",
+            deployment_profile="LOCAL_CAPABLE",
+            oauth_environment=OAuthEnvironment.DEVELOPMENT,
+            oauth_client_id="development-client-id",
+            api_contract_version=API_CONTRACT_VERSION,
+            mcp_manifest_version=mcp_manifest_version,
+            policy_version="2026-08-06.p0",
+            database_migration_version="development-latest",
+            configuration_source="EXPLICIT_DEVELOPMENT",
+            mcp_module_name=mcp_module_name,
+            keyring_store=keyring_store,
+        )
+
+    @classmethod
+    def from_signed_build_config(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        runtime_root: Path,
+        working_directory: Path,
+    ) -> ProductionRuntimeConfig:
+        """Project the closed Launcher handoff without ambient overrides."""
+
+        if not runtime_root.is_absolute() or not working_directory.is_absolute():
+            raise ValueError("signed runtime paths must be absolute")
+        expected_fields = {
+            "schema_version",
+            "app_version",
+            "build_channel",
+            "deployment_profile",
+            "oauth_env",
+            "oauth_client_id",
+            "api_contract_version",
+            "mcp_schema_version",
+            "policy_version",
+            "database_migration_version",
+        }
+        if set(payload) != expected_fields or payload.get("schema_version") != 1:
+            raise ValueError("signed build configuration schema is invalid")
+        deployment_profile = payload.get("deployment_profile")
+        if deployment_profile not in {"API_ONLY", "LOCAL_CAPABLE"}:
+            raise ValueError("signed deployment profile is invalid")
+        try:
+            oauth_environment = OAuthEnvironment(str(payload.get("oauth_env")))
+        except ValueError as error:
+            raise ValueError("signed OAuth environment is invalid") from error
+
+        def required_string(field: str) -> str:
+            value = payload.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"signed build configuration field is invalid: {field}")
+            return value
+
+        return cls(
+            runtime_root=runtime_root,
+            working_directory=working_directory,
+            release_version=required_string("app_version"),
+            build_channel=required_string("build_channel"),
+            deployment_profile=cast(
+                Literal["API_ONLY", "LOCAL_CAPABLE"], deployment_profile
+            ),
+            oauth_environment=oauth_environment,
+            oauth_client_id=required_string("oauth_client_id"),
+            api_contract_version=required_string("api_contract_version"),
+            mcp_manifest_version=required_string("mcp_schema_version"),
+            policy_version=required_string("policy_version"),
+            database_migration_version=required_string("database_migration_version"),
+            configuration_source="SIGNED_RELEASE_MANIFEST",
+        )
 
 
 def drain_workflow_handoffs_to_quiescence(
@@ -967,6 +1073,8 @@ def _build_connectors(
     attachment_staging_dir: Path,
     python_executable: Path,
     working_directory: Path,
+    environment: str,
+    oauth_client_id: str,
     mcp_module_name: str = GOOGLE_WORKSPACE_MCP_MODULE,
 ) -> DevelopmentConnectorBundle:
     tool_registry = load_signed_tool_registry()
@@ -993,11 +1101,15 @@ def _build_connectors(
             startup_timeout_ms=5_000,
             request_timeout_ms=30_000,
             max_restart_count=1,
-            environment="DEVELOPMENT",
+            environment=environment,
             service_instance_id=service_instance_id,
             module_name=mcp_module_name,
             working_directory=str(working_directory),
-            extra_environment={ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir)},
+            extra_environment={
+                ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
+                "GOOGLE_OAUTH_ENV": environment,
+                "GOOGLE_OAUTH_CLIENT_ID": oauth_client_id,
+            },
         ),
         expected_tool_descriptors=tuple(
             tool_registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)
@@ -1021,17 +1133,13 @@ DEFAULT_PORT = 8000
 HISTORY_MESSAGE_LIMIT = 200
 HISTORY_RUN_LIMIT = 200
 RELEASE_VERSION = "0.1.0-dev"
-# Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
-# that is not "approved" (the structured-inference router's local-runtime gate),
-# so at least one already-`ollama pull`-ed model must be listed here. This never
-# pulls or downloads anything; override via env var if a different model is
-# installed locally.
-DEFAULT_DEV_OLLAMA_MODEL_ID = os.environ.get("GWA_DEV_APPROVED_OLLAMA_MODEL", "qwen2.5:3b")
+# Explicit development-only model; signed installed mode never consumes it.
+DEFAULT_DEV_OLLAMA_MODEL_ID = "qwen2.5:3b"
 
 
 @dataclass(frozen=True, slots=True)
-class DevelopmentLauncherProbeVerifier:
-    """Bind direct development readiness to this service instance."""
+class ServiceInstanceLauncherProbeVerifier:
+    """Bind readiness to the exact service identity supplied by Launcher."""
 
     service_instance_id: str
 
@@ -1097,6 +1205,10 @@ class DeferredApiContainer:
         port: int,
         service_instance_id: str,
         bootstrap_secret: str,
+        release_version: str = RELEASE_VERSION,
+        environment: str = "DEVELOPMENT",
+        api_contract_version: str = API_CONTRACT_VERSION,
+        deployment_profile: str = "LOCAL_CAPABLE",
         core_builder: Callable[..., ApiContainer],
     ) -> None:
         self._core: ApiContainer | None = None
@@ -1111,10 +1223,10 @@ class DeferredApiContainer:
         self.get_conversation_history_handler: Any = None
         self.clock = SystemClockAdapter()
         self.id_generator = Uuid4Adapter()
-        self.release_version = RELEASE_VERSION
-        self.environment = "DEVELOPMENT"
+        self.release_version = release_version
+        self.environment = environment
         self.service_instance_id = service_instance_id
-        self.api_contract_version = API_CONTRACT_VERSION
+        self.api_contract_version = api_contract_version
         self.local_bind_host = host
         self.local_bind_port = port
         self.max_request_body_bytes = 64 * 1024
@@ -1134,9 +1246,9 @@ class DeferredApiContainer:
             llm_status=cast(LlmRuntimeStatusPort, _UnavailableStartupLlmStatus()),
             circuits=startup_circuits,
             service_instance_id=service_instance_id,
-            release_version=RELEASE_VERSION,
-            api_contract_version=API_CONTRACT_VERSION,
-            deployment_profile="DEVELOPMENT",
+            release_version=release_version,
+            api_contract_version=api_contract_version,
+            deployment_profile=deployment_profile,
             recovery_required=lambda: self.safe_mode_controller.snapshot().enabled,
             database_status=lambda: "UNAVAILABLE",
             migration_status=self._startup_migration_status,
@@ -1160,11 +1272,11 @@ class DeferredApiContainer:
             expected_origin=f"http://{host}:{port}",
             service_instance_id=service_instance_id,
             session_manager=self._session_manager,
-            release_version=RELEASE_VERSION,
-            environment="DEVELOPMENT",
+            release_version=release_version,
+            environment=environment,
             now_ms=self.clock.now_ms,
         )
-        self.launcher_probe_verifier = DevelopmentLauncherProbeVerifier(service_instance_id)
+        self.launcher_probe_verifier = ServiceInstanceLauncherProbeVerifier(service_instance_id)
         self.bootstrap_grant_store = self._bootstrap_grant_store
         self.local_session_manager = self._session_manager
 
@@ -1345,6 +1457,17 @@ def build_production_runtime(
     working_directory: Path,
     mcp_manifest_version: str,
     bootstrap_secret: str,
+    release_version: str,
+    build_channel: str,
+    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
+    oauth_environment: OAuthEnvironment,
+    oauth_client_id: str,
+    api_contract_version: str,
+    policy_version: str,
+    database_migration_version: str,
+    configuration_source: Literal[
+        "SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"
+    ],
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     service_instance_id: str | None = None,
@@ -1352,19 +1475,25 @@ def build_production_runtime(
     mcp_module_name: str | None = None,
     keyring_store: SecretStorePort | None = None,
 ) -> ApiContainer:
-    """Assemble the development service with real local adapters."""
+    """Assemble the local service from authenticated or explicit development inputs."""
 
     LocalBindPolicy(host=host, port=port).validate()
+    if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        if service_instance_id is None:
+            raise CoreInitializationError("SERVICE_INSTANCE_ID_REQUIRED")
+        if not runtime_root.is_absolute() or not working_directory.is_absolute():
+            raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID")
     safe_mode = safe_mode_controller or SafeModeController()
     root = runtime_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    database_path = root / "google-work-agent.sqlite3"
+    database_path = root / "data" / "google_work_agent.db"
+    database_path.parent.mkdir(parents=True, exist_ok=True)
     mcp_manifest_path = _write_mcp_manifest(root)
     prompt_manifest_path = default_prompt_manifest_path()
     clock = SystemClockAdapter()
     id_generator = Uuid4Adapter()
     service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
-    attachment_staging_dir = root / "attachments" / "staging"
+    attachment_staging_dir = root / "cache" / "attachments"
     attachment_staging = FilesystemAttachmentStagingAdapter(
         staging_dir=attachment_staging_dir,
         now_ms=clock.now_ms,
@@ -1376,7 +1505,13 @@ def build_production_runtime(
 
     try:
         with connect_sqlite(database_path) as connection:
-            apply_migrations(connection, now_ms=clock.now_ms)
+            migration_results = apply_migrations(connection, now_ms=clock.now_ms)
+        if configuration_source == "SIGNED_RELEASE_MANIFEST":
+            actual_version = (
+                f"{migration_results[-1].version:04d}" if migration_results else "0000"
+            )
+            if database_migration_version != actual_version:
+                raise CoreInitializationError("MIGRATION_VERSION_MISMATCH")
     except (sqlite3.Error, MigrationError) as error:
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
@@ -1388,11 +1523,16 @@ def build_production_runtime(
             attachment_staging_dir=attachment_staging_dir,
             python_executable=Path(sys.executable).resolve(),
             working_directory=working_directory.resolve(),
+            environment=oauth_environment.value,
+            oauth_client_id=oauth_client_id,
             **({} if mcp_module_name is None else {"mcp_module_name": mcp_module_name}),
         )
     except MCPClientPortError as error:
         raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
     connector_registry = connector_bundle.runtime_registry
+    if connector_bundle.tool_registry.contract_version != policy_version:
+        connector_registry.close_all()
+        raise CoreInitializationError("POLICY_VERSION_MISMATCH")
     google_connector = connector_bundle.google_connector
     google_provider = google_connector.oauth_port
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
@@ -1416,6 +1556,10 @@ def build_production_runtime(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
             keyring_store=keyring_store,
+            environment=oauth_environment.value,
+            release_version=release_version,
+            deployment_profile=deployment_profile,
+            allow_development_model=configuration_source == "EXPLICIT_DEVELOPMENT",
         )
     except RuntimeError as error:
         connector_registry.close_all()
@@ -1434,14 +1578,16 @@ def build_production_runtime(
         backups_dir=root / "backups",
         clock=clock,
         maintenance_gate=StaticMaintenanceGateAdapter(),
-        release_version=RELEASE_VERSION,
+        release_version=release_version,
         domain_contract_version="1",
-        schema_version="1",
+        schema_version=database_migration_version,
     )
     diagnostics_adapter = FilesystemDiagnosticsAdapter(
         collect_snapshot=lambda: {
-            "release_version": RELEASE_VERSION,
-            "environment": "DEVELOPMENT",
+            "release_version": release_version,
+            "build_channel": build_channel,
+            "environment": oauth_environment.value,
+            "policy_version": policy_version,
             "service_instance_id": service_instance_id,
         },
         diagnostics_dir=root / "diagnostics",
@@ -1578,8 +1724,8 @@ def build_production_runtime(
         claim_context_signer=google_connector.client.sign_claim_context,
         work_hours_provider=work_hours_provider,
         sse_event_buffer=event_publisher,
-        environment="DEVELOPMENT",
-        release_version=RELEASE_VERSION,
+        environment=oauth_environment.value,
+        release_version=release_version,
     )
     try:
         workflow_runtime = LangGraphWorkflowRuntime(
@@ -1610,14 +1756,18 @@ def build_production_runtime(
             attachment_verifier=attachment_staging,
             resume_target_registry=resume_target_registry,
             sse_event_buffer=event_publisher,
-            environment="DEVELOPMENT",
-            release_version=RELEASE_VERSION,
+            environment=oauth_environment.value,
+            release_version=release_version,
         )
     except InactivePromptArtifactError:
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
-    llm_runtime.external_scope_projector = (
-        lambda run_id, source_kinds, data_classes: project_external_llm_transfer_scope(
+    def _project_external_scope(
+        run_id: str,
+        source_kinds: tuple[str, ...],
+        data_classes: tuple[str, ...],
+    ) -> ExternalLlmTransferScopeV1:
+        scope = project_external_llm_transfer_scope(
             ProjectExternalLlmTransferScopeQueryV1(
                 schema_version=1,
                 run_id=run_id,
@@ -1626,7 +1776,11 @@ def build_production_runtime(
                 occurred_at_ms=clock.now_ms(),
             )
         )
-    )
+        if scope is None:
+            raise RuntimeError("external LLM transfer scope was not projected")
+        return scope
+
+    llm_runtime.external_scope_projector = _project_external_scope
     require_recovery = _build_require_recovery(
         unit_of_work_factory=unit_of_work_factory,
         checkpoint=checkpoint,
@@ -1673,7 +1827,7 @@ def build_production_runtime(
             correlation=WorkflowCorrelationContext(
                 request_id=admission.admission_id,
                 command_id=admission.handoff_id,
-                api_contract_version=API_CONTRACT_VERSION,
+                api_contract_version=api_contract_version,
             ),
             selected_resources=context.selected_resources,
         )
@@ -1748,7 +1902,7 @@ def build_production_runtime(
             correlation = WorkflowCorrelationContext(
                 request_id=admission.admission_id,
                 command_id=admission.handoff_id,
-                api_contract_version=API_CONTRACT_VERSION,
+                api_contract_version=api_contract_version,
             )
             latest = checkpoint.load_same_run_checkpoint(
                 binding.run_id, binding.langgraph_thread_id
@@ -1988,9 +2142,12 @@ def build_production_runtime(
         workflow_runtime=workflow_runtime,
         event_publisher=event_publisher,
         action_gateway=read_projection,
-        readiness_aggregator=DevelopmentReadinessAggregator(
+        readiness_aggregator=LocalServiceReadinessAggregator(
             database_path=database_path,
             connector_registry=connector_registry,
+            project_root=working_directory.resolve(),
+            api_contract_version=api_contract_version,
+            mcp_manifest_version=mcp_manifest_version,
             mcp_manifest_path=mcp_manifest_path,
             prompt_active=prompt_active,
             keyring_store=keyring_store,
@@ -2000,22 +2157,22 @@ def build_production_runtime(
             expected_origin=f"http://{host}:{port}",
             service_instance_id=service_instance_id,
             session_manager=session_manager,
-            release_version=RELEASE_VERSION,
-            environment="DEVELOPMENT",
+            release_version=release_version,
+            environment=oauth_environment.value,
             now_ms=clock.now_ms,
         ),
         clock=clock,
         id_generator=id_generator,
-        release_version=RELEASE_VERSION,
-        environment="DEVELOPMENT",
+        release_version=release_version,
+        environment=oauth_environment.value,
         service_instance_id=service_instance_id,
         max_attachment_bytes=MAX_STAGED_FILE_BYTES,
         local_bind_host=host,
         local_bind_port=port,
-        launcher_probe_verifier=DevelopmentLauncherProbeVerifier(service_instance_id),
+        launcher_probe_verifier=ServiceInstanceLauncherProbeVerifier(service_instance_id),
         bootstrap_grant_store=grant_store,
         local_session_manager=session_manager,
-        oauth_environment=OAuthEnvironment.DEVELOPMENT,
+        oauth_environment=oauth_environment,
         oauth_requested_scopes=_google_oauth_scopes(connector_bundle.tool_registry),
         start_authorization_handler=StartAuthorizationHandler(
             credentials=google_provider,
@@ -2215,10 +2372,10 @@ def build_production_runtime(
             llm_status=llm_status_service,
             circuits=component_circuits,
             service_instance_id=service_instance_id,
-            release_version=RELEASE_VERSION,
-            frontend_build_version=RELEASE_VERSION,
-            api_contract_version=API_CONTRACT_VERSION,
-            deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+            release_version=release_version,
+            frontend_build_version=release_version,
+            api_contract_version=api_contract_version,
+            deployment_profile=deployment_profile,
             recovery_required=lambda: safe_mode.snapshot().enabled,
             database_status=lambda: "READY",
             migration_status=lambda: "READY",
@@ -2254,6 +2411,10 @@ def _build_llm_runtime(
     prompt_manifest_path: Path,
     unit_of_work_factory: Callable[[], UnitOfWork],
     now_ms: Callable[[], int],
+    environment: str,
+    release_version: str,
+    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
+    allow_development_model: bool,
     keyring_store: SecretStorePort | None = None,
 ) -> tuple[
     StructuredInferenceRuntimeRouter,
@@ -2267,30 +2428,36 @@ def _build_llm_runtime(
     prompt_registry = PromptRegistry(prompt_manifest_path)
 
     def runtime_settings() -> AppSettings:
-        return _project_runtime_settings(settings_service.get_settings())
+        return _project_runtime_settings(
+            settings_service.get_settings(), deployment_profile=deployment_profile
+        )
 
     credential_service = LlmCredentialRouter(
         provider_name="gemini",
-        environment="DEVELOPMENT",
+        environment=environment,
         keyring_store=keyring_store or OsKeyringSecretStoreAdapter(),
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()
     gemini_transport = GeminiHTTPClient()
     status_service = LlmRuntimeStatusRouter(
-        build_profile=BuildProfile.LOCAL_CAPABLE.value,
+        build_profile=deployment_profile,
         settings_service=runtime_settings,
         credential_service=credential_service,
         api_connection_service=GeminiConnectionService(transport=gemini_transport),
         ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
-        approved_models={
-            DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
-                model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
-                runtime="OLLAMA",
-                manifest_version="1",
-                schema_version="1",
-            )
-        },
+        approved_models=(
+            {
+                DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
+                    model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
+                    runtime="OLLAMA",
+                    manifest_version="1",
+                    schema_version="1",
+                )
+            }
+            if allow_development_model
+            else {}
+        ),
         runtime_policy=RuntimePolicy(),
         api_provider_name="gemini",
     )
@@ -2325,19 +2492,23 @@ def _build_llm_runtime(
         prompt_manifest_path=prompt_manifest_path,
         event_recorder=EmitTraceEventHandler(
             unit_of_work_factory=unit_of_work_factory,
-            environment="DEVELOPMENT",
-            release_version=RELEASE_VERSION,
+            environment=environment,
+            release_version=release_version,
             now_ms=now_ms,
         ),
     )
     return structured_inference, settings_service, credential_service, status_service
 
 
-def _project_runtime_settings(settings: SettingsViewV1) -> AppSettings:
+def _project_runtime_settings(
+    settings: SettingsViewV1,
+    *,
+    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
+) -> AppSettings:
     """Project the canonical persisted settings into the still-broad LLM runtime input."""
 
     return AppSettings(
-        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+        deployment_profile=deployment_profile,
         requested_runtime_mode=settings.preferred_llm_mode,
         default_calendar_id=settings.default_calendar_id,
         default_tasklist_id=settings.default_tasklist_id,

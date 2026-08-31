@@ -277,7 +277,7 @@ def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pins the production path: a bare ``RuntimePolicy()`` (what
-    launcher/dev.py always constructs) must never add an "options" key."""
+    api/composition.py always constructs) must never add an "options" key."""
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:

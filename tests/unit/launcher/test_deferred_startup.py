@@ -107,7 +107,8 @@ def test_start_run_reaches_the_durable_execution_runtime_after_core_initializati
 
     runtime_root = tmp_path / "runtime"
     runtime_root.mkdir(parents=True)
-    database_path = runtime_root / "google-work-agent.sqlite3"
+    database_path = runtime_root / "data" / "google_work_agent.db"
+    database_path.parent.mkdir(parents=True)
     connection = connect_sqlite(database_path)
     try:
         apply_migrations(connection)

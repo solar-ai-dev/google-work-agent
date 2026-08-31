@@ -105,7 +105,7 @@ class RuntimePolicy:
     max_fallback_count: int = 1
     # docs/15 section 9.5 (Runtime Prompt Activation Gate): fixed sampling
     # conditions for the Node Prompt Gate only -- never set by production
-    # callers (see launcher/dev.py, which always constructs RuntimePolicy()
+    # callers (see api/composition.py, which constructs RuntimePolicy()
     # with no args). None means "use the provider's own default", which is
     # what every production dispatch path does today. Fixing these values
     # narrows sampling variance on a best-effort basis; it does not

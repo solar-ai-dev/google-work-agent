@@ -38,3 +38,17 @@ class ReadinessAggregator(Protocol):
 
     def evaluate(self) -> ReadinessReport:
         """Return one readiness report."""
+
+
+def compose_readiness(checks: tuple[ReadinessCheckResult, ...]) -> ReadinessReport:
+    """Derive the aggregate service state from its individual checks."""
+
+    if any(check.state is ReadinessState.SAFE_MODE for check in checks):
+        state = ReadinessState.SAFE_MODE
+    elif any(check.state is ReadinessState.NOT_READY for check in checks):
+        state = ReadinessState.NOT_READY
+    elif checks and all(check.state is ReadinessState.READY for check in checks):
+        state = ReadinessState.READY
+    else:
+        state = ReadinessState.NOT_CONFIGURED
+    return ReadinessReport(state=state, checks=checks)

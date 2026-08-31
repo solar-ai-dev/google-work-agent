@@ -172,7 +172,7 @@ def test_provider_omits_temperature_when_runtime_policy_leaves_sampling_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pins the production path: a bare ``RuntimePolicy()`` (what
-    launcher/dev.py always constructs) must never add a temperature key."""
+    api/composition.py always constructs) must never add a temperature key."""
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:

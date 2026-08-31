@@ -1,4 +1,4 @@
-"""Development environment readiness checks."""
+"""Local service dependency readiness checks."""
 
 from __future__ import annotations
 
@@ -16,11 +16,6 @@ from google_work_agent.adapters.connectors.runtime.connector_runtime_registry im
 )
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.api.container import API_CONTRACT_VERSION
-from google_work_agent.launcher.development_constants import (
-    MCP_MANIFEST_VERSION,
-    PROJECT_ROOT,
-)
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
@@ -31,16 +26,19 @@ from google_work_agent.ports.system.readiness_port import (
 
 
 @dataclass(frozen=True, slots=True)
-class DevelopmentReadinessAggregator(ReadinessAggregator):
+class LocalServiceReadinessAggregator(ReadinessAggregator):
     database_path: Path
     connector_registry: ConnectorRuntimeRegistry
+    project_root: Path
+    api_contract_version: str
+    mcp_manifest_version: str
     mcp_manifest_path: Path | None = None
     prompt_active: bool = True
     keyring_store: SecretStorePort | None = None
 
     @property
     def transport(self) -> Any:
-        """Compatibility view of the P0 connector's underlying transport."""
+        """Expose the connector transport for lifecycle integration and tests."""
 
         return cast(Any, self.connector_registry.resolve(GOOGLE_WORKSPACE_CONNECTOR_ID))
 
@@ -82,7 +80,7 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
 
     def _manifest_asset_check(self) -> ReadinessCheckResult:
         manifest_ok = self.mcp_manifest_path is not None and self.mcp_manifest_path.is_file()
-        asset_ok = (PROJECT_ROOT / "frontend" / "index.html").is_file()
+        asset_ok = (self.project_root / "frontend" / "index.html").is_file()
         if manifest_ok and asset_ok:
             return ReadinessCheckResult(name="manifest_assets", state=ReadinessState.READY)
         return ReadinessCheckResult(
@@ -91,12 +89,13 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
             detail="MANIFEST_OR_ASSET_UNAVAILABLE",
         )
 
-    @staticmethod
-    def _api_contract_check() -> ReadinessCheckResult:
-        if API_CONTRACT_VERSION:
+    def _api_contract_check(self) -> ReadinessCheckResult:
+        if self.api_contract_version:
             return ReadinessCheckResult(name="api_contract", state=ReadinessState.READY)
         return ReadinessCheckResult(
-            name="api_contract", state=ReadinessState.NOT_READY, detail="API_CONTRACT_UNAVAILABLE"
+            name="api_contract",
+            state=ReadinessState.NOT_READY,
+            detail="API_CONTRACT_UNAVAILABLE",
         )
 
     def _domain_check(self) -> ReadinessCheckResult:
@@ -110,7 +109,9 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
         if row is not None:
             return ReadinessCheckResult(name="domain_schema", state=ReadinessState.READY)
         return ReadinessCheckResult(
-            name="domain_schema", state=ReadinessState.NOT_READY, detail="DOMAIN_SCHEMA_UNAVAILABLE"
+            name="domain_schema",
+            state=ReadinessState.NOT_READY,
+            detail="DOMAIN_SCHEMA_UNAVAILABLE",
         )
 
     def _keyring_check(self) -> ReadinessCheckResult:
@@ -120,7 +121,9 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
             OsKeyringSecretStoreAdapter()
         except RuntimeError:
             return ReadinessCheckResult(
-                name="keyring_adapter", state=ReadinessState.NOT_READY, detail="KEYRING_UNAVAILABLE"
+                name="keyring_adapter",
+                state=ReadinessState.NOT_READY,
+                detail="KEYRING_UNAVAILABLE",
             )
         return ReadinessCheckResult(name="keyring_adapter", state=ReadinessState.READY)
 
@@ -164,17 +167,13 @@ class DevelopmentReadinessAggregator(ReadinessAggregator):
                 state=ReadinessState.NOT_READY,
                 detail="TOOL_SCHEMA_UNAVAILABLE",
             )
-        if metadata.protocol_version == MCP_MANIFEST_VERSION and metadata.available_tool_count > 0:
+        if (
+            metadata.protocol_version == self.mcp_manifest_version
+            and metadata.available_tool_count > 0
+        ):
             return ReadinessCheckResult(name="tool_schema", state=ReadinessState.READY)
         return ReadinessCheckResult(
-            name="tool_schema", state=ReadinessState.NOT_READY, detail="TOOL_SCHEMA_UNAVAILABLE"
-        )
-
-    def _prompt_check(self) -> ReadinessCheckResult:
-        if self.prompt_active:
-            return ReadinessCheckResult(name="prompt_activation", state=ReadinessState.READY)
-        return ReadinessCheckResult(
-            name="prompt_activation",
+            name="tool_schema",
             state=ReadinessState.NOT_READY,
-            detail="PROMPT_NOT_ACTIVE",
+            detail="TOOL_SCHEMA_UNAVAILABLE",
         )

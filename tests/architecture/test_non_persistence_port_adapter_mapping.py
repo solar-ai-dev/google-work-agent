@@ -323,7 +323,7 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
 
 def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:
     router_source = _source("adapters/llm/runtime/structured_inference_router.py")
-    launcher = _source("launcher/dev.py")
+    launcher = (Path("launcher") / "entrypoint.py").read_text(encoding="utf-8")
     llm_exports = _source("adapters/llm/__init__.py")
 
     assert "def decide(" in router_source

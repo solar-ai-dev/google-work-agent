@@ -59,7 +59,16 @@ def create_app(
                 **runtime_inputs,  # type: ignore[arg-type]
                 runtime_root=production_config.runtime_root,
                 working_directory=production_config.working_directory,
+                release_version=production_config.release_version,
+                build_channel=production_config.build_channel,
+                deployment_profile=production_config.deployment_profile,
+                oauth_environment=production_config.oauth_environment,
+                oauth_client_id=production_config.oauth_client_id,
+                api_contract_version=production_config.api_contract_version,
                 mcp_manifest_version=production_config.mcp_manifest_version,
+                policy_version=production_config.policy_version,
+                database_migration_version=production_config.database_migration_version,
+                configuration_source=production_config.configuration_source,
                 mcp_module_name=production_config.mcp_module_name,
                 keyring_store=production_config.keyring_store,
             )
@@ -71,6 +80,10 @@ def create_app(
                 port=port,
                 service_instance_id=service_instance_id,
                 bootstrap_secret=bootstrap_secret,
+                release_version=production_config.release_version,
+                environment=production_config.oauth_environment.value,
+                api_contract_version=production_config.api_contract_version,
+                deployment_profile=production_config.deployment_profile,
                 core_builder=build_core,
             ),
         )

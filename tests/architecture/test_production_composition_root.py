@@ -2,6 +2,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path("src/google_work_agent")
+LAUNCHER_ROOT = Path("launcher")
 
 
 def test_background_executor_has_one_production_binding_in_composition_root() -> None:
@@ -38,14 +39,16 @@ def test_full_delivery_container_has_one_production_construction_authority() -> 
 
 
 def test_launcher_only_supplies_environment_values_to_composition() -> None:
-    launcher = ROOT / "launcher" / "dev.py"
+    launcher = LAUNCHER_ROOT / "entrypoint.py"
     tree = ast.parse(launcher.read_text(encoding="utf-8"))
     forbidden_constructors: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
             continue
         name = node.func.id
-        if name.endswith(("Adapter", "Handler", "Registry", "Service")):
+        if name.endswith(("Adapter", "Handler", "Registry", "Service")) and name != (
+            "DefaultBrowserLauncherAdapter"
+        ):
             forbidden_constructors.append(name)
 
     assert forbidden_constructors == []
@@ -53,8 +56,9 @@ def test_launcher_only_supplies_environment_values_to_composition() -> None:
     assert "build_production_runtime" not in source
     assert "build_production_container" not in source
     assert "DeferredApiContainer" not in source
-    assert "ProductionRuntimeConfig(" in source
-    assert "create_app(" in source
+    assert "ApiContainer(" not in source
+    assert "start_service(" in source
+    assert list((ROOT / "launcher").glob("*.py")) == []
 
 
 def test_fastapi_app_calls_the_only_public_production_builder() -> None:

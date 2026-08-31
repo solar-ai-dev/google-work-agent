@@ -19,6 +19,9 @@ from uvicorn import Config, Server
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
+from google_work_agent.adapters.readiness.local_service_readiness import (
+    LocalServiceReadinessAggregator,
+)
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
 )
@@ -27,7 +30,6 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
     CreateStagedAttachmentCommand,
     CreateStagedAttachmentHandler,
 )
-from google_work_agent.launcher.dev import DevelopmentReadinessAggregator
 
 
 def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path) -> None:
@@ -50,11 +52,14 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
             mime_type="text/plain",
         )
     ).attachment
-    staging_dir = runtime_root / "attachments" / "staging"
+    staging_dir = runtime_root / "cache" / "attachments"
     assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
-    base_transport = container.readiness_aggregator.transport.client
+    readiness = cast(LocalServiceReadinessAggregator, container.readiness_aggregator)
+    base_transport = readiness.transport.client
     assert base_transport._config.extra_environment == {  # noqa: SLF001
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
+        "GOOGLE_OAUTH_ENV": "DEVELOPMENT",
+        "GOOGLE_OAUTH_CLIENT_ID": "test-client-id",
     }
 
     with TestClient(create_app(container), base_url="http://127.0.0.1:8000") as client:
@@ -66,7 +71,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
         assert ready.status_code == 200
         assert ready.json()["status"] == "READY"
 
-    assert isinstance(container.readiness_aggregator, DevelopmentReadinessAggregator)
+    assert isinstance(container.readiness_aggregator, LocalServiceReadinessAggregator)
     assert base_transport.runtime_metadata().process_status == "STOPPED"
     assert container.readiness_aggregator.evaluate().state.value == "NOT_READY"
 
@@ -80,7 +85,8 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
         mcp_module_name="tests.fakes.google_workspace_mcp_server",
         keyring_store=SessionMemorySecretStore(),
     )
-    base_transport = container.readiness_aggregator.transport.client
+    readiness = cast(LocalServiceReadinessAggregator, container.readiness_aggregator)
+    base_transport = readiness.transport.client
     server = Server(Config(create_app(container), host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -95,7 +101,7 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
         thread.join(timeout=10)
 
     assert not thread.is_alive()
-    assert isinstance(container.readiness_aggregator, DevelopmentReadinessAggregator)
+    assert isinstance(container.readiness_aggregator, LocalServiceReadinessAggregator)
     assert base_transport.runtime_metadata().process_status == "STOPPED"
 
 

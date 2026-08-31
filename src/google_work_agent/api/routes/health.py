@@ -3,15 +3,15 @@
 from fastapi import APIRouter, Request
 
 from google_work_agent.api.dependencies.access_control import enforce_access
-from google_work_agent.api.dependencies.health_checks import HealthRouteDependency
+from google_work_agent.api.dependencies.health_checks import (
+    GetReadinessHandler,
+    GetReadinessQuery,
+    HealthRouteDependency,
+)
 from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
 from google_work_agent.api.schemas.health_checks.get_readiness import (
     ReadinessCheckResponse,
     ReadyResponse,
-)
-from google_work_agent.launcher.get_readiness import (
-    GetReadinessHandler,
-    GetReadinessQuery,
 )
 from google_work_agent.ports.system.api_access_port import EndpointPolicy
 

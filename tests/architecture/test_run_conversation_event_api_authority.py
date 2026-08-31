@@ -222,7 +222,7 @@ def test_run_context_handler_is_composed_once_and_never_constructed_in_route() -
 def test_recovery_production_callers_do_not_bind_legacy_mismatch_authority() -> None:
     for path in (
         ROOT / "src/google_work_agent/api/routes/runs.py",
-        ROOT / "src/google_work_agent/launcher/dev.py",
+        ROOT / "launcher/entrypoint.py",
     ):
         source = path.read_text(encoding="utf-8")
         assert "ResolveMismatchRecovery" not in source

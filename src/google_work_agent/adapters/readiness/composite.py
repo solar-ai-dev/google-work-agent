@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.launcher.readiness_projection import compose_readiness
 from google_work_agent.ports.system.launcher_probe_port import (
     LauncherProbeDecision,
     LauncherProbeVerifier,
@@ -12,6 +11,7 @@ from google_work_agent.ports.system.launcher_probe_port import (
 from google_work_agent.ports.system.readiness_port import (
     ReadinessAggregator,
     ReadinessReport,
+    compose_readiness,
 )
 
 __all__ = [

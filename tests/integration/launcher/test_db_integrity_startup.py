@@ -10,9 +10,11 @@ from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationIntegrityError
 from google_work_agent.api import composition
 from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
-from google_work_agent.launcher import dev
 from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
 from google_work_agent.ports.system.readiness_port import ReadinessState
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
 
 
 def test_build_container_classifies_migration_integrity_failure(
@@ -35,8 +37,8 @@ def test_migration_failure_enters_safe_mode_and_blocks_writes() -> None:
         raise CoreInitializationError("MIGRATION_FAILED")
 
     shell = DeferredApiContainer(
-        host=dev.DEFAULT_HOST,
-        port=dev.DEFAULT_PORT,
+        host=DEFAULT_HOST,
+        port=DEFAULT_PORT,
         service_instance_id="test-service",
         bootstrap_secret="test-secret",
         core_builder=fail_core,

@@ -85,7 +85,7 @@ def _imports_symbol_from_application_use_cases(tree: ast.AST, symbol: str) -> bo
             node.module.startswith("google_work_agent.application.use_cases.")
             or (
                 symbol == "GetReadinessHandler"
-                and node.module == "google_work_agent.launcher.get_readiness"
+                and node.module == "google_work_agent.api.dependencies.health_checks"
             )
         ):
             continue
