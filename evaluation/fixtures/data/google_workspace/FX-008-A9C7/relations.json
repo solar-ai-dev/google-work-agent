@@ -1,0 +1,20 @@
+{
+  "relations": [
+    {
+      "from": "HX8-EVENT-CANCELLED",
+      "to": "HX8-EVIDENCE-RELATION",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX8-TASK-OPEN",
+      "to": "HX8-EVIDENCE-RELATION",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX8-TASK-DONE",
+      "to": "HX8-EVIDENCE-RELATION",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

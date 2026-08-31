@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "messages": [
+        {
+          "body": "Bounded evidence for HX4-MSG-ABSENCE",
+          "message_id": "HX4-MSG-ABSENCE",
+          "sent_at": "2026-08-31T00:00:00Z"
+        }
+      ],
+      "subject": "Synthetic source HX4-MSG-ABSENCE",
+      "thread_id": "HX4-MSG-ABSENCE"
+    }
+  ]
+}

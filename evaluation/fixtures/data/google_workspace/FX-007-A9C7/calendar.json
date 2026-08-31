@@ -1,0 +1,35 @@
+{
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "timezone": "Asia/Seoul",
+      "title": "Primary"
+    },
+    {
+      "calendar_id": "HX5-CALENDAR-READONLY",
+      "timezone": "Asia/Seoul",
+      "title": "Audit read only"
+    }
+  ],
+  "events": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "description": "Bounded evidence for HX7-EVENT-A",
+      "end": "2026-09-03T02:00:00Z",
+      "event_id": "HX7-EVENT-A",
+      "start": "2026-09-03T01:00:00Z",
+      "status": "confirmed",
+      "title": "Synthetic event HX7-EVENT-A"
+    },
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "description": "Bounded evidence for HX7-EVENT-B",
+      "end": "2026-09-03T02:00:00Z",
+      "event_id": "HX7-EVENT-B",
+      "start": "2026-09-03T01:00:00Z",
+      "status": "confirmed",
+      "title": "Synthetic event HX7-EVENT-B"
+    }
+  ],
+  "schema_version": 1
+}

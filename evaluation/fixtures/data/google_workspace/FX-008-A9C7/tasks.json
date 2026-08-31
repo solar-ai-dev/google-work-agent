@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "Work"
+    }
+  ],
+  "tasks": [
+    {
+      "notes": "Bounded evidence for HX8-TASK-OPEN",
+      "status": "needsAction",
+      "task_id": "HX8-TASK-OPEN",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX8-TASK-OPEN"
+    },
+    {
+      "notes": "Bounded evidence for HX8-TASK-DONE",
+      "status": "completed",
+      "task_id": "HX8-TASK-DONE",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX8-TASK-DONE"
+    }
+  ]
+}

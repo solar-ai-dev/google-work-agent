@@ -427,6 +427,36 @@ class RoutingTrajectoryProjectionV2:
     skipped_node_ids: list[str]
     budget_snapshot: EvaluationJSONValueV1
     diagnostic_only: Literal[True]
+
+class CurrentFixtureSnapshotV1:
+    schema_version: Literal[1]
+    fixture_snapshot_id: str
+    split_scope: Literal["DEV", "HOLDOUT", "STRESS", "PRODUCT_EPISODE"]
+    scenario_family_id: str
+    fixture_relation_family: str
+    source_hashes: dict[str, str]
+    permissions: EvaluationJSONValueV1
+    tool_availability: list[str]
+    fault_profiles: list[EvaluationJSONValueV1]
+    injection_payloads: list[EvaluationJSONValueV1]
+
+class ExperimentTargetV1:
+    schema_version: Literal[1]
+    target_kind: Literal["NODE", "SUBGRAPH", "MAIN_PROFILE"]
+    target_id: str
+    product_symbol: str
+
+class NodeEvaluationItemV1:
+    schema_version: Literal[1]
+    evaluation_item_id: str
+    source_case_id: str | None
+    fixture_snapshot_id: str
+    split: Literal["DEV", "HOLDOUT", "STRESS"]
+    failure_family_id: str
+    target_agent_role: str
+    target_node_id: str
+    product_input: EvaluationJSONValueV1
+    expected_result: EvaluationJSONValueV1
 ```
 
 `EvaluationJSONValueV1`은 **evaluation-data container**일 뿐 제품 Runtime schema를 대체하지 않는다. Product Runtime artifact를 채점할 때는 해당 owner의 current serializer/schema validator를 먼저 적용한 뒤 evaluation projection으로 복사한다. 따라서 evaluation code가 Runtime contract의 새 field나 enum을 발명하지 않는다.
@@ -442,10 +472,13 @@ Current non-Python artifact family는 다음과 같다.
 | Canonical Case source | `CanonicalCaseV7` | UTF-8 JSON Lines; line마다 `CanonicalCaseV7` 1개 |
 | E2E Projection | `E2EProjectionV5` | UTF-8 JSON Lines; line마다 `E2EProjectionV5` 1개 |
 | Product Episode Projection | `ProductEpisodeE2EProjectionV1` | UTF-8 JSON Lines; line마다 `ProductEpisodeE2EProjectionV1` 1개 |
+| Node Evaluation Item | `NodeEvaluationItemV1` | UTF-8 JSON Lines; line마다 `NodeEvaluationItemV1` 1개 |
+| Current Fixture Snapshot | `CurrentFixtureSnapshotV1` + provider-neutral Gmail/Tasks/Calendar source files | UTF-8 strict JSON; snapshot directory마다 manifest와 네 source file |
+| Experiment Config | `ExperimentConfigV1` + `ExperimentTargetV1` | UTF-8 strict JSON; concrete run마다 하나 |
 | Routing Trajectory result projection | `RoutingTrajectoryProjectionV2` | UTF-8 JSON Lines; observed trajectory row 1개 |
 | Scoring contract | `scoring-contract-v1.1` | UTF-8 strict JSON |
 
-Current projection builder는 validated Canonical Case에서 `E2EProjectionV5`와 applicable `ProductEpisodeE2EProjectionV1` source projection을 deterministic하게 materialize한다. `RoutingTrajectoryProjectionV2`는 candidate execution의 observed trajectory 결과이므로 별도 checked-in source projection을 만들지 않는다. `ContextReadySnapshotV1`/`EvaluationPolicyProjectionV1`도 evaluation runner의 controlled runtime snapshot contract이며 별도 checked-in dataset identity를 요구하지 않는다. Exact producer/consumer path·symbol·filename은 16 mapping을 따른다.
+Current projection builder는 validated Canonical Case에서 `E2EProjectionV5`와 applicable `ProductEpisodeE2EProjectionV1` source projection을 deterministic하게 materialize한다. `RoutingTrajectoryProjectionV2`는 candidate execution의 observed trajectory 결과이므로 별도 checked-in source projection을 만들지 않는다. `ContextReadySnapshotV1`/`EvaluationPolicyProjectionV1`도 evaluation runner의 controlled runtime snapshot contract이며 별도 checked-in dataset identity를 요구하지 않는다. Current Fixture는 historical `compat` 파일을 runtime authority로 직접 읽지 않고 current snapshot loader를 통해 격리된 in-memory environment로 materialize한다. Node Item과 Experiment Config는 Gold-free Product input과 closed target identity를 분리해 보존한다. Exact producer/consumer path·symbol·filename은 16 mapping을 따른다.
 
 Current Micro Dataset logical ID set은 §7.4의 다음 six IDs와 exact equality다.
 
@@ -591,7 +624,8 @@ model_id
 model_version
 runtime_parameters
 hardware_profile
-target_node_id?
+target_kind             # NODE | SUBGRAPH | MAIN_PROFILE
+target_id
 upstream_mode?           # ORACLE \| LIVE
 trial_count
 grader_version
@@ -599,6 +633,8 @@ budgets
 stop_conditions
 adoption_criteria
 ```
+
+`target_kind + target_id`는 closed Evaluation Target Registry에서 정확한 Product file:symbol로 해석되어야 한다. 문자열 metadata만 기록하고 임의 callback을 실행하는 것은 current Product experiment가 아니다. `NODE`는 15의 current 21 Prompt/runtime-node mapping, `SUBGRAPH`는 06의 six semantic Subgraph, `MAIN_PROFILE`은 06의 세 Graph Profile만 허용한다. 모든 target은 동일 current fixture loader와 isolated environment를 사용하며 Product input에서 Gold, grader, split, expected result와 원본 split-revealing Case ID를 제거한다. 기존 callback 주입형 실행은 runner mechanics test 전용이며 release/result evidence로 집계하지 않는다.
 
 후보 비교에서는 독립 변수 하나만 변경한다. Config Diff Report에서 의도하지 않은 차이가 발견되면 해당 Run은 무효 처리한다.
 

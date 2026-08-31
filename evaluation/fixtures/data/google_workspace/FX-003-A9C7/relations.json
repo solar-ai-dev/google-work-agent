@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX3-THREAD-CERT",
+      "to": "HX3-EVIDENCE-CERT",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX3-MSG-LATEST",
+      "to": "HX3-EVIDENCE-CERT",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

@@ -756,17 +756,20 @@ class ControlledPostRetrievalReplayRunner:
         output_schema: OutputSchemaDefinition,
         llm_call_id: str,
     ) -> StructuredLLMResult:
-        return self._llm_runtime.invoke_structured(
-            prompt_ref=prompt_ref,
-            prompt_input=prompt_input,
-            output_schema=output_schema,
-            trace_context=ObservabilityContext(
-                request_id=llm_call_id,
-                command_id=llm_call_id,
-                conversation_id="controlled-post-retrieval",
-                run_id=llm_call_id,
-                langgraph_thread_id="e06b-controlled-replay",
-                llm_call_id=llm_call_id,
+        return cast(
+            StructuredLLMResult,
+            self._llm_runtime.invoke_structured(
+                prompt_ref=prompt_ref,
+                prompt_input=prompt_input,
+                output_schema=output_schema,
+                trace_context=ObservabilityContext(
+                    request_id=llm_call_id,
+                    command_id=llm_call_id,
+                    conversation_id="controlled-post-retrieval",
+                    run_id=llm_call_id,
+                    langgraph_thread_id="e06b-controlled-replay",
+                    llm_call_id=llm_call_id,
+                ),
             ),
         )
 
@@ -1032,7 +1035,7 @@ def _calculate_evaluation_environment_hash(
         evaluation_item=evaluation_item,
         fixture_snapshot_id=fixture_snapshot_id,
     )
-    return calculate_canonical_json_hash(payload)
+    return cast(str, calculate_canonical_json_hash(payload))
 
 
 def _build_evaluation_environment_hash_payload(
@@ -1321,23 +1324,29 @@ def _validate_specialized_planning_output(
             raise ControlledPostRetrievalReplayError(
                 "controlled planning projection does not support route reconsideration"
             )
-        return {
-            "schema_version": 2,
-            "status": answer_draft["status"],
-            "answer_draft": answer_draft,
-            "plan_draft": None,
-        }
+        return validate_profile_planning_projection_v1(
+            {
+                "schema_version": 2,
+                "status": answer_draft["status"],
+                "answer_draft": answer_draft,
+                "plan_draft": None,
+            },
+            analysis_result=analysis_result,
+        )
     plan_draft = validate_action_plan_draft_v1(value, analysis_result=analysis_result)
     if plan_draft["status"] == "ROUTE_RECONSIDERATION_REQUIRED":
         raise ControlledPostRetrievalReplayError(
             "controlled planning projection does not support route reconsideration"
         )
-    return {
-        "schema_version": 2,
-        "status": plan_draft["status"],
-        "answer_draft": None,
-        "plan_draft": plan_draft,
-    }
+    return validate_profile_planning_projection_v1(
+        {
+            "schema_version": 2,
+            "status": plan_draft["status"],
+            "answer_draft": None,
+            "plan_draft": plan_draft,
+        },
+        analysis_result=analysis_result,
+    )
 
 
 def _validate_review_output(

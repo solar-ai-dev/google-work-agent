@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 from evaluation.reporting.write_results import RESULT_FILENAMES
@@ -16,8 +17,17 @@ EXPECTED_CURRENT_FILES = {
     "evaluation/contracts/product_episode_projection.py",
     "evaluation/contracts/routing_trajectory_projection.py",
     "evaluation/contracts/context_ready_snapshot.py",
+    "evaluation/contracts/current_fixture_snapshot.py",
+    "evaluation/contracts/experiment_config.py",
+    "evaluation/contracts/node_evaluation_item.py",
     "evaluation/datasets/load_canonical_cases.py",
     "evaluation/datasets/canonical_cases_v7.jsonl",
+    "evaluation/datasets/load_node_evaluation_items.py",
+    "evaluation/datasets/node_evaluation_items_v1.jsonl",
+    "evaluation/fixtures/load_current_fixture.py",
+    "evaluation/fixtures/fixture_environment.py",
+    "evaluation/fixtures/product_resource_projection.py",
+    "evaluation/configs/load_experiment_config.py",
     "evaluation/projections/build_current_projections.py",
     "evaluation/projections/data/e2e_projection_v5.jsonl",
     "evaluation/projections/data/product_episode_e2e_projection_v1.jsonl",
@@ -25,6 +35,10 @@ EXPECTED_CURRENT_FILES = {
     "evaluation/graders/grade_item.py",
     "evaluation/graders/scoring-contract-v1.1.json",
     "evaluation/reporting/write_results.py",
+    "evaluation/targets/target_registry.py",
+    "evaluation/targets/node_product_target.py",
+    "evaluation/targets/subgraph_product_target.py",
+    "evaluation/targets/main_profile_product_target.py",
 }
 EXPECTED_MICRO_FILES = {
     "fault_profiles.jsonl",
@@ -45,12 +59,25 @@ def test_formal_evaluation_paths_and_ledger_rows_are_exact() -> None:
     expected_rows = {
         "STR-010",
         *(f"STR-{number}" for number in range(315, 325)),
+        *(f"STR-{number}" for number in range(519, 528)),
         *(f"NPA-{number:03d}" for number in range(32, 45)),
         "NPA-055",
-        *(f"NPA-{number:03d}" for number in range(78, 86)),
+        *(f"NPA-{number:03d}" for number in range(78, 89)),
     }
     for row_id in expected_rows:
         assert len(re.findall(rf"^\| {re.escape(row_id)} \|", ledger, flags=re.MULTILINE)) == 1
+
+
+def test_required_current_repository_artifacts_are_actually_git_tracked() -> None:
+    required = sorted(
+        path for path in EXPECTED_CURRENT_FILES if path.endswith((".json", ".jsonl"))
+    ) + sorted(f"evaluation/datasets/micro/{name}" for name in EXPECTED_MICRO_FILES)
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
+        ).stdout.splitlines()
+    )
+    assert set(required) <= tracked
 
 
 def test_top_level_experiments_and_old_product_evaluation_authorities_are_absent() -> None:
@@ -157,7 +184,7 @@ def test_scoring_and_result_writer_have_one_current_authority_and_exact_artifact
         names = {
             node.name
             for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
         if "grade_item" in names:
             grade_owners.append(path.relative_to(ROOT).as_posix())
@@ -190,8 +217,20 @@ def test_every_formal_evaluation_symbol_has_one_current_authority() -> None:
         "RoutingTrajectoryProjectionV2": ("evaluation/contracts/routing_trajectory_projection.py"),
         "ContextReadySnapshotV1": "evaluation/contracts/context_ready_snapshot.py",
         "EvaluationPolicyProjectionV1": "evaluation/contracts/context_ready_snapshot.py",
+        "CurrentFixtureSnapshotV1": "evaluation/contracts/current_fixture_snapshot.py",
+        "ExperimentConfigV1": "evaluation/contracts/experiment_config.py",
+        "ExperimentTargetV1": "evaluation/contracts/experiment_config.py",
+        "NodeEvaluationItemV1": "evaluation/contracts/node_evaluation_item.py",
         "load_canonical_cases": "evaluation/datasets/load_canonical_cases.py",
+        "load_node_evaluation_items": "evaluation/datasets/load_node_evaluation_items.py",
+        "load_current_fixture": "evaluation/fixtures/load_current_fixture.py",
+        "project_product_resources": "evaluation/fixtures/product_resource_projection.py",
+        "load_experiment_config": "evaluation/configs/load_experiment_config.py",
         "build_current_projections": "evaluation/projections/build_current_projections.py",
+        "resolve_target": "evaluation/targets/target_registry.py",
+        "execute_node_product_target": "evaluation/targets/node_product_target.py",
+        "execute_subgraph_product_target": "evaluation/targets/subgraph_product_target.py",
+        "execute_main_profile_product_target": "evaluation/targets/main_profile_product_target.py",
         "run_experiment": "evaluation/runner/run_experiment.py",
         "grade_item": "evaluation/graders/grade_item.py",
         "write_results": "evaluation/reporting/write_results.py",

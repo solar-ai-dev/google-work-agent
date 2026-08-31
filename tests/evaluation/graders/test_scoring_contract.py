@@ -10,7 +10,10 @@ def test_current_scoring_contract_is_exact_and_supporting_semantic_only() -> Non
     contract = load_scoring_contract()
 
     assert contract["schema_version"] == "1.1"
-    assert contract["grader_registry_version"] == "0.4"
+    assert contract["grader_registry_version"] == "0.5"
+    business_graders = contract["business_outcome_graders"]
+    assert isinstance(business_graders, list)
+    assert "business_outcome_deterministic" in business_graders
     assert contract["semantic_grader_authority"] == "SUPPORTING_ONLY"
     assert contract["partial_run_counts_as_complete"] is False
     assert contract["selection_order"] == [

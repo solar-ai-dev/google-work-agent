@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -42,7 +43,10 @@ def build_current_projections(
     """Write the exact current E2E and Product Episode JSONL projections."""
 
     ordered_cases = sorted(cases or load_canonical_cases(), key=lambda item: item.case_id)
-    e2e_rows = [_project_case(case) for case in ordered_cases]
+    dataset_hash = hashlib.sha256(
+        ("\n".join(case.canonical_json() for case in ordered_cases) + "\n").encode("utf-8")
+    ).hexdigest()
+    e2e_rows = [_project_case(case, dataset_hash=dataset_hash) for case in ordered_cases]
     e2e_ids = [row.case_id for row in e2e_rows]
     if len(e2e_ids) != len(set(e2e_ids)):
         raise ProjectionBuildError("duplicate E2E projection case_id")
@@ -68,10 +72,17 @@ def build_current_projections(
     )
 
 
-def _project_case(case: CanonicalCaseV7) -> E2EProjectionV5:
+def _project_case(case: CanonicalCaseV7, *, dataset_hash: str | None = None) -> E2EProjectionV5:
+    resolved_dataset_hash = (
+        dataset_hash or hashlib.sha256((case.canonical_json() + "\n").encode("utf-8")).hexdigest()
+    )
+    runtime_item_id = (
+        "item_"
+        + hashlib.sha256(f"{resolved_dataset_hash}:{case.case_id}".encode()).hexdigest()[:24]
+    )
     product_input = {
         "schema_version": 1,
-        "case_id": case.case_id,
+        "runtime_item_id": runtime_item_id,
         "fixture_snapshot_id": case.fixture_snapshot_id,
         "entry_mode": case.entry_mode,
         "user_prompt": case.canonical_user_prompt,
@@ -80,6 +91,8 @@ def _project_case(case: CanonicalCaseV7) -> E2EProjectionV5:
     return E2EProjectionV5(
         schema_version=5,
         case_id=case.case_id,
+        runtime_item_id=runtime_item_id,
+        source_dataset_hash=resolved_dataset_hash,
         fixture_snapshot_id=case.fixture_snapshot_id,
         product_input=_json_value(product_input),
         business_gold=_json_value(

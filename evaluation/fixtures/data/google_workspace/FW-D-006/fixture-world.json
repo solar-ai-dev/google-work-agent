@@ -1,0 +1,27 @@
+{
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "fixture_relation_family": "RF-DEV-006",
+  "fixture_snapshot_id": "FW-D-006",
+  "locale": "ko-KR",
+  "permissions": {
+    "calendar": "READ_WRITE",
+    "gmail": "READ_WRITE",
+    "tasks": "READ_WRITE"
+  },
+  "scenario_family_ids": [
+    "SF-C2-SCHEDULE-RISK-DRAFT",
+    "SF-C6-AMBIGUITY-BOUNDARY"
+  ],
+  "schema_version": 1,
+  "timezone": "Asia/Seoul",
+  "tool_availability": [
+    "gmail_get_thread",
+    "gmail_create_draft",
+    "tasks_get_task",
+    "tasks_list",
+    "tasks_create_task",
+    "tasks_update_task",
+    "calendar_get_event",
+    "calendar_create_event"
+  ]
+}

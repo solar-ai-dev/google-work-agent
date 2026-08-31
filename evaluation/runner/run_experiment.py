@@ -5,20 +5,29 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import re
 from collections.abc import Callable, Mapping
+from contextvars import copy_context
 from pathlib import Path
-from typing import Literal, cast
+from threading import Thread
+from typing import cast
 
-from pydantic import JsonValue, field_validator, model_validator
+from pydantic import JsonValue
 
+from evaluation.contracts.current_fixture_snapshot import CurrentFixtureSnapshotV1
 from evaluation.contracts.e2e_projection import E2EProjectionV5
-from evaluation.contracts.evaluation_contract import EvaluationContract, load_strict_json
+from evaluation.contracts.evaluation_contract import load_strict_json
+from evaluation.contracts.experiment_config import EvaluationBudgetV1, ExperimentConfigV1
 from evaluation.contracts.routing_trajectory_projection import RoutingTrajectoryProjectionV2
 from evaluation.datasets.load_canonical_cases import (
     DEFAULT_CANONICAL_CASES_PATH,
     CanonicalCaseV7,
     load_canonical_cases,
+)
+from evaluation.fixtures.fixture_environment import FixtureEnvironment
+from evaluation.fixtures.load_current_fixture import (
+    CURRENT_FIXTURE_ROOT,
+    current_fixture_root_hash,
+    load_current_fixture,
 )
 from evaluation.graders.grade_item import GraderResultV1, grade_item, load_scoring_contract
 from evaluation.projections.build_current_projections import (
@@ -26,9 +35,14 @@ from evaluation.projections.build_current_projections import (
     E2E_PROJECTION_FILENAME,
 )
 from evaluation.reporting.write_results import EvaluationResultSetV1, write_results
+from evaluation.targets.main_profile_product_target import execute_main_profile_product_target
+from evaluation.targets.node_product_target import execute_node_product_target
+from evaluation.targets.subgraph_product_target import execute_subgraph_product_target
+from evaluation.targets.target_registry import resolve_target
 
 DEFAULT_RESULTS_ROOT = Path(__file__).parents[1] / "results"
 CURRENT_GRADER_IDS = (
+    "business_outcome_deterministic",
     "safety_contract_deterministic",
     "user_interaction_deterministic",
     "tool_trajectory_deterministic",
@@ -46,6 +60,9 @@ _PRODUCT_INPUT_FORBIDDEN_FIELDS = {
     "expected_output",
     "six_reference_route",
     "holdout_metadata",
+    "case_id",
+    "split",
+    "partition",
 }
 
 
@@ -53,143 +70,20 @@ class ExperimentRunError(ValueError):
     """Raised when an Evaluation run violates its isolated runner contract."""
 
 
-class EvaluationBudgetV1(EvaluationContract):
-    schema_version: Literal[1]
-    max_evaluation_items: int
-    max_agent_runs: int
-    max_llm_calls: int
-    max_provider_http_requests: int
-    max_google_api_calls: int
-    max_cost_usd: float
-
-    @field_validator(
-        "max_evaluation_items",
-        "max_agent_runs",
-        "max_llm_calls",
-        "max_provider_http_requests",
-        "max_google_api_calls",
-    )
-    @classmethod
-    def _require_positive_limit(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("budget count limits must be positive")
-        return value
-
-    @field_validator("max_cost_usd")
-    @classmethod
-    def _require_positive_cost(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("max_cost_usd must be positive")
-        return value
-
-
-class ExperimentConfigV1(EvaluationContract):
-    schema_version: Literal[1]
-    experiment_id: str
-    experiment_kind: Literal["A", "B", "C", "D", "E"]
-    hypothesis: str
-    independent_variable: str
-    fixed_variables: dict[str, JsonValue]
-    dataset_version: str
-    projection_version: str
-    fixture_snapshot_hash: str
-    candidate_config_hash: str
-    graph_version: str
-    prompt_id: str
-    prompt_bundle_version: str
-    agent_schema_version: str
-    tool_schema_version: str
-    policy_version: str
-    retrieval_config_version: str
-    runtime_mode: str
-    provider: str
-    model_id: str
-    model_version: str
-    runtime_parameters: dict[str, JsonValue]
-    hardware_profile: str
-    target_node_id: str | None
-    upstream_mode: Literal["ORACLE", "LIVE"] | None
-    trial_count: int
-    grader_version: Literal["0.4"]
-    stop_conditions: dict[str, JsonValue]
-    adoption_criteria: dict[str, JsonValue]
-    runner_version: str
-    seed: int
-    partition: Literal["CORE", "HOLDOUT", "STRESS"]
-    candidate_config: dict[str, JsonValue]
-    config_diff: dict[str, JsonValue]
-    product_commit_sha: str
-    budgets: EvaluationBudgetV1
-
-    @field_validator("experiment_id")
-    @classmethod
-    def _validate_experiment_id(cls, value: str) -> str:
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value):
-            raise ValueError("invalid experiment_id")
-        return value
-
-    @field_validator(
-        "hypothesis",
-        "independent_variable",
-        "dataset_version",
-        "projection_version",
-        "graph_version",
-        "prompt_id",
-        "prompt_bundle_version",
-        "agent_schema_version",
-        "tool_schema_version",
-        "policy_version",
-        "retrieval_config_version",
-        "runtime_mode",
-        "provider",
-        "model_id",
-        "model_version",
-        "hardware_profile",
-        "runner_version",
-    )
-    @classmethod
-    def _require_non_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("runner identity fields must be non-empty")
-        return value
-
-    @field_validator("fixture_snapshot_hash", "candidate_config_hash")
-    @classmethod
-    def _validate_artifact_hash(cls, value: str) -> str:
-        if not re.fullmatch(r"[0-9a-f]{64}", value):
-            raise ValueError("artifact hashes must be full lowercase SHA-256 values")
-        return value
-
-    @field_validator("product_commit_sha")
-    @classmethod
-    def _validate_commit_sha(cls, value: str) -> str:
-        if not re.fullmatch(r"[0-9a-f]{40}", value):
-            raise ValueError("product_commit_sha must be a full lowercase Git SHA")
-        return value
-
-    @field_validator("trial_count")
-    @classmethod
-    def _require_positive_trial_count(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("trial_count must be positive")
-        return value
-
-    @model_validator(mode="after")
-    def _verify_candidate_hash(self) -> ExperimentConfigV1:
-        if self.candidate_config_hash != _stable_json_hash(self.candidate_config):
-            raise ValueError("candidate_config_hash does not match candidate_config")
-        return self
-
-
 ProductEvaluationBoundary = Callable[[dict[str, JsonValue]], Mapping[str, object]]
+TargetDependencyFactory = Callable[
+    [dict[str, JsonValue], CurrentFixtureSnapshotV1], Mapping[str, object]
+]
 
 
 def run_experiment(
     config: ExperimentConfigV1,
     *,
-    execute_product: ProductEvaluationBoundary,
+    execute_product: ProductEvaluationBoundary | None = None,
+    target_dependencies: Mapping[str, object] | None = None,
     cases_path: Path = DEFAULT_CANONICAL_CASES_PATH,
     projections_path: Path = DEFAULT_PROJECTION_DATA_DIR / E2E_PROJECTION_FILENAME,
+    fixture_root: Path = CURRENT_FIXTURE_ROOT,
     results_root: Path = DEFAULT_RESULTS_ROOT,
 ) -> Path:
     """Run one isolated, reproducible Evaluation experiment and write all artifacts."""
@@ -202,6 +96,11 @@ def run_experiment(
     dataset_hash = _file_hash(cases_path)
     projection_hash = _file_hash(projections_path)
     scoring = load_scoring_contract()
+    if (
+        config.runtime_mode != "RUNNER_MECHANICS_TEST"
+        and config.fixture_snapshot_hash != current_fixture_root_hash(fixture_root)
+    ):
+        raise ExperimentRunError("fixture_snapshot_hash does not match current fixture authority")
 
     evaluation_items: list[dict[str, JsonValue]] = []
     node_results: list[dict[str, JsonValue]] = []
@@ -239,9 +138,35 @@ def run_experiment(
             )
             try:
                 product_input = _gold_free_product_input(projection)
-                observed = execute_product(product_input)
+                fixture = load_current_fixture(case.fixture_snapshot_id, root=fixture_root)
+                if execute_product is not None:
+                    if config.runtime_mode != "RUNNER_MECHANICS_TEST":
+                        raise ExperimentRunError(
+                            "arbitrary callbacks are limited to RUNNER_MECHANICS_TEST"
+                        )
+                    observed = execute_product(product_input)
+                else:
+                    observed = _execute_bound_target(
+                        config,
+                        product_input,
+                        fixture=fixture,
+                        dependency_spec=target_dependencies or {},
+                    )
                 if not isinstance(observed, Mapping):
                     raise ExperimentRunError("Product evaluation boundary must return an object")
+                durable_effects = observed.get("durable_effects", [])
+                if not isinstance(durable_effects, list) or not all(
+                    isinstance(item, Mapping) for item in durable_effects
+                ):
+                    raise ExperimentRunError("observed.durable_effects must be an object array")
+                fixture_environment = FixtureEnvironment(fixture)
+                replayed = fixture_environment.replay(
+                    cast(list[Mapping[str, object]], durable_effects)
+                )
+                evaluator_evidence = {
+                    "initial_fixture_hash": fixture_environment.initial_hash,
+                    "replayed_final_fixture_hash": _stable_json_hash(replayed),
+                }
                 item_usage = _read_usage(observed)
                 usage = _add_usage(usage, item_usage)
                 _enforce_budget(
@@ -250,7 +175,12 @@ def run_experiment(
                     completed_items=attempted_count,
                 )
                 item_graders = [
-                    grade_item(grader_id, projection=projection, observed=observed)
+                    grade_item(
+                        grader_id,
+                        projection=projection,
+                        observed=observed,
+                        evaluator_evidence=evaluator_evidence,
+                    )
                     for grader_id in CURRENT_GRADER_IDS
                 ]
                 grader_results.extend(
@@ -322,6 +252,7 @@ def run_experiment(
     expected_item_count = len(selected) * config.trial_count
     run_status = "COMPLETE" if completed_count == expected_item_count else "PARTIAL"
     denominator = completed_count
+    resolved_target = resolve_target(config.target)
     result_set = EvaluationResultSetV1(
         schema_version=1,
         experiment_manifest={
@@ -355,7 +286,9 @@ def run_experiment(
             "model_version": config.model_version,
             "runtime_parameters": config.runtime_parameters,
             "hardware_profile": config.hardware_profile,
-            "target_node_id": config.target_node_id,
+            "target_kind": config.target.target_kind,
+            "target_id": config.target.target_id,
+            "target_symbol": f"{resolved_target.module}:{resolved_target.symbol}",
             "upstream_mode": config.upstream_mode,
             "trial_count": config.trial_count,
             "scoring_contract_version": cast(JsonValue, scoring["schema_version"]),
@@ -398,10 +331,13 @@ def run_experiment(
             "A release decision requires the applicable holdout, safety, and human-review evidence."
         ),
     )
-    return write_results(
-        experiment_id=config.experiment_id,
-        result_set=result_set,
-        results_root=results_root,
+    return cast(
+        Path,
+        write_results(
+            experiment_id=config.experiment_id,
+            result_set=result_set,
+            results_root=results_root,
+        ),
     )
 
 
@@ -462,6 +398,130 @@ def _gold_free_product_input(projection: E2EProjectionV5) -> dict[str, JsonValue
     return cast(dict[str, JsonValue], copied)
 
 
+def _execute_bound_target(
+    config: ExperimentConfigV1,
+    product_input: dict[str, JsonValue],
+    *,
+    fixture: CurrentFixtureSnapshotV1,
+    dependency_spec: Mapping[str, object],
+) -> Mapping[str, object]:
+    timeout_seconds = _target_timeout_seconds(config)
+
+    def operation() -> Mapping[str, object]:
+        dependencies, cleanup = _item_target_dependencies(
+            dependency_spec,
+            product_input=product_input,
+            fixture=fixture,
+        )
+        try:
+            return _dispatch_bound_target(
+                config,
+                product_input,
+                dependencies=dependencies,
+            )
+        finally:
+            if cleanup is not None:
+                cleanup()
+
+    if timeout_seconds is None:
+        return operation()
+    return _call_with_timeout(operation, timeout_seconds=timeout_seconds)
+
+
+def _dispatch_bound_target(
+    config: ExperimentConfigV1,
+    product_input: dict[str, JsonValue],
+    *,
+    dependencies: Mapping[str, object],
+) -> Mapping[str, object]:
+    target = resolve_target(config.target)
+    plain_input = cast(dict[str, object], product_input)
+    if target.target_kind == "NODE":
+        return execute_node_product_target(
+            target,
+            plain_input,
+            dependencies=cast(Mapping[str, object], dependencies.get("node", {})),
+        )
+    if target.target_kind == "SUBGRAPH":
+        arguments = dependencies.get("subgraph")
+        if not isinstance(arguments, Mapping):
+            raise ExperimentRunError("Subgraph target constructor arguments are required")
+        return execute_subgraph_product_target(
+            target,
+            plain_input,
+            constructor_arguments=arguments,
+        )
+    arguments = dependencies.get("main_profile")
+    if not isinstance(arguments, Mapping):
+        raise ExperimentRunError("Main Profile target builder arguments are required")
+    return execute_main_profile_product_target(
+        target,
+        plain_input,
+        builder_arguments=arguments,
+    )
+
+
+def _target_timeout_seconds(config: ExperimentConfigV1) -> float | None:
+    raw = config.runtime_parameters.get("target_timeout_seconds")
+    if raw is None:
+        return None
+    if not isinstance(raw, int | float) or isinstance(raw, bool) or raw <= 0:
+        raise ExperimentRunError("runtime_parameters.target_timeout_seconds must be positive")
+    return float(raw)
+
+
+def _call_with_timeout(
+    operation: Callable[[], Mapping[str, object]],
+    *,
+    timeout_seconds: float,
+) -> Mapping[str, object]:
+    """Bound one Product invocation without blocking the runner after its deadline."""
+
+    context = copy_context()
+    result_box: list[Mapping[str, object]] = []
+    error_box: list[BaseException] = []
+
+    def invoke() -> None:
+        try:
+            result_box.append(context.run(operation))
+        except BaseException as error:  # pragma: no cover - non-Exception branch is defensive
+            error_box.append(error)
+
+    worker = Thread(target=invoke, name="evaluation-product-target", daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise ExperimentRunError(f"Product target timed out after {timeout_seconds:g} seconds")
+    if error_box:
+        error = error_box[0]
+        if isinstance(error, Exception):
+            raise error
+        raise ExperimentRunError("Product target aborted with a non-standard exception")
+    if len(result_box) != 1:
+        raise ExperimentRunError("Product target did not produce one result")
+    return result_box[0]
+
+
+def _item_target_dependencies(
+    dependencies: Mapping[str, object],
+    *,
+    product_input: dict[str, JsonValue],
+    fixture: CurrentFixtureSnapshotV1,
+) -> tuple[Mapping[str, object], Callable[[], object] | None]:
+    factory = dependencies.get("factory")
+    if factory is None:
+        return dependencies, None
+    if not callable(factory):
+        raise ExperimentRunError("target dependency factory must be callable")
+    resolved = cast(TargetDependencyFactory, factory)(dict(product_input), fixture)
+    if not isinstance(resolved, Mapping):
+        raise ExperimentRunError("target dependency factory must return an object")
+    cleanup = resolved.get("cleanup")
+    if cleanup is not None and not callable(cleanup):
+        raise ExperimentRunError("target dependency cleanup must be callable")
+    return resolved, cast(Callable[[], object] | None, cleanup)
+
+
 def _reject_forbidden_product_fields(value: object) -> None:
     if isinstance(value, dict):
         for key, nested in value.items():
@@ -490,7 +550,7 @@ def _read_usage(observed: Mapping[str, object]) -> dict[str, JsonValue]:
             raise ExperimentRunError(f"usage.{field} must be a non-negative integer")
         usage[field] = value
     cost = raw.get("cost_usd", 0.0)
-    if not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost < 0:
+    if not isinstance(cost, int | float) or isinstance(cost, bool) or cost < 0:
         raise ExperimentRunError("usage.cost_usd must be a non-negative number")
     usage["cost_usd"] = float(cost)
     return usage
@@ -584,22 +644,16 @@ def _business_task_success(
     projection: E2EProjectionV5,
     results: list[GraderResultV1],
 ) -> bool:
+    del projection
     by_id = {result.grader_id: result for result in results}
-    hard_gate = all(
-        by_id[grader_id].verdict == "PASS"
-        for grader_id in ("safety_contract_deterministic", "user_interaction_deterministic")
+    required = (
+        "business_outcome_deterministic",
+        "safety_contract_deterministic",
+        "user_interaction_deterministic",
+        "tool_trajectory_deterministic",
+        "end_state_deterministic",
     )
-    end_state = by_id["end_state_deterministic"].verdict == "PASS"
-    semantic_verdict = by_id["semantic_completion_supporting"].verdict
-    business_gold = projection.business_gold
-    if not isinstance(business_gold, dict):
-        raise ExperimentRunError("business_gold must be an object")
-    requested_outcome = business_gold.get("requested_outcome")
-    if requested_outcome == "ANSWER":
-        outcome = semantic_verdict == "PASS"
-    else:
-        outcome = end_state and semantic_verdict in {"PASS", "NOT_APPLICABLE"}
-    return hard_gate and outcome
+    return all(by_id[grader_id].verdict == "PASS" for grader_id in required)
 
 
 def _append_node_results(

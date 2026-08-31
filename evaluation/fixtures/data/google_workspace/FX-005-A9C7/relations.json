@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX5-EVENT-AUDIT",
+      "to": "HX5-EVIDENCE-PERMISSION",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX5-CALENDAR-READONLY",
+      "to": "HX5-EVIDENCE-PERMISSION",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

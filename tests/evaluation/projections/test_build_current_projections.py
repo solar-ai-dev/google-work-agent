@@ -39,7 +39,16 @@ def test_projection_builder_writes_exact_deterministic_gold_isolated_files(
     episode = ProductEpisodeE2EProjectionV1.model_validate_json(
         first.product_episode_path.read_text(encoding="utf-8").strip(), strict=True
     )
+    assert isinstance(e2e.product_input, dict)
+    assert isinstance(episode.product_input, dict)
     assert "gold" not in e2e.product_input
+    assert "case_id" not in e2e.product_input
+    assert e2e.product_input["runtime_item_id"] == e2e.runtime_item_id
+    serialized_input = str(e2e.product_input).upper()
+    assert all(
+        label not in serialized_input
+        for label in ("CASE-CORE", "CASE-HOLDOUT", "CASE-STRESS", '"SPLIT"')
+    )
     assert "decision_script" not in episode.product_input
 
 

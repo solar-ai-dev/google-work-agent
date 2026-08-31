@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "messages": [
+        {
+          "body": "Bounded evidence for HX10-MSG-SECURITY",
+          "message_id": "HX10-MSG-SECURITY",
+          "sent_at": "2026-08-31T00:00:00Z"
+        }
+      ],
+      "subject": "Synthetic source HX10-MSG-SECURITY",
+      "thread_id": "HX10-MSG-SECURITY"
+    }
+  ]
+}

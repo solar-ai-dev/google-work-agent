@@ -23,7 +23,7 @@ def test_ledger_and_map_cover_the_exact_current_formal_universe() -> None:
     ledger = ROOT / "implementation-inventory/ledger.md"
     implementation_map = ROOT / "implementation-inventory/canonical-current-implementation-map.md"
 
-    expected_counts = {"CAP": 142, "STR": 513, "NPA": 85}
+    expected_counts = {"CAP": 142, "STR": 522, "NPA": 88}
     for prefix, expected_count in expected_counts.items():
         ledger_ids = _formal_ids(ledger, prefix)
         map_ids = _formal_ids(implementation_map, prefix)

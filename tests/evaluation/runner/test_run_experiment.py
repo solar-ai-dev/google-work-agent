@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
+import pytest
+from evaluation.contracts.experiment_config import ExperimentTargetV1
 from evaluation.projections.build_current_projections import build_current_projections
 from evaluation.runner.run_experiment import (
     EvaluationBudgetV1,
     ExperimentConfigV1,
+    ExperimentRunError,
+    _call_with_timeout,
     run_experiment,
 )
 from pydantic import JsonValue
@@ -50,16 +55,20 @@ def _config(
         tool_schema_version="tool-schema-v1",
         policy_version="policy-v1",
         retrieval_config_version="retrieval-v1",
-        runtime_mode="SYNTHETIC",
+        runtime_mode="RUNNER_MECHANICS_TEST",
         provider="synthetic",
         model_id="synthetic",
         model_version="v1",
         runtime_parameters={"temperature": 0},
         hardware_profile="test",
-        target_node_id=None,
+        target=ExperimentTargetV1(
+            schema_version=1,
+            target_kind="NODE",
+            target_id="retrieval.plan_query",
+        ),
         upstream_mode=None,
         trial_count=trial_count,
-        grader_version="0.4",
+        grader_version="0.5",
         stop_conditions={"budget_exceeded": True},
         adoption_criteria={"safety_gate": "PASS"},
         runner_version="runner-v1",
@@ -93,6 +102,33 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path]:
     return cases_path, build.e2e_path
 
 
+def _fixture_root(tmp_path: Path) -> Path:
+    root = tmp_path / "fixtures"
+    target = root / "FW-CORE-001"
+    target.mkdir(parents=True)
+    world = {
+        "schema_version": 1,
+        "fixture_snapshot_id": "FW-CORE-001",
+        "scenario_family_ids": ["SF-CORE-001"],
+        "fixture_relation_family": "RF-CORE-001",
+        "locale": "ko-KR",
+        "timezone": "Asia/Seoul",
+        "as_of": "2026-08-07T14:09:00+09:00",
+        "permissions": {"gmail": "READ_ONLY"},
+        "tool_availability": ["gmail_get_thread"],
+    }
+    files = {
+        "fixture-world.json": world,
+        "gmail.json": {"schema_version": 1, "threads": []},
+        "tasks.json": {"schema_version": 1, "tasklists": [], "tasks": []},
+        "calendar.json": {"schema_version": 1, "calendars": [], "events": []},
+        "relations.json": {"schema_version": 1, "relations": []},
+    }
+    for name, payload in files.items():
+        (target / name).write_text(json.dumps(payload), encoding="utf-8")
+    return root
+
+
 def test_runner_passes_only_gold_free_product_input_and_writes_complete_result(
     tmp_path: Path,
 ) -> None:
@@ -103,17 +139,8 @@ def test_runner_passes_only_gold_free_product_input_and_writes_complete_result(
     def execute_product(product_input: dict[str, JsonValue]) -> dict[str, object]:
         received.append(dict(product_input))
         return {
-            "safety": {
-                "approval_compliance": True,
-                "forbidden_action_block": True,
-                "argument_integrity": True,
-                "verification": True,
-                "unknown_result_no_resend": True,
-                "credential_leakage_count": 0,
-                "unsafe_action_commit_count": 0,
-            },
+            "answer_artifact": {"text": "근거 답변", "evidence_ids": ["evidence-1"]},
             "interactions": [],
-            "observed_tool_ids": ["gmail_get_thread"],
             "observed_tool_calls": [
                 {
                     "tool": "gmail_get_thread",
@@ -121,9 +148,10 @@ def test_runner_passes_only_gold_free_product_input_and_writes_complete_result(
                     "arguments": {"resource_ids": ["resource-1"]},
                 }
             ],
-            "end_state": case.end_state_gold.model_dump(mode="json"),
-            "semantic_human_calibrated": True,
-            "semantic_completion_pass": True,
+            "approval_events": [],
+            "unknown_result_events": [],
+            "durable_effects": [],
+            "terminal_state": "COMPLETED",
             "node_results": [],
             "usage": {
                 "agent_run_count": 1,
@@ -139,6 +167,7 @@ def test_runner_passes_only_gold_free_product_input_and_writes_complete_result(
         execute_product=execute_product,
         cases_path=cases_path,
         projections_path=projections_path,
+        fixture_root=_fixture_root(tmp_path),
         results_root=tmp_path / "results",
     )
 
@@ -184,6 +213,7 @@ def test_runner_marks_budget_failure_partial_instead_of_complete(tmp_path: Path)
         execute_product=over_budget,
         cases_path=cases_path,
         projections_path=projections_path,
+        fixture_root=_fixture_root(tmp_path),
         results_root=tmp_path / "results",
     )
 
@@ -198,22 +228,12 @@ def test_runner_marks_budget_failure_partial_instead_of_complete(tmp_path: Path)
 
 
 def test_runner_materializes_each_configured_trial_with_stable_identity(tmp_path: Path) -> None:
-    case = make_case()
     cases_path, projections_path = _inputs(tmp_path)
 
     def execute_product(_: dict[str, JsonValue]) -> dict[str, object]:
         return {
-            "safety": {
-                "approval_compliance": True,
-                "forbidden_action_block": True,
-                "argument_integrity": True,
-                "verification": True,
-                "unknown_result_no_resend": True,
-                "credential_leakage_count": 0,
-                "unsafe_action_commit_count": 0,
-            },
+            "answer_artifact": {"text": "근거 답변", "evidence_ids": ["evidence-1"]},
             "interactions": [],
-            "observed_tool_ids": ["gmail_get_thread"],
             "observed_tool_calls": [
                 {
                     "tool": "gmail_get_thread",
@@ -221,9 +241,10 @@ def test_runner_materializes_each_configured_trial_with_stable_identity(tmp_path
                     "arguments": {"resource_ids": ["resource-1"]},
                 }
             ],
-            "end_state": case.end_state_gold.model_dump(mode="json"),
-            "semantic_human_calibrated": True,
-            "semantic_completion_pass": True,
+            "approval_events": [],
+            "unknown_result_events": [],
+            "durable_effects": [],
+            "terminal_state": "COMPLETED",
             "node_results": [],
             "usage": {
                 "agent_run_count": 1,
@@ -243,6 +264,7 @@ def test_runner_materializes_each_configured_trial_with_stable_identity(tmp_path
         execute_product=execute_product,
         cases_path=cases_path,
         projections_path=projections_path,
+        fixture_root=_fixture_root(tmp_path),
         results_root=tmp_path / "results",
     )
 
@@ -252,3 +274,16 @@ def test_runner_materializes_each_configured_trial_with_stable_identity(tmp_path
     ]
     assert [item["trial_index"] for item in items] == [0, 1]
     assert len({item["evaluation_item_id"] for item in items}) == 2
+
+
+def test_product_target_timeout_fails_closed_without_waiting_for_completion() -> None:
+    started_at = time.monotonic()
+
+    def slow_product() -> dict[str, object]:
+        time.sleep(0.2)
+        return {}
+
+    with pytest.raises(ExperimentRunError, match="timed out"):
+        _call_with_timeout(slow_product, timeout_seconds=0.01)
+
+    assert time.monotonic() - started_at < 0.15

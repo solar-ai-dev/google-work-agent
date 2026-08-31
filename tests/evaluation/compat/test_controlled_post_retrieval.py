@@ -60,12 +60,15 @@ E06B_PROMPT_IDS = {prompt_id for prompt_id in PROMPT_IDS if prompt_id.startswith
 
 
 def _runtime_active_manifest(tmp_path: Path) -> Path:
-    return write_manifest_with_legacy_profile_slots(
-        tmp_path,
-        legacy_prompt_ids=E06B_PROMPT_IDS,
-        active_prompt_ids=PROMPT_IDS - E06B_PROMPT_IDS,
-        draft_prompt_ids=(),
-        active_legacy_prompt_ids=E06B_PROMPT_IDS,
+    return cast(
+        Path,
+        write_manifest_with_legacy_profile_slots(
+            tmp_path,
+            legacy_prompt_ids=E06B_PROMPT_IDS,
+            active_prompt_ids=PROMPT_IDS - E06B_PROMPT_IDS,
+            draft_prompt_ids=(),
+            active_legacy_prompt_ids=E06B_PROMPT_IDS,
+        ),
     )
 
 

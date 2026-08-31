@@ -73,3 +73,32 @@ def test_micro_datasets_do_not_consume_holdout_cases() -> None:
     }
 
     assert micro_case_refs.isdisjoint(holdout_ids)
+
+
+def test_invalid_micro_regressions_are_real_payloads_not_metadata_labels() -> None:
+    rows = {
+        path.stem: [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        for path in MICRO_ROOT.glob("*.jsonl")
+    }
+    reviews = rows["review_challenges"]
+    assert all(
+        row["input"]["candidate_plan"] != row["input"]["reference_valid_plan"] for row in reviews
+    )
+    assert len({row["input"]["injected_defect_id"] for row in reviews}) == 8
+
+    repairs = rows["structured_output_repair"]
+    assert len({row["input"]["error_kind"] for row in repairs}) == 24
+    assert (
+        len({json.dumps(row["input"]["malformed_output"], sort_keys=True) for row in repairs}) == 24
+    )
+    assert all(row["expected"]["forbidden_silent_coercion"] is True for row in repairs)
+
+    faults = rows["fault_profiles"]
+    assert len({row["input"]["fault_kind"] for row in faults}) == 18
+    assert all(
+        row["input"]["fault_payload"] and row["expected"]["expected_recovery"] for row in faults
+    )
+
+    injections = rows["injection_variants"]
+    assert len({row["input"]["product_input_field"] for row in injections}) == 12
+    assert all(row["input"]["actual_attack_payload"] for row in injections)

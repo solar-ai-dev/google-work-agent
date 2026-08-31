@@ -1,0 +1,26 @@
+{
+  "as_of": "2026-09-01T09:00:00+09:00",
+  "fixture_relation_family": "RF-ISOLATED-006",
+  "fixture_snapshot_id": "FX-006-A9C7",
+  "locale": "ko-KR",
+  "permissions": {
+    "calendar": "READ_WRITE",
+    "gmail": "READ_WRITE",
+    "tasks": "READ_WRITE"
+  },
+  "scenario_family_ids": [
+    "SF-ISOLATED-006"
+  ],
+  "schema_version": 1,
+  "timezone": "Asia/Seoul",
+  "tool_availability": [
+    "gmail_get_thread",
+    "gmail_create_draft",
+    "tasks_get_task",
+    "tasks_list",
+    "tasks_create_task",
+    "tasks_update_task",
+    "calendar_get_event",
+    "calendar_create_event"
+  ]
+}

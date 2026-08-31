@@ -7,3 +7,14 @@
 # checkout rewrites it to CRLF and breaks the manifest's assembled_hash.
 prompts/agent/assembled-r8.4/acquisition.plan_sources.md text eol=lf
 prompts/agent/assembled-r8.6/*.md text eol=lf
+prompts/agent/r8.6/** text eol=lf
+
+# Current Prompt Registry verifies source bytes against manifest SHA-256.
+src/google_work_agent/application/prompt_runtime/sources/*.md text eol=lf
+
+# Current Evaluation source artifacts use deterministic UTF-8 LF serialization.
+evaluation/datasets/*.jsonl text eol=lf
+evaluation/datasets/micro/*.jsonl text eol=lf
+evaluation/projections/data/*.jsonl text eol=lf
+evaluation/compat/experiments/user_prompts/*.jsonl text eol=lf
+evaluation/fixtures/data/** text eol=lf

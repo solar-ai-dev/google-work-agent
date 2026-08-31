@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 from evaluation.reporting.write_results import (
@@ -13,29 +14,32 @@ from evaluation.reporting.write_results import (
 
 
 def _result_set(*, status: str = "COMPLETE") -> EvaluationResultSetV1:
-    return EvaluationResultSetV1.model_validate(
-        {
-            "schema_version": 1,
-            "experiment_manifest": {
+    return cast(
+        EvaluationResultSetV1,
+        EvaluationResultSetV1.model_validate(
+            {
                 "schema_version": 1,
-                "experiment_id": "EXP-001",
-                "run_status": status,
-                "evaluation_item_count": 1,
-                "completed_item_count": 1 if status == "COMPLETE" else 0,
+                "experiment_manifest": {
+                    "schema_version": 1,
+                    "experiment_id": "EXP-001",
+                    "run_status": status,
+                    "evaluation_item_count": 1,
+                    "completed_item_count": 1 if status == "COMPLETE" else 0,
+                },
+                "candidate_config": {"candidate_id": "candidate-1"},
+                "config_diff": {"changes": {}},
+                "evaluation_items": [{"evaluation_item_id": "item-1"}],
+                "node_results": [],
+                "trajectory_results": [],
+                "grader_results": [],
+                "case_failures": [],
+                "summary_metrics": {"denominator": 1},
+                "budget_report": {"cost_usd": 0.0},
+                "human_review": "# Human review\n\nPENDING",
+                "product_decision_record": "# Product decision\n\nDEFERRED",
             },
-            "candidate_config": {"candidate_id": "candidate-1"},
-            "config_diff": {"changes": {}},
-            "evaluation_items": [{"evaluation_item_id": "item-1"}],
-            "node_results": [],
-            "trajectory_results": [],
-            "grader_results": [],
-            "case_failures": [],
-            "summary_metrics": {"denominator": 1},
-            "budget_report": {"cost_usd": 0.0},
-            "human_review": "# Human review\n\nPENDING",
-            "product_decision_record": "# Product decision\n\nDEFERRED",
-        },
-        strict=True,
+            strict=True,
+        ),
     )
 
 

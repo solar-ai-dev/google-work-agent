@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "thread_id": "GTH-C-001",
+      "subject": "[Aster] POS 웨비나 검토",
+      "participants": [
+        "minsoo.park@aster.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-C-001",
+          "sender": "minsoo.park@aster.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T03:00:00Z",
+          "body": "안녕하세요.\n업무 진행에 참고하실 수 있도록 최신 내용을 공유드립니다.\n\nAster POS 웨비나 검토는 60분이 필요합니다.\n\n확인 부탁드립니다.\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-C-002",
+      "subject": "[Nova] 패키지 웨비나 검토",
+      "participants": [
+        "park.minsoo@nova.example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-C-002",
+          "sender": "park.minsoo@nova.example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-06T04:00:00Z",
+          "body": "안녕하세요.\n업무 진행에 참고하실 수 있도록 최신 내용을 공유드립니다.\n\nNova 패키지 웨비나 검토는 30분이면 됩니다.\n\n확인 부탁드립니다.\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-FWD003-1",
+      "subject": "[사내 안내] 복지 포인트 사용 안내",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-FWD003-1",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-03T01:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n이번 달 복지 포인트 사용 기한과 조회 방법을 안내드립니다.\n\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-FWD003-2",
+      "subject": "[사내 안내] 법인카드 영수증 제출 안내",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-FWD003-2",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-04T02:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n이번 달 법인카드 영수증은 사내 경비 시스템에 제출해 주세요.\n\n감사합니다."
+        }
+      ]
+    },
+    {
+      "thread_id": "GTH-NOISE-FWD003-3",
+      "subject": "[사내 안내] 사내 점심 메뉴 설문",
+      "participants": [
+        "office@example.test",
+        "user@example.test"
+      ],
+      "messages": [
+        {
+          "message_id": "GM-NOISE-FWD003-3",
+          "sender": "office@example.test",
+          "to": [
+            "user@example.test"
+          ],
+          "cc": [],
+          "sent_at": "2026-08-05T03:30:00Z",
+          "body": "안녕하세요.\n업무와 별개인 사내 공지입니다.\n\n다음 주 점심 메뉴 선호도 설문이 열렸습니다. 참여는 선택 사항입니다.\n\n감사합니다."
+        }
+      ]
+    }
+  ]
+}

@@ -42,7 +42,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/request_understanding/base.md", "prompts/agent/r8.6/six/request_understanding/classify.md"],
-      "content_hash": "90c6583c921fee05b28320bde4b4838670f256ce844eac360c39665a99b21b36",
+      "content_hash": "204b16cc1b019e3e70ffc337abe257488a2a2b22e2645f7f00557af5c8a853e4",
       "assembled_path": "prompts/agent/assembled-r8.6/request_understanding.classify.md",
       "assembled_hash": "204b16cc1b019e3e70ffc337abe257488a2a2b22e2645f7f00557af5c8a853e4"
     },
@@ -59,7 +59,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/request_understanding/base.md", "prompts/agent/r8.6/six/request_understanding/repair.md"],
-      "content_hash": "92a7e3e670071a6e0b749c8d585ccffbe07993a1ee174b6650b8328c4d54db09",
+      "content_hash": "1d84cc1993c75e2ef15a0c8889893169ebcc695f6c0dff7c2368c720a30e389b",
       "assembled_path": "prompts/agent/assembled-r8.6/request_understanding.classify.repair.md",
       "assembled_hash": "1d84cc1993c75e2ef15a0c8889893169ebcc695f6c0dff7c2368c720a30e389b"
     },
@@ -76,7 +76,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/determine_io_resources.md"],
-      "content_hash": "15353b9d5cbe6f6ebfa592e3f8f3a3fef9ad7433b4ebb1d8e21c10ba10e2c165",
+      "content_hash": "1fffc0130b346e1b2713ff2374943158da15db1c7aa07f4deb7e93210c8aee05",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.md",
       "assembled_hash": "1fffc0130b346e1b2713ff2374943158da15db1c7aa07f4deb7e93210c8aee05"
     },
@@ -93,7 +93,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/select_tool_if_needed.md"],
-      "content_hash": "60dec07faef75a99e36888020fc7d5cd9cfb106938709ba676c3641851f53e30",
+      "content_hash": "5bdaea89528e5768b29a2368b65abb8e50ca9376c1a2e07f36ed53293469f133",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.md",
       "assembled_hash": "5bdaea89528e5768b29a2368b65abb8e50ca9376c1a2e07f36ed53293469f133"
     },
@@ -110,7 +110,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/repair.md"],
-      "content_hash": "627f9e2ce74ef43c665c5585789ebfad8b564650b4f64791df82e2c2ffe2284c",
+      "content_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.repair.md",
       "assembled_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d"
     },
@@ -127,7 +127,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/revise.md"],
-      "content_hash": "7ab6703c6af1b2cbca027bd50b12d7447f4a885bc72c9b9e956d5b138e6b0255",
+      "content_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.revise.md",
       "assembled_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd"
     },
@@ -144,7 +144,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/repair.md"],
-      "content_hash": "627f9e2ce74ef43c665c5585789ebfad8b564650b4f64791df82e2c2ffe2284c",
+      "content_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.repair.md",
       "assembled_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d"
     },
@@ -161,7 +161,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/revise.md"],
-      "content_hash": "7ab6703c6af1b2cbca027bd50b12d7447f4a885bc72c9b9e956d5b138e6b0255",
+      "content_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd",
       "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.revise.md",
       "assembled_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd"
     },
@@ -178,7 +178,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/plan_query.md"],
-      "content_hash": "15da1bf0ccb175dd9c33ff9594863977da3400cccdc12ef59acc0621b671a132",
+      "content_hash": "2daa76c01a7a22381648dac1ce446bdcf1280ef6d86c49f47ba9b7b084335d96",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.md",
       "assembled_hash": "2daa76c01a7a22381648dac1ce446bdcf1280ef6d86c49f47ba9b7b084335d96"
     },
@@ -195,7 +195,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/repair.md"],
-      "content_hash": "6de12afc914548f2c9ff79814e7bc5cb5bae51643d1f40bd619dceab9481ed90",
+      "content_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.repair.md",
       "assembled_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db"
     },
@@ -212,7 +212,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/revise.md"],
-      "content_hash": "29bbb4279dacc2cde03fb15d422db10c30358e9add6f06ff73c72cdb5e2327e4",
+      "content_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.revise.md",
       "assembled_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c"
     },
@@ -229,7 +229,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence.md"],
-      "content_hash": "0fb630a0651e1bab210eed7014d0c8739ca729c11f27f64efc479956e42db218",
+      "content_hash": "4333f4b17a005072742f8cb8217785b7b87bb6c91f15acebeed2cccfb96a3565",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.md",
       "assembled_hash": "4333f4b17a005072742f8cb8217785b7b87bb6c91f15acebeed2cccfb96a3565"
     },
@@ -246,7 +246,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence_repair.md"],
-      "content_hash": "088c207b17beb03abd5416c73299a286939c514e85f64438f8bbe4404bafe128",
+      "content_hash": "064014b33d51d26170541a27d1a05cfbf02361b7fd62a1f44ec70b402e15e4ac",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.repair.md",
       "assembled_hash": "064014b33d51d26170541a27d1a05cfbf02361b7fd62a1f44ec70b402e15e4ac"
     },
@@ -263,7 +263,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence_revise.md"],
-      "content_hash": "6f72725e941a5ce3fb2cbbae059983ca71c22510835ac7cf3810751bd1e237ef",
+      "content_hash": "49965239aa8ee71aafbcbb504aa8420823266ca20d3531f73842f43b65345179",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.revise.md",
       "assembled_hash": "49965239aa8ee71aafbcbb504aa8420823266ca20d3531f73842f43b65345179"
     },
@@ -280,7 +280,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/assess_sufficiency.md"],
-      "content_hash": "98107acfa06881a751b1b4d0671d1c557a4d8acf4682e6f583423973f2840a0b",
+      "content_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.md",
       "assembled_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902"
     },
@@ -297,7 +297,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/assess_sufficiency_repair.md"],
-      "content_hash": "c3380dd4c49ab8342727f8c07be80b7887fb5ef5d194d14dd7aa3628e6e426ad",
+      "content_hash": "610947ec106e40dfa358d0e85a8c7b8be6e8c384e3c1243425dbc85060986701",
       "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.repair.md",
       "assembled_hash": "610947ec106e40dfa358d0e85a8c7b8be6e8c384e3c1243425dbc85060986701"
     },
@@ -314,7 +314,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/work_analysis/base.md", "prompts/agent/r8.6/six/work_analysis/analyze.md"],
-      "content_hash": "441b9cbb0f195d0c7f6237db0b37c9242a2d7f1ad4dd9ba8d5ffb352505e7d79",
+      "content_hash": "665a4fd5b87626badec01bd35471f697164debfeba4f57fa8c49d72417dd815e",
       "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.md",
       "assembled_hash": "665a4fd5b87626badec01bd35471f697164debfeba4f57fa8c49d72417dd815e"
     },
@@ -331,7 +331,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/work_analysis/base.md", "prompts/agent/r8.6/six/work_analysis/repair.md"],
-      "content_hash": "7d6859086ab8cb944cfa894e193d481628593489724715b0a55f36d30ba880b0",
+      "content_hash": "d39c468f4d468e75b64153345cf798e08e5f2bb580584acdc9074acdaa2bb5be",
       "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.repair.md",
       "assembled_hash": "d39c468f4d468e75b64153345cf798e08e5f2bb580584acdc9074acdaa2bb5be"
     },
@@ -348,7 +348,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/compose_answer.md"],
-      "content_hash": "aa025b4a89120cc73bcc5dcc46755064b5ec586e73cc5781b44dd06bf0811917",
+      "content_hash": "5d76bdf73fecc6a0ddaa7ffe4151a93f889a5a2bd7a3da91dd2fc9a1be0c9969",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.md",
       "assembled_hash": "5d76bdf73fecc6a0ddaa7ffe4151a93f889a5a2bd7a3da91dd2fc9a1be0c9969"
     },
@@ -365,7 +365,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/repair.md"],
-      "content_hash": "17290befaaad27bfd284392be02461f626dba413b2b1878772c07ec326375f9e",
+      "content_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.repair.md",
       "assembled_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617"
     },
@@ -382,7 +382,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/revise.md"],
-      "content_hash": "5d59ea5fc30259392203e490087e2709299c0907bfb6bc2792b4d66779a3022e",
+      "content_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.revise.md",
       "assembled_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea"
     },
@@ -399,7 +399,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/compose_arguments.md"],
-      "content_hash": "02c3c8e5dbf2074904a762b39d6c968aa8b95bc54952e743086c3b5efd34f1f1",
+      "content_hash": "5d272bd5737cde884623325b99e647ab3af2cf842d5d737d1dfe018e39c9be9e",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.md",
       "assembled_hash": "5d272bd5737cde884623325b99e647ab3af2cf842d5d737d1dfe018e39c9be9e"
     },
@@ -416,7 +416,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/repair.md"],
-      "content_hash": "17290befaaad27bfd284392be02461f626dba413b2b1878772c07ec326375f9e",
+      "content_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.repair.md",
       "assembled_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617"
     },
@@ -433,7 +433,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/revise.md"],
-      "content_hash": "5d59ea5fc30259392203e490087e2709299c0907bfb6bc2792b4d66779a3022e",
+      "content_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea",
       "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.revise.md",
       "assembled_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea"
     },
@@ -450,7 +450,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/inspect.md"],
-      "content_hash": "901acf8192fb070aff25027fe2dbcbbd93c9fc7facd937cbaea20fc417883b05",
+      "content_hash": "6281ce9365c7cf685d201c70045a16ec4cf33eb7c2731c8b540551ae7e5508f9",
       "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.md",
       "assembled_hash": "6281ce9365c7cf685d201c70045a16ec4cf33eb7c2731c8b540551ae7e5508f9"
     },
@@ -467,7 +467,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/repair.md"],
-      "content_hash": "c9f217fe266b590220d3044a0475f4662bdf3d0f74c040be8a351772d234745a",
+      "content_hash": "c867d7113b0cb95e954cb2cc2682ac48f95fb2d988890032895e51b20aed083f",
       "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.repair.md",
       "assembled_hash": "c867d7113b0cb95e954cb2cc2682ac48f95fb2d988890032895e51b20aed083f"
     },
@@ -484,7 +484,7 @@
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
       "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/recheck.md"],
-      "content_hash": "b16957514d35529298390ef36de500a381b661dd77c4a522eb34bb578afdb1ed",
+      "content_hash": "6afafedd2386bd8eec3e1d3774b68c8a7b032f86176a75720b4a4193f7c1f61b",
       "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.recheck.md",
       "assembled_hash": "6afafedd2386bd8eec3e1d3774b68c8a7b032f86176a75720b4a4193f7c1f61b"
     }

@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX9-MSG-DELAY",
+      "to": "HX9-EVIDENCE-DELAY",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX9-TASK-NOTIFY",
+      "to": "HX9-EVIDENCE-DELAY",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

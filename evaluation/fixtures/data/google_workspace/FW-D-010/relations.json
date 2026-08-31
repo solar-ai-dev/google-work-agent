@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "BUSY_CONFLICT",
+      "from": "EV-J-001",
+      "to": "USER_REQUEST"
+    }
+  ]
+}

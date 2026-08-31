@@ -84,3 +84,42 @@ def test_loader_rejects_duplicate_json_object_keys(tmp_path: Path) -> None:
 
     with pytest.raises(CanonicalCaseDatasetError, match="duplicate JSON key"):
         load_canonical_cases(path)
+
+
+def test_rewritten_holdouts_have_independent_semantics_and_fixture_families() -> None:
+    cases = load_canonical_cases()
+    rewritten = [
+        case
+        for case in cases
+        if case.case_id in {f"CASE-HOLDOUT-{index:03d}" for index in range(3, 11)}
+    ]
+    dev = [case for case in cases if case.split != "HOLDOUT"]
+    assert len(rewritten) == 8
+    assert len({case.scenario_family_id for case in rewritten}) == 8
+    assert len({case.fixture_relation_family for case in rewritten}) == 8
+    assert len({case.fixture_snapshot_id for case in rewritten}) == 8
+    assert {case.scenario_family_id for case in rewritten}.isdisjoint(
+        {case.scenario_family_id for case in dev}
+    )
+    assert {case.fixture_relation_family for case in rewritten}.isdisjoint(
+        {case.fixture_relation_family for case in dev}
+    )
+    assert len({case.category for case in rewritten}) == 8
+
+
+def test_loader_rejects_cross_split_near_duplicate_prompt(tmp_path: Path) -> None:
+    core = make_case("CASE-CORE-001").model_dump(mode="json")
+    holdout = make_case("CASE-HOLDOUT-001").model_dump(mode="json")
+    holdout.update(
+        {
+            "split": "HOLDOUT",
+            "scenario_family_id": "SF-HOLDOUT-UNIQUE",
+            "fixture_relation_family": "RF-HOLDOUT-UNIQUE",
+            "user_prompt_id": "UP-HOLDOUT-UNIQUE",
+            "canonical_user_prompt": core["canonical_user_prompt"] + "!",
+        }
+    )
+    path = tmp_path / "cases.jsonl"
+    path.write_text(json.dumps(core) + "\n" + json.dumps(holdout) + "\n", encoding="utf-8")
+    with pytest.raises(CanonicalCaseDatasetError, match="near-duplicate"):
+        load_canonical_cases(path)

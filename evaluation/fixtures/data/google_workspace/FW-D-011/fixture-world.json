@@ -1,0 +1,35 @@
+{
+  "as_of": "2026-08-07T14:09:00+09:00",
+  "fixture_relation_family": "RF-DEV-011",
+  "fixture_snapshot_id": "FW-D-011",
+  "locale": "ko-KR",
+  "permissions": {
+    "calendar": "READ_WRITE",
+    "gmail": "READ_WRITE",
+    "tasks": "READ_WRITE"
+  },
+  "scenario_family_ids": [
+    "SF-C1-AGENT-SEARCH-READ",
+    "SF-C2-STATUS-DRAFT",
+    "SF-C3-AVAILABILITY-CALENDAR",
+    "SF-C3-DEADLINE-EVENT",
+    "SF-C4-DUPLICATE-OR-UPDATE",
+    "SF-C4-FOLLOWUP-TASK",
+    "SF-C5-THREE-SOURCE-ACTION-DAG",
+    "SF-C5-THREE-SOURCE-ANALYSIS",
+    "SF-S1-READ-PROVIDER",
+    "SF-S10-PARTIAL-LIFECYCLE"
+  ],
+  "schema_version": 1,
+  "timezone": "Asia/Seoul",
+  "tool_availability": [
+    "gmail_get_thread",
+    "gmail_create_draft",
+    "tasks_get_task",
+    "tasks_list",
+    "tasks_create_task",
+    "tasks_update_task",
+    "calendar_get_event",
+    "calendar_create_event"
+  ]
+}

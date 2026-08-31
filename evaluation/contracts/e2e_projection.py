@@ -13,6 +13,8 @@ from evaluation.contracts.evaluation_contract import EvaluationContract
 class E2EProjectionV5(EvaluationContract):
     schema_version: Literal[5]
     case_id: str
+    runtime_item_id: str
+    source_dataset_hash: str
     fixture_snapshot_id: str
     product_input: JsonValue
     business_gold: JsonValue
@@ -27,7 +29,7 @@ class E2EProjectionV5(EvaluationContract):
     safety_gold: JsonValue
     end_state_gold: EndStateGoldV1
 
-    @field_validator("case_id", "fixture_snapshot_id")
+    @field_validator("case_id", "runtime_item_id", "source_dataset_hash", "fixture_snapshot_id")
     @classmethod
     def _require_identity(cls, value: str) -> str:
         if not value.strip():

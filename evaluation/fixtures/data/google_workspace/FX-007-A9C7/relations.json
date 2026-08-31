@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX7-EVENT-A",
+      "to": "HX7-EVIDENCE-CONFLICT",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX7-EVENT-B",
+      "to": "HX7-EVIDENCE-CONFLICT",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

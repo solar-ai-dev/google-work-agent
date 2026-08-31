@@ -640,9 +640,21 @@ Main Graph control stages are deterministic LangGraph adapters, not a seventh se
 | Product Episode projection contract | `evaluation/contracts/product_episode_projection.py` | `ProductEpisodeE2EProjectionV1` serialization/closed-field validation만 |
 | Routing trajectory contract | `evaluation/contracts/routing_trajectory_projection.py` | `RoutingTrajectoryProjectionV2` serialization/closed-field validation만 |
 | controlled context snapshot contract | `evaluation/contracts/context_ready_snapshot.py` | `ContextReadySnapshotV1` + `EvaluationPolicyProjectionV1` serialization/closed-field validation만 |
+| current fixture snapshot contract | `evaluation/contracts/current_fixture_snapshot.py` | `CurrentFixtureSnapshotV1` manifest/source-hash/partition validation만 |
+| experiment config contract | `evaluation/contracts/experiment_config.py` | `ExperimentConfigV1` + `ExperimentTargetV1` closed target/config validation만 |
+| Node Evaluation Item contract | `evaluation/contracts/node_evaluation_item.py` | `NodeEvaluationItemV1` closed schema와 Gold-free Product input validation만 |
 | canonical-case loader | `evaluation/datasets/load_canonical_cases.py` | current CanonicalCaseV7 loading + schema validation only |
+| Node Evaluation Item loader | `evaluation/datasets/load_node_evaluation_items.py` | current Node Item strict loading + split-family isolation only |
+| current fixture loader | `evaluation/fixtures/load_current_fixture.py` | current snapshot의 manifest/source hash를 검증하고 격리된 snapshot을 load만 |
+| isolated fixture environment | `evaluation/fixtures/fixture_environment.py` | snapshot deep-copy/reset, observed tool/effect/terminal evidence materialization만; Product Policy 정의 0 |
+| fixture Product resource projection | `evaluation/fixtures/product_resource_projection.py` | validated current snapshot을 Product `ResourceSnapshot` read contract로 투영만; Product fixture/connector authority 정의 0 |
+| experiment config loader | `evaluation/configs/load_experiment_config.py` | exact config strict JSON load + candidate/config hash validation만 |
+| Evaluation target registry | `evaluation/targets/target_registry.py` | closed target ID를 exact Product file:symbol binding으로 resolve만 |
+| Node Product target | `evaluation/targets/node_product_target.py` | 15의 exact 21 Product Node/function invocation과 bounded observation만 |
+| Subgraph Product target | `evaluation/targets/subgraph_product_target.py` | 06의 exact six compiled Subgraph invocation과 bounded observation만 |
+| Main Profile Product target | `evaluation/targets/main_profile_product_target.py` | 06의 exact three compiled Main Profile invocation과 bounded observation만 |
 | projection builder | `evaluation/projections/build_current_projections.py` | validated CanonicalCaseV7에서 current projections를 deterministic 생성만 |
-| experiment runner | `evaluation/runner/run_experiment.py` | candidate config + evaluation item 실행 orchestration만; Product Policy/Domain rule 정의 0 |
+| experiment runner | `evaluation/runner/run_experiment.py` | validated config + closed target + evaluation item 실행 orchestration만; arbitrary callback은 mechanics-test scope뿐이며 Product Policy/Domain rule 정의 0 |
 | grader dispatch | `evaluation/graders/grade_item.py` | 13의 registered grader를 선택·호출하고 result를 normalize만 |
 | result writer | `evaluation/reporting/write_results.py` | 13 §18 logical result artifact set을 16의 exact filename mapping으로 기록만 |
 
@@ -650,6 +662,7 @@ Current non-Python Evaluation artifact placement is also closed under the same s
 
 ```text
 evaluation/datasets/canonical_cases_v7.jsonl
+evaluation/datasets/node_evaluation_items_v1.jsonl
 evaluation/datasets/micro/resource_selected_variants.jsonl
 evaluation/datasets/micro/review_challenges.jsonl
 evaluation/datasets/micro/structured_output_repair.jsonl
@@ -659,6 +672,12 @@ evaluation/datasets/micro/paraphrase_robustness.jsonl
 
 evaluation/projections/data/e2e_projection_v5.jsonl
 evaluation/projections/data/product_episode_e2e_projection_v1.jsonl
+evaluation/configs/<experiment_id>.json
+evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/fixture-world.json
+evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/gmail.json
+evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/tasks.json
+evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/calendar.json
+evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/relations.json
 evaluation/graders/scoring-contract-v1.1.json
 evaluation/results/<experiment_id>/
 ```

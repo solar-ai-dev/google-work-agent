@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from evaluation.contracts.canonical_case import CanonicalCaseV7
@@ -52,6 +54,7 @@ def load_canonical_cases(
         raise CanonicalCaseDatasetError("rows must be ordered by case_id")
 
     _validate_split_isolation(cases)
+    _validate_holdout_prompt_isolation(cases)
     return tuple(cases)
 
 
@@ -73,6 +76,28 @@ def _validate_split_isolation(cases: list[CanonicalCaseV7]) -> None:
     }
     if fixture_leaks:
         raise CanonicalCaseDatasetError(f"fixture family holdout leakage: {fixture_leaks}")
+
+
+def _validate_holdout_prompt_isolation(cases: list[CanonicalCaseV7]) -> None:
+    holdout = [case for case in cases if case.split == "HOLDOUT"]
+    development = [case for case in cases if case.split != "HOLDOUT"]
+    leaks: list[tuple[str, str]] = []
+    for candidate in holdout:
+        normalized = _normalize_prompt(candidate.canonical_user_prompt)
+        for source in development:
+            source_normalized = _normalize_prompt(source.canonical_user_prompt)
+            if (
+                normalized == source_normalized
+                or SequenceMatcher(None, normalized, source_normalized, autojunk=False).ratio()
+                >= 0.9
+            ):
+                leaks.append((candidate.case_id, source.case_id))
+    if leaks:
+        raise CanonicalCaseDatasetError(f"holdout prompt near-duplicate leakage: {leaks}")
+
+
+def _normalize_prompt(value: str) -> str:
+    return re.sub(r"[^0-9a-z가-힣]+", "", value.lower())
 
 
 __all__ = [

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "threads": [
+    {
+      "messages": [
+        {
+          "body": "Bounded evidence for HX9-MSG-DELAY",
+          "message_id": "HX9-MSG-DELAY",
+          "sent_at": "2026-08-31T00:00:00Z"
+        }
+      ],
+      "subject": "Synthetic source HX9-MSG-DELAY",
+      "thread_id": "HX9-MSG-DELAY"
+    }
+  ]
+}

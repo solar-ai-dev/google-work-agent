@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "experiment_id": "EXP-165-CORRECTIVE-MAIN",
+  "experiment_kind": "E",
+  "hypothesis": "The exact compiled Product profile remains observable without evaluator metadata leakage.",
+  "independent_variable": "graph_profile",
+  "fixed_variables": {
+    "prompt_activation": "DRAFT",
+    "human_review": "PENDING"
+  },
+  "dataset_version": "dataset-v7-corrective-165",
+  "projection_version": "e2e-v5-split-neutral",
+  "fixture_snapshot_hash": "976e9777932067495790ecc844cd37279e2bfce4981f5722827d65a813997dfd",
+  "candidate_config_hash": "68c762cfa851f1e5c97f453f67ed2b15fe09ddade89685c5f0301d3aa3472693",
+  "graph_version": "canonical-main-graph",
+  "prompt_id": "canonical-prompt-runtime-v1",
+  "prompt_bundle_version": "canonical-prompt-runtime-v1",
+  "agent_schema_version": "canonical-v1",
+  "tool_schema_version": "canonical-v1",
+  "policy_version": "canonical-v1",
+  "retrieval_config_version": "canonical-v1",
+  "runtime_mode": "SYNTHETIC_FIXTURE",
+  "provider": "deterministic-test-double",
+  "model_id": "deterministic-test-double",
+  "model_version": "v1",
+  "runtime_parameters": {
+    "target_timeout_seconds": 30.0,
+    "temperature": 0
+  },
+  "hardware_profile": "local-isolated",
+  "target": {
+    "schema_version": 1,
+    "target_kind": "MAIN_PROFILE",
+    "target_id": "single_baseline"
+  },
+  "upstream_mode": "LIVE",
+  "trial_count": 1,
+  "grader_version": "0.5",
+  "stop_conditions": {
+    "budget_exceeded": true,
+    "product_exception": true
+  },
+  "adoption_criteria": {
+    "automated_release": false,
+    "human_review": "REQUIRED"
+  },
+  "runner_version": "runner-v2",
+  "seed": 165,
+  "partition": "CORE",
+  "candidate_config": {
+    "candidate_id": "evaluation-corrective-165",
+    "model_id": "deterministic-test-double",
+    "prompt_activation": "DRAFT"
+  },
+  "config_diff": {
+    "graph_profile": "single_baseline"
+  },
+  "product_commit_sha": "9bde45d95f71046eaaeac4499482fc2429c43878",
+  "budgets": {
+    "schema_version": 1,
+    "max_evaluation_items": 60,
+    "max_agent_runs": 60,
+    "max_llm_calls": 120,
+    "max_provider_http_requests": 120,
+    "max_google_api_calls": 1,
+    "max_cost_usd": 1.0
+  }
+}

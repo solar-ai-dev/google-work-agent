@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from pathlib import Path
+from typing import cast
 
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -11,8 +12,11 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 
 
 def canonical_prompt_manifest_path() -> Path:
-    return discover_canonical_prompt_manifest_path(
-        Path(__file__).resolve().parents[2] / "prompts" / "agent"
+    return cast(
+        Path,
+        discover_canonical_prompt_manifest_path(
+            Path(__file__).resolve().parents[2] / "prompts" / "agent"
+        ),
     )
 
 
@@ -113,8 +117,9 @@ def write_manifest_with_legacy_profile_slots(
     manifest = json.loads(canonical_prompt_manifest_path().read_text(encoding="utf-8"))
     legacy_path = (
         Path(__file__).resolve().parents[2]
-        / "runtime"
-        / "development"
+        / "evaluation"
+        / "compat"
+        / "experiments"
         / "prompt-manifest-development.json"
     )
     legacy_manifest = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -139,8 +144,8 @@ def write_manifest_with_legacy_profile_slots(
         if slot.get("slot_id") in active:
             slot["activation_status"] = "RUNTIME_ACTIVE"
             activated.add(str(slot["slot_id"]))
-    missing_active = active - activated
-    if missing_active:
+    missing_active_ids = active - activated
+    if missing_active_ids:
         current_manifest = json.loads(default_prompt_manifest_path().read_text(encoding="utf-8"))
         current_slots = current_manifest.get("slots")
         if not isinstance(current_slots, list):
@@ -149,7 +154,7 @@ def write_manifest_with_legacy_profile_slots(
             if not isinstance(current_slot, dict):
                 continue
             prompt_id = current_slot.get("prompt_id")
-            if prompt_id not in missing_active:
+            if prompt_id not in missing_active_ids:
                 continue
             slots.append(
                 {

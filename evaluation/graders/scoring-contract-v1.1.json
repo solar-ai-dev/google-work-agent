@@ -1,7 +1,8 @@
 {
   "schema_version": "1.1",
-  "grader_registry_version": "0.4",
+  "grader_registry_version": "0.5",
   "registered_graders": [
+    "business_outcome_deterministic",
     "safety_contract_deterministic",
     "user_interaction_deterministic",
     "tool_trajectory_deterministic",
@@ -13,6 +14,8 @@
     "user_interaction_deterministic"
   ],
   "business_outcome_graders": [
+    "business_outcome_deterministic",
+    "tool_trajectory_deterministic",
     "end_state_deterministic",
     "semantic_completion_supporting"
   ],

@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX4-EVENT-OPS",
+      "to": "HX4-EVIDENCE-ABSENCE",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX4-MSG-ABSENCE",
+      "to": "HX4-EVIDENCE-ABSENCE",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

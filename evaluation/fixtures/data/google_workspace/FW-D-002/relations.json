@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "relations": [
+    {
+      "type": "SELECTED_RESOURCE",
+      "from": "USER",
+      "to": "GTH-B-001"
+    },
+    {
+      "type": "HARD_NEGATIVE",
+      "from": "GTH-B-099",
+      "to": "GTH-B-001"
+    }
+  ]
+}

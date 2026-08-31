@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "Work"
+    }
+  ],
+  "tasks": [
+    {
+      "notes": "Bounded evidence for HX6-TASK-TRANSLATE",
+      "status": "needsAction",
+      "task_id": "HX6-TASK-TRANSLATE",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX6-TASK-TRANSLATE"
+    },
+    {
+      "notes": "Bounded evidence for HX6-TASK-LEGAL",
+      "status": "needsAction",
+      "task_id": "HX6-TASK-LEGAL",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX6-TASK-LEGAL"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "timezone": "Asia/Seoul",
+      "title": "Primary"
+    },
+    {
+      "calendar_id": "HX5-CALENDAR-READONLY",
+      "timezone": "Asia/Seoul",
+      "title": "Audit read only"
+    }
+  ],
+  "events": [
+    {
+      "calendar_id": "HX5-CALENDAR-READONLY",
+      "description": "Bounded evidence for HX5-EVENT-AUDIT",
+      "end": "2026-09-03T02:00:00Z",
+      "event_id": "HX5-EVENT-AUDIT",
+      "start": "2026-09-03T01:00:00Z",
+      "status": "confirmed",
+      "title": "Synthetic event HX5-EVENT-AUDIT"
+    }
+  ],
+  "schema_version": 1
+}

@@ -197,7 +197,10 @@ def test_manifest_source_and_assembled_artifacts_exist_and_hash_validate() -> No
         for source_path in source_paths:
             assert source_path.is_file(), f"{slot['slot_id']}: missing source {source_path}"
         concatenated = b"".join(path.read_bytes() for path in source_paths)
-        assert hashlib.sha256(concatenated).hexdigest() == slot["content_hash"], slot["slot_id"]
+        normalized_source = concatenated.replace(b"\r\n", b"\n")
+        assert hashlib.sha256(normalized_source).hexdigest() == slot["content_hash"], slot[
+            "slot_id"
+        ]
 
         assembled_path = _REPO_ROOT / cast(str, slot["assembled_path"])
         assert assembled_path.is_file(), f"{slot['slot_id']}: missing assembled {assembled_path}"
@@ -205,7 +208,7 @@ def test_manifest_source_and_assembled_artifacts_exist_and_hash_validate() -> No
         assert hashlib.sha256(assembled_bytes).hexdigest() == slot["assembled_hash"], slot[
             "slot_id"
         ]
-        assert assembled_bytes == concatenated.replace(b"\r\n", b"\n"), slot["slot_id"]
+        assert assembled_bytes == normalized_source, slot["slot_id"]
 
 
 def test_every_manifest_slot_has_an_input_contract_entry() -> None:

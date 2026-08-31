@@ -30,7 +30,12 @@ def load_strict_json(text: str) -> object:
 class EvaluationContract(BaseModel):
     """Base for immutable, closed Evaluation-only JSON contracts."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        protected_namespaces=(),
+        strict=True,
+    )
 
     def canonical_json(self) -> str:
         return json.dumps(

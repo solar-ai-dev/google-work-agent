@@ -1,0 +1,26 @@
+{
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "timezone": "Asia/Seoul",
+      "title": "Primary"
+    },
+    {
+      "calendar_id": "HX5-CALENDAR-READONLY",
+      "timezone": "Asia/Seoul",
+      "title": "Audit read only"
+    }
+  ],
+  "events": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "description": "Bounded evidence for HX4-EVENT-OPS",
+      "end": "2026-09-03T02:00:00Z",
+      "event_id": "HX4-EVENT-OPS",
+      "start": "2026-09-03T01:00:00Z",
+      "status": "confirmed",
+      "title": "Synthetic event HX4-EVENT-OPS"
+    }
+  ],
+  "schema_version": 1
+}

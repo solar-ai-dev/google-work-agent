@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "Work"
+    }
+  ],
+  "tasks": [
+    {
+      "notes": "Bounded evidence for HX9-TASK-NOTIFY",
+      "status": "needsAction",
+      "task_id": "HX9-TASK-NOTIFY",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX9-TASK-NOTIFY"
+    }
+  ]
+}

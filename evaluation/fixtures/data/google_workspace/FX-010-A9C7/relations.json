@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX10-MSG-SECURITY",
+      "to": "HX10-EVIDENCE-SECURITY",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX10-TASK-RELEASE",
+      "to": "HX10-EVIDENCE-SECURITY",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

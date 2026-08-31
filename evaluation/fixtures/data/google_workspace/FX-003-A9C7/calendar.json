@@ -1,0 +1,16 @@
+{
+  "calendars": [
+    {
+      "calendar_id": "CAL-PRIMARY",
+      "timezone": "Asia/Seoul",
+      "title": "Primary"
+    },
+    {
+      "calendar_id": "HX5-CALENDAR-READONLY",
+      "timezone": "Asia/Seoul",
+      "title": "Audit read only"
+    }
+  ],
+  "events": [],
+  "schema_version": 1
+}

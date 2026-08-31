@@ -13,7 +13,9 @@ Required enforcement families:
 - `_compat` zero on `main`
 - production→evaluation import ban
 - Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; current top-level `experiments/` tree zero, with historical/imported artifacts isolated under `evaluation/compat/`
-- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, current projection filenames, six Micro Dataset JSONL files, scoring contract, and the 16 exact filename mapping for the 13 §18 twelve logical result artifacts match the current 13/16 manifest
+- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, `node_evaluation_items_v1.jsonl`, current projection filenames, six Micro Dataset JSONL files, current experiment configs, current Google Workspace fixture snapshot grammar, scoring contract, and the 16 exact filename mapping for the 13 §18 twelve logical result artifacts match the current 13/16 manifest
+- Evaluation concrete execution closure: one target registry resolves only the 15-owned exact 21 Node/function targets, 06-owned exact six Subgraphs, and exact three Main Profiles; arbitrary callbacks are mechanics-test-only and cannot produce release evidence
+- Evaluation fixture authority closure: current runner/target/grader imports `evaluation/fixtures/**` only; current execution import of `evaluation/compat/**`, personal/live workspace data, or evaluator Gold as Product input is zero
 - static fixture grammar closure: checked-in provider/resource fixtures use `tests/fixtures/data/<provider>/<resource>/<scenario>.json` UTF-8 JSON; architecture validators do not require an enumerated concrete `<scenario>` closed set unless an owner source explicitly names one
 - LangGraph node thin-adapter boundary
 - routing operation-per-file: final production `routing/route_after_<stage>.py`, no catch-all `routing.py`

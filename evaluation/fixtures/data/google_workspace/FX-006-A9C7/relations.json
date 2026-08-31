@@ -1,0 +1,15 @@
+{
+  "relations": [
+    {
+      "from": "HX6-TASK-TRANSLATE",
+      "to": "HX6-EVIDENCE-DEPENDENCY",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "HX6-TASK-LEGAL",
+      "to": "HX6-EVIDENCE-DEPENDENCY",
+      "type": "SUPPORTS"
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tasklists": [
+    {
+      "tasklist_id": "TL-WORK",
+      "title": "Work"
+    }
+  ],
+  "tasks": [
+    {
+      "notes": "Bounded evidence for HX10-TASK-RELEASE",
+      "status": "needsAction",
+      "task_id": "HX10-TASK-RELEASE",
+      "tasklist_id": "TL-WORK",
+      "title": "Synthetic task HX10-TASK-RELEASE"
+    }
+  ]
+}
