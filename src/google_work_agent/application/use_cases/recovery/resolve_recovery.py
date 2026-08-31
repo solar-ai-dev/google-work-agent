@@ -181,6 +181,31 @@ class ResolveRecoveryHandler:
         self._schedule_run_execution = schedule_run_execution
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
+    def resolve_current(
+        self,
+        *,
+        run_id: str,
+        expected_version: int,
+        command_id: str,
+        request_hash: str,
+        resolution: RecoveryResolution,
+        requested_target_kind: Literal["RUN", "ACTION"] | None = None,
+        requested_target_action_id: str | None = None,
+    ) -> ResolveRecoveryResult:
+        """Resolve against the current durable RecoveryContext at the owner boundary."""
+        return self(
+            materialize_current_resolve_recovery_command(
+                self._unit_of_work_factory,
+                run_id=run_id,
+                expected_version=expected_version,
+                command_id=command_id,
+                request_hash=request_hash,
+                resolution=resolution,
+                requested_target_kind=requested_target_kind,
+                requested_target_action_id=requested_target_action_id,
+            )
+        )
+
     def __call__(self, command: ResolveRecoveryCommandV1) -> ResolveRecoveryResult:
         handoff_id: str | None = None
         checkpoint_update: GraphCheckpointEnvelopeV1 | None = None

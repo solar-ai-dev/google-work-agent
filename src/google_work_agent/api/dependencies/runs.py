@@ -2,72 +2,59 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryHandler,
+)
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
-    ContinueCancelResolutionCommandV1,
-    ContinueCancelResolutionResultV1,
-)
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
-    GetExecutionContextQuery,
-)
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunHandler
 from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
-from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.application.use_cases.run.request_cancel import RequestCancelHandler
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthHandler,
+)
+from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
+    ResumeSafeCheckpointHandler,
+)
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-from google_work_agent.ports.system.checkpoint_port import CheckpointPort
-from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
 )
-from google_work_agent.ports.system.operational_command_replay_port import (
-    OperationalCommandReplayPort,
-)
-from google_work_agent.ports.system.settings_port import SettingsPort
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
-from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
 @dataclass(frozen=True, slots=True)
 class RunRouteDependencies:
     api_contract_version: str
     service_instance_id: str
-    unit_of_work_factory: Callable[[], UnitOfWork]
     read_unit_of_work_factory: Callable[[], UnitOfWork]
-    checkpoint_port: CheckpointPort
     graph_profile: GraphProfileIdV1
     graph_version: str
     schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1]
-    workflow_runtime: object
-    resolve_resume_authority: Callable[..., Mapping[str, object] | None]
-    resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None]
-    resume_target_registry: ResumeTargetIssuer
-    clock: ClockPort
-    id_generator: UUIDPort
-    settings: SettingsPort | None
-    operational_command_replay: OperationalCommandReplayPort | None
-    continue_cancel_resolution: (
-        Callable[[ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1] | None
-    )
     resolve_selection_handle: ResolveSelectionHandle
     resource_connector_id: str
     current_account_id: Callable[[], str | None]
     project_context_preview_handler: object | None
     adjust_context_handler: object | None
+    request_cancel_handler: RequestCancelHandler | None
+    resume_safe_checkpoint_handler: ResumeSafeCheckpointHandler | None
+    resume_after_reauth_handler: ResumeAfterReauthHandler | None
+    resolve_recovery_handler: ResolveRecoveryHandler | None
+    confirm_run_handler: ConfirmRunHandler | None
     project_recovery_options_handler: object | None
     project_error_actions_handler: object | None
     project_external_llm_transfer_scope_handler: object | None
@@ -83,86 +70,46 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
     if resolve_selection_handle is None:
         raise RuntimeError("selection-handle resolver is not configured")
 
-    try:
-        unit_of_work_factory = cast(Callable[[], UnitOfWork], container.unit_of_work_factory)
-    except RuntimeError:
-
-        def unit_of_work_factory() -> UnitOfWork:
-            return cast(Callable[[], UnitOfWork], container.unit_of_work_factory)()
-
     read_unit_of_work_factory = cast(
         Callable[[], UnitOfWork],
-        getattr(container, "read_unit_of_work_factory", None) or unit_of_work_factory,
+        getattr(container, "read_unit_of_work_factory", None) or container.unit_of_work_factory,
     )
-
-    def resolve_resume_authority(*, run_id: str, resume_kind: str) -> Mapping[str, object] | None:
-        if resume_kind not in {"REAUTH_COMPLETED", "RECOVERY_RECHECK"}:
-            return None
-        context = GetExecutionContextHandler(unit_of_work_factory=read_unit_of_work_factory)(
-            GetExecutionContextQuery(run_id=run_id)
-        )
-        if context is None:
-            return None
-        resolver = getattr(container.workflow_runtime, "resolve_resume_authority", None)
-        if not callable(resolver):
-            return None
-        return cast(
-            Mapping[str, object] | None,
-            resolver(
-                run_id=run_id,
-                workflow_key=context.workflow_key,
-                resume_kind=resume_kind,
-            ),
-        )
-
-    def resolve_pending_confirmation(run_id: str) -> Mapping[str, object] | None:
-        resolver = getattr(container.workflow_runtime, "resolve_pending_confirmation", None)
-        if not callable(resolver):
-            return None
-        return cast(Mapping[str, object] | None, resolver(run_id))
-
-    if container.resume_target_registry is None:
-        raise RuntimeError("resume-target registry is not configured")
     if container.schedule_run_execution is None:
         raise RuntimeError("workflow execution scheduler is not configured")
-    checkpoint_port = getattr(container, "checkpoint_port", None) or getattr(
-        container.workflow_runtime, "_checkpoint_port", None
-    )
-    if checkpoint_port is None:
-        raise RuntimeError("checkpoint port is not configured")
 
     return RunRouteDependencies(
         api_contract_version=container.api_contract_version,
         service_instance_id=container.service_instance_id,
-        unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
-        checkpoint_port=checkpoint_port,
         graph_profile=container.graph_profile,
         graph_version=container.graph_version,
         schedule_run_execution=cast(
             Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
             container.schedule_run_execution,
         ),
-        workflow_runtime=container.workflow_runtime,
-        resolve_resume_authority=resolve_resume_authority,
-        resolve_pending_confirmation=resolve_pending_confirmation,
-        resume_target_registry=cast(ResumeTargetIssuer, container.resume_target_registry),
-        clock=container.clock,
-        id_generator=container.id_generator,
-        settings=cast(SettingsPort | None, getattr(container, "settings_port", None)),
-        operational_command_replay=cast(
-            OperationalCommandReplayPort | None,
-            getattr(container, "operational_command_replay", None),
-        ),
-        continue_cancel_resolution=cast(
-            Callable[[ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1] | None,
-            getattr(container, "continue_cancel_resolution_handler", None),
-        ),
         resolve_selection_handle=resolve_selection_handle,
         resource_connector_id=container.resource_connector_id,
         current_account_id=container.current_account_id_provider,
         project_context_preview_handler=getattr(container, "project_context_preview_handler", None),
         adjust_context_handler=getattr(container, "adjust_context_handler", None),
+        request_cancel_handler=cast(
+            RequestCancelHandler | None, getattr(container, "request_cancel_handler", None)
+        ),
+        resume_safe_checkpoint_handler=cast(
+            ResumeSafeCheckpointHandler | None,
+            getattr(container, "resume_safe_checkpoint_handler", None),
+        ),
+        resume_after_reauth_handler=cast(
+            ResumeAfterReauthHandler | None,
+            getattr(container, "resume_after_reauth_handler", None),
+        ),
+        resolve_recovery_handler=cast(
+            ResolveRecoveryHandler | None,
+            getattr(container, "resolve_recovery_handler", None),
+        ),
+        confirm_run_handler=cast(
+            ConfirmRunHandler | None, getattr(container, "confirm_run_handler", None)
+        ),
         project_recovery_options_handler=getattr(
             container, "project_recovery_options_handler", None
         ),
@@ -179,9 +126,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         list_run_events_handler=cast(
             ListRunEventsHandler | None, getattr(container, "list_run_events_handler", None)
         ),
-        event_buffer=cast(
-            SseEventBufferPort | None, getattr(container, "event_publisher", None)
-        ),
+        event_buffer=cast(SseEventBufferPort | None, getattr(container, "event_publisher", None)),
     )
 
 
@@ -205,9 +150,7 @@ def get_run_event_route_dependencies(request: Request) -> RunEventRouteDependenc
         list_run_events_handler=cast(
             ListRunEventsHandler | None, getattr(container, "list_run_events_handler", None)
         ),
-        event_buffer=cast(
-            SseEventBufferPort | None, getattr(container, "event_publisher", None)
-        ),
+        event_buffer=cast(SseEventBufferPort | None, getattr(container, "event_publisher", None)),
     )
 
 

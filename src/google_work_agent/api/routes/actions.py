@@ -17,27 +17,14 @@ from google_work_agent.api.schemas.actions.approve_action import (
     ApproveActionRequestV2,
 )
 from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
-from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry import PrepareRetryRequestV2
 from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
-from google_work_agent.application.use_cases.action.approve_action import (
-    ApproveActionCommand,
-    ApproveActionHandler,
-)
-from google_work_agent.application.use_cases.action.modify_action import (
-    ModifyActionCommand,
-    ModifyActionHandler,
-)
+from google_work_agent.application.use_cases.action.approve_action import ApproveActionCommand
+from google_work_agent.application.use_cases.action.modify_action import ModifyActionCommand
 from google_work_agent.application.use_cases.action.prepare_write_retry import (
     PrepareWriteRetryCommand,
-    PrepareWriteRetryHandler,
 )
-from google_work_agent.application.use_cases.action.reject_action import (
-    RejectActionCommand,
-    RejectActionHandler,
-)
-from google_work_agent.application.use_cases.sse_event.project_run_event import (
-    ProjectRunEventHandler,
-)
+from google_work_agent.application.use_cases.action.reject_action import RejectActionCommand
 from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1/actions")
@@ -103,23 +90,12 @@ def approve(
     dependencies: ActionRouteDependency,
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
-    request_payload = payload.model_dump()
-    request_payload.pop("ttl_ms", None)
-    handler = ApproveActionHandler(
-        get_approval_ttl_minutes=lambda: 30,
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-    )
-    result = handler(
+    result = dependencies.approve_action_handler(
         ApproveActionCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="ApproveActionRequestV2",
-                payload={"action_id": action_id, **request_payload},
+                payload={"action_id": action_id, **payload.model_dump()},
             ),
             request_id=request.state.request_id,
             action_id=action_id,
@@ -141,18 +117,7 @@ def modify(
     dependencies: ActionRouteDependency,
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
-    if dependencies.action_gateway is None:
-        raise RuntimeError("modify action gateway is not configured")
-    handler = ModifyActionHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        gateway=dependencies.action_gateway,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-    )
-    result = handler(
+    result = dependencies.modify_action_handler(
         ModifyActionCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -178,15 +143,7 @@ def reject(
     dependencies: ActionRouteDependency,
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
-    result = RejectActionHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-        project_run_event=ProjectRunEventHandler(dependencies.event_publisher()),
-    )(
+    result = dependencies.reject_action_handler(
         RejectActionCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -211,14 +168,7 @@ def prepare_retry(
     dependencies: ActionRouteDependency,
 ) -> ActionCommandResponse:
     _prepare(request, payload=payload, dependencies=dependencies)
-    result = PrepareWriteRetryHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-    )(
+    result = dependencies.prepare_write_retry_handler(
         PrepareWriteRetryCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -226,7 +176,7 @@ def prepare_retry(
                 payload={"action_id": action_id, **payload.model_dump()},
             ),
             action_id=action_id,
-            expected_action_version=payload.expected_action_version,
+            expected_action_version=payload.expected_version,
         )
     )
     response.status_code = http_status_for_result_code(result.result_code)

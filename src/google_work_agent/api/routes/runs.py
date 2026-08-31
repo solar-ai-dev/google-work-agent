@@ -30,10 +30,6 @@ from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseV1
 from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
-from google_work_agent.application.use_cases.recovery.resolve_recovery import (
-    ResolveRecoveryHandler,
-    materialize_current_resolve_recovery_command,
-)
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     ResourceSelectionHandlePayloadV1,
 )
@@ -47,7 +43,6 @@ from google_work_agent.application.use_cases.run.adjust_context import (
 )
 from google_work_agent.application.use_cases.run.confirm_run import (
     ConfirmRunCommand,
-    ConfirmRunHandler,
 )
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
@@ -56,18 +51,12 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
 from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotQuery
 from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
-    RequestCancelHandler,
 )
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthCommand,
-    ResumeAfterReauthHandler,
-)
-from google_work_agent.application.use_cases.run.resume_confirmation import (
-    ResumeConfirmationHandler,
 )
 from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
     ResumeSafeCheckpointCommand,
-    ResumeSafeCheckpointHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -243,9 +232,7 @@ def stream_events(
                 if maybe_event.event_id in emitted_ids:
                     continue
                 emitted_ids.add(maybe_event.event_id)
-                yield _format_sse(
-                    maybe_event.event_id, maybe_event.event_type, maybe_event.payload
-                )
+                yield _format_sse(maybe_event.event_id, maybe_event.event_type, maybe_event.payload)
         finally:
             transport.close_subscription(subscription)
 
@@ -333,18 +320,12 @@ def cancel_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    result = RequestCancelHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-        continue_cancel_resolution=dependencies.continue_cancel_resolution,
-    )(
+    if dependencies.request_cancel_handler is None:
+        raise RuntimeError("request-cancel handler is not configured")
+    result = dependencies.request_cancel_handler(
         RequestCancelCommand(
             run_id=run_id,
-            expected_version=payload.expected_run_version,
+            expected_version=payload.expected_version,
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
                 operation="CancelRunRequestV2", payload={"run_id": run_id, **payload.model_dump()}
@@ -380,17 +361,9 @@ def resume_run(
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
     if payload.resume_kind == "SAFE_CHECKPOINT_RESUME":
-        if dependencies.operational_command_replay is None:
-            raise RuntimeError("operational command replay is not configured")
-        safe = ResumeSafeCheckpointHandler(
-            unit_of_work_factory=dependencies.unit_of_work_factory,
-            checkpoint_port=dependencies.checkpoint_port,
-            resume_target_registry=dependencies.resume_target_registry,
-            schedule_run_execution=dependencies.schedule_run_execution,
-            id_factory=dependencies.id_generator.new_uuid,
-            operational_replay=dependencies.operational_command_replay,
-            now_ms=dependencies.clock.now_ms,
-        )(
+        if dependencies.resume_safe_checkpoint_handler is None:
+            raise RuntimeError("safe-checkpoint resume handler is not configured")
+        safe = dependencies.resume_safe_checkpoint_handler(
             ResumeSafeCheckpointCommand(
                 command_id=payload.command_id,
                 request_hash=calculate_server_request_hash(
@@ -412,25 +385,17 @@ def resume_run(
             conflict_detail=safe.conflict_detail,
         )
     if payload.resume_kind == "RECOVERY_RECHECK":
-        recovery = ResolveRecoveryHandler(
-            unit_of_work_factory=dependencies.unit_of_work_factory,
-            checkpoint_port=dependencies.checkpoint_port,
-            now_ms=dependencies.clock.now_ms,
-            next_id=dependencies.id_generator.new_uuid,
-            resume_target_registry=dependencies.resume_target_registry,
-            schedule_run_execution=dependencies.schedule_run_execution,
-        )(
-            materialize_current_resolve_recovery_command(
-                dependencies.unit_of_work_factory,
-                run_id=run_id,
-                expected_version=payload.expected_version,
-                command_id=payload.command_id,
-                request_hash=calculate_server_request_hash(
-                    operation="ResumeRunRequestV2",
-                    payload={"run_id": run_id, **payload.model_dump()},
-                ),
-                resolution=RecoveryResolution.RECHECK,
-            )
+        if dependencies.resolve_recovery_handler is None:
+            raise RuntimeError("resolve-recovery handler is not configured")
+        recovery = dependencies.resolve_recovery_handler.resolve_current(
+            run_id=run_id,
+            expected_version=payload.expected_version,
+            command_id=payload.command_id,
+            request_hash=calculate_server_request_hash(
+                operation="ResumeRunRequestV2",
+                payload={"run_id": run_id, **payload.model_dump()},
+            ),
+            resolution=RecoveryResolution.RECHECK,
         )
         response.status_code = http_status_for_result_code(recovery.result_code)
         return RunCommandResponse(
@@ -442,16 +407,9 @@ def resume_run(
             should_enqueue=False,
             conflict_detail=recovery.conflict_detail,
         )
-    handler = ResumeAfterReauthHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        resolve_resume_authority=dependencies.resolve_resume_authority,
-        id_generator=dependencies.id_generator,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-    )
-    result = handler(
+    if dependencies.resume_after_reauth_handler is None:
+        raise RuntimeError("reauth resume handler is not configured")
+    result = dependencies.resume_after_reauth_handler(
         ResumeAfterReauthCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -483,21 +441,9 @@ def confirm_run(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    resume_handler = ResumeConfirmationHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_factory=dependencies.id_generator.new_uuid,
-        resume_target_registry=dependencies.resume_target_registry,
-    )
-    handler = ConfirmRunHandler(
-        resolve_pending_confirmation=dependencies.resolve_pending_confirmation,
-        resume_confirmation=resume_handler,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-        id_factory=dependencies.id_generator.new_uuid,
-    )
-    result = handler(
+    if dependencies.confirm_run_handler is None:
+        raise RuntimeError("confirm-run handler is not configured")
+    result = dependencies.confirm_run_handler(
         ConfirmRunCommand(
             command_id=payload.command_id,
             request_hash=calculate_server_request_hash(
@@ -531,28 +477,19 @@ def resolve_recovery(
         request_version=payload.api_contract_version,
     )
     enforce_runtime_operation(request, operation="RUN_COMMANDS")
-    handler = ResolveRecoveryHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        next_id=dependencies.id_generator.new_uuid,
-        resume_target_registry=dependencies.resume_target_registry,
-        schedule_run_execution=dependencies.schedule_run_execution,
-    )
-    result = handler(
-        materialize_current_resolve_recovery_command(
-            dependencies.unit_of_work_factory,
-            command_id=payload.command_id,
-            request_hash=calculate_server_request_hash(
-                operation="ResolveRecoveryRequestV1",
-                payload={"run_id": run_id, **payload.model_dump()},
-            ),
-            run_id=run_id,
-            expected_version=payload.expected_version,
-            resolution=RecoveryResolution(payload.resolution_kind),
-            requested_target_kind=payload.target.target_kind,
-            requested_target_action_id=getattr(payload.target, "action_id", None),
+    if dependencies.resolve_recovery_handler is None:
+        raise RuntimeError("resolve-recovery handler is not configured")
+    result = dependencies.resolve_recovery_handler.resolve_current(
+        command_id=payload.command_id,
+        request_hash=calculate_server_request_hash(
+            operation="ResolveRecoveryRequestV1",
+            payload={"run_id": run_id, **payload.model_dump()},
         ),
+        run_id=run_id,
+        expected_version=payload.expected_version,
+        resolution=RecoveryResolution(payload.resolution_kind),
+        requested_target_kind=payload.target.target_kind,
+        requested_target_action_id=getattr(payload.target, "action_id", None),
     )
     response.status_code = (
         422

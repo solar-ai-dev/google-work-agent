@@ -143,9 +143,15 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
     load_signed_tool_registry,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.approve_action import ApproveActionHandler
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarWorkHours,
 )
+from google_work_agent.application.use_cases.action.modify_action import ModifyActionHandler
+from google_work_agent.application.use_cases.action.prepare_write_retry import (
+    PrepareWriteRetryHandler,
+)
+from google_work_agent.application.use_cases.action.reject_action import RejectActionHandler
 from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
     CreateStagedAttachmentHandler,
 )
@@ -231,6 +237,9 @@ from google_work_agent.application.use_cases.recovery.project_recovery_options i
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
 )
+from google_work_agent.application.use_cases.recovery.resolve_recovery import (
+    ResolveRecoveryHandler,
+)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess,
 )
@@ -260,6 +269,7 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 )
 from google_work_agent.application.use_cases.run.adjust_context import AdjustContextHandler
 from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningHandler
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunHandler
 from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
@@ -282,8 +292,16 @@ from google_work_agent.application.use_cases.run.redrive_workflow_handoffs impor
     RedriveWorkflowHandoffsCommand,
     RedriveWorkflowHandoffsHandler,
 )
+from google_work_agent.application.use_cases.run.request_cancel import RequestCancelHandler
+from google_work_agent.application.use_cases.run.resume_after_reauth import (
+    ResumeAfterReauthHandler,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import (
+    ResumeConfirmationHandler,
     ResumeTargetIssuer,
+)
+from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
+    ResumeSafeCheckpointHandler,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
@@ -1387,6 +1405,42 @@ def build_production_container(
         resolve_pending_confirmation=workflow_runtime.resolve_pending_confirmation,
     )
 
+    def _resolve_resume_authority(*, run_id: str, resume_kind: str) -> dict[str, object] | None:
+        if resume_kind != "REAUTH_COMPLETED":
+            return None
+        context = get_execution_context(GetExecutionContextQuery(run_id=run_id))
+        resolver = getattr(workflow_runtime, "resolve_resume_authority", None)
+        if context is None or not callable(resolver):
+            return None
+        return cast(
+            dict[str, object] | None,
+            resolver(
+                run_id=run_id,
+                workflow_key=context.workflow_key,
+                resume_kind=resume_kind,
+            ),
+        )
+
+    continue_cancel_resolution = getattr(
+        workflow_runtime, "continue_graphless_bootstrap_cancel", None
+    )
+    project_run_event = ProjectRunEventHandler(event_publisher)
+    resolve_recovery_handler = ResolveRecoveryHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        now_ms=clock.now_ms,
+        next_id=id_generator.new_uuid,
+        resume_target_registry=resume_target_registry,
+        schedule_run_execution=production_runtime.schedule_run_execution,
+    )
+    resume_confirmation_handler = ResumeConfirmationHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        now_ms=clock.now_ms,
+        id_factory=id_generator.new_uuid,
+        resume_target_registry=resume_target_registry,
+    )
+
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
@@ -1505,6 +1559,90 @@ def build_production_container(
             ),
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
+        request_cancel_handler=RequestCancelHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+            continue_cancel_resolution=continue_cancel_resolution,
+        ),
+        resume_safe_checkpoint_handler=ResumeSafeCheckpointHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+            id_factory=id_generator.new_uuid,
+            operational_replay=operational_replay,
+            now_ms=clock.now_ms,
+        ),
+        resume_after_reauth_handler=ResumeAfterReauthHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            resolve_resume_authority=_resolve_resume_authority,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+        ),
+        resolve_recovery_handler=resolve_recovery_handler,
+        confirm_run_handler=ConfirmRunHandler(
+            resolve_pending_confirmation=workflow_runtime.resolve_pending_confirmation,
+            resume_confirmation=resume_confirmation_handler,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+            id_factory=id_generator.new_uuid,
+        ),
+        approve_action_handler=ApproveActionHandler(
+            get_approval_ttl_minutes=lambda: getattr(
+                settings_service.get_settings(),
+                "approval_ttl_minutes",
+                AppSettings().approval_ttl_minutes,
+            ),
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+        ),
+        modify_action_handler=ModifyActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            gateway=read_projection,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get_settings().timezone,
+                days=(
+                    tuple(range(7))
+                    if settings_service.get_settings().include_weekends
+                    else (0, 1, 2, 3, 4)
+                ),
+                start=settings_service.get_settings().working_day_start_local,
+                end=settings_service.get_settings().working_day_end_local,
+            ),
+        ),
+        reject_action_handler=RejectActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+            project_run_event=project_run_event,
+        ),
+        prepare_write_retry_handler=PrepareWriteRetryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+        ),
         project_recovery_options_handler=project_recovery_options,
         project_error_actions_handler=project_error_actions,
         project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
@@ -1566,9 +1704,7 @@ def build_production_container(
             has_active_run=production_runtime.workflow_execution.has_active_runs,
         ),
         operational_command_replay=operational_replay,
-        continue_cancel_resolution_handler=getattr(
-            workflow_runtime, "continue_graphless_bootstrap_cancel", None
-        ),
+        continue_cancel_resolution_handler=continue_cancel_resolution,
         startup_callbacks=(
             _reconcile_inflight_executions,
             _drain_workflow_handoffs,

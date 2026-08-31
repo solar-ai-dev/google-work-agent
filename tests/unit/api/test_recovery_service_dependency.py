@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from starlette.requests import Request
-from tests.support.fakes import FakeClockPort
 
 from google_work_agent.api.dependencies.runs import get_run_route_dependencies
 
@@ -15,22 +14,23 @@ def _request_with_run_composition() -> tuple[Request, object]:
     def unit_of_work_factory() -> None:
         return None
 
-    app.state.container = SimpleNamespace(
+    container = SimpleNamespace(
         api_contract_version="1",
         service_instance_id="svc-test",
         current_account_id_provider=lambda: None,
         unit_of_work_factory=unit_of_work_factory,
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
-        resume_target_registry=object(),
         schedule_run_execution=object(),
-        checkpoint_port=object(),
-        workflow_runtime=object(),
-        clock=FakeClockPort(1),
-        id_generator=object(),
         resolve_selection_handle=object(),
         resource_connector_id="google-workspace",
+        request_cancel_handler=object(),
+        resume_safe_checkpoint_handler=object(),
+        resume_after_reauth_handler=object(),
+        resolve_recovery_handler=object(),
+        confirm_run_handler=object(),
     )
+    app.state.container = container
     return (
         Request(
             {
@@ -41,21 +41,34 @@ def _request_with_run_composition() -> tuple[Request, object]:
                 "app": app,
             }
         ),
-        unit_of_work_factory,
+        container,
     )
 
 
 def test_run_dependency_exposes_explicit_canonical_composition_inputs() -> None:
-    request, unit_of_work_factory = _request_with_run_composition()
+    request, container = _request_with_run_composition()
     dependencies = get_run_route_dependencies(request)
 
-    assert dependencies.unit_of_work_factory is unit_of_work_factory
+    assert dependencies.read_unit_of_work_factory is container.unit_of_work_factory
     assert dependencies.graph_profile == "SIX_ROLE_BASELINE"
     assert dependencies.graph_version == "resume-contract-v1"
+    assert dependencies.request_cancel_handler is container.request_cancel_handler
+    assert dependencies.resume_safe_checkpoint_handler is container.resume_safe_checkpoint_handler
+    assert dependencies.resume_after_reauth_handler is container.resume_after_reauth_handler
+    assert dependencies.resolve_recovery_handler is container.resolve_recovery_handler
+    assert dependencies.confirm_run_handler is container.confirm_run_handler
 
 
-def test_run_dependency_resolver_fails_closed_without_checkpoint_authority() -> None:
-    request, _unit_of_work_factory = _request_with_run_composition()
+def test_run_command_dependency_does_not_expose_low_level_authorities() -> None:
+    request, _container = _request_with_run_composition()
     dependencies = get_run_route_dependencies(request)
 
-    assert dependencies.resolve_resume_authority(run_id="run-1", resume_kind="CONFIRMATION") is None
+    for attribute in (
+        "unit_of_work_factory",
+        "checkpoint_port",
+        "resolve_resume_authority",
+        "resolve_pending_confirmation",
+        "operational_command_replay",
+        "continue_cancel_resolution",
+    ):
+        assert not hasattr(dependencies, attribute)

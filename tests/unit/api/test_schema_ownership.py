@@ -5,7 +5,7 @@ from pathlib import Path
 
 from google_work_agent.api.schemas.actions.approve_action import ApproveActionRequestV2
 from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
-from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry import PrepareRetryRequestV2
 from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
 from google_work_agent.api.schemas.attachments.stage_attachment import StageAttachmentRequest
 from google_work_agent.api.schemas.conversations.create_conversation import (
@@ -35,7 +35,7 @@ def test_action_transport_contracts_live_in_operation_modules() -> None:
     assert ApproveActionRequestV2.__module__.endswith(".actions.approve_action")
     assert ModifyActionRequestV2.__module__.endswith(".actions.modify_action")
     assert RejectActionRequestV2.__module__.endswith(".actions.reject_action")
-    assert PrepareRetryRequestV2.__module__.endswith(".actions.prepare_retry_action")
+    assert PrepareRetryRequestV2.__module__.endswith(".actions.prepare_retry")
 
 
 def test_run_transport_contracts_live_in_operation_modules() -> None:
@@ -51,9 +51,7 @@ def test_run_transport_contracts_live_in_operation_modules() -> None:
 
 def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert StageAttachmentRequest.__module__.endswith(".attachments.stage_attachment")
-    assert CreateConversationRequestV1.__module__.endswith(
-        ".conversations.create_conversation"
-    )
+    assert CreateConversationRequestV1.__module__.endswith(".conversations.create_conversation")
     assert RunSseEventResponseV1.__module__.endswith(".runs.list_run_events")
     assert ResourceListResponse.__module__.endswith(".resources.list_resources")
     assert PatchSettingsRequest.__module__.endswith(".settings.update_settings")

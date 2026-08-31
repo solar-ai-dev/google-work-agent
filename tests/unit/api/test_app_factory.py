@@ -1,5 +1,5 @@
 from dataclasses import replace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
@@ -170,6 +170,10 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
         schedule_run_execution=lambda command: command,
         resume_target_registry=resume_target_registry,
         checkpoint_port=MagicMock(),
+        approve_action_handler=MagicMock(),
+        modify_action_handler=MagicMock(),
+        reject_action_handler=MagicMock(),
+        prepare_write_retry_handler=MagicMock(),
         issue_selection_handle=IssueSelectionHandle(
             signing_secret=signing_secret,
             service_instance_id="svc-test",
@@ -276,27 +280,23 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
             request_replayed=False,
         )
 
-    def recovery_handler(command: object) -> ResolveRecoveryResult:
-        captured["recovery"] = command
-        return ResolveRecoveryResult(
-            applied=True,
-            result_code="TRANSITION_APPLIED",
-            current_status="COMPLETED",
-            current_version=3,
-            next_allowed_commands=(),
-        )
+    class RecoveryHandler:
+        def resolve_current(self, **command: object) -> ResolveRecoveryResult:
+            captured["recovery"] = command
+            return ResolveRecoveryResult(
+                applied=True,
+                result_code="TRANSITION_APPLIED",
+                current_status="COMPLETED",
+                current_version=3,
+                next_allowed_commands=(),
+            )
 
-    with (
-        patch(
-            "google_work_agent.api.routes.runs.ConfirmRunHandler",
-            return_value=confirm_handler,
-        ),
-        patch(
-            "google_work_agent.api.routes.runs.ResolveRecoveryHandler",
-            return_value=recovery_handler,
-        ),
-        TestClient(create_app(container)) as client,
-    ):
+    container = replace(
+        container,
+        confirm_run_handler=confirm_handler,
+        resolve_recovery_handler=RecoveryHandler(),
+    )
+    with TestClient(create_app(container)) as client:
         confirmed = client.post(
             "/api/v1/runs/run-1/confirm",
             json={
@@ -323,9 +323,11 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
     assert confirmed.status_code == 200
     assert resolved.status_code == 200
     assert captured["confirm"].request_hash != "confirm-1"  # type: ignore[attr-defined]
-    assert captured["recovery"].request_hash != "recovery-1"  # type: ignore[attr-defined]
-    assert captured["recovery"].target_kind == "ACTION"  # type: ignore[attr-defined]
-    assert captured["recovery"].target_action_id == "action-1"  # type: ignore[attr-defined]
+    recovery = captured["recovery"]
+    assert isinstance(recovery, dict)
+    assert recovery["request_hash"] != "recovery-1"
+    assert recovery["requested_target_kind"] == "ACTION"
+    assert recovery["requested_target_action_id"] == "action-1"
     assert coordinator.resume_calls == []
 
 
@@ -359,18 +361,13 @@ def test_cancel_route_returns_partial_result_projection() -> None:
             result_kind=legacy.result_kind,
         )
 
-    with (
-        patch(
-            "google_work_agent.api.routes.runs.RequestCancelHandler",
-            return_value=cancel_handler,
-        ),
-        TestClient(create_app(container)) as client,
-    ):
+    container = replace(container, request_cancel_handler=cancel_handler)
+    with TestClient(create_app(container)) as client:
         response = client.post(
             "/api/v1/runs/run-1/cancel",
             json={
                 "command_id": "cancel-1",
-                "expected_run_version": 3,
+                "expected_version": 3,
                 "api_contract_version": "1",
             },
         )

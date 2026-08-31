@@ -4,7 +4,7 @@ from pydantic import BaseModel, ValidationError
 from google_work_agent.api.dependencies.request_hash import calculate_server_request_hash
 from google_work_agent.api.schemas.actions.approve_action import ApproveActionRequestV2
 from google_work_agent.api.schemas.actions.modify_action import ModifyActionRequestV2
-from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRetryRequestV2
+from google_work_agent.api.schemas.actions.prepare_retry import PrepareRetryRequestV2
 from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2
 from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
@@ -57,7 +57,7 @@ def test_server_request_hash_is_canonical_and_semantic() -> None:
             PrepareRetryRequestV2,
             {
                 "command_id": "cmd",
-                "expected_action_version": 1,
+                "expected_version": 1,
                 "api_contract_version": VERSION,
             },
         ),
@@ -65,7 +65,7 @@ def test_server_request_hash_is_canonical_and_semantic() -> None:
             CancelRunRequestV2,
             {
                 "command_id": "cmd",
-                "expected_run_version": 1,
+                "expected_version": 1,
                 "api_contract_version": VERSION,
             },
         ),

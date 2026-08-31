@@ -159,13 +159,13 @@ export function startRun(payload: {
 export function cancelRun(payload: {
   run_id: string;
   command_id: string;
-  expected_run_version: number;
+  expected_version: number;
 }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/cancel`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
-      expected_run_version: payload.expected_run_version,
+      expected_version: payload.expected_version,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });
@@ -234,7 +234,6 @@ export function approveAction(payload: {
   action_id: string;
   command_id: string;
   expected_version: number;
-  ttl_ms?: number;
   duplicate_acknowledged?: boolean;
   calendar_conflict_acknowledged?: boolean;
 }): Promise<ActionCommandResponse> {
@@ -243,7 +242,6 @@ export function approveAction(payload: {
     body: {
       command_id: payload.command_id,
       expected_version: payload.expected_version,
-      ttl_ms: payload.ttl_ms ?? 30000,
       duplicate_acknowledged: payload.duplicate_acknowledged ?? false,
       calendar_conflict_acknowledged:
         payload.calendar_conflict_acknowledged ?? false,
@@ -289,13 +287,13 @@ export function modifyAction(payload: {
 export function prepareRetry(payload: {
   action_id: string;
   command_id: string;
-  expected_action_version: number;
+  expected_version: number;
 }): Promise<ActionCommandResponse> {
   return requestJson(`/api/v1/actions/${encodeURIComponent(payload.action_id)}/prepare-retry`, {
     method: "POST",
     body: {
       command_id: payload.command_id,
-      expected_action_version: payload.expected_action_version,
+      expected_version: payload.expected_version,
       api_contract_version: API_CONTRACT_VERSION,
     },
   });

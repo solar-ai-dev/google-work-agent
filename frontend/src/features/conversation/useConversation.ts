@@ -217,7 +217,7 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
   const handleSimpleAction = useCallback(async (kind: "modify" | "reject" | "retry", action: RunAction, argumentsPatch: Record<string, unknown> = {}): Promise<void> => {
     if (!runSnapshot || busyCommand) return;
     setBusyCommand(`${kind}-${action.action_id}`);
-    try { const commandId = crypto.randomUUID(); if (kind === "modify") await modifyAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version, arguments_patch: argumentsPatch }); else if (kind === "reject") await rejectAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version }); else await prepareRetry({ action_id: action.action_id, command_id: commandId, expected_action_version: action.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); }
+    try { const commandId = crypto.randomUUID(); if (kind === "modify") await modifyAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version, arguments_patch: argumentsPatch }); else if (kind === "reject") await rejectAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version }); else await prepareRetry({ action_id: action.action_id, command_id: commandId, expected_version: action.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); }
   }, [busyCommand, runSnapshot, selectRun]);
   const handleAttachFiles = useCallback(async (action: RunAction, files: FileList): Promise<void> => {
     if (!runSnapshot || busyCommand || files.length === 0) return;
@@ -242,7 +242,7 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
       setBusyCommand(null);
     }
   }, [busyCommand, onStatusLine, runSnapshot, selectRun]);
-  const handleCancelRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand("cancel-run"); try { await cancelRun({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_run_version: runSnapshot.run.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, runSnapshot, selectRun]);
+  const handleCancelRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand("cancel-run"); try { await cancelRun({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.run.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, runSnapshot, selectRun]);
   const handleResumeRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; const resumeKind = { REAUTH_REQUIRED: "REAUTH_COMPLETED", BLOCKED: "SAFE_CHECKPOINT_RESUME", RECOVERY_REQUIRED: "RECOVERY_RECHECK" }[runSnapshot.run.status] as "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK" | undefined; if (!resumeKind) { onStatusLine("현재 상태는 전용 확인 또는 승인 경로를 사용해야 합니다."); return; } setBusyCommand("resume-run"); try { await resumeRun({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.run.version, resume_kind: resumeKind }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, onStatusLine, runSnapshot, selectRun]);
   const handleConfirmation = useCallback(async (selectedOption?: string): Promise<void> => {
     if (!runSnapshot || !pendingConfirmation || busyCommand) return;

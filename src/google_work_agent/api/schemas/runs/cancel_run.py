@@ -5,7 +5,7 @@ from google_work_agent.api.schemas.model import ApiModel, ContractVersionedReque
 
 class CancelRunRequestV2(ContractVersionedRequest):
     command_id: str
-    expected_run_version: int
+    expected_version: int
 
 
 class RunCommandResponse(ApiModel):

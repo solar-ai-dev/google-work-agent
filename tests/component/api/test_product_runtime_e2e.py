@@ -67,6 +67,7 @@ from google_work_agent.application.orchestration.handoff_contracts import (
     ActionPlanDraftV1,
     RequestIntentV2,
 )
+from google_work_agent.application.use_cases.action.approve_action import ApproveActionHandler
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -496,6 +497,18 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             now_ms=clock.now_ms,
         ),
         action_gateway=gateway,
+        approve_action_handler=ApproveActionHandler(
+            get_approval_ttl_minutes=lambda: 30,
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=production_runtime.schedule_run_execution,
+        ),
+        modify_action_handler=lambda command: command,
+        reject_action_handler=lambda command: command,
+        prepare_write_retry_handler=lambda command: command,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -570,7 +583,6 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
             approval_body = {
                 "command_id": "approve-command-1",
                 "expected_version": action["version"],
-                "ttl_ms": 30_000,
                 "api_contract_version": "1",
                 "calendar_conflict_acknowledged": write_operation
                 in {"create_calendar_event", "update_calendar_event"},
@@ -591,12 +603,8 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
                 f"/api/v1/actions/{action_id}/approve", json=effective_approval_body
             )
             assert replay.status_code == 200
-            # ttl_ms is deprecated/server-ignored and excluded from the request
-            # hash (approval lifetime is server-owned via
-            # AppSettings.approval_ttl_minutes -- see
-            # api/routes/actions.py:approve, which pops it before hashing), so
-            # varying only ttl_ms can no longer produce a hash mismatch.
-            # duplicate_acknowledged is an actual hashed request field.
+            # Approval lifetime is server-owned. A changed semantic
+            # acknowledgement with the same command id must conflict.
             conflict = client.post(
                 f"/api/v1/actions/{action_id}/approve",
                 json={**effective_approval_body, "duplicate_acknowledged": True},
@@ -624,9 +632,8 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         expected_audit_count = 8 if write_operation == "create_task" else 6
         if write_operation in {"create_calendar_event", "update_calendar_event"}:
             expected_audit_count += 2
-        # The intentional same-command_id/different-hash approve retry above
-        # (ttl_ms changed) now also records one COMMAND_REJECTED_HASH_MISMATCH
-        # audit event for this action.
+        # The intentional same-command-id/different-hash retry records one
+        # COMMAND_REJECTED_HASH_MISMATCH audit event for this action.
         expected_audit_count += 1
         assert tuple(counts) == (
             1,

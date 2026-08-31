@@ -104,6 +104,15 @@ class ApiContainer:
     list_run_events_handler: Any | None = None
     project_context_preview_handler: Any | None = None
     adjust_context_handler: Any | None = None
+    request_cancel_handler: Any | None = None
+    resume_safe_checkpoint_handler: Any | None = None
+    resume_after_reauth_handler: Any | None = None
+    resolve_recovery_handler: Any | None = None
+    confirm_run_handler: Any | None = None
+    approve_action_handler: Any | None = None
+    modify_action_handler: Any | None = None
+    reject_action_handler: Any | None = None
+    prepare_write_retry_handler: Any | None = None
     project_recovery_options_handler: Any | None = None
     project_error_actions_handler: Any | None = None
     project_external_llm_transfer_scope_handler: Any | None = None

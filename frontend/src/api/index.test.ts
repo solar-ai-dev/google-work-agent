@@ -102,11 +102,11 @@ describe("api index wrappers", () => {
           api.cancelRun({
             run_id: "run-1",
             command_id: "command-3",
-            expected_run_version: 4,
+            expected_version: 4,
           }),
         path: "/api/v1/runs/run-1/cancel",
         method: "POST",
-        bodyIncludes: { expected_run_version: 4 },
+        bodyIncludes: { expected_version: 4 },
       },
       {
         call: () =>
@@ -156,7 +156,7 @@ describe("api index wrappers", () => {
           }),
         path: "/api/v1/actions/action-1/approve",
         method: "POST",
-        bodyIncludes: { expected_version: 2, ttl_ms: 30000 },
+        bodyIncludes: { expected_version: 2 },
       },
       {
         call: () =>
@@ -186,11 +186,11 @@ describe("api index wrappers", () => {
           api.prepareRetry({
             action_id: "action-1",
             command_id: "command-8",
-            expected_action_version: 3,
+            expected_version: 3,
           }),
         path: "/api/v1/actions/action-1/prepare-retry",
         method: "POST",
-        bodyIncludes: { expected_action_version: 3 },
+        bodyIncludes: { expected_version: 3 },
       },
       {
         call: () => api.listGmailResources("follow up", "page-1"),

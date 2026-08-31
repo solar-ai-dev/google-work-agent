@@ -42,6 +42,7 @@ from google_work_agent.api.security.sessions import (
     InMemoryLocalSessionManager,
     calculate_session_digest,
 )
+from google_work_agent.application.use_cases.action.reject_action import RejectActionHandler
 from google_work_agent.application.use_cases.connection.get_connection_status import (
     GetConnectionStatusHandler,
 )
@@ -80,6 +81,9 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
 from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventHandler,
+)
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
@@ -233,6 +237,18 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         schedule_run_execution=lambda _command: None,
         resume_target_registry=resume_target_registry,
         checkpoint_port=checkpoint,
+        approve_action_handler=lambda command: command,
+        modify_action_handler=lambda command: command,
+        reject_action_handler=RejectActionHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_generator=id_generator,
+            resume_target_registry=resume_target_registry,
+            schedule_run_execution=lambda _command: None,
+            project_run_event=ProjectRunEventHandler(publisher),
+        ),
+        prepare_write_retry_handler=lambda command: command,
         approve_action_service=ApproveWriteActionService(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -726,8 +742,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         snapshot_response = client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert snapshot_response.status_code == 200
         action_statuses = {
-            action["action_id"]: action["status"]
-            for action in snapshot_response.json()["actions"]
+            action["action_id"]: action["status"] for action in snapshot_response.json()["actions"]
         }
         assert action_statuses == {
             "action-1": "REJECTED",

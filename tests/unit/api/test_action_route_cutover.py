@@ -38,13 +38,13 @@ def test_action_route_does_not_invoke_legacy_semantics_for_approve_reject_retry(
     assert "PrepareWriteRetryService" not in source
 
 
-def test_modify_uses_explicit_composition_gateway_without_legacy_surface() -> None:
+def test_modify_uses_exact_injected_handler_without_legacy_surface() -> None:
     source = inspect.getsource(actions)
 
     assert "modify_action_service()" not in source
     assert "_modify_gateway" not in source
-    assert "gateway=dependencies.action_gateway" in source
-    assert "ModifyActionHandler(" in source
+    assert "dependencies.modify_action_handler(" in source
+    assert "ModifyActionHandler(" not in source
 
 
 def test_action_route_has_no_provider_or_persistence_import() -> None:
