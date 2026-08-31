@@ -5,6 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.calendar_conflicts import (
+    CALENDAR_CONFLICT_TOOLS,
+)
+from google_work_agent.application.use_cases.action.task_duplicates import TASK_CREATE_TOOL
+from google_work_agent.application.use_cases.execution_attempt.project_delivery_certainty import (
+    DeliveryCertaintyV1,
+    project_latest_delivery_certainty,
+)
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.recovery.project_recovery_options import (
     ProjectRecoveryOptionsHandler,
@@ -86,6 +95,10 @@ class ActionSnapshotResult:
     verification_policy: str
     risk: dict[str, object]
     next_allowed_commands: tuple[str, ...]
+    required_acknowledgements: tuple[str, ...]
+    editable_fields: tuple[str, ...]
+    attachment_allowed: bool
+    delivery_certainty: DeliveryCertaintyV1 | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +143,7 @@ class GetRunSnapshotHandler:
         project_error_actions: ProjectErrorActionsHandler | None = None,
         project_external_llm_transfer_scope: ProjectExternalLlmTransferScopeHandler | None = None,
         resolve_pending_confirmation: Callable[[str], Mapping[str, object] | None] | None = None,
+        tool_registry: SignedToolRegistry | None = None,
         message_limit: int = 200,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -138,6 +152,7 @@ class GetRunSnapshotHandler:
         self._project_error_actions = project_error_actions
         self._project_external_llm_transfer_scope = project_external_llm_transfer_scope
         self._resolve_pending_confirmation = resolve_pending_confirmation
+        self._tool_registry = tool_registry
         self._message_limit = message_limit
 
     def __call__(self, query: GetRunSnapshotQuery) -> GetRunSnapshotResult | None:
@@ -160,6 +175,8 @@ class GetRunSnapshotHandler:
                     approval_allowed=(
                         plan is not None and plan.review_status is PlanReviewStatus.PASSED
                     ),
+                    tool_registry=self._tool_registry,
+                    delivery_certainty=project_latest_delivery_certainty(unit_of_work, action.id),
                 )
                 for action in action_records
             )
@@ -312,9 +329,21 @@ class GetRunSnapshotHandler:
         )
 
 
-def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionSnapshotResult:
+def _action_snapshot(
+    action: ActionRecord,
+    *,
+    approval_allowed: bool,
+    tool_registry: SignedToolRegistry | None,
+    delivery_certainty: DeliveryCertaintyV1 | None,
+) -> ActionSnapshotResult:
     status = ActionStatusV1(action.status)
     effect_type = EffectType(action.effect_type)
+    editable_fields: tuple[str, ...] = ()
+    if tool_registry is not None:
+        entry = tool_registry.get_required(action.connector_id, action.tool_name)
+        editable_fields = tuple(sorted(entry.modify_patchable_fields))
+    required_acknowledgements = _required_acknowledgements(action)
+    approval_allowed = approval_allowed and _approval_is_presentable(action)
     return ActionSnapshotResult(
         action_id=action.id,
         tool_name=action.tool_name,
@@ -329,7 +358,41 @@ def _action_snapshot(action: ActionRecord, *, approval_allowed: bool) -> ActionS
             for item in next_allowed_action_commands(status, effect_type=effect_type)
             if approval_allowed or item is not ActionCommand.APPROVE_ACTION
         ),
+        required_acknowledgements=required_acknowledgements,
+        editable_fields=editable_fields,
+        attachment_allowed="attachments" in editable_fields,
+        delivery_certainty=delivery_certainty,
     )
+
+
+def _required_acknowledgements(action: ActionRecord) -> tuple[str, ...]:
+    required: list[str] = []
+    duplicate = action.risk.get("duplicate")
+    if (
+        action.tool_name == TASK_CREATE_TOOL
+        and isinstance(duplicate, dict)
+        and duplicate.get("decision")
+        in {
+            "SIMILAR_CANDIDATE",
+            "CLEAR_DUPLICATE",
+        }
+    ):
+        required.append("TASK_DUPLICATE")
+    conflict = action.risk.get("calendar_conflict")
+    if (
+        action.tool_name in CALENDAR_CONFLICT_TOOLS
+        and isinstance(conflict, dict)
+        and conflict.get("decision") in {"WARNING", "HARD_CONFLICT"}
+    ):
+        required.append("CALENDAR_CONFLICT")
+    return tuple(required)
+
+
+def _approval_is_presentable(action: ActionRecord) -> bool:
+    if action.tool_name not in CALENDAR_CONFLICT_TOOLS:
+        return True
+    feasibility = action.risk.get("feasibility")
+    return not (isinstance(feasibility, dict) and feasibility.get("decision") == "INFEASIBLE")
 
 
 def _messages_for_run(

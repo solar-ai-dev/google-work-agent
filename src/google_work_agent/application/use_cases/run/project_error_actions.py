@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from json import JSONDecodeError, loads
 from typing import Literal
 
-from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
-    latest_attempt_for_action,
+from google_work_agent.application.use_cases.execution_attempt.project_delivery_certainty import (
+    project_latest_delivery_certainty,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
@@ -16,9 +15,6 @@ from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
     safe_checkpoint_resume_is_allowed,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.execution_attempt.model import (
-    ExecutionAttemptStatusV1,
-)
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -77,7 +73,7 @@ class ProjectErrorActionsHandler:
                 ErrorUiActionV1("PREPARE_RETRY", action_id=action.id)
                 for action in actions
                 if action.status == ActionStatusV1.FAILED.value
-                and _latest_delivery_certainty(unit_of_work, action.id) == "NOT_SENT"
+                and project_latest_delivery_certainty(unit_of_work, action.id) == "NOT_SENT"
             )
             if run.status is RunStatusV1.REAUTH_REQUIRED:
                 return ProjectErrorActionsResultV1(
@@ -123,25 +119,6 @@ class ProjectErrorActionsHandler:
                     (ErrorUiActionV1("OPEN_DIAGNOSTICS"),),
                 )
         return None
-
-
-def _latest_delivery_certainty(unit_of_work: UnitOfWork, action_id: str) -> str | None:
-    attempt = latest_attempt_for_action(unit_of_work, action_id)
-    if attempt is None:
-        return None
-    if attempt.status is not ExecutionAttemptStatusV1.FAILED:
-        return None
-    raw = attempt.response_metadata_json
-    if not isinstance(raw, str):
-        return None
-    try:
-        metadata = loads(raw)
-    except (JSONDecodeError, TypeError):
-        return None
-    if not isinstance(metadata, dict):
-        return None
-    certainty = metadata.get("delivery_certainty")
-    return certainty if isinstance(certainty, str) else None
 
 
 __all__ = [

@@ -127,6 +127,8 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       composerPrompt: resourceProjection.composerPrompt,
     },
     formatTime,
+    onOpenSettings: () => setSettingsOpen(true),
+    onOpenDiagnostics: () => setStatusLine("설정의 Runtime 상태에서 진단 정보를 확인하세요."),
   };
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
     const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);

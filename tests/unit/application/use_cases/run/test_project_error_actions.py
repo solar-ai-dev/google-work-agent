@@ -7,6 +7,10 @@ from tests.support.checkpoint import sqlite_checkpoint
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
+    GetRunSnapshotQuery,
+)
 from google_work_agent.application.use_cases.run.project_error_actions import (
     ProjectErrorActionsHandler,
     ProjectErrorActionsQueryV1,
@@ -103,3 +107,14 @@ def test_retry_is_available_only_for_latest_not_sent_failure(tmp_path: Path) -> 
     assert retryable.actions[0].action_id == "action-1"
     assert unsafe is not None
     assert [item.kind for item in unsafe.actions] == ["OPEN_DIAGNOSTICS"]
+
+
+def test_run_snapshot_projects_latest_delivery_certainty(tmp_path: Path) -> None:
+    result = GetRunSnapshotHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(
+            _database(tmp_path, delivery_certainty="NOT_SENT")
+        )
+    )(GetRunSnapshotQuery("run-1"))
+
+    assert result is not None
+    assert result.actions[0].delivery_certainty == "NOT_SENT"

@@ -39,6 +39,29 @@ class RunSnapshotActionResponseV1(ApiModel):
     verification_policy: str
     risk: dict[str, object]
     next_allowed_commands: list[str]
+    required_acknowledgements: list[str]
+    editable_fields: list[str]
+    attachment_allowed: bool
+    delivery_certainty: Literal["NOT_SENT", "MAY_HAVE_BEEN_SENT", "SENT_RESPONSE_LOST"] | None
+
+
+class ErrorUiActionResponseV1(ApiModel):
+    kind: Literal[
+        "PREPARE_RETRY",
+        "REAUTHENTICATE_GOOGLE",
+        "RESUME_SAFE_CHECKPOINT",
+        "OPEN_SETTINGS",
+        "OPEN_DIAGNOSTICS",
+    ]
+    action_id: str | None = None
+    resume_kind: Literal["SAFE_CHECKPOINT_RESUME"] | None = None
+
+
+class ErrorUiProjectionResponseV1(ApiModel):
+    schema_version: Literal[1]
+    error_code: str
+    message: str
+    actions: list[ErrorUiActionResponseV1]
 
 
 class RunSnapshotResponseV1(ApiModel):
@@ -49,7 +72,7 @@ class RunSnapshotResponseV1(ApiModel):
     context_preview: dict[str, object] | None
     pending_interrupt: PendingInterruptResponseV1 | None
     recovery: RecoveryUiProjectionV1 | None
-    error: dict[str, object] | None
+    error: ErrorUiProjectionResponseV1 | None
     external_llm_transfer_scope: dict[str, object] | None
     terminal_result_kind: Literal["SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED", "NONE"]
     projection_version: int
@@ -60,6 +83,8 @@ class RunSnapshotResponseV1(ApiModel):
 
 
 __all__ = [
+    "ErrorUiActionResponseV1",
+    "ErrorUiProjectionResponseV1",
     "RunSnapshotActionResponseV1",
     "RunSnapshotMessageResponseV1",
     "RunSnapshotResponseV1",

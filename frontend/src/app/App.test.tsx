@@ -49,6 +49,9 @@ type SnapshotShape = {
     verification_policy: string;
     risk?: Record<string, unknown>;
     next_allowed_commands: string[];
+    required_acknowledgements?: ("TASK_DUPLICATE" | "CALENDAR_CONFLICT")[];
+    editable_fields?: string[];
+    attachment_allowed?: boolean;
   }>;
   approvals: Array<{
     approval_id: string;
@@ -68,6 +71,8 @@ type SnapshotShape = {
     options: string[];
     response_mode: "OPTION" | "FREE_TEXT";
   } | null;
+  recovery?: Record<string, unknown> | null;
+  error?: Record<string, unknown> | null;
   result_kind?: string | null;
   next_allowed_commands: string[];
   snapshot_version: number;
@@ -838,7 +843,7 @@ test("TST-UI-212 reloads a snapshot after SSE recovery without replaying a write
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/runs/run-1", expect.any(Object)),
   );
   expect(globalThis.fetch).not.toHaveBeenCalledWith("/api/v1/runs", expect.any(Object));
-  expect(FakeEventSource.instances).toHaveLength(1);
+  expect(FakeEventSource.instances).toHaveLength(2);
 });
 
 test("confirms an interrupt and explicitly resolves a mismatch", async () => {
@@ -3398,7 +3403,7 @@ function installUiContractFetch(options: {
       }
       return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
     }
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: actionStatus === "APPROVED" ? ["MODIFY", "REJECT"] : actionStatus === "PROPOSED" || actionStatus === "MODIFIED" ? ["APPROVE", "MODIFY", "REJECT"] : [] }] : [] }));
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") {
       actionStatus = path.endsWith("/reject") ? "REJECTED" : "APPROVED";
@@ -3797,15 +3802,36 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
     },
     messages: [],
     current_plan: snapshot.active_plan,
-    actions: snapshot.actions.map((action) => ({ ...action, risk: action.risk ?? {} })),
+    actions: snapshot.actions.map((action) => {
+      const risk = action.risk ?? {};
+      const duplicate = risk.duplicate as { decision?: string } | undefined;
+      const conflict = risk.calendar_conflict as { decision?: string } | undefined;
+      const required = [
+        ...(duplicate?.decision === "SIMILAR_CANDIDATE" || duplicate?.decision === "CLEAR_DUPLICATE" ? ["TASK_DUPLICATE" as const] : []),
+        ...(conflict?.decision === "WARNING" || conflict?.decision === "HARD_CONFLICT" ? ["CALENDAR_CONFLICT" as const] : []),
+      ];
+      const defaultFields = action.tool_name.startsWith("gmail_") ? ["subject", "body", "attachments"] : action.tool_name.startsWith("tasks_") ? ["title", "notes", "due"] : action.tool_name.startsWith("calendar_") ? ["title", "start", "end", "description"] : [];
+      return {
+        ...action,
+        risk,
+        next_allowed_commands: action.next_allowed_commands.map((command) => ({ APPROVE: "APPROVE_ACTION", MODIFY: "MODIFY_ACTION", REJECT: "REJECT_ACTION", PREPARE_RETRY: "PREPARE_WRITE_RETRY" }[command] ?? command)).filter((command) => !(command === "APPROVE_ACTION" && (risk.feasibility as { decision?: string } | undefined)?.decision === "INFEASIBLE")),
+        required_acknowledgements: action.required_acknowledgements ?? required,
+        editable_fields: action.editable_fields ?? defaultFields,
+        attachment_allowed: action.attachment_allowed ?? defaultFields.includes("attachments"),
+      };
+    }),
     approvals: snapshot.approvals,
     execution_status: snapshot.execution_status,
     verification_summary: snapshot.verification_summary,
     recovery_summary: snapshot.recovery_summary,
     context_preview: null,
     pending_interrupt: snapshot.pending_interrupt ?? null,
-    recovery: null,
-    error: null,
+    recovery: snapshot.recovery ?? (snapshot.status === "RECOVERY_REQUIRED" && snapshot.actions.some((action) => action.status === "MISMATCH") ? { reason_code: "VERIFICATION_MISMATCH", target: { target_kind: "ACTION", action_id: snapshot.actions.find((action) => action.status === "MISMATCH")!.action_id }, allowed_resolution_kinds: ["ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN"] } : null),
+    error: snapshot.error ?? (() => {
+      const actions: Array<Record<string, unknown>> = snapshot.actions.filter((action) => action.next_allowed_commands.includes("PREPARE_RETRY")).map((action) => ({ kind: "PREPARE_RETRY", action_id: action.action_id }));
+      if (snapshot.next_allowed_commands.includes("RESUME")) actions.push({ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" });
+      return actions.length ? { schema_version: 1, error_code: "PROJECTED_ACTIONS", message: "서버가 허용한 후속 작업입니다.", actions } : null;
+    })(),
     external_llm_transfer_scope: null,
     terminal_result_kind: snapshot.result_kind ?? "NONE",
     projection_version: snapshot.snapshot_version,

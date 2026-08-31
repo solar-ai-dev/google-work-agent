@@ -1,5 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
-import * as api from "./index";
+import * as rootApi from "./index";
+import { approveAction, modifyAction, prepareRetry, rejectAction } from "../features/approval/api/action_commands";
+import { resolveRecovery } from "../features/recovery/api/resolve_recovery";
+import { getRunContext, getRunSnapshot } from "../features/run/api/get_run_snapshot";
+import { cancelRun, confirmRun, resumeRun } from "../features/run/api/run_commands";
+
+const api = { ...rootApi, approveAction, modifyAction, prepareRetry, rejectAction, resolveRecovery, getRunContext, getRunSnapshot, cancelRun, confirmRun, resumeRun };
 
 describe("api index wrappers", () => {
   test("calls same-origin endpoints with the expected methods", async () => {
@@ -88,11 +94,11 @@ describe("api index wrappers", () => {
             run_id: "run-1",
             command_id: "command-4",
             expected_version: 4,
-            resume_kind: "RECOVERY_RECHECK",
+            resume_kind: "SAFE_CHECKPOINT_RESUME",
           }),
         path: "/api/v1/runs/run-1/resume",
         method: "POST",
-        bodyIncludes: { expected_version: 4, resume_kind: "RECOVERY_RECHECK" },
+        bodyIncludes: { expected_version: 4, resume_kind: "SAFE_CHECKPOINT_RESUME" },
       },
       {
         call: () =>
@@ -114,12 +120,12 @@ describe("api index wrappers", () => {
             run_id: "run-1",
             command_id: "command-recovery",
             expected_version: 4,
-            action_id: "action-1",
+            target: { target_kind: "ACTION", action_id: "action-1" },
             resolution_kind: "ACCEPT_PARTIAL",
           }),
         path: "/api/v1/runs/run-1/resolve-recovery",
         method: "POST",
-        bodyIncludes: { action_id: "action-1", resolution_kind: "ACCEPT_PARTIAL" },
+        bodyIncludes: { target: { target_kind: "ACTION", action_id: "action-1" }, resolution_kind: "ACCEPT_PARTIAL" },
       },
       {
         call: () =>

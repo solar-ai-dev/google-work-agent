@@ -802,6 +802,13 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
 
         snapshot_response = client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert snapshot_response.status_code == 200
+        for action in snapshot_response.json()["actions"]:
+            assert {
+                "required_acknowledgements",
+                "editable_fields",
+                "attachment_allowed",
+                "delivery_certainty",
+            } <= action.keys()
         action_statuses = {
             action["action_id"]: action["status"] for action in snapshot_response.json()["actions"]
         }

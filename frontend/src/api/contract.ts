@@ -198,6 +198,10 @@ export type RunAction = {
   verification_policy: string;
   risk: Record<string, unknown>;
   next_allowed_commands: string[];
+  required_acknowledgements: ("TASK_DUPLICATE" | "CALENDAR_CONFLICT")[];
+  editable_fields: string[];
+  attachment_allowed: boolean;
+  delivery_certainty: "NOT_SENT" | "MAY_HAVE_BEEN_SENT" | "SENT_RESPONSE_LOST" | null;
 };
 
 export type ApprovalSnapshot = {
@@ -258,6 +262,21 @@ export type RunSnapshot = {
     unknown_result_action_count: number;
   };
   pending_interrupt?: PendingInterrupt | null;
+  recovery?: {
+    reason_code: "UNKNOWN_RESULT" | "VERIFICATION_MISMATCH" | "CHECKPOINT_MISMATCH" | "CONTRACT_VIOLATION";
+    target: { target_kind: "RUN" } | { target_kind: "ACTION"; action_id: string };
+    allowed_resolution_kinds: ("RECHECK" | "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN" | "CANCEL" | "FAIL")[];
+  } | null;
+  error?: {
+    schema_version: number;
+    error_code: string;
+    message: string;
+    actions: {
+      kind: "PREPARE_RETRY" | "REAUTHENTICATE_GOOGLE" | "RESUME_SAFE_CHECKPOINT" | "OPEN_SETTINGS" | "OPEN_DIAGNOSTICS";
+      action_id?: string | null;
+      resume_kind?: "SAFE_CHECKPOINT_RESUME" | null;
+    }[];
+  } | null;
   terminal_result_kind: "SUCCESS" | "PARTIAL" | "BLOCKED" | "FAILED" | "CANCELLED" | "NONE";
   projection_version: number;
 };

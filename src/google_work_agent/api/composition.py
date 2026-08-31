@@ -1487,6 +1487,7 @@ def build_production_container(
         project_error_actions=project_error_actions,
         project_external_llm_transfer_scope=project_external_llm_transfer_scope,
         resolve_pending_confirmation=workflow_runtime.resolve_pending_confirmation,
+        tool_registry=connector_bundle.tool_registry,
     )
 
     def _resolve_resume_authority(*, run_id: str, resume_kind: str) -> dict[str, object] | None:
