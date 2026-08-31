@@ -2,7 +2,7 @@
 
 **Repository:** `solar-ai-dev/google-work-agent`  
 **Branch:** `refactor/canonical-architecture-migration`  
-**Validation HEAD:** `883b3ca77b74097fe9606a9c77cd8231465a3ef4`
+**Validation HEAD:** `656b697868f86644b96addedf3a59654c87348ce`
 
 ## Purpose
 
@@ -652,7 +652,7 @@ At production SHA `b9d1c548bc557f4427e3554f117a8f025c6f7fa6`, #156 closes the Ru
 
 At production SHA `cab263a4ff783d776936e7a805f9430af30f77fa`, #157 closes the Local API resource-browser, selection-handle, and attachment boundaries for CAP-APP-086 through CAP-APP-096. Provider continuations are now expiring opaque references bound to the captured local session and account; the same captured identity binds issued selection handles. Attachment staging uses bounded multipart input with an explicit replay command identity, while attachment download verifies provider identity, size, and SHA-256 before projection. Route-local attachment factories, raw provider continuation exposure, JSON base64 staging, ignored refresh controls, unchecked attachment payloads, and duplicate production authority are zero. Complete repository validation passed `2565 passed, 6 skipped`; frontend validation passed `114 passed`; Ruff, changed-source MyPy, and TypeScript passed.
 
-At production SHA `883b3ca77b74097fe9606a9c77cd8231465a3ef4`, #158 closes the Runtime, Google connection, LLM credential, Settings, Backup/Restore, Diagnostics, and Shutdown Local API boundaries for CAP-APP-071 through CAP-APP-085. The 15 exact routes bind only their injected canonical Application handlers; operational mutations use explicit client command identity and the shared replay authority. Runtime detail remains available through the same canonical handler during failed-core Safe Mode, Google authorization consumes signed-registry-derived scopes, credential responses never expose secret material, backups and diagnostics expose only opaque references, and shutdown ordering remains Application-owned. Old Google/LLM/settings route authorities, `/llm/test`, request-id command substitution, route-local concrete infrastructure, and duplicate production authority are zero. Complete repository validation passed `2567 passed, 6 skipped`; frontend validation passed `114 passed`; Ruff, changed-source MyPy, TypeScript, and diff integrity passed.
+At production/test SHA `656b697868f86644b96addedf3a59654c87348ce`, #158 closes the Runtime, Google connection, LLM credential, Settings, Backup/Restore, Diagnostics, and Shutdown Local API boundaries for CAP-APP-071 through CAP-APP-085. The 15 exact routes bind only their injected canonical Application handlers; operational mutations use explicit client command identity and the shared replay authority. Runtime detail remains available through the same canonical handler during failed-core Safe Mode, Google authorization consumes signed-registry-derived scopes, credential responses never expose secret material, backups and diagnostics expose only opaque references, and shutdown ordering remains Application-owned. Old Google/LLM/settings route authorities, `/llm/test`, request-id command substitution, route-local concrete infrastructure, and duplicate production authority are zero. Complete repository validation passed `2567 passed, 6 skipped`; frontend validation passed `114 passed`; Ruff, changed-source MyPy, TypeScript, and diff integrity passed.
 
 | ID | Design target / responsibility | Current code / evidence | Current state | Change required |
 | --- | --- | --- | --- | --- |
