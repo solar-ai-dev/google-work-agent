@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
+import secrets
+import sqlite3
+import sys
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
 
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    GOOGLE_WORKSPACE_CONNECTOR_ID,
+    GoogleWorkspaceConnector,
+    build_google_workspace_connector_descriptor,
+)
+from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
+    ConnectorRuntimeRegistry,
+)
+from google_work_agent.adapters.connectors.runtime.load_installed_connector_manifest import (
+    InstalledConnectorManifestV1,
+    load_installed_connector_manifest,
+)
 from google_work_agent.adapters.connectors.runtime.mcp_connector_read import McpConnectorReadAdapter
 from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
     McpConnectorWriteAdapter,
@@ -12,18 +33,70 @@ from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
 from google_work_agent.adapters.connectors.runtime.mcp_oauth_credential import (
     McpOAuthCredentialAdapter,
 )
-from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import StdioMCPClientAdapter
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    MCPArtifactConfig,
+    StdioMCPClientAdapter,
+    build_manifest_payload_for_descriptors,
+    calculate_file_sha256,
+)
 from google_work_agent.adapters.keyring.os_keyring_secret_store import OsKeyringSecretStoreAdapter
+from google_work_agent.adapters.langgraph.checkpoint_control import (
+    LangGraphCheckpointControlAdapter,
+)
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
+from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.registry.checkpoint_target_resolver import (
+    NativeCheckpointTargetResolver,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
+)
 from google_work_agent.adapters.langgraph.runtime.background_run_executor import (
     BackgroundRunExecutorAdapter,
 )
-from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
+from google_work_agent.adapters.llm.gemini.structured_inference import (
+    GeminiConnectionService,
+    GeminiStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.gemini.transport import (
+    DEFAULT_GEMINI_MODEL_ID,
+    GeminiHTTPClient,
+)
+from google_work_agent.adapters.llm.ollama.structured_inference import (
+    OllamaStructuredInferenceAdapter,
+)
+from google_work_agent.adapters.llm.ollama.transport import OllamaHTTPClient
+from google_work_agent.adapters.llm.probes import LoopbackOllamaProbe
+from google_work_agent.adapters.llm.runtime.llm_credential_router import (
+    LlmCredentialRouter,
+    SessionMemorySecretStore,
+)
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
 )
+from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
+from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
+    sqlite_connected_account_store_factory,
+)
+from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
+    sqlite_read_unit_of_work_factory,
+    sqlite_unit_of_work_factory,
+)
+from google_work_agent.adapters.runtime import (
+    BuildProfile,
+    FileSettingsStore,
+    SafeModeController,
+)
 from google_work_agent.adapters.system.default_browser_launcher import DefaultBrowserLauncherAdapter
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
+    ATTACHMENT_STAGING_DIR_ENV,
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
@@ -40,20 +113,94 @@ from google_work_agent.adapters.system.process_component_circuit_state import (
 from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.adapters.system.static_maintenance_gate import (
+    StaticMaintenanceGateAdapter,
+)
 from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
 from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
 from google_work_agent.adapters.system.workflow_handoff_reconciliation_loop import (
     WorkflowHandoffReconciliationLoop,
 )
+from google_work_agent.api.container import API_CONTRACT_VERSION, ApiContainer
+from google_work_agent.api.security.access_guard import LocalApiAccessGuard
+from google_work_agent.api.security.bind import LocalBindPolicy
+from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
+from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.application.orchestration.connector_read_projection import (
+    ConnectorReadProjection,
+)
+from google_work_agent.application.orchestration.provider_dispatch_budget import (
+    account_provider_dispatch,
+)
+from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    InactivePromptArtifactError,
+    PromptRegistry,
+    default_prompt_manifest_path,
+)
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
+)
+from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
+    CreateStagedAttachmentHandler,
+)
+from google_work_agent.application.use_cases.attachment.get_attachment import (
+    GetAttachmentHandler,
+)
+from google_work_agent.application.use_cases.backup.create_backup import CreateBackupHandler
+from google_work_agent.application.use_cases.backup.list_backups import ListBackupsHandler
+from google_work_agent.application.use_cases.backup.restore_backup import RestoreBackupHandler
+from google_work_agent.application.use_cases.component_circuit.check_component_circuit import (
+    CheckComponentCircuitHandler,
+    CircuitProtectedConnectorReadPort,
+    CircuitProtectedConnectorWritePort,
+    CircuitProtectedStructuredInferencePort,
+)
+from google_work_agent.application.use_cases.component_circuit.record_component_call_result import (
+    RecordComponentCallResultHandler,
+)
+from google_work_agent.application.use_cases.connection.get_connection_status import (
+    GetConnectionStatusHandler,
+    GetConnectionStatusQuery,
+)
+from google_work_agent.application.use_cases.connection.revoke_connection import (
+    RevokeConnectionHandler,
+)
+from google_work_agent.application.use_cases.connection.start_authorization import (
+    StartAuthorizationHandler,
+)
+from google_work_agent.application.use_cases.conversation.create_conversation import (
+    CreateConversationHandler,
+)
+from google_work_agent.application.use_cases.conversation.get_conversation_history import (
+    GetConversationHistoryHandler,
+)
+from google_work_agent.application.use_cases.conversation.list_conversations import (
+    ListConversationsHandler,
+)
+from google_work_agent.application.use_cases.diagnostic_bundle.create_diagnostic_bundle import (
+    CreateDiagnosticBundleHandler,
+)
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
+    ConnectorWriteProjection,
+)
+from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
+    DispatchConnectorWriteHandler,
 )
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultHandler,
 )
-from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
+from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501  # noqa: E501
     ReconcileInflightExecutionsHandler,
+    drain_inflight_executions_to_quiescence,
 )
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultHandler,
@@ -61,11 +208,71 @@ from google_work_agent.application.use_cases.execution_attempt.recover_existing_
 from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
     ResolveAsFailedHandler,
 )
+from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+    LLMRuntimeService,
+    PromptRepairSchemaRepairer,
+    TestLLMConnectionService,
+)
+from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
+    DeleteLlmCredentialHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.get_llm_credential_status import (
+    GetLlmCredentialStatusHandler,
+)
+from google_work_agent.application.use_cases.llm_credential.store_llm_credential import (
+    StoreLlmCredentialHandler,
+)
 from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
     LookupUnknownResultHandler,
 )
+from google_work_agent.application.use_cases.recovery.project_recovery_options import (
+    ProjectRecoveryOptionsHandler,
+)
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.resource.connector_resource_access import (
+    ConnectorResourceAccess,
+)
+from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
+    GetCalendarResourceDetailHandler,
+)
+from google_work_agent.application.use_cases.resource.get_resource_count import (
+    GetResourceCountHandler,
+)
+from google_work_agent.application.use_cases.resource.get_resource_detail import (
+    GetResourceDetailHandler,
+)
+from google_work_agent.application.use_cases.resource.get_task_resource_detail import (
+    GetTaskResourceDetailHandler,
+)
+from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    IssueSelectionHandle,
+)
+from google_work_agent.application.use_cases.resource.list_calendars import ListCalendarsHandler
+from google_work_agent.application.use_cases.resource.list_resources import ListResourcesHandler
+from google_work_agent.application.use_cases.resource.list_task_lists import ListTaskListsHandler
+from google_work_agent.application.use_cases.resource.opaque_continuation_access import (
+    OpaqueConnectorResourceAccess,
+)
+from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
+    ResolveSelectionHandle,
+)
+from google_work_agent.application.use_cases.run.adjust_context import AdjustContextHandler
+from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningHandler
+from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
+from google_work_agent.application.use_cases.run.get_execution_context import (
+    GetExecutionContextHandler,
+    GetExecutionContextQuery,
+)
+from google_work_agent.application.use_cases.run.project_context_preview import (
+    ProjectContextPreviewHandler,
+)
+from google_work_agent.application.use_cases.run.project_error_actions import (
+    ProjectErrorActionsHandler,
+)
+from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
+    ProjectExternalLlmTransferScopeHandler,
 )
 from google_work_agent.application.use_cases.run.reconcile_retrieval_cache_restart import (
     ReconcileRetrievalCacheRestartHandler,
@@ -81,12 +288,36 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode import (
+    UpdateRuntimeModeHandler,
+)
+from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
+    GetRuntimeStatusHandler,
+)
+from google_work_agent.application.use_cases.setting.get_settings import GetSettingsHandler
+from google_work_agent.application.use_cases.setting.update_settings import UpdateSettingsHandler
+from google_work_agent.application.use_cases.shutdown.request_shutdown import (
+    RequestShutdownHandler,
+)
+from google_work_agent.application.use_cases.sse_event.project_run_event import (
+    ProjectRunEventHandler,
+)
+from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
+    EmitTraceEventHandler,
+)
+from google_work_agent.launcher.development_readiness import (
+    DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
+)
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
-from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
+from google_work_agent.ports.connector.mcp_client_port import MCPClientPort, MCPClientPortError
 from google_work_agent.ports.connector.oauth_credential_port import OAuthCredentialPort
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
+from google_work_agent.ports.llm import (
+    ApprovedModelInfo,
+    RuntimePolicy,
+)
 from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusPort
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
@@ -98,18 +329,39 @@ from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitStatePort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.runtime import (
+    AppSettings,
+    WorkHours,
+)
+from google_work_agent.ports.system.contracts.workflow_execution import (
+    WorkflowCancelRequest,
+    WorkflowCorrelationContext,
+    WorkflowInvocationResult,
+    WorkflowOutcome,
+    WorkflowRecoveryRequest,
+    WorkflowResumeRequest,
+    WorkflowStartRequest,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    AgentNodeResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
 )
 from google_work_agent.ports.system.diagnostics_port import DiagnosticsPort
 from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
+from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
 )
+from google_work_agent.ports.system.readiness_port import (
+    ReadinessAggregator,
+    ReadinessCheckResult,
+    ReadinessReport,
+    ReadinessState,
+)
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 from google_work_agent.ports.system.runtime_mode_port import RuntimeModePort
-from google_work_agent.ports.system.settings_port import SettingsPort
+from google_work_agent.ports.system.settings_port import SettingsPort, SettingsViewV1
 from google_work_agent.ports.system.shutdown_port import ShutdownPort
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
 from google_work_agent.ports.system.uuid_port import UUIDPort
@@ -288,3 +540,1145 @@ def drain_workflow_handoffs_to_quiescence(
     raise RuntimeError(
         f"workflow handoff startup drain did not reach quiescence within {max_passes} passes"
     )
+
+
+GOOGLE_WORKSPACE_MCP_MODULE = (
+    "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DevelopmentConnectorBundle:
+    runtime_registry: ConnectorRuntimeRegistry
+    tool_registry: SignedToolRegistry
+    installed_manifest: InstalledConnectorManifestV1
+    google_connector: GoogleWorkspaceConnector
+
+
+def build_connectors(
+    *,
+    mcp_manifest_path: Path,
+    mcp_manifest_version: str,
+    service_instance_id: str,
+    attachment_staging_dir: Path,
+    python_executable: Path,
+    working_directory: Path,
+    mcp_module_name: str = GOOGLE_WORKSPACE_MCP_MODULE,
+) -> DevelopmentConnectorBundle:
+    tool_registry = load_signed_tool_registry()
+    installed_manifest = load_installed_connector_manifest()
+    installed_connector = installed_manifest.get_required(GOOGLE_WORKSPACE_CONNECTOR_ID)
+    if (
+        installed_connector.provider_namespace != "google"
+        or installed_connector.connector_package != "workspace"
+        or not installed_connector.tool_projection_path.endswith(
+            "/google_workspace/tool-descriptor-projection-v1.json"
+        )
+    ):
+        raise ValueError("installed Google Workspace connector binding is invalid")
+    runtime_registry = ConnectorRuntimeRegistry()
+    descriptor = build_google_workspace_connector_descriptor(
+        MCPArtifactConfig(
+            executable_path=str(python_executable),
+            manifest_path=str(mcp_manifest_path),
+            expected_binary_sha256=calculate_file_sha256(python_executable),
+            expected_manifest_sha256=calculate_file_sha256(mcp_manifest_path),
+            expected_manifest_version=mcp_manifest_version,
+            expected_protocol_version=mcp_manifest_version,
+            expected_registry_manifest_hash=tool_registry.entries_hash,
+            startup_timeout_ms=5_000,
+            request_timeout_ms=30_000,
+            max_restart_count=1,
+            environment="DEVELOPMENT",
+            service_instance_id=service_instance_id,
+            module_name=mcp_module_name,
+            working_directory=str(working_directory),
+            extra_environment={ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir)},
+        ),
+        expected_tool_descriptors=tuple(
+            tool_registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)
+        ),
+    )
+    google_connector = GoogleWorkspaceConnector(
+        descriptor=descriptor,
+        runtime_registry=runtime_registry,
+    )
+    google_connector.start()
+    return DevelopmentConnectorBundle(
+        runtime_registry=runtime_registry,
+        tool_registry=tool_registry,
+        installed_manifest=installed_manifest,
+        google_connector=google_connector,
+    )
+
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
+HISTORY_MESSAGE_LIMIT = 200
+HISTORY_RUN_LIMIT = 200
+RELEASE_VERSION = "0.1.0-dev"
+# Dev-mode local model allowlist: LOCAL_GPU routing refuses to invoke a model
+# that is not "approved" (the structured-inference router's local-runtime gate),
+# so at least one already-`ollama pull`-ed model must be listed here. This never
+# pulls or downloads anything; override via env var if a different model is
+# installed locally.
+DEFAULT_DEV_OLLAMA_MODEL_ID = os.environ.get("GWA_DEV_APPROVED_OLLAMA_MODEL", "qwen2.5:3b")
+
+
+@dataclass(frozen=True, slots=True)
+class DevelopmentLauncherProbeVerifier:
+    """Bind direct development readiness to this service instance."""
+
+    service_instance_id: str
+
+    def verify(self, *, service_instance_id: str) -> LauncherProbeDecision:
+        return LauncherProbeDecision(allowed=service_instance_id == self.service_instance_id)
+
+
+class CoreInitializationError(RuntimeError):
+    """Redacted core-startup failure exposed through readiness only."""
+
+    def __init__(self, safe_code: str) -> None:
+        super().__init__(safe_code)
+        self.safe_code = safe_code
+
+
+class _BootReadinessAggregator(ReadinessAggregator):
+    """Expose initialization state without making liveness depend on core startup."""
+
+    def __init__(self, safe_mode: SafeModeController) -> None:
+        self._safe_mode = safe_mode
+        self._delegate: ReadinessAggregator | None = None
+        self._failure_code: str | None = None
+
+    def bind(self, delegate: ReadinessAggregator) -> None:
+        self._delegate = delegate
+
+    def fail(self, code: str) -> None:
+        self._failure_code = code
+
+    def evaluate(self) -> ReadinessReport:
+        if self._failure_code is not None:
+            return ReadinessReport(
+                state=ReadinessState.SAFE_MODE,
+                checks=(
+                    ReadinessCheckResult(
+                        name="core_initialization",
+                        state=ReadinessState.SAFE_MODE,
+                        detail=self._failure_code,
+                    ),
+                ),
+            )
+        if self._delegate is None:
+            return ReadinessReport(
+                state=ReadinessState.NOT_READY,
+                checks=(
+                    ReadinessCheckResult(
+                        name="core_initialization",
+                        state=ReadinessState.NOT_READY,
+                        detail="INITIALIZING",
+                    ),
+                ),
+            )
+        return self._delegate.evaluate()
+
+
+class DeferredApiContainer:
+    """Stable delivery shell while the single production runtime is assembled."""
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        service_instance_id: str,
+        bootstrap_secret: str,
+        core_builder: Callable[..., ApiContainer],
+    ) -> None:
+        self._core: ApiContainer | None = None
+        self._core_builder = core_builder
+        self._closed = False
+        self.safe_mode_controller = SafeModeController()
+        self.core_initialization_in_progress = True
+        self.readiness_aggregator = _BootReadinessAggregator(self.safe_mode_controller)
+        self.current_account_id_provider: Callable[[], str | None] = lambda: None
+        self.create_conversation_handler: Any = None
+        self.list_conversations_handler: Any = None
+        self.get_conversation_history_handler: Any = None
+        self.clock = SystemClockAdapter()
+        self.id_generator = Uuid4Adapter()
+        self.release_version = RELEASE_VERSION
+        self.environment = "DEVELOPMENT"
+        self.service_instance_id = service_instance_id
+        self.api_contract_version = API_CONTRACT_VERSION
+        self.local_bind_host = host
+        self.local_bind_port = port
+        self.max_request_body_bytes = 64 * 1024
+        self.api_docs_enabled = False
+        self.frontend_site = None
+        self.additional_readiness_checks: tuple[Any, ...] = ()
+        self.shutdown_callbacks = (self.close,)
+        self.startup_callbacks = (self._initialize,)
+        self.client_address_resolver: Callable[[Any], str | None] | None = None
+        self.operational_log_sink = None
+        self.endpoint_policy_registry = None
+        self._bootstrap_secret = bootstrap_secret
+        self._bootstrap_grant_store = InMemoryBootstrapGrantStore()
+        self._session_manager = InMemoryLocalSessionManager()
+        self._bootstrap_grant_store.provision(
+            secret=bootstrap_secret,
+            service_instance_id=service_instance_id,
+            now_ms=self.clock.now_ms(),
+        )
+        self.api_access_guard = LocalApiAccessGuard(
+            expected_host=f"{host}:{port}",
+            expected_origin=f"http://{host}:{port}",
+            service_instance_id=service_instance_id,
+            session_manager=self._session_manager,
+            release_version=RELEASE_VERSION,
+            environment="DEVELOPMENT",
+            now_ms=self.clock.now_ms,
+        )
+        self.launcher_probe_verifier = DevelopmentLauncherProbeVerifier(service_instance_id)
+        self.bootstrap_grant_store = self._bootstrap_grant_store
+        self.local_session_manager = self._session_manager
+
+    async def _initialize(self) -> None:
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                self._core_builder,
+                host=self.local_bind_host,
+                port=self.local_bind_port,
+                bootstrap_secret=self._bootstrap_secret,
+                service_instance_id=self.service_instance_id,
+                safe_mode_controller=self.safe_mode_controller,
+            )
+        )
+        try:
+            core = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            self._closed = True
+            core = await worker
+            _close_container(core)
+            raise
+        except CoreInitializationError as error:
+            self.core_initialization_in_progress = False
+            self.safe_mode_controller.enable(error.safe_code)
+            self.readiness_aggregator.fail(error.safe_code)
+            return
+        except Exception:
+            self.core_initialization_in_progress = False
+            self.safe_mode_controller.enable("CORE_INITIALIZATION_FAILED")
+            self.readiness_aggregator.fail("CORE_INITIALIZATION_FAILED")
+            return
+        if self._closed:
+            _close_container(core)
+            return
+        try:
+            for callback in core.startup_callbacks:
+                await callback()
+        except Exception:
+            _close_container(core)
+            self.core_initialization_in_progress = False
+            self.safe_mode_controller.enable("CORE_STARTUP_RECONCILIATION_FAILED")
+            self.readiness_aggregator.fail("CORE_STARTUP_RECONCILIATION_FAILED")
+            return
+        self._core = core
+        self.readiness_aggregator.bind(core.readiness_aggregator)
+        self.current_account_id_provider = core.current_account_id_provider
+        self.core_initialization_in_progress = False
+        self.safe_mode_controller.disable()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._core is not None:
+            _close_container(self._core)
+
+    def __getattr__(self, name: str) -> Any:
+        if self._core is not None:
+            return getattr(self._core, name)
+        raise RuntimeError("core initialization is incomplete")
+
+
+def _close_container(container: ApiContainer) -> None:
+    for callback in container.shutdown_callbacks:
+        callback()
+
+
+@dataclass(slots=True)
+class _ShutdownComponent:
+    stop_commands: Callable[[], None] = lambda: None
+    stop_coordinator: Callable[[], None] = lambda: None
+    await_coordinator: Callable[[float], None] = lambda _timeout: None
+    flush_runtime: Callable[[], None] = lambda: None
+    flush_observability: Callable[[], None] = lambda: None
+    checkpoint_persistence: Callable[[], None] = lambda: None
+    close_component: Callable[[], None] = lambda: None
+    invalidate_sessions: Callable[[], None] = lambda: None
+
+    def stop_accepting_commands(self) -> None:
+        self.stop_commands()
+
+    def stop_accepting(self) -> None:
+        self.stop_coordinator()
+
+    def shutdown(self, timeout_seconds: float) -> None:
+        self.await_coordinator(timeout_seconds)
+
+    def flush_or_checkpoint(self) -> None:
+        self.flush_runtime()
+
+    def flush(self) -> None:
+        self.flush_observability()
+
+    def checkpoint_wal(self) -> None:
+        self.checkpoint_persistence()
+
+    def close(self) -> None:
+        self.close_component()
+
+    def invalidate_all(self) -> None:
+        self.invalidate_sessions()
+
+
+class _PromptInactiveWorkflowRuntime:
+    """Safe placeholder: workflows cannot execute until prompts are approved."""
+
+    def close(self) -> None:
+        return None
+
+    def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:
+        return self._not_available(request.run_id, request.workflow_key)
+
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
+        return self._not_available(request.run_id, request.workflow_key)
+
+    def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
+        return self._not_available(request.run_id, request.workflow_key)
+
+    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
+        return self._not_available(request.run_id, request.workflow_key)
+
+    @staticmethod
+    def _not_available(run_id: str, workflow_key: str) -> WorkflowInvocationResult:
+        return WorkflowInvocationResult(
+            run_id=run_id,
+            workflow_key=workflow_key,
+            outcome=WorkflowOutcome.FAILED,
+            payload={"safe_error_code": "PROMPT_NOT_ACTIVE"},
+        )
+
+
+def build_production_container(
+    *,
+    runtime_root: Path,
+    working_directory: Path,
+    mcp_manifest_version: str,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    bootstrap_secret: str | None = None,
+    service_instance_id: str | None = None,
+    safe_mode_controller: SafeModeController | None = None,
+    mcp_module_name: str | None = None,
+    keyring_store: SecretStorePort | None = None,
+) -> ApiContainer:
+    """Assemble the development service with real local adapters."""
+
+    LocalBindPolicy(host=host, port=port).validate()
+    safe_mode = safe_mode_controller or SafeModeController()
+    root = runtime_root.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    database_path = root / "google-work-agent.sqlite3"
+    mcp_manifest_path = _write_mcp_manifest(root)
+    prompt_manifest_path = default_prompt_manifest_path()
+    clock = SystemClockAdapter()
+    id_generator = Uuid4Adapter()
+    service_instance_id = service_instance_id or f"dev-{uuid.uuid4()}"
+    attachment_staging_dir = root / "attachments" / "staging"
+    attachment_staging = FilesystemAttachmentStagingAdapter(
+        staging_dir=attachment_staging_dir,
+        now_ms=clock.now_ms,
+    )
+    attachment_staging.cleanup_expired()
+    operational_replay = FilesystemOperationalCommandReplayAdapter(
+        root / "operational-command-replay"
+    )
+
+    try:
+        with connect_sqlite(database_path) as connection:
+            apply_migrations(connection, now_ms=clock.now_ms)
+    except (sqlite3.Error, MigrationError) as error:
+        raise CoreInitializationError("MIGRATION_FAILED") from error
+
+    try:
+        connector_bundle = build_connectors(
+            mcp_manifest_path=mcp_manifest_path,
+            mcp_manifest_version=mcp_manifest_version,
+            service_instance_id=service_instance_id,
+            attachment_staging_dir=attachment_staging_dir,
+            python_executable=Path(sys.executable).resolve(),
+            working_directory=working_directory.resolve(),
+            **({} if mcp_module_name is None else {"mcp_module_name": mcp_module_name}),
+        )
+    except MCPClientPortError as error:
+        raise CoreInitializationError("MCP_HANDSHAKE_FAILED") from error
+    connector_registry = connector_bundle.runtime_registry
+    google_connector = connector_bundle.google_connector
+    google_provider = google_connector.oauth_port
+    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    read_unit_of_work_factory = sqlite_read_unit_of_work_factory(database_path)
+    connected_account_store_factory = sqlite_connected_account_store_factory(database_path)
+    get_execution_context = GetExecutionContextHandler(
+        unit_of_work_factory=read_unit_of_work_factory
+    )
+    get_connection_status = GetConnectionStatusHandler(
+        google_provider,
+        connected_account_store_factory=connected_account_store_factory,
+        now_ms=clock.now_ms,
+    )
+
+    def current_account_id() -> str | None:
+        return get_connection_status(
+            GetConnectionStatusQuery(connector_id="google_workspace")
+        ).connection.account_id
+
+    try:
+        llm_runtime, settings_service, credential_service, llm_status_service = _build_llm_runtime(
+            settings_path=root / "settings" / "app-settings.json",
+            prompt_manifest_path=prompt_manifest_path,
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+            keyring_store=keyring_store,
+        )
+    except RuntimeError as error:
+        connector_registry.close_all()
+        raise CoreInitializationError("KEYRING_UNAVAILABLE") from error
+    runtime_mode = ProcessRuntimeModeAdapter(
+        initial_mode=cast(Any, settings_service.get_settings().preferred_llm_mode)
+    )
+    component_circuits = ProcessComponentCircuitStateAdapter(
+        failure_threshold=settings_service.get_settings().circuit_failure_threshold,
+        open_duration_ms=settings_service.get_settings().circuit_open_duration_ms,
+    )
+    check_component_circuit = CheckComponentCircuitHandler(component_circuits)
+    record_component_call_result = RecordComponentCallResultHandler(component_circuits)
+    backup_adapter = FilesystemBackupAdapter(
+        database_path=database_path,
+        backups_dir=root / "backups",
+        clock=clock,
+        maintenance_gate=StaticMaintenanceGateAdapter(),
+        release_version=RELEASE_VERSION,
+        domain_contract_version="1",
+        schema_version="1",
+    )
+    diagnostics_adapter = FilesystemDiagnosticsAdapter(
+        collect_snapshot=lambda: {
+            "release_version": RELEASE_VERSION,
+            "environment": "DEVELOPMENT",
+            "service_instance_id": service_instance_id,
+        },
+        diagnostics_dir=root / "diagnostics",
+        now_ms=clock.now_ms,
+        max_bundle_bytes=256 * 1024,
+    )
+    prompt_active = True
+    workflow_runtime: Any
+    connector_reader = CircuitProtectedConnectorReadPort(
+        delegate=google_connector.read_port,
+        connector_id="google-workspace",
+        check=check_component_circuit,
+        record=record_component_call_result,
+        now_ms=clock.now_ms,
+    )
+    connector_writer = CircuitProtectedConnectorWritePort(
+        delegate=google_connector.write_port,
+        connector_id="google-workspace",
+        check=check_component_circuit,
+        record=record_component_call_result,
+        now_ms=clock.now_ms,
+    )
+    read_projection = ConnectorReadProjection(
+        connector_reader=connector_reader,
+        tool_registry=connector_bundle.tool_registry,
+    )
+    dispatch_connector_write = DispatchConnectorWriteHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        tool_registry=connector_bundle.tool_registry,
+        connector_write_port=connector_writer,
+    )
+    write_projection = ConnectorWriteProjection(
+        dispatch_connector_write=dispatch_connector_write,
+        connector_reader=read_projection,
+    )
+    resume_target_registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
+    )
+    checkpoint = SqliteCheckpointAdapter(
+        database_path,
+        now_ms=clock.now_ms,
+        target_resolver=NativeCheckpointTargetResolver(resume_target_registry),
+    )
+    checkpoint_control = LangGraphCheckpointControlAdapter(
+        checkpoint_port=checkpoint,
+        native_saver=checkpoint,
+    )
+    structured_inference_router = cast(
+        StructuredInferenceRuntimeRouter, llm_runtime.structured_inference
+    )
+    structured_inference_router.checkpoint = checkpoint
+    llm_runtime.structured_inference = CircuitProtectedStructuredInferencePort(
+        delegate=structured_inference_router,
+        check=check_component_circuit,
+        record=record_component_call_result,
+        now_ms=clock.now_ms,
+    )
+    event_publisher = InMemorySseEventBuffer(service_instance_id=service_instance_id)
+    retrieval_cache = InMemoryRunRetrievalCache()
+    try:
+        workflow_runtime = LangGraphWorkflowRuntime(
+            unit_of_work_factory=unit_of_work_factory,
+            llm_runtime=llm_runtime,
+            connector_reader=read_projection,
+            connector_execution=write_projection,
+            tool_catalog=connector_bundle.tool_registry,
+            now_ms=clock.now_ms,
+            id_factory=id_generator.new_uuid,
+            signing_secret=secrets.token_hex(32),
+            service_instance_id=service_instance_id,
+            claim_context_signer=google_connector.client.sign_claim_context,
+            mcp_process_instance_id=lambda: (
+                google_connector.client.process_instance_id
+                or (_ for _ in ()).throw(RuntimeError("MCP process identity is unavailable"))
+            ),
+            checkpoint_port=checkpoint,
+            retrieval_cache=retrieval_cache,
+            prompt_manifest_path=prompt_manifest_path,
+            timezone_provider=lambda: settings_service.get_settings().timezone,
+            work_hours_provider=lambda: CalendarWorkHours(
+                timezone=settings_service.get_settings().timezone,
+                days=(
+                    tuple(range(7))
+                    if settings_service.get_settings().include_weekends
+                    else (0, 1, 2, 3, 4)
+                ),
+                start=settings_service.get_settings().working_day_start_local,
+                end=settings_service.get_settings().working_day_end_local,
+            ),
+            default_tasklist_id_provider=lambda: (
+                settings_service.get_settings().default_tasklist_id
+            ),
+            attachment_verifier=attachment_staging,
+            resume_target_registry=resume_target_registry,
+            sse_event_buffer=event_publisher,
+            environment="DEVELOPMENT",
+            release_version=RELEASE_VERSION,
+        )
+    except InactivePromptArtifactError:
+        prompt_active = False
+        workflow_runtime = _PromptInactiveWorkflowRuntime()
+    project_external_llm_transfer_scope = ProjectExternalLlmTransferScopeHandler(
+        checkpoint,
+        ProjectRunEventHandler(event_publisher),
+    )
+    llm_runtime.project_external_scope = project_external_llm_transfer_scope
+    outcome_handler = RunOutcomeHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        project_run_event=ProjectRunEventHandler(event_publisher),
+        now_ms=clock.now_ms,
+    )
+
+    def _start_request(admission: WorkflowExecutionAdmissionV1) -> WorkflowStartRequest:
+        binding = admission.effective_binding
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
+        if (
+            context is None
+            or context.workflow_key != binding.langgraph_thread_id
+            or context.requested_mode != binding.requested_mode
+        ):
+            raise ValueError("persisted admission does not match Run execution context")
+        return WorkflowStartRequest(
+            run_id=context.run_id,
+            conversation_id=context.conversation_id,
+            workflow_key=context.workflow_key,
+            entry_mode=context.entry_mode,
+            requested_mode=context.requested_mode,
+            request_text=context.request_text,
+            selected_resource_ids=context.selected_resource_ids,
+            run_budget=dict(context.run_budget),
+            correlation=WorkflowCorrelationContext(
+                request_id=admission.admission_id,
+                command_id=admission.handoff_id,
+                api_contract_version=API_CONTRACT_VERSION,
+            ),
+            selected_resources=context.selected_resources,
+        )
+
+    def _initial_target(admission: WorkflowExecutionAdmissionV1) -> AgentNodeResumeTargetV2:
+        profile = admission.effective_binding.graph_profile
+        return resume_target_registry.issue_agent_node(
+            profile,
+            "REQUEST_UNDERSTANDING",
+            "request.identify_goal",
+            admission.effective_binding.graph_version,
+        )
+
+    def _materialize_admission_checkpoint(
+        admission: WorkflowExecutionAdmissionV1,
+        handoff: WorkflowHandoffV1,
+    ) -> Any:
+        binding = admission.effective_binding
+        if binding.execution_kind == "START":
+            target = _initial_target(admission)
+            with checkpoint.execution_scope(
+                admission,
+                applied_handoff_id=admission.handoff_id,
+                owner_scope="REQUEST_UNDERSTANDING",
+                resume_target=target,
+            ):
+                workflow_runtime.prepare_start(_start_request(admission))
+        elif admission.submission_kind == "NORMAL_HANDOFF":
+            materialized = checkpoint.load_same_run_checkpoint(
+                binding.run_id, binding.langgraph_thread_id
+            )
+            if materialized is None:
+                raise RuntimeError("RESUME requires a native checkpoint")
+            resume_target = binding.resume_target
+            if resume_target is None:
+                raise ValueError("RESUME admission requires a registered target")
+            goto_node = (
+                workflow_runtime.control_resume_node(resume_target.stage_id)
+                if resume_target.kind == "MAIN_CONTROL"
+                else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id)
+            )
+            if handoff.control is None:
+                checkpoint_control.materialize_resume_target(materialized, goto_node=goto_node)
+            else:
+                checkpoint_control.materialize_control(
+                    materialized,
+                    handoff.control,
+                    goto_node=None
+                    if handoff.control.kind == "CONFIRMATION_RESPONSE"
+                    else goto_node,
+                )
+        materialized = checkpoint.load_same_run_checkpoint(
+            binding.run_id, binding.langgraph_thread_id
+        )
+        if materialized is None:
+            raise RuntimeError("admission did not materialize a native checkpoint")
+        return materialized
+
+    def _invoke_semantic_owner(
+        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
+    ) -> None:
+        binding = admission.effective_binding
+        context = get_execution_context(GetExecutionContextQuery(binding.run_id))
+        if (
+            context is None
+            or context.workflow_key != binding.langgraph_thread_id
+            or context.requested_mode != binding.requested_mode
+        ):
+            return
+        target = binding.resume_target
+        try:
+            correlation = WorkflowCorrelationContext(
+                request_id=admission.admission_id,
+                command_id=admission.handoff_id,
+                api_contract_version=API_CONTRACT_VERSION,
+            )
+            latest = checkpoint.load_same_run_checkpoint(
+                binding.run_id, binding.langgraph_thread_id
+            )
+            target = (
+                _initial_target(admission)
+                if binding.execution_kind == "START"
+                else binding.resume_target
+            )
+            if target is None:
+                raise ValueError("persisted admission has no registered resume target")
+            with checkpoint.execution_scope(
+                admission,
+                applied_handoff_id=admission.handoff_id
+                if admission.submission_kind == "NORMAL_HANDOFF"
+                else None
+                if latest is None
+                else latest.applied_handoff_id,
+                owner_scope=latest.owner_scope if latest is not None else "REQUEST_UNDERSTANDING",
+                resume_target=target,
+            ):
+                if binding.execution_kind == "START":
+                    result = workflow_runtime.start(_start_request(admission))
+                else:
+                    # CONSUMED_CONTINUATION_RECOVERY is a crash-recovery
+                    # re-submission of an *already-consumed* handoff -- its
+                    # in-memory `handoff` object (fetched before consumption
+                    # in BackgroundRunExecutorAdapter._consume) still carries
+                    # the original one-shot control_kind/control, but that
+                    # payload was already applied once and must never be
+                    # replayed. Recovery resumes solely from the checkpoint-
+                    # derived binding.resume_target (CheckpointEffectiveBindingResolver),
+                    # never by re-reading the handoff's original control.
+                    resume_kind = "CONSUMED_CONTINUATION_RECOVERY"
+                    resume_payload: dict[str, Any] = {}
+                    result = workflow_runtime.resume(
+                        WorkflowResumeRequest(
+                            run_id=context.run_id,
+                            workflow_key=context.workflow_key,
+                            resume_kind=resume_kind,
+                            resume_payload=resume_payload,
+                            correlation=correlation,
+                        )
+                    )
+        except Exception as error:
+            current = get_execution_context(GetExecutionContextQuery(binding.run_id))
+            outcome_handler.handle_result(
+                binding.run_id,
+                WorkflowOutcome.FAILED,
+                {"error_code": "INTERNAL_ERROR", "message": str(error)[:200]},
+                context.version if current is None else current.version,
+            )
+            return
+        current = get_execution_context(GetExecutionContextQuery(binding.run_id))
+        outcome_handler.handle_result(
+            binding.run_id,
+            result.outcome,
+            result.payload,
+            context.version if current is None else current.version,
+        )
+
+    production_runtime = build_production_runtime(
+        unit_of_work_factory=unit_of_work_factory,
+        id_factory=id_generator.new_uuid,
+        checkpoint=checkpoint,
+        retrieval_cache=retrieval_cache,
+        materialize_admission_checkpoint=_materialize_admission_checkpoint,
+        invoke_semantic_owner=_invoke_semantic_owner,
+        resume_target_registry=resume_target_registry,
+        lookup_unknown_result=LookupUnknownResultHandler(
+            connector_read=connector_reader,
+            tool_registry=connector_bundle.tool_registry,
+        ),
+        recover_existing_result=RecoverExistingResultHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        resolve_as_failed=ResolveAsFailedHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: (
+            write_projection.materialize_recovery_candidate(
+                tool_name=tool_name,
+                arguments=arguments,
+                resource_id=resource_id,
+            )
+        ),
+        now_ms=clock.now_ms,
+    )
+
+    async def _reconcile_inflight_executions() -> None:
+        await asyncio.to_thread(
+            drain_inflight_executions_to_quiescence,
+            production_runtime.reconcile_inflight_executions,
+        )
+
+    async def _drain_workflow_handoffs() -> None:
+        await asyncio.to_thread(
+            drain_workflow_handoffs_to_quiescence,
+            production_runtime.redrive_workflow_handoffs,
+        )
+
+    async def _start_workflow_handoff_reconciliation_loop() -> None:
+        production_runtime.workflow_handoff_reconciliation_loop.start()
+
+    def _stop_workflow_handoff_runtime() -> None:
+        production_runtime.workflow_handoff_reconciliation_loop.stop()
+        production_runtime.workflow_execution.begin_shutdown()
+        production_runtime.workflow_execution.await_drained(5_000)
+        production_runtime.workflow_execution.close()
+        production_runtime.checkpoint.close()
+
+    session_manager = InMemoryLocalSessionManager()
+    grant_store = InMemoryBootstrapGrantStore()
+    secret = bootstrap_secret or secrets.token_urlsafe(32)
+    grant_store.provision(
+        secret=secret,
+        service_instance_id=service_instance_id,
+        now_ms=clock.now_ms(),
+    )
+    selection_handle_secret = secrets.token_bytes(32)
+    issue_selection_handle = IssueSelectionHandle(
+        signing_secret=selection_handle_secret,
+        service_instance_id=service_instance_id,
+        now_ms=clock.now_ms,
+        ttl_ms=5 * 60 * 1000,
+    )
+    resolve_selection_handle = ResolveSelectionHandle(
+        signing_secret=selection_handle_secret,
+        service_instance_id=service_instance_id,
+        now_ms=clock.now_ms,
+    )
+    project_context_preview = ProjectContextPreviewHandler(
+        unit_of_work_factory=read_unit_of_work_factory,
+        checkpoint=checkpoint,
+    )
+
+    def _checkpoint_domain_wal() -> None:
+        with connect_sqlite(database_path) as connection:
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+
+    def _await_workflow_drain(timeout: float) -> None:
+        production_runtime.workflow_execution.await_drained(int(timeout * 1_000))
+
+    shutdown_adapter = ProcessShutdownAdapter(
+        command_gate=_ShutdownComponent(),
+        coordinator=_ShutdownComponent(
+            stop_coordinator=production_runtime.workflow_execution.begin_shutdown,
+            await_coordinator=_await_workflow_drain,
+        ),
+        workflow_runtime=_ShutdownComponent(flush_runtime=checkpoint.flush),
+        observability=_ShutdownComponent(),
+        persistence=_ShutdownComponent(checkpoint_persistence=_checkpoint_domain_wal),
+        mcp_transport=_ShutdownComponent(close_component=connector_registry.close_all),
+        sessions=_ShutdownComponent(invalidate_sessions=session_manager.invalidate_all),
+        clock=clock,
+        marker_path=root / "shutdown" / "request.json",
+    )
+
+    resource_access = OpaqueConnectorResourceAccess(
+        ConnectorResourceAccess(
+            gateway=read_projection,
+            default_calendar_id_provider=(
+                lambda: llm_runtime.settings_service().default_calendar_id
+            ),
+            default_tasklist_id_provider=(
+                lambda: llm_runtime.settings_service().default_tasklist_id
+            ),
+            timezone_provider=lambda: llm_runtime.settings_service().timezone,
+        )
+    )
+
+    return ApiContainer(
+        unit_of_work_factory=unit_of_work_factory,
+        read_unit_of_work_factory=read_unit_of_work_factory,
+        settings_port=settings_service,
+        create_conversation_handler=CreateConversationHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
+        graph_version=RESUME_CONTRACT_VERSION,
+        schedule_run_execution=production_runtime.schedule_run_execution,
+        resume_target_registry=resume_target_registry,
+        checkpoint_port=checkpoint,
+        approve_action_service=None,
+        modify_action_service=None,
+        reject_action_service=None,
+        prepare_retry_service=None,
+        cancel_run_service=None,
+        resume_run_service=None,
+        workflow_runtime=workflow_runtime,
+        event_publisher=event_publisher,
+        action_gateway=read_projection,
+        readiness_aggregator=DevelopmentReadinessAggregator(
+            database_path=database_path,
+            connector_registry=connector_registry,
+            mcp_manifest_path=mcp_manifest_path,
+            prompt_active=prompt_active,
+            keyring_store=keyring_store,
+        ),
+        api_access_guard=LocalApiAccessGuard(
+            expected_host=f"{host}:{port}",
+            expected_origin=f"http://{host}:{port}",
+            service_instance_id=service_instance_id,
+            session_manager=session_manager,
+            release_version=RELEASE_VERSION,
+            environment="DEVELOPMENT",
+            now_ms=clock.now_ms,
+        ),
+        clock=clock,
+        id_generator=id_generator,
+        release_version=RELEASE_VERSION,
+        environment="DEVELOPMENT",
+        service_instance_id=service_instance_id,
+        local_bind_host=host,
+        local_bind_port=port,
+        launcher_probe_verifier=DevelopmentLauncherProbeVerifier(service_instance_id),
+        bootstrap_grant_store=grant_store,
+        local_session_manager=session_manager,
+        start_authorization_handler=StartAuthorizationHandler(
+            credentials=google_provider,
+            replay=operational_replay,
+        ),
+        get_connection_status_handler=get_connection_status,
+        current_account_id_provider=current_account_id,
+        revoke_connection_handler=RevokeConnectionHandler(
+            credentials=google_provider,
+            replay=operational_replay,
+            connected_account_store_factory=connected_account_store_factory,
+            now_ms=clock.now_ms,
+        ),
+        list_resources_handler=ListResourcesHandler(resource_access),
+        get_resource_count_handler=GetResourceCountHandler(resource_access),
+        get_resource_detail_handler=GetResourceDetailHandler(resource_access),
+        issue_selection_handle=issue_selection_handle,
+        resolve_selection_handle=resolve_selection_handle,
+        list_task_lists_handler=ListTaskListsHandler(
+            connector_read=connector_reader,
+            registry=connector_bundle.tool_registry,
+        ),
+        list_calendars_handler=ListCalendarsHandler(
+            connector_read=connector_reader,
+            registry=connector_bundle.tool_registry,
+        ),
+        get_task_resource_detail_handler=GetTaskResourceDetailHandler(
+            resolve_handle=resolve_selection_handle,
+            connector_read=connector_reader,
+            registry=connector_bundle.tool_registry,
+        ),
+        get_calendar_resource_detail_handler=GetCalendarResourceDetailHandler(
+            resolve_handle=resolve_selection_handle,
+            connector_read=connector_reader,
+            registry=connector_bundle.tool_registry,
+        ),
+        get_attachment_handler=GetAttachmentHandler(
+            connector_read=connector_reader,
+            tool_registry=connector_bundle.tool_registry,
+        ),
+        create_staged_attachment_handler=CreateStagedAttachmentHandler(
+            staging=attachment_staging,
+            replay=operational_replay,
+        ),
+        list_conversations_handler=ListConversationsHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+        ),
+        get_conversation_history_handler=GetConversationHistoryHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+            history_message_limit=HISTORY_MESSAGE_LIMIT,
+            history_run_limit=HISTORY_RUN_LIMIT,
+        ),
+        project_context_preview_handler=project_context_preview,
+        adjust_context_handler=AdjustContextHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            project_context_preview=project_context_preview,
+            begin_planning=BeginPlanningHandler(
+                unit_of_work_factory=unit_of_work_factory,
+                checkpoint_port=checkpoint,
+                now_ms=clock.now_ms,
+                id_factory=id_generator.new_uuid,
+                resume_target_registry=resume_target_registry,
+            ),
+            schedule_run_execution=production_runtime.schedule_run_execution,
+        ),
+        project_recovery_options_handler=ProjectRecoveryOptionsHandler(read_unit_of_work_factory),
+        project_error_actions_handler=ProjectErrorActionsHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            resume_target_registry=resume_target_registry,
+        ),
+        project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
+        get_llm_credential_status_handler=GetLlmCredentialStatusHandler(credential_service),
+        get_settings_handler=GetSettingsHandler(settings_service),
+        update_settings_handler=UpdateSettingsHandler(
+            settings=settings_service,
+            replay=operational_replay,
+        ),
+        list_backups_handler=ListBackupsHandler(backup_adapter),
+        create_backup_handler=CreateBackupHandler(
+            backups=backup_adapter,
+            replay=operational_replay,
+        ),
+        restore_backup_handler=RestoreBackupHandler(
+            backups=backup_adapter,
+            replay=operational_replay,
+        ),
+        create_diagnostic_bundle_handler=CreateDiagnosticBundleHandler(
+            diagnostics=diagnostics_adapter,
+            replay=operational_replay,
+        ),
+        request_shutdown_handler=RequestShutdownHandler(
+            shutdown=shutdown_adapter,
+            replay=operational_replay,
+        ),
+        store_llm_credential_handler=StoreLlmCredentialHandler(
+            credentials=credential_service,
+            replay=operational_replay,
+        ),
+        delete_llm_credential_handler=DeleteLlmCredentialHandler(
+            credentials=credential_service,
+            replay=operational_replay,
+        ),
+        test_llm_connection_service=TestLLMConnectionService(runtime_service=llm_runtime),
+        safe_mode_controller=safe_mode,
+        get_runtime_status_handler=GetRuntimeStatusHandler(
+            runtime_mode=runtime_mode,
+            oauth=google_provider,
+            llm_status=llm_status_service,
+            circuits=component_circuits,
+            service_instance_id=service_instance_id,
+            release_version=RELEASE_VERSION,
+            frontend_build_version=RELEASE_VERSION,
+            api_contract_version=API_CONTRACT_VERSION,
+            deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+            recovery_required=lambda: safe_mode.snapshot().enabled,
+            database_status=lambda: "READY",
+            migration_status=lambda: "READY",
+            sse_status=lambda: "READY",
+            launcher_status=lambda: "READY",
+            manifest_status=lambda: "VALID" if prompt_active else "INVALID",
+            safe_mode=lambda: safe_mode.snapshot().enabled,
+            last_migration_status=lambda: "READY",
+        ),
+        update_runtime_mode_handler=UpdateRuntimeModeHandler(
+            runtime_mode=runtime_mode,
+            replay=operational_replay,
+            has_active_run=production_runtime.workflow_execution.has_active_runs,
+        ),
+        operational_command_replay=operational_replay,
+        continue_cancel_resolution_handler=getattr(
+            workflow_runtime, "continue_graphless_bootstrap_cancel", None
+        ),
+        startup_callbacks=(
+            _reconcile_inflight_executions,
+            _drain_workflow_handoffs,
+            _start_workflow_handoff_reconciliation_loop,
+        ),
+        shutdown_callbacks=(
+            _stop_workflow_handoff_runtime,
+            workflow_runtime.close,
+            connector_registry.close_all,
+        ),
+    )
+
+
+def _build_llm_runtime(
+    *,
+    settings_path: Path,
+    prompt_manifest_path: Path,
+    unit_of_work_factory: Callable[[], UnitOfWork],
+    now_ms: Callable[[], int],
+    keyring_store: SecretStorePort | None = None,
+) -> tuple[
+    LLMRuntimeService,
+    JsonSettingsAdapter,
+    LlmCredentialRouter,
+    LlmRuntimeStatusRouter,
+]:
+    settings_service = JsonSettingsAdapter(
+        store=FileSettingsStore(settings_path),
+    )
+    prompt_registry = PromptRegistry(prompt_manifest_path)
+
+    def runtime_settings() -> AppSettings:
+        return _project_runtime_settings(settings_service.get_settings())
+
+    credential_service = LlmCredentialRouter(
+        provider_name="gemini",
+        environment="DEVELOPMENT",
+        keyring_store=keyring_store or OsKeyringSecretStoreAdapter(),
+        session_store=SessionMemorySecretStore(),
+    )
+    ollama_transport = OllamaHTTPClient()
+    gemini_transport = GeminiHTTPClient()
+    status_service = LlmRuntimeStatusRouter(
+        build_profile=BuildProfile.LOCAL_CAPABLE.value,
+        settings_service=runtime_settings,
+        credential_service=credential_service,
+        api_connection_service=GeminiConnectionService(transport=gemini_transport),
+        ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
+        approved_models={
+            DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
+                model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
+                runtime="OLLAMA",
+                manifest_version="1",
+                schema_version="1",
+            )
+        },
+        runtime_policy=RuntimePolicy(),
+        api_provider_name="gemini",
+    )
+    structured_inference = StructuredInferenceRuntimeRouter(
+        before_provider_dispatch=account_provider_dispatch,
+        settings_service=runtime_settings,
+        status_service=status_service,
+        credential_service=credential_service,
+        hardware_probe=WindowsHardwareProbeAdapter(
+            ollama_endpoint=lambda: runtime_settings().ollama_endpoint,
+        ),
+        api_provider_name="gemini",
+        api_provider=GeminiStructuredInferenceAdapter(
+            provider_name="gemini",
+            transport=gemini_transport,
+            model=DEFAULT_GEMINI_MODEL_ID,
+            assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
+                prompt_ref, prompt_input, registry=prompt_registry
+            ),
+        ),
+        ollama_provider_factory=lambda model, settings: OllamaStructuredInferenceAdapter(
+            provider_name="ollama",
+            transport=ollama_transport,
+            endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
+            model_id=model.model_id,
+            assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
+                prompt_ref, prompt_input, registry=prompt_registry
+            ),
+        ),
+        runtime_policy=RuntimePolicy(),
+        schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
+        prompt_manifest_path=prompt_manifest_path,
+    )
+    llm_runtime = LLMRuntimeService(
+        before_provider_dispatch=account_provider_dispatch,
+        settings_service=runtime_settings,
+        status_service=structured_inference,
+        ollama_provider_factory=structured_inference.ollama_provider_factory,
+        structured_inference=structured_inference,
+        runtime_policy=RuntimePolicy(),
+        schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
+        event_recorder=EmitTraceEventHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            environment="DEVELOPMENT",
+            release_version=RELEASE_VERSION,
+            now_ms=now_ms,
+        ),
+        now_ms=now_ms,
+    )
+    return llm_runtime, settings_service, credential_service, status_service
+
+
+def _project_runtime_settings(settings: SettingsViewV1) -> AppSettings:
+    """Project the canonical persisted settings into the still-broad LLM runtime input."""
+
+    return AppSettings(
+        deployment_profile=BuildProfile.LOCAL_CAPABLE.value,
+        requested_runtime_mode=settings.preferred_llm_mode,
+        default_calendar_id=settings.default_calendar_id,
+        default_tasklist_id=settings.default_tasklist_id,
+        timezone=settings.timezone,
+        work_hours=WorkHours(
+            days=tuple(range(7)) if settings.include_weekends else (0, 1, 2, 3, 4),
+            start=settings.working_day_start_local,
+            end=settings.working_day_end_local,
+        ),
+        run_retention_days=settings.retention_days,
+        external_llm_consent=settings.external_llm_consent,
+    )
+
+
+def _write_mcp_manifest(runtime_root: Path) -> Path:
+    manifest_path = runtime_root / "mcp-manifest.json"
+    registry = load_signed_tool_registry()
+    manifest_path.write_text(
+        json.dumps(
+            build_manifest_payload_for_descriptors(
+                connector_id="google_workspace",
+                registry_manifest_hash=registry.entries_hash,
+                descriptors=tuple(registry.descriptor_expectations("google_workspace")),
+            ),
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return manifest_path.resolve()

@@ -133,11 +133,11 @@ def test_issue_147_keeps_domain_and_adapter_boundaries_singular() -> None:
 
 
 def test_issue_147_reconciliation_is_startup_only() -> None:
-    launcher = (SOURCE / "launcher/dev.py").read_text(encoding="utf-8")
+    composition = (SOURCE / "api/composition.py").read_text(encoding="utf-8")
     loop = (SOURCE / "adapters/system/workflow_handoff_reconciliation_loop.py").read_text(
         encoding="utf-8"
     )
-    assert "production_runtime.reconcile_inflight_executions," in launcher
-    assert "startup_callbacks=(\n            _reconcile_inflight_executions," in launcher
+    assert "production_runtime.reconcile_inflight_executions," in composition
+    assert "startup_callbacks=(\n            _reconcile_inflight_executions," in composition
     assert "ReconcileInflightExecutionsHandler" not in loop
     assert "reconcile_inflight_executions" not in loop

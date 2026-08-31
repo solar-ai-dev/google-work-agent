@@ -77,8 +77,8 @@ def test_resource_routes_use_injected_exact_handlers_only() -> None:
     route = _read(SRC / "api" / "routes" / "resources.py")
     dependencies = _read(SRC / "api" / "dependencies" / "resources.py")
     container = _read(SRC / "api" / "container.py")
-    launcher = _read(SRC / "launcher" / "dev.py")
-    production = route + dependencies + container + launcher
+    composition = _read(SRC / "api" / "composition.py")
+    production = route + dependencies + container + composition
 
     assert "resource_query_service" not in production
     assert "ListResourcesHandler(" not in route
@@ -93,7 +93,7 @@ def test_resource_routes_use_injected_exact_handlers_only() -> None:
     ):
         assert field in dependencies
         assert field in container
-        assert field in launcher
+        assert field in composition
 
 
 def test_resource_support_has_no_legacy_query_facade() -> None:

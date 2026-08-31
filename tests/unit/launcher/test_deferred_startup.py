@@ -18,12 +18,9 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.app import create_app
+from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.launcher.dev import (
-    CoreInitializationError,
-    _DeferredApiContainer,
-    build_container,
-)
+from google_work_agent.launcher.dev import build_container
 
 
 @pytest.mark.parametrize(
@@ -218,8 +215,8 @@ def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_o
     ]
 
 
-def _shell(*, core_builder: Callable[..., ApiContainer]) -> _DeferredApiContainer:
-    container = _DeferredApiContainer(
+def _shell(*, core_builder: Callable[..., ApiContainer]) -> DeferredApiContainer:
+    container = DeferredApiContainer(
         host="127.0.0.1",
         port=8000,
         service_instance_id="svc-startup",

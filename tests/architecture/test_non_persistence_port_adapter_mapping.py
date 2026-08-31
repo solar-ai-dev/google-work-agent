@@ -301,17 +301,20 @@ def test_legacy_concrete_import_and_construction_are_absent_from_production(
 
 
 def test_production_callers_import_the_canonical_concrete_owners() -> None:
-    launcher = _source("launcher/dev.py")
+    composition = _source("api/composition.py")
     connector = _source("adapters/connectors/google/workspace/composition.py")
     assert "adapters.connectors.runtime.mcp_oauth_credential import (" in connector
     assert "McpOAuthCredentialAdapter," in connector
-    assert "adapters.llm.runtime.structured_inference_router import" in launcher
-    assert "adapters.llm.runtime.llm_credential_router import (" in launcher
-    assert "LlmCredentialRouter," in launcher
+    assert "adapters.llm.runtime.structured_inference_router import" in composition
+    assert "adapters.llm.runtime.llm_credential_router import (" in composition
+    assert "LlmCredentialRouter," in composition
     assert (
-        "adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter" in launcher
+        "adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter"
+        in composition
     )
-    assert "adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter" in launcher
+    assert (
+        "adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter" in composition
+    )
 
 
 def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:

@@ -119,20 +119,20 @@ def test_prompt_registry_and_assembler_have_one_production_authority() -> None:
 
 
 def test_production_provider_dispatch_uses_the_canonical_prompt_assembler() -> None:
-    launcher = (SOURCE_ROOT / "launcher/dev.py").read_text(encoding="utf-8")
+    composition = (SOURCE_ROOT / "api/composition.py").read_text(encoding="utf-8")
     gemini = (SOURCE_ROOT / "adapters/llm/gemini/structured_inference.py").read_text(
         encoding="utf-8"
     )
     ollama = (SOURCE_ROOT / "adapters/llm/ollama/transport.py").read_text(encoding="utf-8")
 
-    assert launcher.count("assemble_instruction_text=lambda prompt_ref, prompt_input") == 2
+    assert composition.count("assemble_instruction_text=lambda prompt_ref, prompt_input") == 2
     assert (
-        launcher.count(
+        composition.count(
             "assemble_prompt(\n                prompt_ref, prompt_input, registry=prompt_registry"
         )
         == 2
     )
-    assert "resolve_instruction_text" not in launcher
+    assert "resolve_instruction_text" not in composition
     for provider_source in (gemini, ollama):
         assert "self.assemble_instruction_text(prompt_ref, prompt_input)" in provider_source
         assert "resolve_instruction_text" not in provider_source

@@ -30,7 +30,7 @@ def test_local_coordinator_has_no_start_or_open_run_recovery_authority() -> None
 
 
 def test_launcher_never_reduces_admission_to_coordinator_start() -> None:
-    source = (ROOT / "launcher/dev.py").read_text(encoding="utf-8")
+    source = (ROOT / "api/composition.py").read_text(encoding="utf-8")
 
     assert "coordinator.enqueue_start" not in source
     assert "materialize_admission_checkpoint=_materialize_admission_checkpoint" in source
@@ -60,13 +60,13 @@ def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
     unit_of_work = (ROOT / "adapters/persistence/sqlite/unit_of_work.py").read_text(
         encoding="utf-8"
     )
-    launcher = (ROOT / "launcher/dev.py").read_text(encoding="utf-8")
+    composition = (ROOT / "api/composition.py").read_text(encoding="utf-8")
 
     assert "unit_of_work.workflow_bindings.create_workflow_binding(" in start_run
     assert "unit_of_work.checkpoints" not in start_run
     assert "SqliteCheckpointAdapter.for_transaction(" in unit_of_work
-    assert 'root / "langgraph-checkpoints.sqlite3"' not in launcher
-    assert "checkpoint = SqliteCheckpointAdapter(" in launcher
+    assert 'root / "langgraph-checkpoints.sqlite3"' not in composition
+    assert "checkpoint = SqliteCheckpointAdapter(" in composition
 
 
 def test_retry_and_stale_preflight_use_durable_review_handoff_authority() -> None:

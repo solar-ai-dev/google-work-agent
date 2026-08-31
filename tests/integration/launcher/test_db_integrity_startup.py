@@ -7,6 +7,8 @@ import pytest
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationIntegrityError
+from google_work_agent.api import composition
+from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
 from google_work_agent.launcher import dev
 from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
 from google_work_agent.ports.system.readiness_port import ReadinessState
@@ -19,9 +21,9 @@ def test_build_container_classifies_migration_integrity_failure(
     def fail_integrity(*args: Any, **kwargs: Any) -> None:
         raise MigrationIntegrityError("startup sqlite quick_check failed")
 
-    monkeypatch.setattr(dev, "apply_migrations", fail_integrity)
+    monkeypatch.setattr(composition, "apply_migrations", fail_integrity)
 
-    with pytest.raises(dev.CoreInitializationError) as exc_info:
+    with pytest.raises(CoreInitializationError) as exc_info:
         dev.build_container(runtime_root=tmp_path)
 
     assert exc_info.value.safe_code == "MIGRATION_FAILED"
@@ -29,9 +31,9 @@ def test_build_container_classifies_migration_integrity_failure(
 
 def test_migration_failure_enters_safe_mode_and_blocks_writes() -> None:
     def fail_core(**kwargs: Any) -> Any:
-        raise dev.CoreInitializationError("MIGRATION_FAILED")
+        raise CoreInitializationError("MIGRATION_FAILED")
 
-    shell = dev._DeferredApiContainer(
+    shell = DeferredApiContainer(
         host=dev.DEFAULT_HOST,
         port=dev.DEFAULT_PORT,
         service_instance_id="test-service",
