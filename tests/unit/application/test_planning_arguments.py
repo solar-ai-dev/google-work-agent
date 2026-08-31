@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import pytest
-
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    OutputToolRouteV1,
-)
-from google_work_agent.application.orchestration.planning_arguments import (
+from evaluation.compat.planning_arguments import (
     DefaultContainerResolver,
     PlanningArgumentBindingError,
     validate_tool_argument_candidate_v1,
+)
+
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
 )
 
 

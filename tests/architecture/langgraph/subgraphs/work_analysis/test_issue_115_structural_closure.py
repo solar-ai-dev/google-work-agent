@@ -51,7 +51,9 @@ def test_owner_contract_has_one_definition_and_legacy_projection_only_reexports(
     contracts = (
         SRC / "application/agents/work_analysis/contracts/work_analysis_result.py"
     ).read_text(encoding="utf-8")
-    projection = (SRC / "application/orchestration/state_artifacts.py").read_text(encoding="utf-8")
+    projection = (SRC / "application/agents/planning/contracts/answer_draft.py").read_text(
+        encoding="utf-8"
+    )
     for symbol in ("WorkFactV1", "WorkRelationV1", "WorkAmbiguityV1"):
         assert contracts.count(f"class {symbol}") == 1
         assert f"class {symbol}" not in projection

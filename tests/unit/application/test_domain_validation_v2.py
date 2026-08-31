@@ -4,7 +4,7 @@ from inspect import Parameter, signature
 
 import pytest
 
-from google_work_agent.application.orchestration.domain_output_validation import (
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     CanonicalDomainValidationService,
     PolicyOverrideProvenanceDependency,
     build_domain_validation_output_from_v2,

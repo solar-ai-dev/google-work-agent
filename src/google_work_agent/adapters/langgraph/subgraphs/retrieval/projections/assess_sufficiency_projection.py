@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TypedDict, cast
 
-from google_work_agent.application.orchestration.handoff_contracts import (
-    EvidenceSelectionResultV2,
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceSelectionResultV2,
 )
 
 

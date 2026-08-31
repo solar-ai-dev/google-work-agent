@@ -199,9 +199,7 @@ class ReconcileInflightExecutionsHandler:
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(candidate.action_id)
             attempt = unit_of_work.execution_attempts.get(candidate.execution_attempt_id)
-            approval = (
-                None if attempt is None else unit_of_work.approval_history.get(attempt.approval_id)
-            )
+            approval = None if attempt is None else unit_of_work.approvals.get(attempt.approval_id)
             resource_ref = (
                 None
                 if action is None or action.target_resource_ref_id is None

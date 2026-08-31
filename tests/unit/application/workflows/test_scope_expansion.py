@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
-from google_work_agent.application.orchestration.scope_expansion import (
+from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
     ScopeExpansionResolver,
     build_policy_confirmation_receipt,
 )

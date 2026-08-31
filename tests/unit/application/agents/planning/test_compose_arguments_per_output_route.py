@@ -5,12 +5,12 @@ import pytest
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     compose_arguments_per_output_route,
 )
+from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
+    planning_tool_argument_schema,
+)
 from google_work_agent.application.agents.planning.resolve_default_container import (
     PlanningArgumentBindingError,
     resolve_default_container,
-)
-from google_work_agent.application.orchestration.planning_tool_schemas import (
-    planning_tool_argument_schema,
 )
 
 ROUTE = {

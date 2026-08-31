@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from google_work_agent.application.orchestration.planning_argument_writer import (
+from evaluation.compat.planning_argument_writer import (
     PlanningArgumentWriter,
 )
-from google_work_agent.application.orchestration.planning_arguments import DefaultContainerResolver
-from google_work_agent.application.orchestration.planning_tool_schemas import (
+from evaluation.compat.planning_arguments import DefaultContainerResolver
+
+from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
     planning_tool_argument_schema,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget

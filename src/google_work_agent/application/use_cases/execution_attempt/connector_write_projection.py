@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
     DispatchConnectorWriteCommandV1,
     DispatchConnectorWriteHandler,
@@ -14,6 +11,9 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
     PreparedWriteDispatch,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 from google_work_agent.ports.connector.contracts.google_workspace import (

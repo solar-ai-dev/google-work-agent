@@ -14,6 +14,28 @@ class SqliteCommandReceiptRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    def has_durable_cancel_intent(self, run_id: str) -> bool:
+        return (
+            self._connection.execute(
+                """SELECT 1
+                   FROM command_receipts
+                   WHERE command_type=?
+                     AND aggregate_type=?
+                     AND aggregate_id=?
+                     AND status=?
+                     AND result_code=?
+                   LIMIT 1;""",
+                (
+                    _REQUEST_CANCEL_COMMAND_TYPE,
+                    _RUN_AGGREGATE_TYPE,
+                    run_id,
+                    CommandReceiptStatus.APPLIED.value,
+                    ResultCode.TRANSITION_APPLIED.value,
+                ),
+            ).fetchone()
+            is not None
+        )
+
     def get_by_command_id(self, command_id: str) -> CommandReceiptRecord | None:
         r = self._connection.execute(
             """SELECT command_id, command_type, request_hash, aggregate_type,

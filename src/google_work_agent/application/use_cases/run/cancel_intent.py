@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
+from google_work_agent.ports.persistence.command_receipt_repository import (
+    CommandReceiptRepository,
+)
 
 REQUEST_CANCEL_COMMAND_TYPE = "RequestRunCancellation"
 RUN_AGGREGATE_TYPE = "Run"
@@ -35,6 +37,6 @@ def is_applied_request_cancel_receipt(
     )
 
 
-def has_durable_cancel_intent(reader: CancelIntentReader, run_id: str) -> bool:
-    """Read durable cancel intent through the owner-correct receipt projection."""
-    return reader.has_durable_intent(run_id)
+def has_durable_cancel_intent(repository: CommandReceiptRepository, run_id: str) -> bool:
+    """Read durable cancel intent from its command-receipt authority."""
+    return repository.has_durable_cancel_intent(run_id)

@@ -10,7 +10,9 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RetrievalNeedV1
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RetrievalNeedV1,
+)
 
 WorkRelationCandidateV1 = WorkRelationV1
 

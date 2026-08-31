@@ -10,17 +10,19 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ToolRoutePlanV2,
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
     ContextStatusValue,
     EvidenceRoleDraftV2,
     EvidenceSelectionResultV2,
-    RequestIntentV2,
     SufficiencyIssueV2,
     SufficiencyResultV2,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,

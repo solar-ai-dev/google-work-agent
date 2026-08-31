@@ -5,6 +5,14 @@ from __future__ import annotations
 from collections.abc import Collection
 from typing import Literal, cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+    EvidenceRoleDraftV2,
+    EvidenceSelectionResultV2,
+)
 from google_work_agent.application.agents.retrieval.normalize_segments import (
     DEFAULT_CONTEXT_BUDGET,
     ContextBudget,
@@ -12,12 +20,8 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     _truncate,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
-from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
-from google_work_agent.application.orchestration.handoff_contracts import (
-    EvidenceDraftV1,
-    EvidenceRoleDraftV2,
-    EvidenceSelectionResultV2,
-    RequestIntentV2,
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,

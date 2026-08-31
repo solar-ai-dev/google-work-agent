@@ -3,12 +3,7 @@
 
 from __future__ import annotations
 
-from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
-    ConstraintV1,
-    RequestIntentV2,
-)
-from google_work_agent.application.orchestration.context_segmentation import _SourceSegment
-from google_work_agent.application.orchestration.retrieval_ranking import (
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.rag_candidate_projection import (  # noqa: E501
     EXACT_RESOURCE_REASON,
     KEYWORD_MATCH_REASON,
     RELATED_RESOURCE_REASON,
@@ -16,6 +11,11 @@ from google_work_agent.application.orchestration.retrieval_ranking import (
     RagScoringConfig,
     rank_segments,
 )
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    ConstraintV1,
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import _SourceSegment
 
 
 def _segment(

@@ -17,10 +17,7 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.graph import (
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
     build_tool_routing_subgraph,
 )
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
@@ -28,6 +25,9 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
     StructuredLLMRuntime,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 
 

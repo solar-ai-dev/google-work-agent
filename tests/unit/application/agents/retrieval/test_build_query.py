@@ -4,10 +4,10 @@ from google_work_agent.application.agents.retrieval.build_query import (
     RouteConstraintPolicy,
     build_query,
 )
+from google_work_agent.application.agents.retrieval.contracts.query_plan import RetrievalQueryPlanV2
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.retrieval_v2_contracts import RetrievalQueryPlanV2
 
 
 def test_build_query_preserves_exact_frozen_resource_type() -> None:

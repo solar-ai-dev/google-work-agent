@@ -17,7 +17,7 @@ from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
     provider_dispatch_execution_scope,
 )

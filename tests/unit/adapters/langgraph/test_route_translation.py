@@ -5,6 +5,7 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     GraphRouteTranslator,
     UnroutableSupervisorTargetError,
 )
+from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.registry.node_registry import (
     RUNTIME_NODE_OWNERS,
@@ -13,7 +14,6 @@ from google_work_agent.adapters.langgraph.registry.node_registry import (
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
-from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 
 
 @pytest.mark.parametrize(

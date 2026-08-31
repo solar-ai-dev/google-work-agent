@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from google_work_agent.application.agents.retrieval.finalize_retrieval import finalize_retrieval
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ToolRoutePlanV2,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
     EvidenceDraftV1,
     RetrievalResultV1,
+)
+from google_work_agent.application.agents.retrieval.finalize_retrieval import finalize_retrieval
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
 )
 
 from ..projections.finalize_retrieval_projection import (

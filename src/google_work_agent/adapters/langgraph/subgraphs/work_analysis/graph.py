@@ -16,11 +16,20 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.adapters.langgraph.main.state import (
     ANALYSIS_AGENT_LOCAL_KEY,
+    GraphStateUpdateV1,
     ParentGraphState,
+    WorkflowPhase,
     _require_state_value,
     request_from_state,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
@@ -75,32 +84,22 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_validate_relations import (
     route_after_validate_relations,
 )
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+)
 from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
     required_override_confirmation_kind,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     StateArtifactRefV1,
     WorkAnalysisResultV2,
-)
-from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ClarificationQuestionV1,
-    EvidenceDraftV1,
-    RetrievalRequiredV1,
-    RouteReconsiderationRequiredV1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    RunScopedEvidenceStore,
-    resolve_evidence_projection,
-)
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -113,7 +112,14 @@ from google_work_agent.application.use_cases.run.policy_confirmation_receipt imp
     PolicyConfirmationReceiptV1,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RetrievalRequiredV1,
+    RouteReconsiderationRequiredV1,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]

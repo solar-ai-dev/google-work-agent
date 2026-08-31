@@ -8,7 +8,9 @@ from google_work_agent.adapters.langgraph.main.plan_persistence import (
     target_resource_connector_ids_from_actions,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+)
 
 
 def _plan() -> ActionPlanDraftV1:

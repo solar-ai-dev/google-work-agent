@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     InformationGapAssessmentV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )

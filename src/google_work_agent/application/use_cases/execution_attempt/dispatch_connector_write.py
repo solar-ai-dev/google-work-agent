@@ -95,7 +95,7 @@ class DispatchConnectorWriteHandler:
         with self._unit_of_work_factory() as unit_of_work:
             attempt = unit_of_work.execution_attempts.get(command.execution_attempt_id)
             action = unit_of_work.actions.get(command.action_id)
-            approval = unit_of_work.approval_history.get(command.approval_id)
+            approval = unit_of_work.approvals.get(command.approval_id)
             if attempt is None or action is None or approval is None:
                 raise PermissionError("claim persistence binding is missing")
             plan = load_plan_record(unit_of_work.plans, action.plan_id)

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from google_work_agent.application.agents.retrieval.assess_sufficiency import assess_sufficiency
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ToolRoutePlanV2,
-)
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
     EvidenceDraftV1,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
@@ -18,6 +15,9 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 from ..projections.assess_sufficiency_projection import (

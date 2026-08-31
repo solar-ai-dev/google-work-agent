@@ -9,7 +9,7 @@ from langgraph.types import Command
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     provider_dispatch_execution_scope,
 )
 from google_work_agent.domain.run.model import RunStatusV1

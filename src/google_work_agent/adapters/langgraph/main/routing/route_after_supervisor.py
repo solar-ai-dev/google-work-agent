@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.orchestration.supervisor import SupervisorTarget
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
 RESPONSE_SYNTHESIS_TARGET = "RESPONSE_SYNTHESIS"

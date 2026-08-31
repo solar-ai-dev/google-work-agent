@@ -15,10 +15,22 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
-from google_work_agent.adapters.langgraph.main.state import MultiAgentGraphStateV2
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    MultiAgentGraphStateV2,
+    WorkflowPhase,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
@@ -39,6 +51,9 @@ from google_work_agent.adapters.langgraph.subgraphs.review.nodes.inspect_goal_an
 from google_work_agent.adapters.langgraph.subgraphs.review.nodes.recheck_affected_dimensions_node import (
     recheck_affected_dimensions_node,
 )
+from google_work_agent.adapters.langgraph.subgraphs.review.projections.project_review_signals_projection import (
+    project_review_workflow_signal_v2,
+)
 from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_aggregate_review_findings import (
     route_after_aggregate_review_findings,
 )
@@ -58,6 +73,16 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_r
     route_after_recheck_affected_dimensions,
 )
 from google_work_agent.adapters.langgraph.subgraphs.review.state import ReviewState
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
+from google_work_agent.application.agents.planning.contracts.answer_draft import (
+    WorkAnalysisResultV2,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (
+    ClarificationQuestionV1,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
     StateArtifactRefV1,
@@ -77,26 +102,6 @@ from google_work_agent.application.agents.review.inspect_constraints_and_policy_
 from google_work_agent.application.agents.review.inspect_goal_and_evidence import (
     REVIEW_INSPECT_GOAL_AND_EVIDENCE_OUTPUT_SCHEMA,
 )
-from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    MultiAgentGraphState,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import ClarificationQuestionV1
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    RunScopedEvidenceStore,
-    resolve_evidence_projection,
-)
-from google_work_agent.application.orchestration.review_v2_signals import (
-    project_review_workflow_signal_v2,
-)
-from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    route_supervisor,
-)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
@@ -105,6 +110,9 @@ from google_work_agent.application.use_cases.llm.structured_inference_runtime im
     StructuredLLMRuntime,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference, StructuredLLMResult
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

@@ -71,5 +71,5 @@ def test_cancel_intent_has_one_receipt_backed_runtime_seam() -> None:
         )
     assert definitions == [("artifact_freshness.py", "_has_persisted_cancel_intent")]
     authority = (runtime_root / "artifact_freshness.py").read_text(encoding="utf-8")
-    assert "unit_of_work.cancel_intents" in authority
+    assert "unit_of_work.command_receipts" in authority
     assert "unit_of_work.audits" not in authority

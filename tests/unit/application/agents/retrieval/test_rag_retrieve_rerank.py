@@ -1,8 +1,10 @@
 from typing import cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.normalize_segments import SourceSegment
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import rag_retrieve_rerank
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 def test_rag_ranking_is_deterministic_and_prompt_free() -> None:

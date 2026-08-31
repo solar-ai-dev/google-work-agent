@@ -8,10 +8,12 @@ from tests.support.canonical_prompt_runtime import (
     copy_prompt_runtime_artifacts,
 )
 
-from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
 from google_work_agent.application.prompt_runtime.assemble_prompt import (
     PromptAssemblyError,
     assemble_prompt,
+)
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
 

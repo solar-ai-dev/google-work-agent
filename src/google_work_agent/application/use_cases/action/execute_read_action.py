@@ -5,9 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps, loads
 
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
 from google_work_agent.application.use_cases.action.read_contracts import (
     CompletedEvidence,
     CompletedResourceRef,
@@ -17,6 +14,9 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     require_action,
     require_plan,
     require_run,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
     minimal_resource_metadata,

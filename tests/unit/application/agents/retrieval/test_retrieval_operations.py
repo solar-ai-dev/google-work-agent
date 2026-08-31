@@ -4,10 +4,20 @@ from typing import cast
 
 import pytest
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.build_query import (
     QueryUnchangedAfterFailureError,
     RouteConstraintPolicy,
     build_query,
+)
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    RetrievalQueryPlanV2,
+    SourceFetchPlanV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
 )
 from google_work_agent.application.agents.retrieval.normalize_segments import (
     ContextBudget,
@@ -20,14 +30,6 @@ from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    RequestIntentV2,
-)
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    RetrievalQueryPlanV2,
-    SourceFetchPlanV1,
 )
 
 

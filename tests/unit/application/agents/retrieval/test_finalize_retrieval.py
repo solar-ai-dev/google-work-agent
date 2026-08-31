@@ -8,10 +8,12 @@ from tests.unit.application.workflows.test_context_retrieval import (
     _tool_route_plan,
 )
 
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    RetrievalResultV1,
+)
 from google_work_agent.application.agents.retrieval.finalize_retrieval import (
     finalize_retrieval,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RetrievalResultV1
 
 
 def test_finalize_retrieval_preserves_full_contract_and_revision_lineage() -> None:

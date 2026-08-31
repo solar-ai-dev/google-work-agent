@@ -164,7 +164,7 @@ class RequireReauthHandler:
                         for attempt in attempts
                     ),
                     cancel_intent_active=has_durable_cancel_intent(
-                        unit_of_work.cancel_intents, run.id
+                        unit_of_work.command_receipts, run.id
                     ),
                 )
             except RunTransitionRejected as error:

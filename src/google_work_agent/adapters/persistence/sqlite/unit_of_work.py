@@ -7,11 +7,8 @@ from pathlib import Path
 from typing import cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.adapters.persistence.sqlite.approval_history_reader import (
-    SqliteApprovalHistoryReader,
-)
-from google_work_agent.adapters.persistence.sqlite.cancel_intent_reader import (
-    SqliteCancelIntentReader,
+from google_work_agent.adapters.persistence.sqlite.initial_workflow_binding_writer import (
+    SqliteInitialWorkflowBindingWriter,
 )
 from google_work_agent.adapters.persistence.sqlite.post_commit_trace_repository import (
     PostCommitTraceEventRepository,
@@ -61,7 +58,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.verification_rep
 from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff_repository import (
     SqliteWorkflowHandoffRepository,
 )
-from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -93,13 +89,11 @@ class SqliteUnitOfWork:
         self.runs = SqliteRunRepository(connection)
         self.messages = SqliteMessageRepository(connection)
         self.command_receipts = SqliteCommandReceiptRepository(connection)
-        self.cancel_intents = SqliteCancelIntentReader(connection)
         self.plans = SqlitePlanRepository(connection)
         self.actions = SqliteActionRepository(connection)
         self.resource_refs = SqliteResourceRefRepository(connection)
         self.evidence = SqliteEvidenceRepository(connection)
         self.approvals = SqliteApprovalRepository(connection)
-        self.approval_history = SqliteApprovalHistoryReader(connection)
         self.execution_attempts = SqliteExecutionAttemptRepository(connection)
         self.verifications = SqliteVerificationRepository(connection)
         self.audits = SqliteAuditEventRepository(connection)
@@ -107,11 +101,7 @@ class SqliteUnitOfWork:
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
         self.recovery_contexts = SqliteRecoveryRepository(connection, now_ms=self._now_ms)
         self.retention = SqliteRetentionRepository(connection)
-        self.workflow_bindings = (
-            SqliteCheckpointAdapter.for_read_transaction(connection, now_ms=self._now_ms)
-            if self._read_only
-            else SqliteCheckpointAdapter.for_transaction(connection, now_ms=self._now_ms)
-        )
+        self.workflow_bindings = SqliteInitialWorkflowBindingWriter(connection)
         return self
 
     def commit(self) -> None:

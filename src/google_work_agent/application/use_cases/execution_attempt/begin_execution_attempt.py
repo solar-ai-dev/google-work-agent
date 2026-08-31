@@ -150,7 +150,7 @@ class BeginExecutionAttemptHandler:
         if not plans:
             raise PermissionError("claim owner Run has no published Plan")
         current_plan = max(plans, key=lambda candidate: candidate.revision_no)
-        cancel_intent = has_durable_cancel_intent(unit_of_work.cancel_intents, run.id)
+        cancel_intent = has_durable_cancel_intent(unit_of_work.command_receipts, run.id)
         if cancel_intent or run.status is RunStatusV1.CANCEL_REQUESTED:
             raise PermissionError("cancellation forbids connector Write dispatch")
         if (

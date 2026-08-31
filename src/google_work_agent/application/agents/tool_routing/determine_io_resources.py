@@ -17,13 +17,8 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
 from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
-from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    legacy_post_call_projection,
-    provider_dispatch_budget_scope,
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -32,6 +27,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
+    legacy_post_call_projection,
+    provider_dispatch_budget_scope,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
@@ -43,6 +42,9 @@ from google_work_agent.domain.action.model import EffectType
 from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
 )
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest

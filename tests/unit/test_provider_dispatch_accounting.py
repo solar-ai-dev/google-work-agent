@@ -4,10 +4,10 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
+from google_work_agent.application.prompt_runtime.dispatch_guarded_prompt import (
     PromptInputGuardedProvider,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     current_provider_dispatch_budget,
     legacy_post_call_projection,
     provider_dispatch_budget_scope,

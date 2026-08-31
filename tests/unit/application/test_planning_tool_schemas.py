@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.agents.planning.resolve_default_container import (
-    PlanningArgumentBindingError,
-)
-from google_work_agent.application.orchestration.planning_tool_schemas import (
+from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
     planning_tool_argument_schema,
     planning_write_tool_ids,
+)
+from google_work_agent.application.agents.planning.resolve_default_container import (
+    PlanningArgumentBindingError,
 )
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,

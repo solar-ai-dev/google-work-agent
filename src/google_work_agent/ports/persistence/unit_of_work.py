@@ -4,10 +4,8 @@ from contextlib import AbstractContextManager
 from typing import Protocol
 
 from google_work_agent.ports.persistence.action_repository import ActionRepository
-from google_work_agent.ports.persistence.approval_history_reader import ApprovalHistoryReader
 from google_work_agent.ports.persistence.approval_repository import ApprovalRepository
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventRepository
-from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
 from google_work_agent.ports.persistence.command_receipt_repository import CommandReceiptRepository
 from google_work_agent.ports.persistence.conversation_repository import ConversationRepository
 from google_work_agent.ports.persistence.evidence_repository import EvidenceRepository
@@ -33,13 +31,11 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"], Protocol):
     runs: RunRepository
     messages: MessageRepository
     command_receipts: CommandReceiptRepository
-    cancel_intents: CancelIntentReader
     plans: PlanRepository
     actions: ActionRepository
     resource_refs: ResourceRefRepository
     evidence: EvidenceRepository
     approvals: ApprovalRepository
-    approval_history: ApprovalHistoryReader
     execution_attempts: ExecutionAttemptRepository
     verifications: VerificationRepository
     audits: AuditEventRepository

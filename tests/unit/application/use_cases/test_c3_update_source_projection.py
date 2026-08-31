@@ -34,7 +34,7 @@ class _Uow:
         self.actions = _ByIdRepo({action.id: action})
         self.execution_attempts = _ByIdRepo({attempt.id: attempt})
         self.approvals = _ByIdRepo({approval.id: approval})
-        self.approval_history = self.approvals
+        self.approvals = self.approvals
         self.resource_refs = _ByIdRepo({})
 
     def __enter__(self) -> _Uow:

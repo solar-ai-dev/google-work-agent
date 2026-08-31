@@ -29,6 +29,9 @@ class _Receipts:
     def store_result(self, **_kwargs: object) -> None:
         self.finished += 1
 
+    def has_durable_cancel_intent(self, _run_id: str) -> bool:
+        return False
+
 
 class _Runs:
     def __init__(self, run: RunRecord) -> None:
@@ -63,11 +66,6 @@ class _Actions:
         return (self.action,)
 
 
-class _CancelIntents:
-    def has_durable_intent(self, _run_id: str) -> bool:
-        return False
-
-
 class _EmptyHistory:
     def list_for_action(self, _action_id: str) -> tuple[object, ...]:
         return ()
@@ -84,8 +82,7 @@ class _Conversations:
 class _Uow:
     def __init__(self) -> None:
         self.command_receipts = _Receipts()
-        self.cancel_intents = _CancelIntents()
-        self.approval_history = _EmptyHistory()
+        self.approvals = _EmptyHistory()
         self.runs = _Runs(
             RunRecord(
                 id="run-1",

@@ -36,8 +36,7 @@ def test_retrieval_result_is_the_only_main_retrieval_business_artifact() -> None
         LANGGRAPH / "main/state.py",
         LANGGRAPH / "main/response_synthesis.py",
         LANGGRAPH / "subgraph_state.py",
-        SRC / "application/orchestration/contracts.py",
-        SRC / "application/orchestration/supervisor.py",
+        LANGGRAPH / "main/supervisor.py",
         SRC / "application/use_cases/run/run_terminal.py",
     )
     for path in live_boundary_files:

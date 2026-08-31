@@ -128,12 +128,6 @@ from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    account_provider_dispatch,
-)
 from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
@@ -240,6 +234,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
 )
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess,
 )
@@ -267,6 +264,9 @@ from google_work_agent.application.use_cases.resource.opaque_continuation_access
 )
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
+)
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
+    account_provider_dispatch,
 )
 from google_work_agent.application.use_cases.run.adjust_context import AdjustContextHandler
 from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningHandler

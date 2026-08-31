@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import pytest
-
-from google_work_agent.application.orchestration.assemble_planning_answer import (
+from evaluation.compat.assemble_planning_answer import (
     PlanningAnswerV2ValidationError,
     materialize_answer_draft_v2,
     validate_answer_draft_candidate_v2,

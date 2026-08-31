@@ -8,8 +8,10 @@ from tests.support.legacy_prompt_input_contract import (
     PromptRuntimeInputContractValidator,
 )
 
-from google_work_agent.application.orchestration.failure_record import build_failure_record_v1
-from google_work_agent.application.orchestration.prompt_input_guarded_provider import (
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
+)
+from google_work_agent.application.prompt_runtime.dispatch_guarded_prompt import (
     PromptInputGuardedProvider,
 )
 from google_work_agent.ports.llm import (

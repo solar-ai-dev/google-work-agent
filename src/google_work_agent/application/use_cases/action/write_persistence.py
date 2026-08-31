@@ -256,7 +256,7 @@ def has_unresolved_unknown_result(unit_of_work: UnitOfWork, plan_id: str) -> boo
     """Read the current Plan's durable Approval/Attempt lineage without a second repository."""
 
     for action in unit_of_work.actions.list_for_plan(plan_id):
-        for approval in unit_of_work.approval_history.list_for_action(action.id):
+        for approval in unit_of_work.approvals.list_for_action(action.id):
             attempt = unit_of_work.execution_attempts.get_active_for_approval(approval.id)
             if attempt is not None and attempt.status is ExecutionAttemptStatusV1.UNKNOWN_RESULT:
                 return True
@@ -278,7 +278,7 @@ def require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
 
 
 def require_approval(unit_of_work: UnitOfWork, approval_id: str) -> ApprovalRecord:
-    approval = unit_of_work.approval_history.get(approval_id)
+    approval = unit_of_work.approvals.get(approval_id)
     if approval is None:
         raise LookupError(f"approval not found: {approval_id}")
     return approval

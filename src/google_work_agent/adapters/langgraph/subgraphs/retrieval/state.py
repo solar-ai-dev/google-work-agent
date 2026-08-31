@@ -5,24 +5,26 @@ from __future__ import annotations
 from typing import TypedDict
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
     StateArtifactRefV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    RetrievalQueryPlanV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceSelectionResultV2,
+    RetrievalResultV1,
+    RetrievalSourceStatusV1,
+    SufficiencyResultV2,
+)
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    EvidenceSelectionResultV2,
-    RequestIntentV2,
+from google_work_agent.ports.system.contracts.workflow_signal import (
     RetrievalNeedV1,
-    RetrievalResultV1,
-    RetrievalSourceStatusV1,
-    SufficiencyResultV2,
-)
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    RetrievalQueryPlanV2,
 )
 
 

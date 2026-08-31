@@ -63,8 +63,10 @@ from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionPlanDraftV1,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
 from google_work_agent.application.use_cases.action.approve_action import ApproveActionHandler

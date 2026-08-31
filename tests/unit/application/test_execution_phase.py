@@ -103,7 +103,7 @@ class _UnitOfWork:
             version=1,
         )
         self.actions = _Repository({"action-1": action})
-        self.approval_history = _Repository({"approval-1": approval})
+        self.approvals = _Repository({"approval-1": approval})
         self.execution_attempts = _Repository({"attempt-1": attempt})
         self.resource_refs = _Repository({})
         self.runs = _Repository(

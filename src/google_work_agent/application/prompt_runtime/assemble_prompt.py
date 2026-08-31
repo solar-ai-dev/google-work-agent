@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from google_work_agent.application.orchestration.failure_record import (
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     FailureRecordValidationError,
     validate_failure_record_v1,
 )

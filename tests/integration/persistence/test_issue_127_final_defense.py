@@ -175,7 +175,7 @@ def test_populated_0014_upgrade_preserves_verification_and_all_defenses(
 
         results = apply_migrations(connection, now_ms=lambda: 2)
 
-        assert [result.applied for result in results] == [False] * 14 + [True, True, True]
+        assert [result.applied for result in results] == [False] * 14 + [True] * 4
         assert tuple(connection.execute("SELECT id, status FROM verifications;").fetchone()) == (
             "verification-verified",
             "VERIFIED",

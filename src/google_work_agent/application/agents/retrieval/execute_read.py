@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.agents.retrieval.contracts.query_plan import SourceFetchPlanV1
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
-from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
 from google_work_agent.ports.system.run_retrieval_cache_port import (

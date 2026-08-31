@@ -27,8 +27,63 @@ def _definitions(symbol: str) -> list[Path]:
     return owners
 
 
+def _import_modules(path: Path) -> set[str]:
+    modules: set[str] = set()
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            modules.add(node.module)
+        elif isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+    return modules
+
+
 def test_application_root_contains_no_semantic_production_authority() -> None:
     assert sorted(path.name for path in APPLICATION.glob("*.py")) == ["__init__.py"]
+
+
+def test_application_orchestration_has_zero_recursive_production_authority() -> None:
+    assert not (APPLICATION / "orchestration").exists()
+    forbidden_prefix = "google_work_agent.application.orchestration"
+    importers = [
+        path.relative_to(ROOT).as_posix()
+        for path in _production_sources()
+        if any(
+            module == forbidden_prefix or module.startswith(f"{forbidden_prefix}.")
+            for module in _import_modules(path)
+        )
+    ]
+    assert importers == []
+
+
+def test_broad_contract_and_handoff_authorities_are_absent_from_production() -> None:
+    forbidden_names = {"agent_workflow.py", "agent_handoff.py", "contracts.py"}
+    assert [
+        path.relative_to(ROOT).as_posix()
+        for path in _production_sources()
+        if path.name in forbidden_names
+    ] == []
+
+
+def test_issue_173_moved_authorities_have_exact_owner_and_live_callers() -> None:
+    exact_owners = {
+        "route_supervisor": SRC / "adapters/langgraph/main/supervisor.py",
+        "RunScopedEvidenceStore": (SRC / "adapters/system/memory/retrieval_evidence_store.py"),
+        "account_provider_dispatch": (
+            SRC / "application/use_cases/run/account_provider_dispatch.py"
+        ),
+        "project_action_plan_v2_for_persistence": (
+            SRC / "application/use_cases/plan/project_planning_output.py"
+        ),
+    }
+    for symbol, owner in exact_owners.items():
+        assert _definitions(symbol) == [owner]
+        callers = [
+            path.relative_to(ROOT).as_posix()
+            for path in _production_sources()
+            if path != owner and symbol in path.read_text(encoding="utf-8")
+        ]
+        assert callers, f"{symbol}: no production caller"
 
 
 def test_retired_parallel_authorities_and_packages_are_absent() -> None:
@@ -109,8 +164,10 @@ def test_boundary_registries_have_one_production_definition_each() -> None:
 
 
 def test_supporting_readers_are_narrow_and_query_service_is_not_reintroduced() -> None:
-    assert (SRC / "adapters/persistence/sqlite/cancel_intent_reader.py").exists()
-    assert (SRC / "adapters/persistence/sqlite/approval_history_reader.py").exists()
+    assert not (SRC / "adapters/persistence/sqlite/cancel_intent_reader.py").exists()
+    assert not (SRC / "adapters/persistence/sqlite/approval_history_reader.py").exists()
+    assert not (SRC / "ports/persistence/cancel_intent_reader.py").exists()
+    assert not (SRC / "ports/persistence/approval_history_reader.py").exists()
     assert (SRC / "adapters/persistence/sqlite/connected_account_store.py").exists()
 
 

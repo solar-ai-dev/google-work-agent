@@ -5,6 +5,20 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import pytest
+from evaluation.compat.planning_argument_orchestrator import (
+    PlanningArgumentOrchestrator,
+)
+from evaluation.compat.planning_argument_writer import (
+    PlanningArgumentWriter,
+)
+from evaluation.compat.planning_arguments import (
+    DefaultContainerResolver,
+    PlanningArgumentBindingError,
+    validate_tool_argument_candidate_v1,
+)
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
 
 from google_work_agent.application.agents.planning.assemble_plan import (
     materialize_action_seeds,
@@ -12,27 +26,17 @@ from google_work_agent.application.agents.planning.assemble_plan import (
 from google_work_agent.application.agents.planning.build_dependencies import (
     build_dependencies,
 )
+from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
+    planning_tool_argument_schema,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputToolRouteV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    EvidenceDraftV1,
-    RequestIntentV2,
-    WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.planning_argument_orchestrator import (
-    PlanningArgumentOrchestrator,
-)
-from google_work_agent.application.orchestration.planning_argument_writer import (
-    PlanningArgumentWriter,
-)
-from google_work_agent.application.orchestration.planning_arguments import (
-    DefaultContainerResolver,
-    PlanningArgumentBindingError,
-    validate_tool_argument_candidate_v1,
-)
-from google_work_agent.application.orchestration.planning_tool_schemas import (
-    planning_tool_argument_schema,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (

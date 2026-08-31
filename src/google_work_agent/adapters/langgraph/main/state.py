@@ -11,12 +11,36 @@ typed parent boundary.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from enum import StrEnum
 from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
 from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
     TerminalCommitIntentV1,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.agents.planning.contracts.answer_draft import (
+    WorkAnalysisResultV2,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    PlanningResultV2,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
+    RequestUnderstandingOutputV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+    ContextRetrievalResultV1,
+    EvidenceSelectionResultV2,
+    RetrievalResultV1,
+    SourceFetchPlanV1,
+    SourcePlanningOutputV1,
+    SufficiencyResultV2,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
@@ -24,31 +48,6 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
 )
-from google_work_agent.application.orchestration.contracts import (
-    FinalizeIntentV1,
-    UserInterruptV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    EvidenceSelectionResultV2,
-    RequestIntentV2,
-    RequestUnderstandingOutputV1,
-    RetrievalRequiredV1,
-    RetrievalResultV1,
-    RouteReconsiderationRequiredV1,
-    SourceFetchPlanV1,
-    SourcePlanningOutputV1,
-    SubgraphReturnV2,
-    SufficiencyResultV2,
-    WorkflowSignalV1,
-)
-from google_work_agent.application.orchestration.post_retrieval_envelopes import (
-    PlanningResultV2,
-)
-from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
     validate_run_budget_v2,
@@ -56,12 +55,109 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    FinalizeIntentV1,
+)
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.ports.system.contracts.confirmation import (
+    UserInterruptV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RetrievalRequiredV1,
+    RouteReconsiderationRequiredV1,
+    SubgraphReturnV2,
+    WorkflowSignalV1,
+)
+
+
+class MultiAgentGraphState(TypedDict):
+    """Version-1 Main graph state retained at its canonical state owner."""
+
+    schema_version: int
+    run_id: str
+    conversation_id: str
+    thread_id: str
+    workflow_phase: str
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    retrieval_result: RetrievalResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV2 | None
+    approved_plan_id: str | None
+    finalize_intent: FinalizeIntentV1 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
+    retry_budget: RunBudgetV2
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
+
+
+class GraphStateUpdateV1(TypedDict, total=False):
+    """Typed partial update returned by workflow agents and the supervisor."""
+
+    workflow_phase: str
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
+    source_fetch_plans: list[SourceFetchPlanV1]
+    acquisition_result: AcquisitionResultV1 | None
+    retrieval_result: RetrievalResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV2 | None
+    approved_plan_id: str | None
+    finalize_intent: FinalizeIntentV1 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
+    retry_budget: RunBudgetV2
+    prompt_context: dict[str, object]
+    trace_context: dict[str, object]
+
+
+class WorkflowPhase(StrEnum):
+    """Workflow phase values defined by the Canonical workflow contract."""
+
+    INITIALIZE = "INITIALIZE"
+    REQUEST_ANALYSIS = "REQUEST_ANALYSIS"
+    TOOL_ROUTING = "TOOL_ROUTING"
+    WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
+    SOURCE_PLANNING = "SOURCE_PLANNING"
+    API_ACQUISITION = "API_ACQUISITION"
+    CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
+    CONTEXT_EVALUATION = "CONTEXT_EVALUATION"
+    WORK_ANALYSIS = "WORK_ANALYSIS"
+    SOLUTION_PLANNING = "SOLUTION_PLANNING"
+    PLAN_REVIEW = "PLAN_REVIEW"
+    DOMAIN_VALIDATION = "DOMAIN_VALIDATION"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    PREFLIGHT = "PREFLIGHT"
+    ACTION_EXECUTION = "ACTION_EXECUTION"
+    VERIFICATION = "VERIFICATION"
+    RESPONSE_SYNTHESIS = "RESPONSE_SYNTHESIS"
+    RECOVERY = "RECOVERY"
+    FINALIZE = "FINALIZE"
+
+
+class RequestUnderstandingResult(StrEnum):
+    """Request-understanding node results."""
+
+    COMPLETE = "COMPLETE"
+    NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
+    INVALID = "INVALID"
+
+
+MULTI_AGENT_GRAPH_STATE_FIELDS = frozenset(MultiAgentGraphState.__annotations__)
 
 type WorkflowPhaseV2 = Literal[
     "INITIALIZE",

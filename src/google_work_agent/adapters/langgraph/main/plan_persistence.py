@@ -19,14 +19,16 @@ from google_work_agent.adapters.langgraph.main.state import (
     _require_state_value,
     _resource_handle_for_ref,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
+    resolve_evidence_projection,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionPlanDraftV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
     EvidenceDraftV1,
     RetrievalResultV1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    resolve_evidence_projection,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,

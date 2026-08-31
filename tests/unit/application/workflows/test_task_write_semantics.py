@@ -5,7 +5,7 @@ import pytest
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     credential_provider as server,
 )
-from google_work_agent.application.orchestration.task_write_semantics import (
+from google_work_agent.application.agents.planning.validate_plan import (
     normalize_task_write_arguments,
 )
 

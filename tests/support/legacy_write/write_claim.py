@@ -161,7 +161,7 @@ class ClaimWriteActionService:
                 key=lambda candidate: getattr(candidate, "revision_no", 0),
                 default=None,
             )
-            if has_durable_cancel_intent(unit_of_work.cancel_intents, run.id):
+            if has_durable_cancel_intent(unit_of_work.command_receipts, run.id):
                 response = WriteActionResponse(
                     applied=False,
                     result_code=ResultCode.STATE_CONFLICT.value,

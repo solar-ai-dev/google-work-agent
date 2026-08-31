@@ -117,6 +117,9 @@ class _CommandReceipts:
     def store_result(self, *, command_id: str, **_kwargs: object) -> None:
         self.finished.append(command_id)
 
+    def has_durable_cancel_intent(self, _run_id: str) -> bool:
+        return False
+
 
 class _Sink:
     def __init__(self) -> None:
@@ -124,11 +127,6 @@ class _Sink:
 
     def append(self, item: object) -> None:
         self.items.append(item)
-
-
-class _CancelIntents:
-    def has_durable_intent(self, _run_id: str) -> bool:
-        return False
 
 
 class _VerificationRepo:
@@ -206,9 +204,8 @@ class _Uow:
         self.runs = _Runs({} if run is None else {run.id: run})
         self.resource_refs = _ByIdRepo({})
         self.command_receipts = _CommandReceipts()
-        self.cancel_intents = _CancelIntents()
         self.verifications = _VerificationRepo()
-        self.approval_history = self.approvals
+        self.approvals = self.approvals
         self.traces = _Sink()
         self.audits = _Sink()
         self.commits = 0

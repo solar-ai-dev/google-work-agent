@@ -58,19 +58,19 @@ def test_issue_146_run_budget_has_one_semantic_authority_and_no_v1_residual() ->
     assert "validate_run_budget_v1" not in source_text
     assert 'budget_json="{}"' not in source_text
 
-    contracts = (SOURCE / "application/orchestration/contracts.py").read_text(encoding="utf-8")
+    contracts = (SOURCE / "adapters/langgraph/main/state.py").read_text(encoding="utf-8")
     forbidden_reexports = (
         "BudgetDecision",
         "BudgetProfile",
         "approve_additional_acquisition",
         "check_llm_call_budget",
-        "validate_run_budget_v2",
     )
     assert all(name not in contracts for name in forbidden_reexports)
+    assert contracts.count("validate_run_budget_v2") == 2
 
     guard = (SOURCE / "application/use_cases/run/guard_run_budget.py").read_text(encoding="utf-8")
     assert guard.count("class GuardRunBudgetHandler") == 1
-    dispatch = (SOURCE / "application/orchestration/provider_dispatch_budget.py").read_text(
+    dispatch = (SOURCE / "application/use_cases/run/account_provider_dispatch.py").read_text(
         encoding="utf-8"
     )
     assert "GuardRunBudgetHandler()(" in dispatch

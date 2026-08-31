@@ -3,11 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TypedDict, cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
     WorkRelationV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 class AssessOperationalRisksInput(TypedDict):

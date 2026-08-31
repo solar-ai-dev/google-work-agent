@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from google_work_agent.adapters.langgraph.subgraphs.review.projections.project_review_signals_projection import (  # noqa: E501
+    project_review_workflow_signal_v2,
+)
 from google_work_agent.application.agents.review.aggregate_review_findings import (
     aggregate_review_findings,
 )
 from google_work_agent.application.agents.review.validate_review import validate_review
-from google_work_agent.application.orchestration.review_v2_signals import (
-    project_review_workflow_signal_v2,
-)
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 DIMENSION = "review.inspect_goal_and_evidence"

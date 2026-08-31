@@ -2,14 +2,16 @@ from typing import cast
 
 import pytest
 
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    ToolRoutePlanV2,
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    RetrievalResultV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RetrievalResultV1
-from google_work_agent.application.orchestration.retrieval_rounds import (
+from google_work_agent.application.agents.retrieval.finalize_retrieval import (
     RetrievalRoundLimitExceeded,
     initialize_current_round_no,
     retrieval_round_count,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
 )
 
 

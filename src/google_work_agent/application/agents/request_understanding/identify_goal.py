@@ -6,7 +6,6 @@ from typing import cast
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestGoalCandidateV1,
 )
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
@@ -19,6 +18,9 @@ from google_work_agent.ports.llm import (
     PromptReference,
 )
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 

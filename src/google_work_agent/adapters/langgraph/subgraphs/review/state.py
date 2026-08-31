@@ -12,6 +12,26 @@ from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node imp
     TerminalCommitIntentV1,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState, RunInputV1
+from google_work_agent.adapters.langgraph.subgraph_state import (
+    AgentLocalStateV1,
+)
+from google_work_agent.application.agents.planning.contracts.answer_draft import (
+    WorkAnalysisResultV2,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    PlanningResultV2,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+    EvidenceDraftV1,
+    RetrievalResultV1,
+    SourceFetchPlanV1,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
     StateArtifactRefV1,
@@ -25,32 +45,22 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
 )
-from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    ConfirmationResponseProjectionV1,
-    FinalizeIntentV1,
-    UserInterruptV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    EvidenceDraftV1,
-    RequestIntentV2,
-    RetrievalResultV1,
-    SourceFetchPlanV1,
-    SubgraphReturnV2,
-    WorkflowSignalV1,
-)
-from google_work_agent.application.orchestration.post_retrieval_envelopes import (
-    PlanningResultV2,
-)
-from google_work_agent.application.orchestration.state_artifacts import WorkAnalysisResultV2
 from google_work_agent.application.use_cases.run.guard_run_budget import RunBudgetV2
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    FinalizeIntentV1,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    UserInterruptV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    SubgraphReturnV2,
+    WorkflowSignalV1,
+)
 
 
 class ReviewState(GraphState, total=False):

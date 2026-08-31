@@ -198,7 +198,7 @@ class ClaimExecutionHandler:
                     plan_status=plan.status,
                     plan_is_current=current_plan is not None and current_plan.id == plan.id,
                     durable_cancel_intent=has_durable_cancel_intent(
-                        unit_of_work.cancel_intents, run.id
+                        unit_of_work.command_receipts, run.id
                     ),
                     predecessor_verified=predecessor_verified,
                     active_attempt_exists=active_attempt_exists,

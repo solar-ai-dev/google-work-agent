@@ -37,7 +37,9 @@ from google_work_agent.domain.run.transitions.complete_write_run import (
 )
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.domain.verification.model import VerificationStatus
-from google_work_agent.ports.persistence.cancel_intent_reader import CancelIntentReader
+from google_work_agent.ports.persistence.command_receipt_repository import (
+    CommandReceiptRepository,
+)
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
@@ -140,7 +142,7 @@ class CompleteWriteRunHandler:
             )
             plan = relevant_plans[0] if len(relevant_plans) == 1 else None
             actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
-            cancel_reader = unit_of_work.cancel_intents
+            cancel_reader = unit_of_work.command_receipts
 
             conflict_detail = self._aggregate_conflict(
                 unit_of_work=unit_of_work,
@@ -299,7 +301,7 @@ class CompleteWriteRunHandler:
         relevant_plans: tuple[PlanRecord, ...],
         plan: PlanRecord | None,
         actions: tuple[ActionRecord, ...],
-        cancel_reader: CancelIntentReader,
+        cancel_reader: CommandReceiptRepository,
     ) -> str | None:
         if has_durable_cancel_intent(cancel_reader, run_id):
             return "durable cancel intent forbids CompleteWriteRun"
@@ -333,7 +335,7 @@ class CompleteWriteRunHandler:
             }:
                 return f"action {action.id} is not VERIFIED or otherwise closed"
 
-            approvals = unit_of_work.approval_history.list_for_action(action.id)
+            approvals = unit_of_work.approvals.list_for_action(action.id)
             if any(approval.status is ApprovalStatusV1.ACTIVE for approval in approvals):
                 return f"action {action.id} has an illegal ACTIVE approval"
 
@@ -365,7 +367,7 @@ class CompleteWriteRunHandler:
         return tuple(
             attempt.status
             for action in actions
-            for approval in unit_of_work.approval_history.list_for_action(action.id)
+            for approval in unit_of_work.approvals.list_for_action(action.id)
             for attempt in active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
         )
 

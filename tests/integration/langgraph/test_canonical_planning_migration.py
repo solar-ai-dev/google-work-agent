@@ -17,6 +17,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
+from evaluation.compat.plan_review_result_v1 import (
+    PlanReviewResultV1,
+)
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
     FakeGoogleGateway,
@@ -40,21 +46,23 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.checkpoint import sqlite_checkpoint
 
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+)
 from google_work_agent.application.agents.planning.resolve_default_container import (
     PlanningArgumentBindingError,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+    RetrievalResultV1,
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputRoutePlanV1,
     OutputToolRouteV1,
     ToolRoutePlanV2,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionPlanDraftV1,
-    EvidenceDraftV1,
-    PlanReviewResultV1,
-    RequestIntentV2,
-    RetrievalResultV1,
-    WorkAnalysisResultV1,
 )
 from google_work_agent.ports.llm import LLMInvocationError
 

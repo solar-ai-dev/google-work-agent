@@ -55,7 +55,7 @@ class ContinueCancelResolutionHandler:
             if run is None:
                 raise LookupError(f"run not found: {command.run_id}")
             cancel_intent_active = has_durable_cancel_intent(
-                unit_of_work.cancel_intents, command.run_id
+                unit_of_work.command_receipts, command.run_id
             )
             if not cancel_intent_active or run.status not in {
                 RunStatusV1.CANCEL_REQUESTED,

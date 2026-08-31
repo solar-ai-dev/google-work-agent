@@ -41,6 +41,10 @@ class SqliteApprovalRepository:
     def _record(r: sqlite3.Row) -> ApprovalRecord:
         return approval_record_from_row(r)
 
+    def get(self, approval_id: str) -> ApprovalRecord | None:
+        row = self._connection.execute(APPROVAL_SELECT + " WHERE id=?;", (approval_id,)).fetchone()
+        return None if row is None else self._record(row)
+
     def get_active_for_action(self, action_id: str) -> ApprovalRecord | None:
         r = self._connection.execute(
             APPROVAL_SELECT
@@ -48,6 +52,15 @@ class SqliteApprovalRepository:
             (action_id,),
         ).fetchone()
         return None if r is None else self._record(r)
+
+    def list_for_action(self, action_id: str) -> tuple[ApprovalRecord, ...]:
+        return tuple(
+            self._record(row)
+            for row in self._connection.execute(
+                APPROVAL_SELECT + " WHERE action_id=? ORDER BY approval_no;",
+                (action_id,),
+            ).fetchall()
+        )
 
     def insert_active_snapshot(self, record: ApprovalRecord) -> None:
         row = self._connection.execute(

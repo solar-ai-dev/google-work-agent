@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parseaddr
 
-from google_work_agent.application.orchestration.connector_read_projection import (
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
 )
 from google_work_agent.application.use_cases.resource.list_resources import (

@@ -350,7 +350,7 @@ class WriteExecutionPhaseCoordinator:
                 and self._expire_approval is not None
             ):
                 with self._unit_of_work_factory() as unit_of_work:
-                    approval = unit_of_work.approval_history.get(claimed.approval_id)
+                    approval = unit_of_work.approvals.get(claimed.approval_id)
                     current_action = unit_of_work.actions.get(claimed.action_id)
                 if approval is None or current_action is None:
                     raise LookupError("stale approval authority disappeared")
@@ -450,7 +450,7 @@ class WriteExecutionPhaseCoordinator:
         attempt_id = claim.attempt_id
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(request.action_id)
-            approval = unit_of_work.approval_history.get(claim.approval_id)
+            approval = unit_of_work.approvals.get(claim.approval_id)
         if action is None or approval is None:
             return WriteExecutionPhaseResult(
                 disposition=WriteExecutionDisposition.DOMAIN_RECONCILE,
@@ -693,7 +693,7 @@ class WriteExecutionPhaseCoordinator:
             attempt = unit_of_work.execution_attempts.get(request.attempt_id)
             if action is None or attempt is None:
                 raise LookupError("unknown-result Action/Attempt binding is missing")
-            approval = unit_of_work.approval_history.get(attempt.approval_id)
+            approval = unit_of_work.approvals.get(attempt.approval_id)
             resource_ref = (
                 None
                 if action.target_resource_ref_id is None
@@ -997,7 +997,7 @@ class WriteExecutionPhaseCoordinator:
             attempt = unit_of_work.execution_attempts.get(attempt_id)
             if action is None or attempt is None:
                 raise LookupError("verification Action/Attempt binding is missing")
-            approval = unit_of_work.approval_history.get(attempt.approval_id)
+            approval = unit_of_work.approvals.get(attempt.approval_id)
             resource_ref_id = attempt.result_resource_ref_id or action.target_resource_ref_id
         resource_ref = (
             None

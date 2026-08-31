@@ -87,8 +87,10 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
         "is_dependency_ready",
     }
     approval_methods = {
+        "get",
         "insert_active_snapshot",
         "get_active_for_action",
+        "list_for_action",
         "list_active_for_plan",
         "update_if_status",
     }
@@ -110,6 +112,7 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
         "list_for_action",
     }
     receipt_methods = {
+        "has_durable_cancel_intent",
         "get_by_command_id",
         "reserve_or_replay",
         "store_result",

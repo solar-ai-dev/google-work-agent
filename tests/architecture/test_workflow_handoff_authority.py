@@ -39,12 +39,16 @@ def test_launcher_never_reduces_admission_to_coordinator_start() -> None:
 
 def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
     contract = ROOT / "ports/system/contracts/workflow_binding.py"
-    sql_owner = ROOT / "adapters/system/sqlite_checkpoint.py"
+    sql_owners = {
+        ROOT / "adapters/system/sqlite_checkpoint.py",
+        ROOT / "adapters/persistence/sqlite/initial_workflow_binding_writer.py",
+        ROOT / "adapters/persistence/migrations/0018_initial_workflow_binding.sql",
+    }
     offenders: list[Path] = []
 
     assert "class WorkflowBindingV1" in contract.read_text(encoding="utf-8")
-    for path in ROOT.rglob("*.py"):
-        if path == sql_owner:
+    for path in (*ROOT.rglob("*.py"), *ROOT.rglob("*.sql")):
+        if path in sql_owners:
             continue
         source = path.read_text(encoding="utf-8")
         if (
@@ -55,7 +59,7 @@ def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
     assert offenders == []
 
 
-def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
+def test_start_run_binding_uses_narrow_transaction_writer_and_separate_checkpoint() -> None:
     start_run = (ROOT / "application/use_cases/run/start_run.py").read_text(encoding="utf-8")
     unit_of_work = (ROOT / "adapters/persistence/sqlite/unit_of_work.py").read_text(
         encoding="utf-8"
@@ -64,7 +68,8 @@ def test_start_run_binding_uses_transaction_scoped_checkpoint_adapter() -> None:
 
     assert "unit_of_work.workflow_bindings.create_workflow_binding(" in start_run
     assert "unit_of_work.checkpoints" not in start_run
-    assert "SqliteCheckpointAdapter.for_transaction(" in unit_of_work
+    assert "SqliteInitialWorkflowBindingWriter(connection)" in unit_of_work
+    assert "SqliteCheckpointAdapter" not in unit_of_work
     assert 'root / "langgraph-checkpoints.sqlite3"' not in composition
     assert "checkpoint = SqliteCheckpointAdapter(" in composition
 

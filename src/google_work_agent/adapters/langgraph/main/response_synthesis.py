@@ -8,15 +8,17 @@ from typing import cast
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    PlanningResult,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
+)
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    PlanningResult,
 )
 
 _REVIEW_TARGETS = frozenset(

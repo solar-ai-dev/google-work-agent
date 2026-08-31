@@ -9,7 +9,7 @@ class _Reader:
         self.value = value
         self.calls: list[str] = []
 
-    def has_durable_intent(self, run_id: str) -> bool:
+    def has_durable_cancel_intent(self, run_id: str) -> bool:
         self.calls.append(run_id)
         return self.value
 

@@ -22,15 +22,17 @@ from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
     persist_reachable_corrective_write_plan,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.application.orchestration.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import (
     current_plan_tuple,
@@ -297,7 +299,7 @@ class ArtifactFreshnessMixin:
     def _has_persisted_cancel_intent(self, run_id: str) -> bool:
         """Production cancel authority: APPLIED RequestCancel command receipt."""
         with self._unit_of_work_factory() as unit_of_work:
-            reader = unit_of_work.cancel_intents
+            reader = unit_of_work.command_receipts
             return has_durable_cancel_intent(reader, run_id)
 
     def _write_run_completion_ready(

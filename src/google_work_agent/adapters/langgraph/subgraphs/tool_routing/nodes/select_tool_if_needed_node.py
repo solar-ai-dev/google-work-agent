@@ -16,9 +16,6 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
 )
@@ -26,6 +23,9 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     consume_llm_provider_calls,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 
 
 def select_tool_if_needed_node(

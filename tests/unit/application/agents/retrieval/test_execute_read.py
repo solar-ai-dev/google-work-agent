@@ -3,11 +3,11 @@ from typing import cast
 import pytest
 
 from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
+from google_work_agent.application.agents.retrieval.contracts.query_plan import SourceFetchPlanV1
 from google_work_agent.application.agents.retrieval.execute_read import (
     RetrievalReadBindingError,
     execute_read,
 )
-from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCacheEntryV1

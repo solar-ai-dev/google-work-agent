@@ -16,13 +16,11 @@ from google_work_agent.adapters.langgraph.confirmation_llm_runtime import (
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    validate_confirmation_response_projection_v1,
 )
-from google_work_agent.application.orchestration.supervisor import SupervisorDecisionV1
+from google_work_agent.adapters.langgraph.main.supervisor import SupervisorDecisionV1
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetProfile,
     promote_run_budget_profile,
@@ -32,6 +30,10 @@ from google_work_agent.application.use_cases.run.policy_confirmation_receipt imp
 )
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationCommand,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    validate_confirmation_response_projection_v1,
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,

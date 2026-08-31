@@ -24,12 +24,14 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ScopeExpansionRequiredV1,
     ToolRoutePlanV2,
 )
-from google_work_agent.application.orchestration.contracts import (
-    FinalizeIntentV1,
-    UserInterruptV1,
-)
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
+)
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    FinalizeIntentV1,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    UserInterruptV1,
 )
 
 

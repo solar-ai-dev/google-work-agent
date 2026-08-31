@@ -105,7 +105,7 @@ class ClaimReadActionHandler:
                 or run.status is not RunStatusV1.EXECUTING
                 or current_plan is None
                 or current_plan.id != plan.id
-                or has_durable_cancel_intent(unit_of_work.cancel_intents, run.id)
+                or has_durable_cancel_intent(unit_of_work.command_receipts, run.id)
             ):
                 response = action_conflict_response(
                     action=action,

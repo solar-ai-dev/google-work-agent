@@ -17,9 +17,11 @@ from google_work_agent.adapters.langgraph.main.state import GraphState, ParentGr
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
-from google_work_agent.application.orchestration.handoff_contracts import EvidenceDraftV1
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,

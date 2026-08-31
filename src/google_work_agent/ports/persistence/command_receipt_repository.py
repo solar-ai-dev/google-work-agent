@@ -7,6 +7,7 @@ from google_work_agent.domain.results import ResultCode
 
 
 class CommandReceiptRepository(Protocol):
+    def has_durable_cancel_intent(self, run_id: str) -> bool: ...
     def get_by_command_id(self, command_id: str) -> CommandReceiptRecord | None: ...
     def reserve_or_replay(
         self,

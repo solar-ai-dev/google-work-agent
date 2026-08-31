@@ -363,7 +363,7 @@ class ResumeSafeCheckpointHandler:
             return "VERSION_CONFLICT", "expected_run_version does not match current version"
         if status not in _ALLOWED_SOURCE_STATUSES:
             return "RESUME_NOT_ALLOWED", "current Run status forbids generic safe resume"
-        if has_durable_cancel_intent(unit_of_work.cancel_intents, command.run_id):
+        if has_durable_cancel_intent(unit_of_work.command_receipts, command.run_id):
             return "RESUME_NOT_ALLOWED", "durable cancel intent forbids generic safe resume"
         plans = current_plan_tuple(unit_of_work.plans, command.run_id)
         plan = max(plans, key=lambda item: item.revision_no, default=None)

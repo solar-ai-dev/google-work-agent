@@ -17,16 +17,18 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     RESPONSE_SYNTHESIS_TARGET,
     GraphRouteTranslator,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
-from google_work_agent.application.orchestration.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
+)
+from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
 )
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,

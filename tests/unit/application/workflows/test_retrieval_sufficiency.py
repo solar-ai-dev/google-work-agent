@@ -6,19 +6,23 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.orchestration.context_segmentation import (
-    ContextRetrievalValidationError,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionEffectValue,
-    RequestIntentV2,
-    SufficiencyIssueV2,
-    SufficiencyResultV2,
 )
-from google_work_agent.application.orchestration.retrieval_sufficiency import (
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.assess_sufficiency import (
     enforce_sufficiency_guard,
     missing_information_projection,
     validate_sufficiency_result_v2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    SufficiencyIssueV2,
+    SufficiencyResultV2,
+)
+from google_work_agent.application.agents.retrieval.normalize_segments import (
+    ContextRetrievalValidationError,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     MAX_ADDITIONAL_ACQUISITIONS,

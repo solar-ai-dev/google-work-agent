@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, cast
 
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.supervisor import SupervisorTarget
+from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowInvocationResult,

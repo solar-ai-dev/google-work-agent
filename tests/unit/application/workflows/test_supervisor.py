@@ -4,28 +4,32 @@ from typing import Literal, cast
 import pytest
 from tests.support.legacy_write.write_actions import WriteActionResponse
 
-from google_work_agent.application.agents.review.contracts.plan_review_result import (
-    PlanReviewResultV2,
-)
-from google_work_agent.application.orchestration.contracts import (
-    DomainValidationResult,
-    FinalizeIntent,
+from google_work_agent.adapters.langgraph.main.state import (
     GraphStateUpdateV1,
     MultiAgentGraphState,
     WorkflowPhase,
-    validate_user_interrupt_v1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorTarget,
+    route_supervisor,
+)
+from google_work_agent.application.agents.planning.contracts.domain_validation import (
+    DomainValidationResult,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionDraftV1,
     ActionPlanDraftV1,
     AnswerDraftV1,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
     RetrievalResultV1,
 )
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorTarget,
-    route_supervisor,
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
 )
 from google_work_agent.application.use_cases.action.read_contracts import (
     ReadActionCommandResponse,
@@ -40,6 +44,12 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.application.use_cases.run.run_terminal import derive_finalize_intent
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    FinalizeIntent,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    validate_user_interrupt_v1,
+)
 
 
 def test_request_complete_routes_to_tool_route() -> None:

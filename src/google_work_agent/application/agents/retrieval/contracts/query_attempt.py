@@ -2,7 +2,7 @@
 
 from typing import Literal, Required, TypedDict
 
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     SemanticRetrievalConstraintV1,
 )
 from google_work_agent.ports.connector.connector_read_port import JsonValue

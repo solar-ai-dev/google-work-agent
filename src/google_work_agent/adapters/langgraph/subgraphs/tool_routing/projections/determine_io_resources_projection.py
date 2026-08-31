@@ -8,12 +8,12 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import To
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    validate_confirmation_response_projection_v1,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    validate_confirmation_response_projection_v1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 

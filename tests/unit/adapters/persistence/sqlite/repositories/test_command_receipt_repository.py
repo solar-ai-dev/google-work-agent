@@ -58,3 +58,23 @@ def test_reserve_replay_and_immutable_result(tmp_path) -> None:
     assert replay is not None
     assert replay.result_code is ResultCode.TRANSITION_APPLIED
     assert replay.result_version == 2
+
+
+def test_durable_cancel_intent_requires_applied_transition_receipt() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute(
+        """CREATE TABLE command_receipts (
+            command_type TEXT, aggregate_type TEXT, aggregate_id TEXT,
+            status TEXT, result_code TEXT
+        )"""
+    )
+    repository = SqliteCommandReceiptRepository(connection)
+    assert repository.has_durable_cancel_intent("run-1") is False
+
+    connection.execute(
+        "INSERT INTO command_receipts VALUES (?, ?, ?, ?, ?)",
+        ("RequestRunCancellation", "Run", "run-1", "APPLIED", "TRANSITION_APPLIED"),
+    )
+
+    assert repository.has_durable_cancel_intent("run-1") is True

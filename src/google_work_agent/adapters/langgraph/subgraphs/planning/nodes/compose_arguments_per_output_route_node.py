@@ -14,11 +14,11 @@ from google_work_agent.application.agents.planning.compose_arguments_per_output_
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
+    planning_tool_argument_schema,
+)
 from google_work_agent.application.agents.planning.resolve_default_container import (
     resolve_default_container,
-)
-from google_work_agent.application.orchestration.planning_tool_schemas import (
-    planning_tool_argument_schema,
 )
 
 

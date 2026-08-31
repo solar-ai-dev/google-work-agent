@@ -119,7 +119,7 @@ class _UnitOfWork:
         }
         self.execution_attempts = _Repository({"attempt-1": attempt})
         self.actions = _Repository({"action-1": action})
-        self.approval_history = _Repository({"approval-1": approval})
+        self.approvals = _Repository({"approval-1": approval})
         self.plans = _Plans(plan)
         self.runs = _Repository({"run-1": run})
         self.command_receipts = _Receipts(receipts)

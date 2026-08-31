@@ -1,39 +1,53 @@
 from enum import StrEnum
 
 import pytest
+from evaluation.compat.legacy_agent_workflow import (
+    ContextResult,
+)
 
-from google_work_agent.application.orchestration.contracts import (
-    ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
-    ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
+from google_work_agent.adapters.langgraph.main.state import (
+    MULTI_AGENT_GRAPH_STATE_FIELDS,
+    RequestUnderstandingResult,
+    WorkflowPhase,
+)
+from google_work_agent.adapters.langgraph.subgraph_state import (
     AGENT_LOCAL_STATE_FIELDS,
-    CONFIRMATION_ORIGIN_TARGETS,
-    CONFIRMATION_RESPONSE_ALLOWED_KINDS,
-    CONFIRMATION_RESUME_KIND,
+)
+from google_work_agent.application.agents.planning.contracts.domain_validation import (
+    DomainValidationOutputV1,
+    DomainValidationResult,
+    validate_domain_validation_output_v1,
+)
+from google_work_agent.application.prompt_runtime.contracts.provider_dispatch import (
     LLM_PROVIDER_RESULT_FIELDS,
     LLM_PROVIDER_RESULT_OPTIONAL_FIELDS,
     LLM_PROVIDER_RESULT_REQUIRED_FIELDS,
-    MULTI_AGENT_GRAPH_STATE_FIELDS,
     PROMPT_REF_FIELDS,
     PROMPT_SELECTION_KEY_FIELDS,
-    AdditionalAcquisitionOriginResult,
+)
+from google_work_agent.application.use_cases.run.terminal_contract import (
     AnalysisResult,
     ApiAcquisitionResult,
     ApiPlanningResult,
-    ConfirmationResponseKind,
-    ContextResult,
-    DomainValidationOutputV1,
-    DomainValidationResult,
     FinalizeIntent,
     PlanningResult,
-    RequestUnderstandingResult,
     ReviewResult,
-    UserInterruptV1,
-    WorkflowPhase,
+    validate_finalize_intent_v1,
+)
+from google_work_agent.ports.system.contracts.additional_acquisition import (
+    ADDITIONAL_ACQUISITION_ALLOWED_PHASES,
+    ADDITIONAL_ACQUISITION_ALLOWED_RESULTS,
+    AdditionalAcquisitionOriginResult,
     validate_additional_acquisition_request_v1,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    CONFIRMATION_ORIGIN_TARGETS,
+    CONFIRMATION_RESPONSE_ALLOWED_KINDS,
+    CONFIRMATION_RESUME_KIND,
+    ConfirmationResponseKind,
+    UserInterruptV1,
     validate_confirmation_origin_target,
     validate_confirmation_response_projection_v1,
-    validate_domain_validation_output_v1,
-    validate_finalize_intent_v1,
     validate_user_interrupt_v1,
 )
 

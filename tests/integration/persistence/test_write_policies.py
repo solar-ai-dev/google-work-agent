@@ -232,7 +232,7 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
         action = unit_of_work.actions.get(f"action-{suffix}")
         approval = unit_of_work.approvals.get_active_for_action(f"action-{suffix}")
-        expired_approval = unit_of_work.approval_history.get(f"approval-{suffix}")
+        expired_approval = unit_of_work.approvals.get(f"approval-{suffix}")
     assert action is not None
     assert action.status == "MODIFIED"
     assert action.version == 3

@@ -59,12 +59,24 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    WorkflowPhase,
     _acquired_resource_by_handle,
     _require_state_value,
     _resource_handle_for_ref,
     _stored_resource_type_for_acquired_resource,
     initial_graph_state,
     request_from_state,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+    route_supervisor,
+)
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
+    CanonicalDomainValidationService,
+    CurrentRunResourceIdentityV1,
 )
 from google_work_agent.adapters.langgraph.pre_analysis_composition import (
     build_pre_analysis_subgraphs,
@@ -93,42 +105,24 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
-from google_work_agent.adapters.system.memory.run_retrieval_cache import (
-    InMemoryRunRetrievalCache,
-)
-from google_work_agent.application.agents.review.contracts.plan_review_result import (
-    PlanReviewResultV2,
-)
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    DomainValidationResult,
-    GraphStateUpdateV1,
-    MultiAgentGraphState,
-    ReviewResult,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.domain_output_validation import (
-    CanonicalDomainValidationService,
-    CurrentRunResourceIdentityV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-)
-from google_work_agent.application.orchestration.persist_planning_output import (
-    project_action_plan_v2_for_persistence,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
 )
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
-    route_supervisor,
+from google_work_agent.adapters.system.memory.run_retrieval_cache import (
+    InMemoryRunRetrievalCache,
+)
+from google_work_agent.application.agents.planning.contracts.domain_validation import (
+    DomainValidationResult,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+)
+from google_work_agent.application.agents.review.contracts.plan_review_result import (
+    PlanReviewResultV2,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
@@ -219,6 +213,9 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.application.use_cases.plan.project_dependencies import (
     project_dependency_ids,
 )
+from google_work_agent.application.use_cases.plan.project_planning_output import (
+    project_action_plan_v2_for_persistence,
+)
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
@@ -248,6 +245,9 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
     ResolveRecoveryHandler,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
@@ -311,6 +311,9 @@ from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
 )
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    ReviewResult,
+)
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventCommand,
     ProjectRunEventHandler,
@@ -345,6 +348,9 @@ from google_work_agent.ports.persistence.execution_attempt_repository import act
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     ObservabilityContext,
@@ -2659,7 +2665,7 @@ class WorkflowRuntimeCore:
             for action in unit_of_work.actions.list_for_plan(latest_plan.id):
                 if action.status != ActionStatusV1.UNKNOWN_RESULT.value:
                     continue
-                approvals = unit_of_work.approval_history.list_for_action(action.id)
+                approvals = unit_of_work.approvals.list_for_action(action.id)
                 for approval in sorted(approvals, key=lambda item: item.approval_no, reverse=True):
                     attempts = active_attempt_tuple(unit_of_work.execution_attempts, approval.id)
                     if not attempts:

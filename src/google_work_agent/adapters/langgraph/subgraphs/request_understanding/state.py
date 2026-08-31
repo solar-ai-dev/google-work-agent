@@ -16,14 +16,14 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestGoalCandidateV1,
     RequestIntentV2,
 )
-from google_work_agent.application.orchestration.contracts import (
-    UserInterruptV1,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    UserInterruptV1,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,

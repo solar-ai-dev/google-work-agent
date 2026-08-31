@@ -16,11 +16,11 @@ from evaluation.compat.controlled_post_retrieval import (
     _build_fixed_environment_payload,
     _calculate_evaluation_environment_hash,
 )
-from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
-
-from google_work_agent.application.orchestration.plan_review import (
+from evaluation.compat.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
 )
+from tests.support.prompt_manifests import write_manifest_with_legacy_profile_slots
+
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports.llm import (
     ActualRuntime,

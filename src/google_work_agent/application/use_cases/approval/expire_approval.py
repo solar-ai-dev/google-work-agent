@@ -77,7 +77,7 @@ class ExpireApprovalHandler:
                 aggregate_id=command.approval_id,
                 created_at_ms=now_ms,
             )
-            approval = unit_of_work.approval_history.get(command.approval_id)
+            approval = unit_of_work.approvals.get(command.approval_id)
             if approval is None:
                 raise LookupError(f"approval not found: {command.approval_id}")
             action = unit_of_work.actions.get(approval.action_id)
@@ -182,7 +182,7 @@ def _current(
     command: ExpireApprovalCommand,
     code: ResultCode,
 ) -> ExpireApprovalResult:
-    approval = unit_of_work.approval_history.get(command.approval_id)
+    approval = unit_of_work.approvals.get(command.approval_id)
     if approval is None:
         raise LookupError(f"approval not found: {command.approval_id}")
     action = unit_of_work.actions.get(approval.action_id)

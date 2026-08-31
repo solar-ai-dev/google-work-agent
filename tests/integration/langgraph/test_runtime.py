@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Literal, cast
 
 import pytest
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
+from evaluation.compat.work_analysis_result_v1_validation import (
+    validate_work_analysis_result_v1,
+)
 from tests.integration.persistence.test_write_actions import _expected_task_projection
 from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import (
@@ -50,27 +56,21 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_un
 from google_work_agent.adapters.system.memory.run_retrieval_cache import (
     InMemoryRunRetrievalCache,
 )
-from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
-    coarse_resource_category,
-)
-from google_work_agent.application.orchestration.connector_read_projection import (
-    ConnectorReadProjection,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionPlanDraftV1,
     AnswerDraftV1,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     ContextRetrievalResultV1,
     EvidenceDraftV1,
     EvidenceSelectionResultV2,
-    RequestIntentV2,
     RetrievalResultV1,
-    WorkAnalysisResultV1,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
-    account_provider_dispatch,
-)
-from google_work_agent.application.orchestration.work_analysis_result_v1_validation import (
-    validate_work_analysis_result_v1,
+from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
+    coarse_resource_category,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
@@ -93,6 +93,12 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
     StoreWriteActionSuccessCommand,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
+)
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
+    account_provider_dispatch,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (

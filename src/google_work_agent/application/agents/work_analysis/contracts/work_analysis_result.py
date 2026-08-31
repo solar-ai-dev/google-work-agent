@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Required, TypedDict
 
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.state_artifact import (
     StateArtifactMetaV1,
     StateArtifactRefV1,
 )

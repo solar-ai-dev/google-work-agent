@@ -135,15 +135,10 @@ class ResumeAfterReauthHandler:
         )
         plan = plans[0] if len(plans) == 1 else None
         actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
-        approval_history = getattr(unit_of_work, "approval_history", None)
-        approvals = (
-            ()
-            if approval_history is None
-            else tuple(
-                approval
-                for action in actions
-                for approval in approval_history.list_for_action(action.id)
-            )
+        approvals = tuple(
+            approval
+            for action in actions
+            for approval in unit_of_work.approvals.list_for_action(action.id)
         )
         attempt_repository = getattr(unit_of_work, "execution_attempts", None)
         attempts = tuple(
@@ -318,7 +313,7 @@ class ResumeAfterReauthHandler:
 
 
 def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    return has_durable_cancel_intent(unit_of_work.cancel_intents, run_id)
+    return has_durable_cancel_intent(unit_of_work.command_receipts, run_id)
 
 
 __all__ = [

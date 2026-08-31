@@ -13,7 +13,9 @@ from collections.abc import Mapping
 from threading import Lock
 from typing import Any
 
-from google_work_agent.application.orchestration.contracts import ConfirmationResponseProjectionV1
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 
 _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
     "request.detect_ambiguity": frozenset(

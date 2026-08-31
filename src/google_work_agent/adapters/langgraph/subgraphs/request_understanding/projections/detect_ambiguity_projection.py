@@ -9,7 +9,7 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestGoalCandidateV1,
 )
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
     validate_confirmation_response_projection_v1,
 )

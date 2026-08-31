@@ -2,10 +2,10 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import NotRequired, TypedDict, cast
 
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
+from google_work_agent.application.agents.retrieval.contracts.query_plan import SourceFetchPlanV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 
 
 class BuildQueryInput(TypedDict):

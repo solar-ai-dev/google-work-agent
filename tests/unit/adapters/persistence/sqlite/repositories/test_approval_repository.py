@@ -56,3 +56,6 @@ def test_approval_repository_exact_active_snapshot_and_cas_surface() -> None:
         {"status": ApprovalStatusV1.CONSUMED, "consumed_at_ms": 2},
     )
     assert repository.get_active_for_action("action-1") is None
+    historical = repository.get("approval-1")
+    assert historical is not None and historical.status is ApprovalStatusV1.CONSUMED
+    assert tuple(item.id for item in repository.list_for_action("action-1")) == ("approval-1",)

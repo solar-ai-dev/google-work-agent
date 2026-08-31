@@ -15,6 +15,9 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_AGENT_LOCAL_KEY,
     CONTEXT_CANONICAL_PLANS_KEY,
@@ -30,12 +33,21 @@ from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_SEGMENT_HANDLES_KEY,
     CONTEXT_SELECTION_OUTPUT_KEY,
     CONTEXT_SUFFICIENCY_OUTPUT_KEY,
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
     ParentGraphState,
+    WorkflowPhase,
     _require_state_value,
     request_from_state,
 )
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    RetrievalRouteResultV1,
+    SupervisorDecisionV1,
+    route_supervisor,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
+    AgentLocalStateV1,
     ContextRetrievalInputState,
     ContextRetrievalLocalState,
 )
@@ -94,12 +106,45 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_afte
     route_after_select_evidence,
 )
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import RetrievalStateV2
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
     StateArtifactRefV1,
 )
-from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
+    ClarificationQuestionV1,
+)
+from google_work_agent.application.agents.retrieval.build_query import (
+    RouteConstraintPolicy,
+    build_query_attempt,
+    followup_planner_projection,
+)
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    RetrievalConstraintKindV1,
+    RetrievalQueryPlanV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
+    RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+    SufficiencyResultV2,
+)
 from google_work_agent.application.agents.retrieval.execute_read import RetrievalReadBindingError
+from google_work_agent.application.agents.retrieval.finalize_retrieval import (
+    initialize_current_round_no,
+)
+from google_work_agent.application.agents.retrieval.plan_query import (
+    DEFAULT_RETRIEVAL_BUDGET,
+    followup_retrieval_planner_input,
+    initial_retrieval_planner_input,
+)
 from google_work_agent.application.agents.retrieval.resolve_availability import (
     AvailableIntervalV1,
     BusyIntervalV1,
@@ -114,54 +159,6 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.confirmation import (
-    build_user_interrupt_v1,
-)
-from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    MultiAgentGraphState,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ClarificationQuestionV1,
-    RequestIntentV2,
-    RetrievalNeedV1,
-    RetrievalRequiredV1,
-    SufficiencyResultV2,
-)
-from google_work_agent.application.orchestration.retrieval_attempts import (
-    build_query_attempt,
-    followup_planner_projection,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    RunScopedEvidenceStore,
-)
-from google_work_agent.application.orchestration.retrieval_planner_input import (
-    DEFAULT_RETRIEVAL_BUDGET,
-    followup_retrieval_planner_input,
-    initial_retrieval_planner_input,
-)
-from google_work_agent.application.orchestration.retrieval_query_plan_schema import (
-    RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
-)
-from google_work_agent.application.orchestration.retrieval_rounds import (
-    initialize_current_round_no,
-)
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    RetrievalConstraintKindV1,
-    RetrievalQueryPlanV2,
-)
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
-)
-from google_work_agent.application.orchestration.supervisor import (
-    RetrievalRouteResultV1,
-    SupervisorDecisionV1,
-    route_supervisor,
-)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
@@ -174,7 +171,14 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RetrievalNeedV1,
+    RetrievalRequiredV1,
+)
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

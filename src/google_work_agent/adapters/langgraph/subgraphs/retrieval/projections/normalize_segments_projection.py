@@ -1,8 +1,10 @@
 from collections.abc import Mapping
 from typing import NotRequired, TypedDict, cast
 
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+)
 from google_work_agent.application.agents.retrieval.normalize_segments import ContextBudget
-from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
 
 
 class NormalizeSegmentsInput(TypedDict):

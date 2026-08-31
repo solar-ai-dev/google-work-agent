@@ -7,11 +7,13 @@ from datetime import datetime
 from typing import TypedDict, cast
 from zoneinfo import ZoneInfo
 
+from google_work_agent.application.agents.retrieval.contracts.query_plan import SourceFetchPlanV1
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import AcquisitionResultV1
-from google_work_agent.application.orchestration.retrieval_v2_contracts import SourceFetchPlanV1
 from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadPort,
     ConnectorReadResultV1,

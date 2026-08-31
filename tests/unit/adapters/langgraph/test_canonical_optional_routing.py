@@ -5,12 +5,12 @@ import pytest
 from google_work_agent.adapters.langgraph.main.response_synthesis import (
     canonicalize_optional_stage_decision,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.application.orchestration.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )

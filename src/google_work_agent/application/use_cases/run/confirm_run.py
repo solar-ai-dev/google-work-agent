@@ -6,22 +6,20 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.request_understanding.validate_intent import (
     validate_intent,
 )
-from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
-    work_analysis_confirmation_context_hash,
-)
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    validate_confirmation_response_projection_v1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    RequestIntentV2,
+from google_work_agent.application.agents.state_artifact import (
     StateArtifactRefV1,
 )
-from google_work_agent.application.orchestration.scope_expansion import (
+from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
     build_policy_confirmation_receipt,
+)
+from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
+    work_analysis_confirmation_context_hash,
 )
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
@@ -32,6 +30,10 @@ from google_work_agent.application.use_cases.run.resume_confirmation import (
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    validate_confirmation_response_projection_v1,
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,

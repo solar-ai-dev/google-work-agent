@@ -8,26 +8,22 @@ from pathlib import Path
 from time import perf_counter
 from typing import Literal, Required, TypedDict, cast
 
+from evaluation.compat.context_retrieval_result_validation import (
+    validate_context_retrieval_result_v1,
+)
 from evaluation.compat.controlled_post_retrieval_profile import (
     ProfilePlanningProjectionV1,
     validate_profile_planning_projection_v1,
 )
-from google_work_agent.application.orchestration.context_retrieval_result_validation import (
-    validate_context_retrieval_result_v1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    ContextRetrievalResultV1,
-    PlanReviewResultV1,
-    WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.plan_review import (
+from evaluation.compat.plan_review import (
     PLAN_REVIEW_OUTPUT_SCHEMA,
     load_plan_review_inspect_prompt_reference,
     validate_plan_review_result_v1,
 )
-from google_work_agent.application.orchestration.solution_planning import (
+from evaluation.compat.plan_review_result_v1 import (
+    PlanReviewResultV1,
+)
+from evaluation.compat.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
     load_solution_planning_answer_only_prompt_reference,
@@ -35,10 +31,20 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
-from google_work_agent.application.orchestration.work_analysis_result_v1_validation import (
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
+from evaluation.compat.work_analysis_result_v1_validation import (
     WORK_ANALYSIS_OUTPUT_SCHEMA,
     load_work_analysis_analyze_prompt_reference,
     validate_work_analysis_result_v1,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    ContextRetrievalResultV1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path as _registry_default_prompt_manifest_path,

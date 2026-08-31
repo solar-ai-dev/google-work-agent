@@ -68,7 +68,7 @@ from tests.support.canonical_workflow_runtime import (
 )
 from tests.support.checkpoint import sqlite_checkpoint
 
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult

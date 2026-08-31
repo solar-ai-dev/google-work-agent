@@ -21,7 +21,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
     sqlite_unit_of_work_factory,
 )
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple

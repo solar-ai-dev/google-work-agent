@@ -395,7 +395,7 @@ def test_approved_action_modify_revokes_active_approval(modify_database: Path) -
     assert result["action_status"] == "MODIFIED"
 
     with unit_of_work_factory() as unit_of_work:
-        stale_approval = unit_of_work.approval_history.get("approval-1")
+        stale_approval = unit_of_work.approvals.get("approval-1")
         active_approval = unit_of_work.approvals.get_active_for_action("action-1")
     assert stale_approval is not None
     assert stale_approval.status is ApprovalStatusV1.REVOKED
@@ -909,7 +909,7 @@ def test_semantically_identical_patch_on_approved_action_does_not_revoke_approva
 
     with unit_of_work_factory() as unit_of_work:
         action = unit_of_work.actions.get("action-1")
-        approval = unit_of_work.approval_history.get("approval-noop-1")
+        approval = unit_of_work.approvals.get("approval-noop-1")
         active_approval = unit_of_work.approvals.get_active_for_action("action-1")
     assert action is not None
     assert action.status == "APPROVED"
@@ -1052,7 +1052,7 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     with unit_of_work_factory() as unit_of_work:
         dependent_action = unit_of_work.actions.get("action-dependent")
         dependent_active_approval = unit_of_work.approvals.get_active_for_action("action-dependent")
-        dependent_stale_approval = unit_of_work.approval_history.get("approval-dependent")
+        dependent_stale_approval = unit_of_work.approvals.get("approval-dependent")
         dependent_audit_events = unit_of_work.audits.list_page(
             AuditEventCursor(run_id="run-1", action_id="action-dependent"), 100
         )

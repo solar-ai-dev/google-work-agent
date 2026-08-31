@@ -7,21 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
-
-from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
-    OutputToolRouteV1,
-)
-from google_work_agent.application.orchestration.contracts import (
-    PlanningResult,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ContextRetrievalResultV1,
-    RequestIntentV2,
-    WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.solution_planning import (
+from evaluation.compat.solution_planning import (
     ACTION_PLAN_DRAFT_OUTPUT_SCHEMA,
     ANSWER_DRAFT_OUTPUT_SCHEMA,
     SolutionPlanningAgent,
@@ -35,12 +21,32 @@ from google_work_agent.application.orchestration.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
 )
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
+from tests.support.prompt_manifests import write_draft_manifest, write_runtime_active_manifest
+
+from google_work_agent.adapters.langgraph.main.state import (
+    WorkflowPhase,
+)
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    ContextRetrievalResultV1,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import InactivePromptArtifactError
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
+from google_work_agent.application.use_cases.run.terminal_contract import (
+    PlanningResult,
+)
 from google_work_agent.ports.llm import (
     ActualRuntime,
     OutputSchemaDefinition,
@@ -824,9 +830,7 @@ def test_provider_failure_is_not_mapped_to_blocked() -> None:
 
 
 def test_answer_only_and_plan_source_have_no_google_mcp_or_completion_call() -> None:
-    source = Path("src/google_work_agent/application/orchestration/solution_planning.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path("evaluation/compat/solution_planning.py").read_text(encoding="utf-8")
 
     assert "GoogleWorkspaceGateway" not in source
     assert "MCP" not in source
@@ -881,9 +885,9 @@ def test_default_product_loader_rejects_draft_planning_prompts(tmp_path: Path) -
 
 
 def test_solution_planning_symbols_have_explicit_owners() -> None:
-    assert SolutionPlanningAgent.__module__.endswith(".orchestration.solution_planning")
-    assert validate_answer_draft_v1.__module__.endswith(".orchestration.solution_planning")
-    assert validate_action_plan_draft_v1.__module__.endswith(".orchestration.solution_planning")
+    assert SolutionPlanningAgent.__module__ == "evaluation.compat.solution_planning"
+    assert validate_answer_draft_v1.__module__ == "evaluation.compat.solution_planning"
+    assert validate_action_plan_draft_v1.__module__ == "evaluation.compat.solution_planning"
 
 
 def _agent(runtime: FakeLLMRuntime) -> SolutionPlanningAgent:

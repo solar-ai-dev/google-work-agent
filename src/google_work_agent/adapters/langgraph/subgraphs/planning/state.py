@@ -13,13 +13,15 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     AnswerDraftCandidateV2,
     ToolArgumentCandidateV1,
 )
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     OutputPlanV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 class PlanningStateV2(TypedDict, total=False):

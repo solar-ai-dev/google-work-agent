@@ -177,7 +177,7 @@ class FinalizeCancelHandler:
                 )
                 unknown_attempt = next(
                     attempt
-                    for approval in unit_of_work.approval_history.list_for_action(unknown_action.id)
+                    for approval in unit_of_work.approvals.list_for_action(unknown_action.id)
                     for attempt in active_attempt_tuple(
                         unit_of_work.execution_attempts, approval.id
                     )
@@ -370,7 +370,7 @@ class FinalizeCancelHandler:
 
 
 def _has_cancel_intent(unit_of_work: UnitOfWork, run_id: str) -> bool:
-    return has_durable_cancel_intent(unit_of_work.cancel_intents, run_id)
+    return has_durable_cancel_intent(unit_of_work.command_receipts, run_id)
 
 
 def _finalize_transition(
@@ -384,7 +384,7 @@ def _finalize_transition(
     approvals = tuple(
         approval
         for action in actions
-        for approval in unit_of_work.approval_history.list_for_action(action.id)
+        for approval in unit_of_work.approvals.list_for_action(action.id)
     )
     attempts = tuple(
         attempt

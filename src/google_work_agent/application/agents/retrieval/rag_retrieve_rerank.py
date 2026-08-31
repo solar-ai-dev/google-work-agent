@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypedDict
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.normalize_segments import SourceSegment
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 class RagCandidateV1(TypedDict):

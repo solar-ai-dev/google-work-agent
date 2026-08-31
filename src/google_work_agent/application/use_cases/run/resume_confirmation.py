@@ -8,9 +8,6 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import Protocol, cast
 
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-)
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
@@ -25,6 +22,9 @@ from google_work_agent.domain.run.transitions.resume_confirmation import (
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.workflow_binding import (
     GraphProfileIdV1,
     WorkflowBindingV1,

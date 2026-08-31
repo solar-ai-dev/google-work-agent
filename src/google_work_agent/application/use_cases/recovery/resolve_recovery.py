@@ -104,7 +104,9 @@ def derive_recovery_eligibility(
         for plan in current_plan_tuple(unit_of_work.plans, context["run_id"])
         for candidate in unit_of_work.actions.list_for_plan(plan.id)
     )
-    cancel_intent_active = has_durable_cancel_intent(unit_of_work.cancel_intents, context["run_id"])
+    cancel_intent_active = has_durable_cancel_intent(
+        unit_of_work.command_receipts, context["run_id"]
+    )
     return RecoveryEligibilityFacts(
         recovered_action_status=recovered_action_status,
         cancel_intent_active=cancel_intent_active,
@@ -510,7 +512,7 @@ class ResolveRecoveryHandler:
             or action.status != ActionStatusV1.MISMATCH.value
         ):
             raise RuntimeError("mismatch recovery requires the current MISMATCH action")
-        if has_durable_cancel_intent(unit_of_work.cancel_intents, command.run_id):
+        if has_durable_cancel_intent(unit_of_work.command_receipts, command.run_id):
             raise RuntimeError("mismatch recovery is forbidden while cancel intent is active")
         if command.resolution is RecoveryResolution.ACCEPT_PARTIAL:
             cancel_pending_actions(

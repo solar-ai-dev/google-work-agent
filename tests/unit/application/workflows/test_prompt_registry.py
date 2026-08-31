@@ -13,7 +13,9 @@ from tests.support.prompt_manifests import (
     write_runtime_active_manifest,
 )
 
-from google_work_agent.application.orchestration.contracts import PROMPT_SELECTION_KEY_FIELDS
+from google_work_agent.application.prompt_runtime.contracts.provider_dispatch import (
+    PROMPT_SELECTION_KEY_FIELDS,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
     default_prompt_manifest_path,

@@ -8,10 +8,12 @@ from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     MainControlNodeBindings,
 )
+from google_work_agent.adapters.langgraph.main.state import (
+    WorkflowPhase,
+)
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     MAIN_RESUME_STAGES,
 )
-from google_work_agent.application.orchestration.contracts import WorkflowPhase
 
 ROOT = Path(__file__).resolve().parents[3]
 NODE_ROOT = ROOT / "src/google_work_agent/adapters/langgraph/main/nodes"

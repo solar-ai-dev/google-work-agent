@@ -6,7 +6,7 @@ from google_work_agent.adapters.langgraph.main.state import request_from_run_inp
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingStateV2,
 )
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
     validate_confirmation_response_projection_v1,
 )

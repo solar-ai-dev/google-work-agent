@@ -4,7 +4,7 @@ from google_work_agent.adapters.langgraph.main.artifact_freshness import (
     _is_route_reconsideration_to_tool_route,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.supervisor import SupervisorTarget
+from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 
 
 def test_route_reconsideration_to_tool_route_is_detected() -> None:

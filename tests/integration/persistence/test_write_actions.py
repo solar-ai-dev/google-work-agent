@@ -150,7 +150,7 @@ class SnapshotReader:
 
     def has_cancel_intent(self, run_id: str) -> bool:
         with sqlite_unit_of_work_factory(self._database_path)() as unit_of_work:
-            return unit_of_work.cancel_intents.has_durable_intent(run_id)
+            return unit_of_work.command_receipts.has_durable_cancel_intent(run_id)
 
 
 # Test-only compatibility type used by legacy integration fixtures. Production

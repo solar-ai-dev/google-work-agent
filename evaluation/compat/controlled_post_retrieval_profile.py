@@ -5,14 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal, Required, TypedDict, cast
 
-from google_work_agent.application.orchestration.handoff_contracts import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    WorkAnalysisResultV1,
-)
-from google_work_agent.application.orchestration.solution_planning import (
+from evaluation.compat.solution_planning import (
     validate_action_plan_draft_v1,
     validate_answer_draft_v1,
+)
+from evaluation.compat.work_analysis_result_v1 import (
+    WorkAnalysisResultV1,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
 )
 
 

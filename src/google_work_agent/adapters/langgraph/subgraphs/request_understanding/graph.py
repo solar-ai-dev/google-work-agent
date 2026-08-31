@@ -9,7 +9,19 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.state import request_from_run_input_state
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    WorkflowPhase,
+    request_from_run_input_state,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.detect_ambiguity_node import (  # noqa: E501
     detect_ambiguity_node,
@@ -34,18 +46,8 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
     RequestUnderstandingParentOutputState,
     RequestUnderstandingStateV2,
 )
-from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    MultiAgentGraphState,
-    UserInterruptV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import ClarificationQuestionV1
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    route_supervisor,
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
+    ClarificationQuestionV1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -53,6 +55,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    UserInterruptV1,
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

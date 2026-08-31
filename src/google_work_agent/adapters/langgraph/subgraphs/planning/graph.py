@@ -16,13 +16,22 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
 )
 from google_work_agent.adapters.langgraph.main.state import (
     PLANNING_AGENT_LOCAL_KEY,
+    GraphStateUpdateV1,
     MultiAgentGraphStateV2,
+    WorkflowPhase,
     request_from_state,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
@@ -65,6 +74,10 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
     route_after_outline_answer as outline_answer_routing,
 )
+from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
+    RunScopedEvidenceStore,
+    resolve_evidence_projection,
+)
 from google_work_agent.application.agents.planning.assemble_plan import materialize_action_seeds
 from google_work_agent.application.agents.planning.choose_answer_or_action_from_route import (
     choose_answer_or_action_from_route,
@@ -87,24 +100,14 @@ from google_work_agent.application.agents.planning.outline_answer import (
 from google_work_agent.application.agents.planning.resolve_default_container import (
     RequiredContainerUnresolvedError,
 )
-from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
     ClarificationQuestionV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     EvidenceDraftV1,
+)
+from google_work_agent.application.agents.state_artifact import (
     StateArtifactRefV1,
-)
-from google_work_agent.application.orchestration.retrieval_evidence_store import (
-    RunScopedEvidenceStore,
-    resolve_evidence_projection,
-)
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -117,6 +120,9 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     approve_planning_revision,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+)
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, object], Any]

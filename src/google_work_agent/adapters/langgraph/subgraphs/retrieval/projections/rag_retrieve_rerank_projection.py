@@ -1,9 +1,11 @@
 from collections.abc import Mapping
 from typing import NotRequired, TypedDict, cast
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.normalize_segments import SourceSegment
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagScoringConfig
-from google_work_agent.application.orchestration.handoff_contracts import RequestIntentV2
 
 
 class RagRetrieveRerankInput(TypedDict):

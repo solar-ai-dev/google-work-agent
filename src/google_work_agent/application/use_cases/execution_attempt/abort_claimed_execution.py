@@ -128,7 +128,7 @@ class AbortClaimedExecutionHandler:
             attempt_status=attempt.status,
             attempt_version=attempt.version,
             expected_attempt_version=command.expected_attempt_version,
-            durable_cancel_intent=has_durable_cancel_intent(unit_of_work.cancel_intents, run.id),
+            durable_cancel_intent=has_durable_cancel_intent(unit_of_work.command_receipts, run.id),
             begin_receipt_applied=(
                 begin_receipt is not None and begin_receipt.status is CommandReceiptStatus.APPLIED
             ),

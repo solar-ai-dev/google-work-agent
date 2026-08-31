@@ -21,7 +21,7 @@ def test_expired_action_is_settled_before_finalize_cancel() -> None:
     calls: list[tuple[str, int]] = []
 
     class _Uow:
-        cancel_intents = SimpleNamespace(has_durable_intent=lambda _run_id: True)
+        command_receipts = SimpleNamespace(has_durable_cancel_intent=lambda _run_id: True)
         runs = SimpleNamespace(
             get=lambda _run_id: SimpleNamespace(
                 id="run-1", status=RunStatusV1.CANCEL_REQUESTED, version=2

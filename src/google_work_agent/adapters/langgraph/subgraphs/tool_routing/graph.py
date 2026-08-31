@@ -9,7 +9,20 @@ from typing import Any, Literal, cast
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.langgraph.agent_kernel import merge_trace_context
-from google_work_agent.adapters.langgraph.main.state import _require_state_value, request_from_state
+from google_work_agent.adapters.langgraph.main.confirmation_projection import (
+    build_user_interrupt_v1,
+)
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphStateUpdateV1,
+    MultiAgentGraphState,
+    WorkflowPhase,
+    _require_state_value,
+    request_from_state,
+)
+from google_work_agent.adapters.langgraph.main.supervisor import (
+    SupervisorDecisionV1,
+    route_supervisor,
+)
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (  # noqa: E501
     bind_registry_candidates_node,
@@ -46,22 +59,12 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRoutingInputState,
     ToolRoutingParentOutputState,
 )
+from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
+    ClarificationQuestionV1,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
     ToolRouteResultV1,
-)
-from google_work_agent.application.orchestration.confirmation import build_user_interrupt_v1
-from google_work_agent.application.orchestration.contracts import (
-    ConfirmationResponseProjectionV1,
-    GraphStateUpdateV1,
-    MultiAgentGraphState,
-    UserInterruptV1,
-    WorkflowPhase,
-)
-from google_work_agent.application.orchestration.handoff_contracts import ClarificationQuestionV1
-from google_work_agent.application.orchestration.supervisor import (
-    SupervisorDecisionV1,
-    route_supervisor,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -70,6 +73,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     StructuredLLMRuntime,
+)
+from google_work_agent.ports.system.contracts.confirmation import (
+    ConfirmationResponseProjectionV1,
+    UserInterruptV1,
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]

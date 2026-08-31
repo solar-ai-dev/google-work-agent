@@ -44,7 +44,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
     def factory():
         yield SimpleNamespace(
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
-            cancel_intents=SimpleNamespace(has_durable_intent=lambda _run_id: False),
+            command_receipts=SimpleNamespace(has_durable_cancel_intent=lambda _run_id: False),
             plans=SimpleNamespace(get_current=lambda _run_id: None),
             actions=SimpleNamespace(get=lambda _action_id: None, list_for_plan=lambda _plan_id: ()),
         )
@@ -68,7 +68,7 @@ def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
     def factory():
         yield SimpleNamespace(
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
-            cancel_intents=SimpleNamespace(has_durable_intent=lambda _run_id: True),
+            command_receipts=SimpleNamespace(has_durable_cancel_intent=lambda _run_id: True),
             plans=SimpleNamespace(get_current=lambda _run_id: plan),
             actions=SimpleNamespace(
                 get=lambda _action_id: None, list_for_plan=lambda _plan_id: (executed,)

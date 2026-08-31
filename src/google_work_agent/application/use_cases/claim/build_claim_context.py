@@ -66,7 +66,7 @@ class BuildClaimContextHandler:
     def __call__(self, query: BuildClaimContextQueryV1) -> ClaimContextV2:
         with self._unit_of_work_factory() as unit_of_work:
             action = unit_of_work.actions.get(query.action_id)
-            approval = unit_of_work.approval_history.get(query.approval_id)
+            approval = unit_of_work.approvals.get(query.approval_id)
             attempt = unit_of_work.execution_attempts.get(query.execution_attempt_id)
         if action is None or approval is None or attempt is None:
             raise LookupError("committed claim binding is missing")

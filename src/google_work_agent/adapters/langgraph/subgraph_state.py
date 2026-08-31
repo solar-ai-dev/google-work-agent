@@ -6,13 +6,25 @@
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, Required, TypedDict
 
-from google_work_agent.adapters.langgraph.main.state import GraphState, RunInputV1
+from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
+    MultiAgentGraphState,
+    RunInputV1,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.rag_candidate_projection import (  # noqa: E501
+    RagCandidateV1,
+)
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionDependencyCandidateV1,
     ActionPlanDraftV2,
     PlanningActionSeedV1,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+    AnswerDraftV1,
+    PlanningResultV2,
 )
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     ActionObjectiveCandidateV1,
@@ -20,12 +32,30 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     ToolArgumentCandidateV1,
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
-    RequestIntentV2 as CanonicalRequestIntentV2,
-)
-from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
     StateArtifactRefV1,
 )
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2 as CanonicalRequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    RetrievalQueryPlanV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.query_plan import (
+    SourceFetchPlanV1 as V2SourceFetchPlanV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    AcquisitionResultV1,
+    ContextBundleV1,
+    EvidenceDraftV1,
+    EvidenceSelectionResultV2,
+    RetrievalResultV1,
+    RetrievalSourceStatusV1,
+    SourceFetchPlanV1,
+    SourcePlanningOutputV1,
+    SufficiencyResultV2,
+)
 from google_work_agent.application.agents.retrieval.resolve_availability import AvailableIntervalV1
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -48,38 +78,10 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.contracts import (
-    AgentLocalStateV1,
-    MultiAgentGraphState,
-    UserInterruptV1,
-)
-from google_work_agent.application.orchestration.handoff_contracts import (
-    AcquisitionResultV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    ContextBundleV1,
-    EvidenceDraftV1,
-    EvidenceSelectionResultV2,
-    RequestIntentV2,
-    RetrievalNeedV1,
-    RetrievalRequiredV1,
-    RetrievalResultV1,
-    RetrievalSourceStatusV1,
-    RouteReconsiderationRequiredV1,
-    SourceFetchPlanV1,
-    SourcePlanningOutputV1,
-    SufficiencyResultV2,
-    WorkflowSignalV1,
-)
-from google_work_agent.application.orchestration.post_retrieval_envelopes import (
-    PlanningResultV2,
-)
-from google_work_agent.application.orchestration.retrieval_ranking import RagCandidateV1
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    RetrievalQueryPlanV2,
-)
-from google_work_agent.application.orchestration.retrieval_v2_contracts import (
-    SourceFetchPlanV1 as V2SourceFetchPlanV1,
+from google_work_agent.application.prompt_runtime.contracts.provider_dispatch import (
+    AgentDispositionV1,
+    AgentFailureRecordV1,
+    PromptRef,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
@@ -87,7 +89,37 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
+from google_work_agent.ports.system.contracts.confirmation import (
+    UserInterruptV1,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RetrievalNeedV1,
+    RetrievalRequiredV1,
+    RouteReconsiderationRequiredV1,
+    WorkflowSignalV1,
+)
+
+
+class AgentLocalStateV1(TypedDict):
+    """Canonical invocation-local state for one native agent subgraph."""
+
+    schema_version: Required[Literal[1]]
+    agent_role: str
+    invocation_id: str
+    node_state: str
+    input_projection: dict[str, object]
+    candidate_output: dict[str, object] | None
+    prompt_ref: PromptRef | None
+    attempt_no: int
+    schema_repair_count: int
+    semantic_revision_count: int
+    failure_record: AgentFailureRecordV1 | None
+    disposition: AgentDispositionV1 | None
+    typed_result: dict[str, object] | None
+
+
+AGENT_LOCAL_STATE_FIELDS = frozenset(AgentLocalStateV1.__annotations__)
 
 
 class AgentSubgraphInputEnvelope(TypedDict, total=False):

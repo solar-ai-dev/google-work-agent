@@ -7,12 +7,15 @@ from typing import cast
 
 from langgraph.types import interrupt
 
-from google_work_agent.adapters.langgraph.main.state import ExecutionSummaryV1, GraphState
+from google_work_agent.adapters.langgraph.main.state import (
+    ExecutionSummaryV1,
+    GraphState,
+    WorkflowPhase,
+)
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
 )
-from google_work_agent.application.orchestration.contracts import WorkflowPhase
 from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
     WriteExecutionDisposition,
     WriteExecutionPhaseCoordinator,

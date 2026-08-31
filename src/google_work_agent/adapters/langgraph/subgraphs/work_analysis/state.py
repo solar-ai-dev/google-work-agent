@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     WorkRelationCandidateV1,
 )
@@ -14,8 +17,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkRelationV1,
     WorkRiskV1,
 )
-from google_work_agent.application.orchestration.handoff_contracts import (
-    RequestIntentV2,
+from google_work_agent.ports.system.contracts.workflow_signal import (
     RetrievalNeedV1,
 )
 

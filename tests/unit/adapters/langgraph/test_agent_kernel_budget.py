@@ -18,7 +18,7 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
     provider_dispatch_execution_scope,
 )

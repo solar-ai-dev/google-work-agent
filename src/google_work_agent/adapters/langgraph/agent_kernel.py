@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentLocalStateV1,
+)
+from google_work_agent.application.prompt_runtime.contracts.provider_dispatch import (
     PromptRef,
 )
-from google_work_agent.application.orchestration.provider_dispatch_budget import (
+from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     bind_provider_dispatch_budget,
     merge_provider_dispatch_usage,
 )

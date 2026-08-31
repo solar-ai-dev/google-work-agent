@@ -25,7 +25,7 @@ class _CancelReader:
     def __init__(self, active: bool = False) -> None:
         self.active = active
 
-    def has_durable_intent(self, _run_id: str) -> bool:
+    def has_durable_cancel_intent(self, _run_id: str) -> bool:
         return self.active
 
 
@@ -62,7 +62,7 @@ class _GuardUow:
         verifications: tuple[VerificationRecord, ...],
     ) -> None:
         self.approvals = _ListRepo(cast(tuple[object, ...], approvals))
-        self.approval_history = self.approvals
+        self.approvals = self.approvals
         self.execution_attempts = _ListRepo(cast(tuple[object, ...], attempts))
         self.verifications = _ListRepo(cast(tuple[object, ...], verifications))
 

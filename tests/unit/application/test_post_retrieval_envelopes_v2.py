@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import pytest
-
-from google_work_agent.application.orchestration.post_retrieval_envelopes import (
+from evaluation.compat.post_retrieval_envelopes import (
     PostRetrievalEnvelopeV2Error,
     validate_planning_return_v2,
     validate_review_return_v2,
     validate_work_analysis_return_v2,
 )
+
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 

@@ -198,7 +198,7 @@ def test_each_non_persistence_adapter_implements_its_port_surface() -> None:
 
 
 def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols() -> None:
-    prompt_guard = _source("application/orchestration/prompt_input_guarded_provider.py")
+    prompt_guard = _source("application/prompt_runtime/dispatch_guarded_prompt.py")
     application_runtime = _source("application/use_cases/llm/structured_inference_runtime.py")
     adapter_router = _source("adapters/llm/runtime/structured_inference_router.py")
 

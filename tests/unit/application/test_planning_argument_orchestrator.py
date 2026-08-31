@@ -4,15 +4,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-
-from google_work_agent.application.orchestration.planning_argument_orchestrator import (
+from evaluation.compat.planning_argument_orchestrator import (
     PlanningArgumentOrchestrator,
     project_planning_action_confirmation_required_v1,
 )
-from google_work_agent.application.orchestration.planning_argument_writer import (
+from evaluation.compat.planning_argument_writer import (
     PlanningArgumentWriter,
 )
-from google_work_agent.application.orchestration.planning_arguments import DefaultContainerResolver
+from evaluation.compat.planning_arguments import DefaultContainerResolver
+
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,

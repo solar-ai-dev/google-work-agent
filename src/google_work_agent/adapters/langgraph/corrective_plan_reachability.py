@@ -10,7 +10,9 @@ from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
     persist_reserved_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.orchestration.handoff_contracts import ActionPlanDraftV1
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    ActionPlanDraftV1,
+)
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1

@@ -7,18 +7,17 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.orchestration.contracts import (
+from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
+from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
+from google_work_agent.application.use_cases.run.terminal_contract import (
     AnalysisResult,
     ApiAcquisitionResult,
     FinalizeIntent,
     FinalizeIntentV1,
     PlanningResult,
     ReviewResult,
-    WorkflowPhase,
     validate_finalize_intent_v1,
 )
-from google_work_agent.application.use_cases.action.write_persistence import revoke_active_approvals
-from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.command_receipt.model import CommandReceipt as CommandReceiptRecord
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
@@ -161,7 +160,7 @@ def build_finalize_state_update(
         }
     )
     return {
-        "workflow_phase": WorkflowPhase.FINALIZE.value,
+        "workflow_phase": "FINALIZE",
         "finalize_intent": finalize_intent,
     }
 

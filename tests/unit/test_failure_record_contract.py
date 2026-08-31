@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.application.orchestration.failure_record import (
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     FAILURE_RECORD_FIELDS,
     FailureRecordValidationError,
     build_failure_record_v1,
