@@ -27,16 +27,13 @@ class StartRunRequest(ContractVersionedRequest):
         return self
 
 
-class StartRunResponseModel(ApiModel):
-    applied: bool
-    result_code: str
+class StartRunResponseV1(ApiModel):
     run_id: str
     conversation_id: str
-    run_status: str
-    run_version: int
-    user_message_id: str
-    workflow_key: str
-    handoff_id: str
-    enqueued: bool
-    request_replayed: bool
-    conflict_detail: str | None = None
+    langgraph_thread_id: str
+    status: str
+    version: int
+    event_stream_url: str
+
+
+__all__ = ["StartRunRequest", "StartRunResponseV1"]

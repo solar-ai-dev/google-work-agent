@@ -41,7 +41,7 @@ export type ConversationViewProps = { children: ReactNode; viewModel: Conversati
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
   const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
   const showRunHeader = runSnapshot !== null;
-  const isFailedRun = runSnapshot?.status === "FAILED";
+  const isFailedRun = runSnapshot?.run.status === "FAILED";
   // The stored history already owns every persisted turn. The current run only
   // contributes the request text that is not persisted into history yet.
   const showTransientRequest = Boolean(runContext?.request_text)
@@ -70,19 +70,19 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
     <>          {showRunHeader ? (
             <div className={`panel-header run-header${isFailedRun ? " run-header--failed" : ""}`}>
               <div>
-                <strong>{runHeaderTitle(runSnapshot.status, Boolean(selectedConversationId))}</strong>
-                <div className="muted">{userRunStatus(runSnapshot.status)}</div>
-                {runSnapshot.result_kind === "PARTIAL" ? (
+                <strong>{runHeaderTitle(runSnapshot.run.status, Boolean(selectedConversationId))}</strong>
+                <div className="muted">{userRunStatus(runSnapshot.run.status)}</div>
+                {runSnapshot.terminal_result_kind === "PARTIAL" ? (
                   <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div>
                 ) : null}
               </div>
               <div className="button-row">
-                {runSnapshot.next_allowed_commands.includes("REQUEST_CANCEL") ? (
+                {runSnapshot.run.next_allowed_commands.includes("REQUEST_CANCEL") ? (
                   <button className="button-danger" type="button" onClick={() => void handleCancelRun()}>
                     취소
                   </button>
                 ) : null}
-                {runSnapshot.next_allowed_commands.includes("RESUME") ? (
+                {runSnapshot.run.next_allowed_commands.includes("RESUME") ? (
                   <button className="button-secondary" type="button" onClick={() => void handleResumeRun()}>
                     재개
                   </button>
@@ -113,7 +113,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                 <UserMessageBubble content={runContext!.request_text} />
               ) : null}
 
-              {runSnapshot?.status === "WAITING_CONFIRMATION" ? (
+              {runSnapshot?.run.status === "WAITING_CONFIRMATION" ? (
                 <article className="info-card">
                   <strong>추가 확인</strong>
                   <p>
@@ -159,10 +159,10 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                 </article>
               ) : null}
 
-              {runSnapshot?.active_plan ? (
+              {runSnapshot?.current_plan ? (
                 <article className="info-card">
                   <strong>Action Plan</strong>
-                  <div className="muted">{runSnapshot.active_plan.summary_text ?? "요약이 아직 없습니다."}</div>
+                  <div className="muted">{runSnapshot.current_plan.summary_text ?? "요약이 아직 없습니다."}</div>
                   <div className="muted">Action {runSnapshot.execution_status.action_count}건</div>
                 </article>
               ) : null}

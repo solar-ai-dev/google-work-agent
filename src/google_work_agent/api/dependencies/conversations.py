@@ -29,6 +29,7 @@ class ConversationRouteDependencies:
     list_conversations_handler: ListConversationsHandler
     get_conversation_history_handler: GetConversationHistoryHandler
     current_account_id: Callable[[], str | None]
+    new_id: Callable[[], str]
 
 
 def get_conversation_route_dependencies(request: Request) -> ConversationRouteDependencies:
@@ -45,6 +46,7 @@ def get_conversation_route_dependencies(request: Request) -> ConversationRouteDe
             container.get_conversation_history_handler,
         ),
         current_account_id=container.current_account_id_provider,
+        new_id=container.id_generator.new_uuid,
     )
 
 

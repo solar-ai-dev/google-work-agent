@@ -10,13 +10,12 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.dependencies.actions import ActionRouteDependencies
 from google_work_agent.api.dependencies.attachments import AttachmentRouteDependencies
 from google_work_agent.api.dependencies.conversations import ConversationRouteDependencies
-from google_work_agent.api.dependencies.events import EventRouteDependencies
 from google_work_agent.api.dependencies.google_connections import GoogleRouteDependencies
 from google_work_agent.api.dependencies.health_checks import HealthRouteDependencies
 from google_work_agent.api.dependencies.identities import IdentityRouteDependencies
 from google_work_agent.api.dependencies.llm_connections import LLMRouteDependencies
 from google_work_agent.api.dependencies.resources import ResourceRouteDependencies
-from google_work_agent.api.dependencies.runs import RunRouteDependencies
+from google_work_agent.api.dependencies.runs import RunEventRouteDependencies, RunRouteDependencies
 from google_work_agent.api.dependencies.runtime_summaries import RuntimeRouteDependencies
 from google_work_agent.api.dependencies.sessions import SessionRouteDependencies
 from google_work_agent.api.dependencies.settings import SettingsRouteDependencies
@@ -25,13 +24,13 @@ ROUTE_DEPENDENCY_TYPES = (
     ActionRouteDependencies,
     AttachmentRouteDependencies,
     ConversationRouteDependencies,
-    EventRouteDependencies,
     GoogleRouteDependencies,
     HealthRouteDependencies,
     IdentityRouteDependencies,
     LLMRouteDependencies,
     ResourceRouteDependencies,
     RunRouteDependencies,
+    RunEventRouteDependencies,
     RuntimeRouteDependencies,
     SessionRouteDependencies,
     SettingsRouteDependencies,

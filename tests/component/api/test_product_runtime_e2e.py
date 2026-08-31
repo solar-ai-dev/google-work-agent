@@ -86,6 +86,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -468,6 +471,21 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=read_unit_of_work_factory,
         ),
+        start_run_handler=StartRunHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_factory=id_generator.new_uuid,
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+        ),
+        get_run_snapshot_handler=GetRunSnapshotHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+        ),
+        list_run_events_handler=ListRunEventsHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+            event_buffer=publisher,
+        ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
@@ -648,19 +666,18 @@ def _create_conversation_and_run(client: TestClient, *, selection_handle: str | 
     conversation = client.post(
         "/api/v1/conversations",
         json={
+            "schema_version": 1,
             "command_id": "conversation-command-1",
-            "conversation_id": "conversation-1",
-            "account_id": "account-1",
             "title": "Product E2E",
-            "api_contract_version": "1",
         },
     )
     assert conversation.status_code == 201
+    conversation_id = cast(str, conversation.json()["conversation_id"])
     started = client.post(
         "/api/v1/runs",
         json={
             "command_id": "run-command-1",
-            "conversation_id": "conversation-1",
+            "conversation_id": conversation_id,
             "request_text": "Send the selected Gmail draft.",
             "entry_mode": "RESOURCE_SELECTED" if selection_handle is not None else "AGENT_SEARCH",
             "selected_resource_handles": [] if selection_handle is None else [selection_handle],
@@ -680,8 +697,9 @@ def _wait_for_snapshot(client: TestClient, run_id: str, expected_status: str) ->
     while time.monotonic() < deadline:
         response = client.get(f"/api/v1/runs/{run_id}")
         assert response.status_code == 200
-        latest = response.json()["snapshot"]
-        if latest["status"] == expected_status:
+        latest = response.json()
+        run = latest.get("run")
+        if isinstance(run, dict) and run.get("status") == expected_status:
             return latest
         # Snapshot reads use the same SQLite file as native checkpoints in
         # this component topology. A bounded UI-like polling cadence leaves

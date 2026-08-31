@@ -1,15 +1,19 @@
 """Run routes."""
 
+from collections.abc import Iterator
 from dataclasses import asdict
+from json import dumps
+from typing import Any, cast
 
 from fastapi import APIRouter, Header, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
 from google_work_agent.api.dependencies.request_hash import calculate_server_request_hash
-from google_work_agent.api.dependencies.runs import RunRouteDependency
+from google_work_agent.api.dependencies.runs import RunEventRouteDependency, RunRouteDependency
 from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
 from google_work_agent.api.errors.api_request_error import ApiRequestError
 from google_work_agent.api.errors.result_code_http_mapping import http_status_for_result_code
@@ -21,15 +25,11 @@ from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2, Ru
 from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
 from google_work_agent.api.schemas.runs.get_run_context import RunContextResponse
 from google_work_agent.api.schemas.runs.get_run_snapshot import RunSnapshotResponseV1
-from google_work_agent.api.schemas.runs.recovery import RecoveryUiProjectionV1
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
-from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseModel
+from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseV1
 from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
-from google_work_agent.application.use_cases.recovery.project_recovery_options import (
-    ProjectRecoveryOptionsHandler,
-)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
     materialize_current_resolve_recovery_command,
@@ -53,19 +53,7 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import (
-    GetRunSnapshotHandler,
-    GetRunSnapshotQuery,
-)
-from google_work_agent.application.use_cases.run.project_context_preview import (
-    ProjectContextPreviewHandler,
-)
-from google_work_agent.application.use_cases.run.project_error_actions import (
-    ProjectErrorActionsHandler,
-)
-from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
-    ProjectExternalLlmTransferScopeHandler,
-)
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotQuery
 from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
@@ -84,20 +72,18 @@ from google_work_agent.application.use_cases.run.resume_safe_checkpoint import (
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.application.use_cases.run.start_run import (
-    StartRunCommand,
-    StartRunHandler,
-)
+from google_work_agent.application.use_cases.run.start_run import StartRunCommand
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsQuery
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.ports.system.api_access_port import EndpointPolicy
 
 router = APIRouter(prefix="/api/v1")
 
 
-@router.post("/runs", response_model=StartRunResponseModel, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/runs", response_model=StartRunResponseV1, status_code=status.HTTP_202_ACCEPTED)
 def start_run(
     request: Request, payload: StartRunRequest, response: Response, dependencies: RunRouteDependency
-) -> StartRunResponseModel:
+) -> StartRunResponseV1:
     enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
     enforce_supported_api_contract_version(
         supported_version=dependencies.api_contract_version,
@@ -115,18 +101,9 @@ def start_run(
         dependencies=dependencies,
         selection_handles=selected_resource_handles,
     )
-    handler = StartRunHandler(
-        unit_of_work_factory=dependencies.unit_of_work_factory,
-        checkpoint_port=dependencies.checkpoint_port,
-        now_ms=dependencies.clock.now_ms,
-        id_factory=dependencies.id_generator.new_uuid,
-        graph_profile=dependencies.graph_profile,
-        graph_version=dependencies.graph_version,
-        settings_provider=(
-            None if dependencies.settings is None else dependencies.settings.get_settings
-        ),
-    )
-    result = handler(
+    if dependencies.start_run_handler is None:
+        raise RuntimeError("start-run handler is not configured")
+    result = dependencies.start_run_handler(
         StartRunCommand(
             **command_payload,
             resolved_resource_selections=resolved_resource_selections,
@@ -137,7 +114,14 @@ def start_run(
             ScheduleRunExecutionCommand(handoff_id=result.handoff_id)
         )
     response.status_code = http_status_for_result_code(result.result_code, default_success=202)
-    return StartRunResponseModel(**asdict(result))
+    return StartRunResponseV1(
+        run_id=result.run_id,
+        conversation_id=result.conversation_id,
+        langgraph_thread_id=result.workflow_key,
+        status=result.run_status,
+        version=result.run_version,
+        event_stream_url=f"/api/v1/runs/{result.run_id}/events",
+    )
 
 
 def _resolve_start_run_selections(
@@ -194,42 +178,9 @@ def get_run_snapshot(
         request_id=request.state.request_id,
         request_version=x_api_contract_version,
     )
-    snapshot = GetRunSnapshotHandler(
-        unit_of_work_factory=dependencies.read_unit_of_work_factory,
-        project_context_preview=(
-            dependencies.project_context_preview_handler
-            if isinstance(
-                dependencies.project_context_preview_handler,
-                ProjectContextPreviewHandler,
-            )
-            else None
-        ),
-        project_recovery_options=(
-            dependencies.project_recovery_options_handler
-            if isinstance(
-                dependencies.project_recovery_options_handler,
-                ProjectRecoveryOptionsHandler,
-            )
-            else None
-        ),
-        project_error_actions=(
-            dependencies.project_error_actions_handler
-            if isinstance(
-                dependencies.project_error_actions_handler,
-                ProjectErrorActionsHandler,
-            )
-            else None
-        ),
-        project_external_llm_transfer_scope=(
-            dependencies.project_external_llm_transfer_scope_handler
-            if isinstance(
-                dependencies.project_external_llm_transfer_scope_handler,
-                ProjectExternalLlmTransferScopeHandler,
-            )
-            else None
-        ),
-        resolve_pending_confirmation=dependencies.resolve_pending_confirmation,
-    )(GetRunSnapshotQuery(run_id=run_id))
+    if dependencies.get_run_snapshot_handler is None:
+        raise RuntimeError("run-snapshot handler is not configured")
+    snapshot = dependencies.get_run_snapshot_handler(GetRunSnapshotQuery(run_id=run_id))
     if snapshot is None:
         raise ApiRequestError(
             error_code="NOT_FOUND",
@@ -237,22 +188,74 @@ def get_run_snapshot(
             status_code=404,
             request_id=request.state.request_id,
         )
-    canonical_projection = asdict(snapshot)
-    recovery = canonical_projection["recovery"]
-    canonical_projection["recovery"] = (
-        None if recovery is None else RecoveryUiProjectionV1.model_validate(recovery).model_dump()
+    return RunSnapshotResponseV1.model_validate(asdict(snapshot))
+
+
+@router.get("/runs/{run_id}/events")
+def stream_events(
+    run_id: str,
+    request: Request,
+    dependencies: RunEventRouteDependency,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    x_api_contract_version: str | None = Header(default=None),
+) -> StreamingResponse:
+    enforce_access(request, policy=EndpointPolicy.API_SESSION_REQUIRED)
+    enforce_supported_api_contract_version(
+        supported_version=dependencies.api_contract_version,
+        request_id=request.state.request_id,
+        request_version=x_api_contract_version,
     )
-    run_projection = canonical_projection.pop("run")
-    projection = {
-        **run_projection,
-        **canonical_projection,
-        "active_plan": canonical_projection.pop("current_plan"),
-        "result_kind": canonical_projection.pop("terminal_result_kind"),
-        "snapshot_version": canonical_projection.pop("projection_version"),
-    }
-    return RunSnapshotResponseV1(
-        snapshot=projection, api_contract_version=dependencies.api_contract_version
+    query = ListRunEventsQuery(run_id=run_id, last_event_id=last_event_id)
+    if dependencies.list_run_events_handler is None:
+        raise RuntimeError("run-event handler is not configured")
+    replay = dependencies.list_run_events_handler(query)
+    if not replay.run_exists:
+        raise ApiRequestError(
+            error_code="NOT_FOUND",
+            user_message="실행을 찾을 수 없습니다.",
+            status_code=404,
+            request_id=request.state.request_id,
+        )
+    if replay.cursor_status == "CURSOR_EXPIRED":
+        return StreamingResponse(
+            iter((_format_sse("", "snapshot_required", {"run_id": run_id}),)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    if dependencies.event_buffer is None:
+        raise RuntimeError("run-event transport is not configured")
+    transport = cast(Any, dependencies.event_buffer)
+    subscription = transport.subscribe(run_id)
+    catchup = dependencies.list_run_events_handler(query)
+
+    def _stream() -> Iterator[str]:
+        emitted_ids: set[str] = set()
+        try:
+            for event in catchup.events:
+                emitted_ids.add(event.event_id)
+                yield _format_sse(event.event_id, event.event_type, event.payload)
+            while True:
+                maybe_event = subscription.poll(0.1)
+                if maybe_event is None:
+                    yield ": keepalive\n\n"
+                    continue
+                if maybe_event.event_id in emitted_ids:
+                    continue
+                emitted_ids.add(maybe_event.event_id)
+                yield _format_sse(
+                    maybe_event.event_id, maybe_event.event_type, maybe_event.payload
+                )
+        finally:
+            transport.close_subscription(subscription)
+
+    return StreamingResponse(
+        _stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
     )
+
+
+def _format_sse(event_id: str, event_type: str, payload: dict[str, object]) -> str:
+    return f"id: {event_id}\nevent: {event_type}\ndata: {dumps(payload, sort_keys=True)}\n\n"
 
 
 @router.post(

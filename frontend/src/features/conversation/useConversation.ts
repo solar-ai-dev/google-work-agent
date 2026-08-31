@@ -5,7 +5,6 @@ import {
   confirmRun,
   createConversation,
   getConversationHistory,
-  getLatestConversationRun,
   getRunContext,
   getRunSnapshot,
   listConversations,
@@ -112,13 +111,13 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     conversationId = conversationProjectionRef.current.conversationId,
     generation = conversationProjectionRef.current.generation,
   ): Promise<boolean> => {
-    const [snapshotResponse, contextResponse] = await Promise.all([getRunSnapshot(runId), getRunContext(runId)]);
-    if (conversationId === null || snapshotResponse.snapshot.conversation_id !== conversationId || conversationProjectionRef.current.generation !== generation || conversationProjectionRef.current.conversationId !== conversationId) return false;
-    setRunSnapshot(snapshotResponse.snapshot);
+    const [snapshot, contextResponse] = await Promise.all([getRunSnapshot(runId), getRunContext(runId)]);
+    if (conversationId === null || snapshot.run.conversation_id !== conversationId || conversationProjectionRef.current.generation !== generation || conversationProjectionRef.current.conversationId !== conversationId) return false;
+    setRunSnapshot(snapshot);
     setRunContext(contextResponse.context);
-    const pending = snapshotResponse.snapshot.pending_interrupt;
+    const pending = snapshot.pending_interrupt;
     setPendingConfirmation(
-      snapshotResponse.snapshot.status === "WAITING_CONFIRMATION" && pending
+      snapshot.run.status === "WAITING_CONFIRMATION" && pending
         ? {
             interruptId: pending.interrupt_id,
             question: pending.question,
@@ -128,8 +127,7 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
         : null,
     );
     if (
-      snapshotResponse.snapshot.finished_at_ms !== null
-      && snapshotResponse.snapshot.finished_at_ms !== undefined
+      snapshot.run.finished_at_ms !== null
       && !historySyncedRunIdsRef.current.has(runId)
     ) {
       historySyncedRunIdsRef.current.add(runId);
@@ -140,9 +138,9 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
 
   const selectRun = useCallback(async (runId: string, conversationId = conversationProjectionRef.current.conversationId, generation = conversationProjectionRef.current.generation): Promise<void> => {
     if (conversationId === null) {
-      const snapshotResponse = await getRunSnapshot(runId);
+      const snapshot = await getRunSnapshot(runId);
       if (conversationProjectionRef.current.generation !== generation) return;
-      const resolvedConversationId = snapshotResponse.snapshot.conversation_id;
+      const resolvedConversationId = snapshot.run.conversation_id;
       const resolvedGeneration = beginConversationProjection(resolvedConversationId);
       await Promise.all([
         reloadConversationHistory(resolvedConversationId, resolvedGeneration),
@@ -165,12 +163,10 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
   const selectConversation = useCallback(async (conversationId: string): Promise<void> => {
     const generation = beginConversationProjection(conversationId);
     try {
-      const [history, latest] = await Promise.all([
-        getConversationHistory(conversationId),
-        getLatestConversationRun(conversationId),
-      ]);
+      const history = await getConversationHistory(conversationId);
       if (!applyConversationHistory(history, conversationId, generation)) return;
-      if (latest.run) await selectRun(latest.run.run_id, conversationId, generation);
+      const latestRun = history.runs.at(-1);
+      if (latestRun) await selectRun(latestRun.run_id, conversationId, generation);
     } catch (error) {
       if (conversationProjectionRef.current.generation === generation && conversationProjectionRef.current.conversationId === conversationId) {
         const message = error instanceof ApiClientError ? error.message : "대화 실행 정보를 불러오지 못했습니다.";
@@ -192,10 +188,11 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     setBusyCommand("start-run");
     setComposerError(null);
     try {
-      const conversationId = selectedConversationId ?? crypto.randomUUID();
+      let conversationId = selectedConversationId;
       let projectionGeneration = conversationProjectionRef.current.generation;
-      if (!selectedConversationId) {
-        await createConversation({ command_id: crypto.randomUUID(), conversation_id: conversationId, account_id: currentAccount.account_id, title: requestText.slice(0, 80) });
+      if (conversationId === null) {
+        const conversation = await createConversation({ command_id: crypto.randomUUID(), title: requestText.slice(0, 80) });
+        conversationId = conversation.conversation_id;
         projectionGeneration = beginConversationProjection(conversationId);
       }
       const response = await startRun({ command_id: crypto.randomUUID(), conversation_id: conversationId, request_text: requestText, entry_mode: selectedResourceHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH", selected_resource_handles: selectedResourceHandles, requested_mode: "AUTO" });
@@ -215,12 +212,12 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
   const handleApprove = useCallback(async (action: RunAction, duplicateAcknowledged = false, calendarConflictAcknowledged = false): Promise<void> => {
     if (!runSnapshot || !currentAccount?.account_id || busyCommand) return;
     setBusyCommand(`approve-${action.action_id}`);
-    try { await approveAction({ action_id: action.action_id, command_id: crypto.randomUUID(), expected_version: action.version, duplicate_acknowledged: duplicateAcknowledged, calendar_conflict_acknowledged: calendarConflictAcknowledged }); await selectRun(runSnapshot.run_id); } finally { setBusyCommand(null); }
+    try { await approveAction({ action_id: action.action_id, command_id: crypto.randomUUID(), expected_version: action.version, duplicate_acknowledged: duplicateAcknowledged, calendar_conflict_acknowledged: calendarConflictAcknowledged }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); }
   }, [busyCommand, currentAccount, runSnapshot, selectRun]);
   const handleSimpleAction = useCallback(async (kind: "modify" | "reject" | "retry", action: RunAction, argumentsPatch: Record<string, unknown> = {}): Promise<void> => {
     if (!runSnapshot || busyCommand) return;
     setBusyCommand(`${kind}-${action.action_id}`);
-    try { const commandId = crypto.randomUUID(); if (kind === "modify") await modifyAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version, arguments_patch: argumentsPatch }); else if (kind === "reject") await rejectAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version }); else await prepareRetry({ action_id: action.action_id, command_id: commandId, expected_action_version: action.version }); await selectRun(runSnapshot.run_id); } finally { setBusyCommand(null); }
+    try { const commandId = crypto.randomUUID(); if (kind === "modify") await modifyAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version, arguments_patch: argumentsPatch }); else if (kind === "reject") await rejectAction({ action_id: action.action_id, command_id: commandId, expected_version: action.version }); else await prepareRetry({ action_id: action.action_id, command_id: commandId, expected_action_version: action.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); }
   }, [busyCommand, runSnapshot, selectRun]);
   const handleAttachFiles = useCallback(async (action: RunAction, files: FileList): Promise<void> => {
     if (!runSnapshot || busyCommand || files.length === 0) return;
@@ -238,15 +235,15 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
         });
       }
       await modifyAction({ action_id: action.action_id, command_id: crypto.randomUUID(), expected_version: action.version, arguments_patch: { attachments: descriptors } });
-      await selectRun(runSnapshot.run_id);
+      await selectRun(runSnapshot.run.run_id);
     } catch (error) {
       onStatusLine(error instanceof ApiClientError ? error.message : "첨부파일을 추가하지 못했습니다.");
     } finally {
       setBusyCommand(null);
     }
   }, [busyCommand, onStatusLine, runSnapshot, selectRun]);
-  const handleCancelRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand("cancel-run"); try { await cancelRun({ run_id: runSnapshot.run_id, command_id: crypto.randomUUID(), expected_run_version: runSnapshot.version }); await selectRun(runSnapshot.run_id); } finally { setBusyCommand(null); } }, [busyCommand, runSnapshot, selectRun]);
-  const handleResumeRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; const resumeKind = { REAUTH_REQUIRED: "REAUTH_COMPLETED", BLOCKED: "SAFE_CHECKPOINT_RESUME", RECOVERY_REQUIRED: "RECOVERY_RECHECK" }[runSnapshot.status] as "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK" | undefined; if (!resumeKind) { onStatusLine("현재 상태는 전용 확인 또는 승인 경로를 사용해야 합니다."); return; } setBusyCommand("resume-run"); try { await resumeRun({ run_id: runSnapshot.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.version, resume_kind: resumeKind }); await selectRun(runSnapshot.run_id); } finally { setBusyCommand(null); } }, [busyCommand, onStatusLine, runSnapshot, selectRun]);
+  const handleCancelRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand("cancel-run"); try { await cancelRun({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_run_version: runSnapshot.run.version }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, runSnapshot, selectRun]);
+  const handleResumeRun = useCallback(async (): Promise<void> => { if (!runSnapshot || busyCommand) return; const resumeKind = { REAUTH_REQUIRED: "REAUTH_COMPLETED", BLOCKED: "SAFE_CHECKPOINT_RESUME", RECOVERY_REQUIRED: "RECOVERY_RECHECK" }[runSnapshot.run.status] as "REAUTH_COMPLETED" | "SAFE_CHECKPOINT_RESUME" | "RECOVERY_RECHECK" | undefined; if (!resumeKind) { onStatusLine("현재 상태는 전용 확인 또는 승인 경로를 사용해야 합니다."); return; } setBusyCommand("resume-run"); try { await resumeRun({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.run.version, resume_kind: resumeKind }); await selectRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, onStatusLine, runSnapshot, selectRun]);
   const handleConfirmation = useCallback(async (selectedOption?: string): Promise<void> => {
     if (!runSnapshot || !pendingConfirmation || busyCommand) return;
     const isOption = pendingConfirmation.responseMode === "OPTION";
@@ -255,21 +252,21 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     setBusyCommand("confirm-run");
     try {
       await confirmRun({
-        run_id: runSnapshot.run_id,
+        run_id: runSnapshot.run.run_id,
         command_id: crypto.randomUUID(),
-        expected_version: runSnapshot.version,
+        expected_version: runSnapshot.run.version,
         interrupt_id: pendingConfirmation.interruptId,
         response_kind: isOption ? "OPTION" : "FREE_TEXT",
         selected_option: isOption ? selectedOption : null,
         free_text: isOption ? null : freeText,
       });
       setConfirmationText("");
-      await refreshRun(runSnapshot.run_id);
+      await refreshRun(runSnapshot.run.run_id);
     } finally {
       setBusyCommand(null);
     }
   }, [busyCommand, confirmationText, pendingConfirmation, refreshRun, runSnapshot]);
-  const handleResolveRecovery = useCallback(async (action: RunAction, resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN"): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand(`recovery-${resolutionKind}`); try { await resolveRecovery({ run_id: runSnapshot.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.version, action_id: action.action_id, resolution_kind: resolutionKind }); await refreshRun(runSnapshot.run_id); } finally { setBusyCommand(null); } }, [busyCommand, refreshRun, runSnapshot]);
+  const handleResolveRecovery = useCallback(async (action: RunAction, resolutionKind: "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN"): Promise<void> => { if (!runSnapshot || busyCommand) return; setBusyCommand(`recovery-${resolutionKind}`); try { await resolveRecovery({ run_id: runSnapshot.run.run_id, command_id: crypto.randomUUID(), expected_version: runSnapshot.run.version, action_id: action.action_id, resolution_kind: resolutionKind }); await refreshRun(runSnapshot.run.run_id); } finally { setBusyCommand(null); } }, [busyCommand, refreshRun, runSnapshot]);
 
   return { conversations, selectedConversationId, historyMessages, runSnapshot, runContext, composerText, composerError, busyCommand, pendingConfirmation, confirmationText, setComposerText, setComposerError, setConfirmationText, refreshConversations, beginConversationProjection, selectConversation, selectRun, refreshRun, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery };
 }

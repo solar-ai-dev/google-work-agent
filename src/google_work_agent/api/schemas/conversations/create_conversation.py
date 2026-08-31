@@ -1,20 +1,16 @@
-"""Create-conversation wire contracts."""
+"""Canonical create-conversation wire request."""
 
-from google_work_agent.api.schemas.model import ApiModel, ContractVersionedRequest
+from typing import Literal
+
+from pydantic import Field
+
+from google_work_agent.api.schemas.model import ApiModel
 
 
-class CreateConversationRequest(ContractVersionedRequest):
+class CreateConversationRequestV1(ApiModel):
+    schema_version: Literal[1] = 1
     command_id: str
-    conversation_id: str
-    account_id: str
-    title: str
+    title: str | None = Field(default=None, min_length=1, max_length=200)
 
 
-class ConversationResponse(ApiModel):
-    applied: bool
-    result_code: str
-    conversation_id: str
-    account_id: str
-    title: str
-    updated_at_ms: int
-    conflict_detail: str | None = None
+__all__ = ["CreateConversationRequestV1"]

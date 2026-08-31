@@ -71,18 +71,11 @@ describe("api index wrappers", () => {
         call: () =>
           api.createConversation({
             command_id: "command-1",
-            conversation_id: "conversation-1",
-            account_id: "account-1",
             title: "Inbox triage",
           }),
         path: "/api/v1/conversations",
         method: "POST",
-        bodyIncludes: { conversation_id: "conversation-1", account_id: "account-1" },
-      },
-      {
-        call: () => api.getLatestConversationRun("conversation-1"),
-        path: "/api/v1/conversations/conversation-1/latest-run",
-        method: "GET",
+        bodyIncludes: { schema_version: 1, title: "Inbox triage" },
       },
       { call: () => api.getRunSnapshot("run-1"), path: "/api/v1/runs/run-1", method: "GET" },
       {

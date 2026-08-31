@@ -47,6 +47,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -145,6 +148,21 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
         ),
+        start_run_handler=StartRunHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_factory=id_generator.new_uuid,
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+        ),
+        get_run_snapshot_handler=GetRunSnapshotHandler(
+            unit_of_work_factory=unit_of_work_factory,
+        ),
+        list_run_events_handler=ListRunEventsHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            event_buffer=publisher,
+        ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
         schedule_run_execution=production_runtime.schedule_run_execution,
@@ -240,21 +258,20 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         create_response = client.post(
             "/api/v1/conversations",
             json={
+                "schema_version": 1,
                 "command_id": "conversation-cmd-1",
-                "conversation_id": "conversation-1",
-                "account_id": "account-1",
                 "title": "Inbox",
-                "api_contract_version": "1",
             },
             headers=headers,
         )
         assert create_response.status_code == 201
+        conversation_id = create_response.json()["conversation_id"]
 
         start_response = client.post(
             "/api/v1/runs",
             json={
                 "command_id": "run-cmd-1",
-                "conversation_id": "conversation-1",
+                "conversation_id": conversation_id,
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
                 "selected_resource_handles": [],
@@ -265,7 +282,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         )
         assert start_response.status_code == 202
         run_id = start_response.json()["run_id"]
-        workflow_key = start_response.json()["workflow_key"]
+        workflow_key = start_response.json()["langgraph_thread_id"]
         runtime.queue_result(
             WorkflowInvocationResult(
                 run_id=run_id,
@@ -287,7 +304,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
 
         snapshot = client.get(f"/api/v1/runs/{run_id}", headers=headers)
         assert snapshot.status_code == 200
-        assert snapshot.json()["snapshot"]["run_id"] == run_id
+        assert snapshot.json()["run"]["run_id"] == run_id
 
         with client.stream(
             "GET",
@@ -302,11 +319,9 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         blocked = client.post(
             "/api/v1/conversations",
             json={
+                "schema_version": 1,
                 "command_id": "conversation-cmd-2",
-                "conversation_id": "conversation-2",
-                "account_id": "account-1",
                 "title": "Blocked",
-                "api_contract_version": "1",
             },
             headers={**headers, "Origin": "http://malicious.example"},
         )

@@ -4,12 +4,12 @@ import {
   type AttachmentDescriptorResponse,
   type BootstrapResponse,
   type ConversationHistoryResponse,
+  type ConversationItem,
   type ConversationListResponse,
   type CurrentGoogleAccountResponse,
   type GoogleConnectionResponse,
   type GoogleOAuthStartResponse,
   type GmailResourceDetailResponse,
-  type LatestConversationRunResponse,
   type LLMApiKeyResponse,
   type LLMConnectionResponse,
   type LiveResponse,
@@ -18,7 +18,7 @@ import {
   type ResourceListResponse,
   type RunCommandResponse,
   type RunContextResponse,
-  type RunSnapshotResponse,
+  type RunSnapshot,
   type RuntimeResponse,
   type SettingsResponse,
   type StartRunResponse,
@@ -122,13 +122,11 @@ export function listConversations(
 
 export function createConversation(payload: {
   command_id: string;
-  conversation_id: string;
-  account_id: string;
-  title: string;
-}): Promise<{ conversation_id: string }> {
+  title?: string | null;
+}): Promise<ConversationItem> {
   return requestJson("/api/v1/conversations", {
     method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: { schema_version: 1, ...payload },
   });
 }
 
@@ -136,11 +134,7 @@ export function getConversationHistory(conversationId: string): Promise<Conversa
   return requestJson(`/api/v1/conversations/${encodeURIComponent(conversationId)}/history`);
 }
 
-export function getLatestConversationRun(conversationId: string): Promise<LatestConversationRunResponse> {
-  return requestJson(`/api/v1/conversations/${encodeURIComponent(conversationId)}/latest-run`);
-}
-
-export function getRunSnapshot(runId: string): Promise<RunSnapshotResponse> {
+export function getRunSnapshot(runId: string): Promise<RunSnapshot> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`);
 }
 

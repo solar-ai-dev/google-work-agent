@@ -147,16 +147,6 @@ export type ConversationHistoryResponse = {
   truncated: boolean;
 };
 
-export type LatestConversationRunResponse = {
-  run: {
-    run_id: string;
-    status: string;
-    version: number;
-    started_at_ms: number;
-  } | null;
-  api_contract_version: string;
-};
-
 export type RunAction = {
   action_id: string;
   tool_name: string;
@@ -193,16 +183,20 @@ export type PendingInterrupt = {
 };
 
 export type RunSnapshot = {
-  run_id: string;
-  conversation_id: string;
-  status: string;
-  version: number;
-  entry_mode: string;
-  requested_mode: string;
-  actual_runtime?: string | null;
-  started_at_ms: number;
-  finished_at_ms?: number | null;
-  active_plan?: {
+  run: {
+    run_id: string;
+    conversation_id: string;
+    status: string;
+    version: number;
+    entry_mode: string;
+    requested_mode: string;
+    actual_runtime: string | null;
+    started_at_ms: number;
+    finished_at_ms: number | null;
+    next_allowed_commands: string[];
+  };
+  messages: ConversationMessage[];
+  current_plan: {
     plan_id: string;
     revision_no: number;
     status: string;
@@ -223,14 +217,8 @@ export type RunSnapshot = {
     unknown_result_action_count: number;
   };
   pending_interrupt?: PendingInterrupt | null;
-  result_kind?: string | null;
-  next_allowed_commands: string[];
-  snapshot_version: number;
-};
-
-export type RunSnapshotResponse = {
-  snapshot: RunSnapshot;
-  api_contract_version: string;
+  terminal_result_kind: "SUCCESS" | "PARTIAL" | "BLOCKED" | "FAILED" | "CANCELLED" | "NONE";
+  projection_version: number;
 };
 
 export type RunContext = {
@@ -251,18 +239,12 @@ export type RunContextResponse = {
 };
 
 export type StartRunResponse = {
-  applied: boolean;
-  result_code: string;
   run_id: string;
   conversation_id: string;
-  run_status: string;
-  run_version: number;
-  user_message_id: string;
-  workflow_key: string;
-  handoff_id: string;
-  enqueued: boolean;
-  request_replayed: boolean;
-  conflict_detail?: string | null;
+  langgraph_thread_id: string;
+  status: string;
+  version: number;
+  event_stream_url: string;
 };
 
 export type ActionCommandResponse = {

@@ -353,10 +353,7 @@ test("clears the previous conversation projection when starting a new conversati
   expect(screen.queryByText("Verified 0")).not.toBeInTheDocument();
 });
 
-test("keeps the last selected conversation when earlier latest-run responses arrive late", async () => {
-  let resolveLatestA: (response: MockResponse) => void = () => {
-    throw new Error("Conversation A request did not start");
-  };
+test("keeps the last selected conversation when an earlier history response arrives late", async () => {
   let resolveHistoryA: (response: MockResponse) => void = () => {
     throw new Error("Conversation A history request did not start");
   };
@@ -377,12 +374,6 @@ test("keeps the last selected conversation when earlier latest-run responses arr
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
-    if (path === "/api/v1/conversations/conversation-a/latest-run") {
-      return new Promise<MockResponse>((resolve) => { resolveLatestA = resolve; });
-    }
-    if (path === "/api/v1/conversations/conversation-b/latest-run") {
-      return jsonResponse({ run: { run_id: "run-b" }, api_contract_version: "1" });
-    }
     if (path === "/api/v1/runs/run-b") {
       return jsonResponse(snapshotPayload({ run_id: "run-b", conversation_id: "conversation-b" }));
     }
@@ -394,7 +385,11 @@ test("keeps the last selected conversation when earlier latest-run responses arr
     if (path === "/api/v1/conversations/conversation-a/history") {
       return new Promise<MockResponse>((resolve) => { resolveHistoryA = resolve; });
     }
-    return jsonResponse(historyPayload([], [], "conversation-b"));
+    return jsonResponse(historyPayload(
+      [],
+      [{ run_id: "run-b", status: "WAITING_APPROVAL", started_at_ms: 1, finished_at_ms: null }],
+      "conversation-b",
+    ));
   });
 
   const user = userEvent.setup();
@@ -408,7 +403,6 @@ test("keeps the last selected conversation when earlier latest-run responses arr
     [{ run_id: "run-a", status: "COMPLETED", started_at_ms: 1, finished_at_ms: 2 }],
     "conversation-a",
   )));
-  resolveLatestA(jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" }));
 
   await waitFor(() => expect(screen.getByText("대화 B 요청")).toBeInTheDocument());
   expect(screen.queryByText("대화 A 요청")).not.toBeInTheDocument();
@@ -491,9 +485,6 @@ test("moves a conversation to the top of the list after sending a message to it"
       return jsonResponse({ schema_version: 1, items: conversationListItems, next_cursor: null });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
-    if (path === "/api/v1/conversations/conversation-a/latest-run") {
-      return jsonResponse({ run: null, api_contract_version: "1" });
-    }
     if (path === "/api/v1/runs" && init?.method === "POST") {
       started.push(init);
       conversationListItems = [
@@ -606,9 +597,6 @@ test("continues an existing conversation with a new run and keeps the earlier hi
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
-    if (path === "/api/v1/conversations/conversation-a/latest-run") {
-      return jsonResponse({ run: { run_id: "run-a" }, api_contract_version: "1" });
-    }
     if (path === "/api/v1/runs" && init?.method === "POST") {
       started.push(init);
       storedMessages = [...storedMessages, { id: "message-3", run_id: "run-b", role: "USER", content: "새 요청", created_at_ms: 3 }];
@@ -3503,11 +3491,6 @@ function installConversationHistoryFetch(
       });
     }
     if (path.startsWith("/api/v1/resources/gmail")) return jsonResponse({ source: "gmail", items: [], next_page_token: null, api_contract_version: "1" });
-    const latestRunMatch = /^\/api\/v1\/conversations\/([^/]+)\/latest-run$/.exec(path);
-    if (latestRunMatch) {
-      const runId = latestRuns[latestRunMatch[1]];
-      return jsonResponse({ run: runId ? { run_id: runId } : null, api_contract_version: "1" });
-    }
     const runMatch = /^\/api\/v1\/runs\/([^/]+)$/.exec(path);
     if (runMatch) {
       const conversationId = Object.keys(latestRuns).find((key) => latestRuns[key] === runMatch[1]) ?? "conversation-a";
@@ -3759,11 +3742,32 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
     ...overrides,
   };
   return {
-    snapshot: {
-      ...snapshot,
-      actions: snapshot.actions.map((action) => ({ ...action, risk: action.risk ?? {} })),
+    run: {
+      run_id: snapshot.run_id,
+      conversation_id: snapshot.conversation_id,
+      status: snapshot.status,
+      version: snapshot.version,
+      entry_mode: snapshot.entry_mode,
+      requested_mode: snapshot.requested_mode,
+      actual_runtime: snapshot.actual_runtime,
+      started_at_ms: snapshot.started_at_ms,
+      finished_at_ms: snapshot.finished_at_ms,
+      next_allowed_commands: snapshot.next_allowed_commands,
     },
-    api_contract_version: "1",
+    messages: [],
+    current_plan: snapshot.active_plan,
+    actions: snapshot.actions.map((action) => ({ ...action, risk: action.risk ?? {} })),
+    approvals: snapshot.approvals,
+    execution_status: snapshot.execution_status,
+    verification_summary: snapshot.verification_summary,
+    recovery_summary: snapshot.recovery_summary,
+    context_preview: null,
+    pending_interrupt: snapshot.pending_interrupt ?? null,
+    recovery: null,
+    error: null,
+    external_llm_transfer_scope: null,
+    terminal_result_kind: snapshot.result_kind ?? "NONE",
+    projection_version: snapshot.snapshot_version,
   };
 }
 

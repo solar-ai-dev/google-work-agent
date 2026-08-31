@@ -265,6 +265,7 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.project_context_preview import (
     ProjectContextPreviewHandler,
 )
@@ -288,6 +289,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     CheckpointEffectiveBindingResolver,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode import (
     UpdateRuntimeModeHandler,
 )
@@ -299,6 +301,7 @@ from google_work_agent.application.use_cases.setting.update_settings import Upda
 from google_work_agent.application.use_cases.shutdown.request_shutdown import (
     RequestShutdownHandler,
 )
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventHandler,
 )
@@ -860,6 +863,9 @@ class _PromptInactiveWorkflowRuntime:
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult:
         return self._not_available(request.run_id, request.workflow_key)
 
+    def resolve_pending_confirmation(self, _run_id: str) -> dict[str, object] | None:
+        return None
+
     @staticmethod
     def _not_available(run_id: str, workflow_key: str) -> WorkflowInvocationResult:
         return WorkflowInvocationResult(
@@ -1357,6 +1363,29 @@ def build_production_container(
             timezone_provider=lambda: llm_runtime.settings_service().timezone,
         )
     )
+    project_recovery_options = ProjectRecoveryOptionsHandler(read_unit_of_work_factory)
+    project_error_actions = ProjectErrorActionsHandler(
+        unit_of_work_factory=read_unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        resume_target_registry=resume_target_registry,
+    )
+    start_run_handler = StartRunHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        checkpoint_port=checkpoint,
+        now_ms=clock.now_ms,
+        id_factory=id_generator.new_uuid,
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
+        graph_version=RESUME_CONTRACT_VERSION,
+        settings_provider=settings_service.get_settings,
+    )
+    get_run_snapshot_handler = GetRunSnapshotHandler(
+        unit_of_work_factory=read_unit_of_work_factory,
+        project_context_preview=project_context_preview,
+        project_recovery_options=project_recovery_options,
+        project_error_actions=project_error_actions,
+        project_external_llm_transfer_scope=project_external_llm_transfer_scope,
+        resolve_pending_confirmation=workflow_runtime.resolve_pending_confirmation,
+    )
 
     return ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
@@ -1457,6 +1486,12 @@ def build_production_container(
             history_message_limit=HISTORY_MESSAGE_LIMIT,
             history_run_limit=HISTORY_RUN_LIMIT,
         ),
+        start_run_handler=start_run_handler,
+        get_run_snapshot_handler=get_run_snapshot_handler,
+        list_run_events_handler=ListRunEventsHandler(
+            unit_of_work_factory=read_unit_of_work_factory,
+            event_buffer=event_publisher,
+        ),
         project_context_preview_handler=project_context_preview,
         adjust_context_handler=AdjustContextHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -1470,12 +1505,8 @@ def build_production_container(
             ),
             schedule_run_execution=production_runtime.schedule_run_execution,
         ),
-        project_recovery_options_handler=ProjectRecoveryOptionsHandler(read_unit_of_work_factory),
-        project_error_actions_handler=ProjectErrorActionsHandler(
-            unit_of_work_factory=read_unit_of_work_factory,
-            checkpoint_port=checkpoint,
-            resume_target_registry=resume_target_registry,
-        ),
+        project_recovery_options_handler=project_recovery_options,
+        project_error_actions_handler=project_error_actions,
         project_external_llm_transfer_scope_handler=project_external_llm_transfer_scope,
         get_llm_credential_status_handler=GetLlmCredentialStatusHandler(credential_service),
         get_settings_handler=GetSettingsHandler(settings_service),

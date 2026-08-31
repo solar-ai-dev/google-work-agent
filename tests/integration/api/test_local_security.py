@@ -179,11 +179,9 @@ def test_incompatible_session_blocks_mutation_and_sse() -> None:
         mutation = client.post(
             "/api/v1/conversations",
             json={
+                "schema_version": 1,
                 "command_id": "command-1",
-                "conversation_id": "conversation-1",
-                "account_id": "account-1",
                 "title": "Blocked",
-                "api_contract_version": "1",
             },
             headers=headers,
         )

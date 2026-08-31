@@ -9,14 +9,14 @@ from google_work_agent.api.schemas.actions.prepare_retry_action import PrepareRe
 from google_work_agent.api.schemas.actions.reject_action import RejectActionRequestV2
 from google_work_agent.api.schemas.attachments.stage_attachment import StageAttachmentRequest
 from google_work_agent.api.schemas.conversations.create_conversation import (
-    CreateConversationRequest,
+    CreateConversationRequestV1,
 )
-from google_work_agent.api.schemas.events.get_events import EventEnvelope
 from google_work_agent.api.schemas.health_checks.get_liveness import LiveResponse
 from google_work_agent.api.schemas.health_checks.get_readiness import ReadyResponse
 from google_work_agent.api.schemas.resources.list_resources import ResourceListResponse
 from google_work_agent.api.schemas.runs.cancel_run import CancelRunRequestV2
 from google_work_agent.api.schemas.runs.confirm_run import ConfirmationResponseV1
+from google_work_agent.api.schemas.runs.list_run_events import RunSseEventResponseV1
 from google_work_agent.api.schemas.runs.recovery import (
     ActionRecoveryTargetV1,
     RecoveryUiProjectionV1,
@@ -51,8 +51,10 @@ def test_run_transport_contracts_live_in_operation_modules() -> None:
 
 def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert StageAttachmentRequest.__module__.endswith(".attachments.stage_attachment")
-    assert CreateConversationRequest.__module__.endswith(".conversations.create_conversation")
-    assert EventEnvelope.__module__.endswith(".events.get_events")
+    assert CreateConversationRequestV1.__module__.endswith(
+        ".conversations.create_conversation"
+    )
+    assert RunSseEventResponseV1.__module__.endswith(".runs.list_run_events")
     assert ResourceListResponse.__module__.endswith(".resources.list_resources")
     assert PatchSettingsRequest.__module__.endswith(".settings.update_settings")
     assert RuntimeDetailResponseV1.__module__.endswith(".runtime_summaries.get_runtime_summary")

@@ -49,10 +49,8 @@ def test_core_failure_keeps_health_and_blocks_commands(safe_code: str) -> None:
             "/api/v1/conversations",
             headers=headers,
             json={
-                "api_contract_version": "1",
+                "schema_version": 1,
                 "command_id": "command-1",
-                "conversation_id": "conversation-1",
-                "account_id": "account-1",
                 "title": "blocked",
             },
         )

@@ -427,23 +427,21 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
         projection_version=1,
     )
 
-    with (
-        patch(
-            "google_work_agent.api.routes.runs.GetRunSnapshotHandler",
-            return_value=lambda query: snapshot if query.run_id == "run-1" else None,
-        ),
-        TestClient(create_app(container)) as client,
-    ):
+    container = replace(
+        container,
+        get_run_snapshot_handler=lambda query: snapshot if query.run_id == "run-1" else None,
+    )
+    with TestClient(create_app(container)) as client:
         response = client.get("/api/v1/runs/run-1")
 
     assert response.status_code == 200
-    assert response.json()["snapshot"]["actions"][0]["risk"] == risk
-    assert response.json()["snapshot"]["recovery"] == {
+    assert response.json()["actions"][0]["risk"] == risk
+    assert response.json()["recovery"] == {
         "reason_code": "VERIFICATION_MISMATCH",
         "target": {"target_kind": "ACTION", "action_id": "action-1"},
         "allowed_resolution_kinds": ["RECHECK", "ACCEPT_PARTIAL"],
     }
-    assert "recovery_options" not in response.json()["snapshot"]
+    assert "recovery_options" not in response.json()
 
 
 def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume() -> None:

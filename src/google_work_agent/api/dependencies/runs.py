@@ -20,10 +20,13 @@ from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
     GetExecutionContextQuery,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.clock_port import ClockPort
@@ -35,6 +38,7 @@ from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
 )
 from google_work_agent.ports.system.settings_port import SettingsPort
+from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
 from google_work_agent.ports.system.uuid_port import UUIDPort
 
 
@@ -67,6 +71,10 @@ class RunRouteDependencies:
     project_recovery_options_handler: object | None
     project_error_actions_handler: object | None
     project_external_llm_transfer_scope_handler: object | None
+    start_run_handler: StartRunHandler | None
+    get_run_snapshot_handler: GetRunSnapshotHandler | None
+    list_run_events_handler: ListRunEventsHandler | None
+    event_buffer: SseEventBufferPort | None
 
 
 def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
@@ -162,10 +170,48 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
         project_external_llm_transfer_scope_handler=(
             getattr(container, "project_external_llm_transfer_scope_handler", None)
         ),
+        start_run_handler=cast(
+            StartRunHandler | None, getattr(container, "start_run_handler", None)
+        ),
+        get_run_snapshot_handler=cast(
+            GetRunSnapshotHandler | None, getattr(container, "get_run_snapshot_handler", None)
+        ),
+        list_run_events_handler=cast(
+            ListRunEventsHandler | None, getattr(container, "list_run_events_handler", None)
+        ),
+        event_buffer=cast(
+            SseEventBufferPort | None, getattr(container, "event_publisher", None)
+        ),
     )
 
 
 RunRouteDependency = Annotated[
     RunRouteDependencies,
     Depends(get_run_route_dependencies),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class RunEventRouteDependencies:
+    api_contract_version: str
+    list_run_events_handler: ListRunEventsHandler | None
+    event_buffer: SseEventBufferPort | None
+
+
+def get_run_event_route_dependencies(request: Request) -> RunEventRouteDependencies:
+    container = get_api_container(request)
+    return RunEventRouteDependencies(
+        api_contract_version=container.api_contract_version,
+        list_run_events_handler=cast(
+            ListRunEventsHandler | None, getattr(container, "list_run_events_handler", None)
+        ),
+        event_buffer=cast(
+            SseEventBufferPort | None, getattr(container, "event_publisher", None)
+        ),
+    )
+
+
+RunEventRouteDependency = Annotated[
+    RunEventRouteDependencies,
+    Depends(get_run_event_route_dependencies),
 ]

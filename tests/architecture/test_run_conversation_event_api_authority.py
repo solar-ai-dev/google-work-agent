@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 ROUTES = (
     ROOT / "src/google_work_agent/api/routes/runs.py",
     ROOT / "src/google_work_agent/api/routes/conversations.py",
-    ROOT / "src/google_work_agent/api/routes/events.py",
 )
 USE_CASE_ROOT = ROOT / "src/google_work_agent/application/use_cases"
 LANGGRAPH_RESUME = ROOT / "src/google_work_agent/adapters/langgraph/main/resume_checkpoint.py"
@@ -56,7 +55,9 @@ def _function(path: Path, name: str) -> ast.FunctionDef:
     raise AssertionError(f"{path}: endpoint {name} missing")
 
 
-def _class_methods(source: str, class_name: str) -> dict[str, ast.FunctionDef]:
+def _class_methods(
+    source: str, class_name: str
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     tree = ast.parse(source)
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
@@ -68,14 +69,6 @@ def _class_methods(source: str, class_name: str) -> dict[str, ast.FunctionDef]:
     raise AssertionError(f"class {class_name} missing")
 
 
-def _method(path: Path, class_name: str, method_name: str) -> ast.FunctionDef:
-    methods = _class_methods(path.read_text(encoding="utf-8"), class_name)
-    try:
-        return methods[method_name]
-    except KeyError as exc:
-        raise AssertionError(f"{path}: {class_name}.{method_name} missing") from exc
-
-
 def _constructs_handler(call: ast.Call, handler: str) -> bool:
     text = ast.unparse(call.func)
     return text == handler or text.startswith(handler + ".")
@@ -83,7 +76,7 @@ def _constructs_handler(call: ast.Call, handler: str) -> bool:
 
 def _invokes_handler(path: Path, endpoint: str, handler: str) -> bool:
     function = _function(path, endpoint)
-    bound = set()
+    bound: set[str] = set()
     for node in ast.walk(function):
         if (
             isinstance(node, ast.Assign)
@@ -137,14 +130,14 @@ def _self_local_calls(method: ast.AST, local_names: set[str]) -> set[str]:
 
 def _reachable_class_methods(
     source: str, class_name: str, entry_method: str
-) -> dict[str, ast.FunctionDef]:
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     methods = _class_methods(source, class_name)
     if entry_method not in methods:
         raise AssertionError(f"{class_name}.{entry_method} missing")
     local_names = set(methods)
     visited: set[str] = set()
     pending = [entry_method]
-    reachable: dict[str, ast.FunctionDef] = {}
+    reachable: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     while pending:
         method_name = pending.pop()
         if method_name in visited:
@@ -178,8 +171,9 @@ def _reauth_semantic_authority_violations(
 def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
     cases = {
         ROOT / "src/google_work_agent/api/routes/runs.py": {
-            "start_run": "StartRunHandler",
-            "get_run_snapshot": "GetRunSnapshotHandler",
+            "start_run": "dependencies.start_run_handler",
+            "get_run_snapshot": "dependencies.get_run_snapshot_handler",
+            "stream_events": "dependencies.list_run_events_handler",
             "get_run_context": "GetExecutionContextHandler",
             "cancel_run": "RequestCancelHandler",
             "resume_run": "ResumeSafeCheckpointHandler",
@@ -189,12 +183,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
         ROOT / "src/google_work_agent/api/routes/conversations.py": {
             "create_conversation": "dependencies.create_conversation_handler",
             "list_conversations": "dependencies.list_conversations_handler",
-            "get_conversation": "GetConversationHandler",
             "get_conversation_history": "dependencies.get_conversation_history_handler",
-            "get_latest_conversation_run": "GetLatestRunHandler",
-        },
-        ROOT / "src/google_work_agent/api/routes/events.py": {
-            "stream_events": "ListRunEventsHandler"
         },
     }
     for path, endpoints in cases.items():
@@ -254,8 +243,6 @@ def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None
         ROOT / "src/google_work_agent/application/use_cases/run/get_run_snapshot.py",
         ROOT / "src/google_work_agent/application/use_cases/run/get_execution_context.py",
         ROOT / "src/google_work_agent/application/use_cases/sse_event/list_run_events.py",
-        ROOT / "src/google_work_agent/application/use_cases/conversation/get_conversation.py",
-        ROOT / "src/google_work_agent/application/use_cases/conversation/get_latest_run.py",
         ROOT
         / "src/google_work_agent/application/use_cases/conversation/get_conversation_history.py",
     )
@@ -442,7 +429,7 @@ def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
 
 
 def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:
-    source = (ROOT / "src/google_work_agent/api/routes/events.py").read_text(encoding="utf-8")
+    source = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
     assert (
         "StreamingResponse" in source
         and "_format_sse" in source
@@ -453,7 +440,16 @@ def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None
     assert "SnapshotRequiredReplayError" not in source
     assert "InvalidReplayCursorError" not in source
     assert "build_snapshot_required_event" not in source
-    assert "ListRunEventsHandler" in source
+    assert "dependencies.list_run_events_handler" in source
+
+
+def test_unregistered_conversation_and_event_transport_authorities_are_absent() -> None:
+    assert not (ROOT / "src/google_work_agent/api/routes/events.py").exists()
+    assert not (ROOT / "src/google_work_agent/api/dependencies/events.py").exists()
+    assert not (ROOT / "src/google_work_agent/api/schemas/events/get_events.py").exists()
+    assert not (ROOT / "src/google_work_agent/api/schemas/conversations/get_latest_run.py").exists()
+    assert not (USE_CASE_ROOT / "conversation/get_conversation.py").exists()
+    assert not (USE_CASE_ROOT / "conversation/get_latest_run.py").exists()
 
 
 def test_reject_action_does_not_own_parent_run_completion() -> None:

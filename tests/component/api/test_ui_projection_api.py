@@ -32,10 +32,8 @@ from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
-from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
@@ -79,6 +77,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 from google_work_agent.application.use_cases.run.get_execution_context import (
     GetExecutionContextHandler,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
+from google_work_agent.application.use_cases.run.start_run import StartRunHandler
+from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
@@ -165,18 +166,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         now_ms=clock.now_ms(),
     )
     session_manager = InMemoryLocalSessionManager()
-    _coordinator_stub = type(
-        "CoordinatorStub",
-        (),
-        {
-            "start": lambda self: None,
-            "stop": lambda self: None,
-            "enqueue_start": lambda self, **kwargs: None,
-            "confirm_start": lambda self, **kwargs: None,
-            "enqueue_resume": lambda self, **kwargs: None,
-            "request_cancel": lambda self, **kwargs: None,
-        },
-    )()
     id_generator = DeterministicUUID(prefix="req")
     selection_secret = b"s" * 32
     selection_issuer = IssueSelectionHandle(
@@ -191,7 +180,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         now_ms=clock.now_ms,
     )
 
-    checkpoint, materialize, invoke = build_test_admission_callbacks(
+    checkpoint, materialize, _invoke = build_test_admission_callbacks(
         checkpoint_path=database_path,
         get_execution_context=get_execution_context,
         unit_of_work_factory=unit_of_work_factory,
@@ -203,20 +192,6 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
     resume_target_registry = ResumeTargetRegistry(
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
-    )
-    production_runtime = build_production_runtime(
-        unit_of_work_factory=unit_of_work_factory,
-        id_factory=id_generator.next_id,
-        checkpoint=checkpoint,
-        retrieval_cache=InMemoryRunRetrievalCache(),
-        materialize_admission_checkpoint=materialize,
-        invoke_semantic_owner=invoke,
-        resume_target_registry=resume_target_registry,
-        lookup_unknown_result=lambda command: None,
-        recover_existing_result=lambda command: None,
-        resolve_as_failed=lambda command: None,
-        materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
-        now_ms=clock.now_ms,
     )
     resource_access = OpaqueConnectorResourceAccess(
         ConnectorResourceAccess(
@@ -238,9 +213,24 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         get_conversation_history_handler=GetConversationHistoryHandler(
             unit_of_work_factory=unit_of_work_factory,
         ),
+        start_run_handler=StartRunHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=clock.now_ms,
+            id_factory=id_generator.new_uuid,
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="resume-contract-v1",
+        ),
+        get_run_snapshot_handler=GetRunSnapshotHandler(
+            unit_of_work_factory=unit_of_work_factory,
+        ),
+        list_run_events_handler=ListRunEventsHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            event_buffer=publisher,
+        ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
-        schedule_run_execution=production_runtime.schedule_run_execution,
+        schedule_run_execution=lambda _command: None,
         resume_target_registry=resume_target_registry,
         checkpoint_port=checkpoint,
         approve_action_service=ApproveWriteActionService(
@@ -409,15 +399,14 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         created = client.post(
             "/api/v1/conversations",
             json={
+                "schema_version": 1,
                 "command_id": "conversation-cmd-1",
-                "conversation_id": "conversation-1",
-                "account_id": "account-1",
                 "title": "Inbox",
-                "api_contract_version": "1",
             },
             headers=headers,
         )
         assert created.status_code == 201
+        conversation_id = created.json()["conversation_id"]
 
         task_handle = tasks.json()["items"][0]["selection_handle"]
         session_token = client.cookies.get(local_session_cookie_name("svc-ui"))
@@ -499,7 +488,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 "/api/v1/runs",
                 json={
                     "command_id": f"invalid-run-{index}",
-                    "conversation_id": "conversation-1",
+                    "conversation_id": conversation_id,
                     "request_text": "invalid selection",
                     "entry_mode": "RESOURCE_SELECTED",
                     "selected_resource_handles": [invalid_handle],
@@ -515,7 +504,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "/api/v1/runs",
             json={
                 "command_id": "raw-resource-bypass",
-                "conversation_id": "conversation-1",
+                "conversation_id": conversation_id,
                 "request_text": "raw selection",
                 "entry_mode": "RESOURCE_SELECTED",
                 "selected_resource_handles": [task_handle],
@@ -532,20 +521,19 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         selected_conversation = client.post(
             "/api/v1/conversations",
             json={
+                "schema_version": 1,
                 "command_id": "conversation-cmd-selected",
-                "conversation_id": "conversation-selected",
-                "account_id": "account-1",
                 "title": "Selected",
-                "api_contract_version": "1",
             },
             headers=headers,
         )
         assert selected_conversation.status_code == 201
+        selected_conversation_id = selected_conversation.json()["conversation_id"]
         selected_start = client.post(
             "/api/v1/runs",
             json={
                 "command_id": "run-cmd-selected",
-                "conversation_id": "conversation-selected",
+                "conversation_id": selected_conversation_id,
                 "request_text": "selected task",
                 "entry_mode": "RESOURCE_SELECTED",
                 "selected_resource_handles": [task_handle],
@@ -580,7 +568,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "/api/v1/runs",
             json={
                 "command_id": "run-cmd-1",
-                "conversation_id": "conversation-1",
+                "conversation_id": conversation_id,
                 "request_text": "hello",
                 "entry_mode": "AGENT_SEARCH",
                 "selected_resource_handles": [],
@@ -599,7 +587,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "items": [
                 {
                     "schema_version": 1,
-                    "conversation_id": "conversation-1",
+                    "conversation_id": conversation_id,
                     "title": "Inbox",
                     "latest_message_at_ms": clock.now_ms(),
                     "open_run_id": run_id,
@@ -608,11 +596,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "next_cursor": None,
         }
 
-        latest_run = client.get("/api/v1/conversations/conversation-1/latest-run", headers=headers)
-        assert latest_run.status_code == 200
-        assert latest_run.json()["run"]["run_id"] == run_id
-
-        history = client.get("/api/v1/conversations/conversation-1/history", headers=headers)
+        history = client.get(f"/api/v1/conversations/{conversation_id}/history", headers=headers)
         assert history.status_code == 200
         history_body = history.json()
         assert set(history_body) == {
@@ -622,7 +606,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             "runs",
             "truncated",
         }
-        assert history_body["conversation"]["conversation_id"] == "conversation-1"
+        assert history_body["conversation"]["conversation_id"] == conversation_id
         assert [(item["role"], item["content"]) for item in history_body["messages"]] == [
             ("USER", "hello")
         ]
@@ -743,13 +727,13 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         assert snapshot_response.status_code == 200
         action_statuses = {
             action["action_id"]: action["status"]
-            for action in snapshot_response.json()["snapshot"]["actions"]
+            for action in snapshot_response.json()["actions"]
         }
         assert action_statuses == {
             "action-1": "REJECTED",
             "action-2": "DEPENDENCY_BLOCKED",
         }
-        assert snapshot_response.json()["snapshot"]["status"] == "WAITING_APPROVAL"
+        assert snapshot_response.json()["run"]["status"] == "WAITING_APPROVAL"
         projection_events = publisher.list_after(run_id, None, 8).events
         assert projection_events[-1].event_type == "action_status"
         assert projection_events[-1].payload == {"action_status": "REJECTED"}

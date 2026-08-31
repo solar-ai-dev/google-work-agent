@@ -99,6 +99,9 @@ class ApiContainer:
     create_staged_attachment_handler: Any | None = None
     list_conversations_handler: Any | None = None
     get_conversation_history_handler: Any | None = None
+    start_run_handler: Any | None = None
+    get_run_snapshot_handler: Any | None = None
+    list_run_events_handler: Any | None = None
     project_context_preview_handler: Any | None = None
     adjust_context_handler: Any | None = None
     project_recovery_options_handler: Any | None = None
