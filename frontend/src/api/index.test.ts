@@ -23,11 +23,14 @@ describe("api index wrappers", () => {
         call: () =>
           api.bootstrapSession({
             bootstrap_secret: "secret-1",
-            service_instance_id: "svc-1",
           }),
         path: "/api/v1/session/bootstrap",
         method: "POST",
-        bodyIncludes: { bootstrap_secret: "secret-1", service_instance_id: "svc-1" },
+        bodyIncludes: {
+          schema_version: 1,
+          bootstrap_secret: "secret-1",
+          frontend_api_contract_version: "1",
+        },
       },
       { call: () => api.getRuntime(), path: "/api/v1/runtime", method: "GET" },
       { call: () => api.getSettings(), path: "/api/v1/settings", method: "GET" },

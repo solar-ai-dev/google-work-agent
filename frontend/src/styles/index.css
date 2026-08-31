@@ -142,6 +142,23 @@ button {
   background: var(--panel);
 }
 
+.shell-grid.resource-panel-closed {
+  grid-template-columns: minmax(38rem, 1fr) minmax(20rem, 24%);
+}
+
+.shell-grid.conversation-panel-closed {
+  grid-template-columns: minmax(22rem, 26%) minmax(38rem, 1fr);
+}
+
+.shell-grid.resource-panel-closed.conversation-panel-closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-grid.resource-panel-closed > :first-child,
+.shell-grid.conversation-panel-closed > :last-child {
+  display: none;
+}
+
 .panel {
   background: var(--panel);
   border: 0;

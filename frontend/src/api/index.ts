@@ -35,11 +35,14 @@ export function getReady(): Promise<ReadyResponse> {
 
 export function bootstrapSession(payload: {
   bootstrap_secret: string;
-  service_instance_id: string;
 }): Promise<BootstrapResponse> {
   return requestJson("/api/v1/session/bootstrap", {
     method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
+    body: {
+      schema_version: 1,
+      bootstrap_secret: payload.bootstrap_secret,
+      frontend_api_contract_version: API_CONTRACT_VERSION,
+    },
   });
 }
 

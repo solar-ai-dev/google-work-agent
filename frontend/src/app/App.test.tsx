@@ -135,7 +135,7 @@ test("captures the bootstrap fragment before asynchronous startup checks", async
     }
     if (path === "/api/v1/session/bootstrap") {
       bootstrapRequested = true;
-      return jsonResponse({ session_established: true, service_instance_id: "svc-1", api_contract_version: "1" });
+      return jsonResponse({ schema_version: 1, session_established: true, service_instance_id: "svc-1", api_contract_version: "1", compatibility: "COMPATIBLE" });
     }
     if (path === "/api/v1/runtime") {
       return jsonResponse({ summary: runtimeSummary([]), api_contract_version: "1" });
@@ -145,6 +145,9 @@ test("captures the bootstrap fragment before asynchronous startup checks", async
     }
     if (path === "/api/v1/identity/google-account") {
       return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
+    }
+    if (path === "/api/v1/settings") {
+      return jsonResponse({ settings: settingsPayload(), api_contract_version: "1" });
     }
     if (path.startsWith("/api/v1/conversations?")) {
       return jsonResponse({ items: [], next_cursor: null, api_contract_version: "1" });
@@ -194,6 +197,9 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
     if (path === "/api/v1/identity/google-account") {
       return Promise.resolve(jsonFetchResponse({ account: currentAccount(), api_contract_version: "1" }));
     }
+    if (path === "/api/v1/settings") {
+      return Promise.resolve(jsonFetchResponse({ settings: settingsPayload(), api_contract_version: "1" }));
+    }
     if (path.startsWith("/api/v1/conversations?")) {
       return Promise.resolve(jsonFetchResponse({ items: [], next_cursor: null, api_contract_version: "1" }));
     }
@@ -214,7 +220,7 @@ test("keeps the fragment until one StrictMode bootstrap request succeeds", async
   expect(paths).not.toContain("/api/v1/runtime");
   expect(window.location.hash).toContain("bootstrap_secret");
 
-  resolveBootstrap(jsonFetchResponse({ session_established: true, service_instance_id: "svc-1", api_contract_version: "1" }));
+  resolveBootstrap(jsonFetchResponse({ schema_version: 1, session_established: true, service_instance_id: "svc-1", api_contract_version: "1", compatibility: "COMPATIBLE" }));
 
   await waitFor(() => expect(document.querySelector(".topbar-actions")).not.toBeNull());
   expect(window.location.hash).toBe("");
@@ -2016,8 +2022,11 @@ test("restores the cached Gmail next-page token after re-entering the source", a
 
   await user.click(screen.getByRole("button", { name: "다음" }));
   expect(await screen.findByText("자료 21")).toBeInTheDocument();
-  expect(requests.at(-1)?.path).toContain("page_size=20");
-  expect(requests.at(-1)?.path).toContain("page_token=page-2");
+  const nextPageRequest = [...requests].reverse().find((request) => (
+    request.path.startsWith("/api/v1/resources/gmail?")
+    && request.path.includes("page_token=page-2")
+  ));
+  expect(nextPageRequest?.path).toContain("page_size=20");
 });
 
 test("uses list-only Gmail requests for unvisited intermediate pages and hydrates the target page", async () => {
@@ -3450,9 +3459,17 @@ function installFetch(
       : requestedPath === "/api/v1/credentials/llm/gemini"
         ? init?.method === "PUT" || init?.method === "DELETE" ? "/api/v1/llm/api-key" : "/api/v1/llm/connection"
         : requestedPath;
-    const response = path.endsWith("/history")
-      ? await (history ?? (() => jsonResponse(historyPayload())))(path)
-      : await handler(path, init);
+    let response: MockResponse;
+    try {
+      response = path.endsWith("/history")
+        ? await (history ?? (() => jsonResponse(historyPayload())))(path)
+        : await handler(path, init);
+    } catch (error) {
+      if (requestedPath !== "/api/v1/settings") {
+        throw error;
+      }
+      response = jsonResponse({ settings: settingsPayload(), api_contract_version: "1" });
+    }
     return new Response(JSON.stringify(response.json ?? {}), {
       status: response.status ?? 200,
       headers: {

@@ -33,9 +33,11 @@ export type ReadyResponse = {
 };
 
 export type BootstrapResponse = {
+  schema_version: 1;
   session_established: boolean;
   service_instance_id: string;
   api_contract_version: string;
+  compatibility: "COMPATIBLE" | "INCOMPATIBLE";
 };
 
 export type RuntimeSummary = {

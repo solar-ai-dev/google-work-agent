@@ -16,7 +16,7 @@ type Props = {
   onComplete: (timezone: string) => void;
 };
 
-export function OnboardingChecklist({
+export function FirstRunOnboardingScreen({
   runtime,
   google,
   onConnectGoogle,

@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  bootstrapSession,
   disconnectGoogle,
   downloadGmailAttachment,
-  getCurrentAccount,
   getGoogleConnection,
   getGmailResourceDetail,
-  getLive,
-  getReady,
   getRuntime,
-  getSettings,
   startGoogleOAuth,
 } from "../api";
 import type {
@@ -17,24 +12,16 @@ import type {
   GoogleConnectionResponse,
   ResourceItem,
   RuntimeSummary,
-  StartupCheck,
 } from "../api/contract";
 import { ApiClientError } from "../api/client";
 import { CalendarPanel, useCalendar } from "../features/calendar";
 import { ConversationSidebar, useConversation } from "../features/conversation";
 import { GmailPanel, useGmail } from "../features/gmail";
-import { OnboardingChecklist } from "../features/onboarding";
-import { SettingsDrawer } from "../features/settings";
+import { FirstRunOnboardingScreen, SettingsDrawer } from "../features/settings";
 import { TasksPanel, useTasks } from "../features/tasks";
 import { CenterWorkspace, type GmailDetailState } from "../features/workspace";
-
-type StartupState = {
-  phase: string;
-  status: "idle" | "loading" | "ready" | "error";
-  message: string;
-  checks: StartupCheck[];
-  error?: string;
-};
+import { MainShell } from "./main_shell";
+import { StartupFlow, type StartupFlowContext } from "./startup_flow";
 
 type ResourceTab = "gmail" | "tasks" | "calendar";
 type ResourceState = {
@@ -50,22 +37,21 @@ const THEME_KEY = "gwa.theme";
 const SETTINGS_KEY = "gwa.settings";
 
 export function App(): JSX.Element {
+  return <StartupFlow>{(context) => <AuthenticatedWorkspace initial={context} />}</StartupFlow>;
+}
+
+function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): JSX.Element {
   const [theme, setTheme] = useState(localStorage.getItem(THEME_KEY) ?? "light");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [startup, setStartup] = useState<StartupState>({
-    phase: "boot",
-    status: "idle",
-    message: "시작 검사를 준비하고 있습니다.",
-    checks: [],
-  });
-  const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
-  const [google, setGoogle] = useState<GoogleConnectionResponse | null>(null);
-  const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(null);
-  const [calendarTimezone, setCalendarTimezone] = useState("Asia/Seoul");
-  const [setupCompleted, setSetupCompleted] = useState(true);
+  const [runtime, setRuntime] = useState<RuntimeSummary>(initial.runtime);
+  const [google, setGoogle] = useState<GoogleConnectionResponse>(initial.google);
+  const [currentAccount, setCurrentAccount] = useState<CurrentGoogleAccountResponse["account"]>(initial.currentAccount);
+  const [calendarTimezone, setCalendarTimezone] = useState(initial.calendarTimezone);
+  const [setupCompleted, setSetupCompleted] = useState(initial.setupCompleted);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [googleConnectPending, setGoogleConnectPending] = useState(false);
   const [statusLine, setStatusLine] = useState("로컬 API에 연결되어 있습니다.");
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [gmailDetail, setGmailDetail] = useState<GmailDetailState>({
     resourceId: null,
     status: "idle",
@@ -83,7 +69,7 @@ export function App(): JSX.Element {
   const calendar = useCalendar({
     accountId: currentAccount?.account_id,
     calendarId: resourceState.parentId,
-    active: startup.status === "ready" && google?.connection_status === "CONNECTED" && resourceState.tab === "calendar",
+    active: google.connection_status === "CONNECTED" && resourceState.tab === "calendar",
     timezone: calendarTimezone,
   });
   const selectedResourceIds = useMemo(
@@ -153,6 +139,27 @@ export function App(): JSX.Element {
     handleConfirmation,
     handleResolveRecovery,
   } = conversation;
+  const restoredOpenRunRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredOpenRunRef.current) {
+      return;
+    }
+    restoredOpenRunRef.current = true;
+    if (currentAccount === null) {
+      setWorkspaceReady(true);
+      return;
+    }
+    void refreshConversations().then(async (items) => {
+      const openConversation = items.find((item) => item.open_run_id !== null);
+      if (openConversation?.open_run_id) {
+        await selectRun(openConversation.open_run_id);
+      }
+    }).catch((error: unknown) => {
+      setStatusLine(error instanceof ApiClientError ? error.message : "이전 작업을 복구하지 못했습니다.");
+    }).finally(() => setWorkspaceReady(true));
+  }, [currentAccount, refreshConversations, selectRun]);
+
   const conversationViewModel = {
     controller: {
       selectedConversationId,
@@ -183,7 +190,6 @@ export function App(): JSX.Element {
     },
     formatTime,
   };
-  const startupPromiseRef = useRef<Promise<void> | null>(null);
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
     const [runtimeResponse, googleResponse] = await Promise.all([getRuntime(), getGoogleConnection()]);
     setRuntime(runtimeResponse);
@@ -238,81 +244,6 @@ export function App(): JSX.Element {
     setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
   }, [loadGmailDetail, resourceState.focusItem]);
 
-  const runStartup = useCallback(async (): Promise<void> => {
-    // Preserve the one-time fragment in invocation-local memory before awaits.
-    const bootstrapFragment = readBootstrapFragment(window.location.hash);
-    gmail.reset();
-    tasks.reset();
-    calendar.reset();
-    setStartup({
-      phase: "checks",
-      status: "loading",
-      message: "로컬 서비스 준비 상태를 확인하고 있습니다.",
-      checks: [],
-    });
-    try {
-      await getLive();
-      const ready = await getReady();
-      setStartup({
-        phase: "session",
-        status: "loading",
-        message: bootstrapFragment ? "로컬 세션을 수립하고 있습니다." : "기존 세션을 확인하고 있습니다.",
-        checks: ready.checks,
-      });
-      if (bootstrapFragment) {
-        await bootstrapSession(bootstrapFragment);
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-      }
-      setStartup((current) => ({ ...current, phase: "runtime", message: "런타임 상태를 읽고 있습니다." }));
-      const [runtimeResponse, googleResponse, settingsResponse] = await Promise.all([
-        getRuntime(),
-        getGoogleConnection(),
-        getSettings().catch(() => null),
-      ]);
-      const firstAccountResponse = await getCurrentAccount();
-      const accountResponse = googleResponse.connection_status === "CONNECTED" && firstAccountResponse.account === null
-        ? await getCurrentAccount()
-        : firstAccountResponse;
-      setRuntime(runtimeResponse);
-      setGoogle(googleResponse);
-      setCurrentAccount(accountResponse.account);
-      const configuredTimezone = settingsResponse?.timezone ?? null;
-      setSetupCompleted(
-        settingsResponse === null
-        || Boolean(
-          settingsResponse.default_calendar_id
-          && settingsResponse.default_tasklist_id
-          && settingsResponse.timezone,
-        ),
-      );
-      if (typeof configuredTimezone === "string" && configuredTimezone) {
-        setCalendarTimezone(configuredTimezone);
-      }
-      if (accountResponse.account?.account_id) {
-        const conversationItems = await refreshConversations();
-        const openConversation = conversationItems.find((item) => item.open_run_id !== null);
-        if (openConversation?.open_run_id) {
-          await selectRun(openConversation.open_run_id);
-        }
-      }
-      setStartup({
-        phase: "ready",
-        status: "ready",
-        message: "UI를 준비했습니다.",
-        checks: ready.checks,
-      });
-    } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : "앱을 다시 열어 주세요.";
-      setStartup({
-        phase: "failed",
-        status: "error",
-        message: "시작 검사를 완료하지 못했습니다.",
-        checks: [],
-        error: message,
-      });
-    }
-  }, [calendar.reset, refreshConversations, selectRun]);
-
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
@@ -323,29 +254,23 @@ export function App(): JSX.Element {
   }, [settingsOpen]);
 
   useEffect(() => {
-    if (startupPromiseRef.current === null) {
-      startupPromiseRef.current = runStartup();
-    }
-  }, [runStartup]);
-
-  useEffect(() => {
-    if (startup.status === "ready" && google?.connection_status === "CONNECTED") {
+    if (google.connection_status === "CONNECTED") {
       void gmail.loadCount();
       void tasks.preload();
       void tasks.loadCompleted();
     }
-  }, [gmail.loadCount, google?.connection_status, startup.status, tasks.loadCompleted, tasks.preload]);
+  }, [gmail.loadCount, google.connection_status, tasks.loadCompleted, tasks.preload]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || google?.connection_status !== "CONNECTED" || resourceState.tab !== "gmail") return;
+    if (google.connection_status !== "CONNECTED" || resourceState.tab !== "gmail") return;
     if (!gmail.loaded && !gmail.loading && gmail.error === null) void gmail.loadPage(gmail.pageIndex);
     else if (gmail.loaded && !gmail.countLoading) void gmail.loadCount();
-  }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google?.connection_status, resourceState.tab, startup.status]);
+  }, [gmail.countLoading, gmail.error, gmail.loadCount, gmail.loadPage, gmail.loaded, gmail.loading, gmail.pageIndex, google.connection_status, resourceState.tab]);
 
   useEffect(() => {
-    if (startup.status !== "ready" || google?.connection_status !== "CONNECTED" || resourceState.tab !== "tasks") return;
+    if (google.connection_status !== "CONNECTED" || resourceState.tab !== "tasks") return;
     if (!tasks.loaded && !tasks.loading && tasks.error === null) void tasks.loadPage(tasks.pageIndex);
-  }, [google?.connection_status, resourceState.tab, startup.status, tasks.error, tasks.loadPage, tasks.loaded, tasks.loading, tasks.pageIndex]);
+  }, [google.connection_status, resourceState.tab, tasks.error, tasks.loadPage, tasks.loaded, tasks.loading, tasks.pageIndex]);
 
   async function handleGoogleConnect(): Promise<void> {
     if (google?.connection_status === "CONNECTED" || googleConnectPending) {
@@ -385,49 +310,13 @@ export function App(): JSX.Element {
     await refreshRuntimeSummary();
   }
 
-  if (startup.status !== "ready") {
-    return (
-      <main className="startup">
-        <section className="startup-card" aria-live="polite">
-          <h1>Google Work Agent</h1>
-          <p>{startup.message}</p>
-          {startup.error ? <p className="status-bad">{startup.error}</p> : null}
-          <ul className="card-list">
-            {startup.checks.map((check) => (
-              <li key={check.name} className="info-card">
-                <strong>{check.name}</strong>
-                <div className="muted">{check.state}</div>
-                {check.detail ? <div className="muted">{check.detail}</div> : null}
-              </li>
-            ))}
-          </ul>
-          <div className="button-row">
-            <button className="button-primary" type="button" onClick={() => void runStartup()}>
-              다시 검사
-            </button>
-            <button className="button-secondary" type="button" onClick={() => setSettingsOpen(true)}>
-              진단 열기
-            </button>
-          </div>
-        </section>
-        {settingsOpen ? (
-        <SettingsDrawer
-          runtime={runtime}
-          google={google}
-          theme={theme}
-          onThemeChange={setTheme}
-          onClose={() => setSettingsOpen(false)}
-          onDisconnect={handleGoogleDisconnect}
-          onRuntimeRefresh={refreshRuntimeSummary}
-        />
-        ) : null}
-      </main>
-    );
+  if (!workspaceReady) {
+    return <main className="startup" aria-busy="true" aria-label="이전 작업 복구 중" />;
   }
 
-  if (!setupCompleted && runtime && google) {
+  if (!setupCompleted) {
     return (
-      <OnboardingChecklist
+      <FirstRunOnboardingScreen
         runtime={runtime}
         google={google}
         onConnectGoogle={() => void handleGoogleConnect()}
@@ -441,52 +330,29 @@ export function App(): JSX.Element {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-brand">
-          <span className="brand-mark" aria-hidden="true">✦</span>
-          <strong>Google Work Agent</strong>
-          <span className="sr-only" aria-live="polite">{statusLine}</span>
-        </div>
-        <div className="topbar-connection" aria-live="polite">
-          <span className={`pill ${google?.connection_status === "CONNECTED" ? "connection-connected" : "connection-disconnected"}`}>
-            {google?.connection_status === "CONNECTED" ? "Google 연결됨" : "Google 미연결"}
-          </span>
-        </div>
-        <div className="topbar-actions">
-          {currentAccount ? <span className="muted">{currentAccount.email}</span> : null}
-          <button
-            className="icon-button topbar-icon-button"
-            type="button"
-            aria-label="도움말"
-            title="도움말"
-            onClick={() => setStatusLine("자료를 선택하거나 자연어 요청을 입력해 업무를 시작할 수 있습니다.")}
-          >
-            <svg className="topbar-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="8" />
-              <path d="M9.8 9.3a2.35 2.35 0 0 1 4.55.8c0 1.72-2.35 2.03-2.35 3.55" />
-              <path d="M12 16.45h.01" />
-            </svg>
-          </button>
-          {google?.connection_status !== "CONNECTED" ? (
-            <button
-              className="button-primary"
-              type="button"
-              disabled={googleConnectPending}
-              onClick={() => void handleGoogleConnect()}
-            >
-              {googleConnectPending ? "Google 연결 중..." : "Google 연결"}
-            </button>
-          ) : null}
-          <button className="icon-button topbar-icon-button" type="button" aria-label="설정" title="설정" onClick={() => setSettingsOpen(true)}>
-            <svg className="topbar-action-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
-            </svg>
-          </button>
-        </div>
-      </header>
-      <div className="shell-grid">
+    <MainShell
+      google={google}
+      currentAccount={currentAccount}
+      statusLine={statusLine}
+      googleConnectPending={googleConnectPending}
+      theme={theme}
+      onThemeChange={setTheme}
+      onShowHelp={() => setStatusLine("자료를 선택하거나 자연어 요청을 입력해 업무를 시작할 수 있습니다.")}
+      onConnectGoogle={() => void handleGoogleConnect()}
+      onOpenSettings={() => setSettingsOpen(true)}
+      settingsPanel={settingsOpen ? (
+        <SettingsDrawer
+          runtime={runtime}
+          google={google}
+          theme={theme}
+          onThemeChange={setTheme}
+          onClose={() => setSettingsOpen(false)}
+          onConnect={handleGoogleConnect}
+          onDisconnect={handleGoogleDisconnect}
+          onRuntimeRefresh={refreshRuntimeSummary}
+        />
+      ) : null}
+    >
         <aside className="panel resource-panel">
           <div className="panel-body">
             <div className="resource-tabbar">
@@ -630,21 +496,7 @@ export function App(): JSX.Element {
           onBeginConversation={() => beginConversationProjection(null)}
           onSelectConversation={(conversationId) => void selectConversation(conversationId)}
         />
-      </div>
-
-      {settingsOpen ? (
-        <SettingsDrawer
-          runtime={runtime}
-          google={google}
-          theme={theme}
-          onThemeChange={setTheme}
-          onClose={() => setSettingsOpen(false)}
-          onConnect={handleGoogleConnect}
-          onDisconnect={handleGoogleDisconnect}
-          onRuntimeRefresh={refreshRuntimeSummary}
-        />
-      ) : null}
-    </div>
+    </MainShell>
   );
 }
 
@@ -659,25 +511,6 @@ function requireOAuthLaunchUrl(value: string): string {
     throw new Error("Unexpected OAuth authorization URL");
   }
   return url.toString();
-}
-
-function readBootstrapFragment(hash: string): { bootstrap_secret: string; service_instance_id: string } | null {
-  const source = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (!source) {
-    return null;
-  }
-  const params = new URLSearchParams(source);
-  const bootstrapSecret =
-    params.get("bootstrap_secret") ?? params.get("bootstrapSecret") ?? params.get("bootstrap");
-  const serviceInstanceId =
-    params.get("service_instance_id") ?? params.get("serviceInstanceId");
-  if (!bootstrapSecret || !serviceInstanceId) {
-    return null;
-  }
-  return {
-    bootstrap_secret: bootstrapSecret,
-    service_instance_id: serviceInstanceId,
-  };
 }
 
 function formatTime(value: number): string {
@@ -1084,11 +917,4 @@ function resourceSourceLabel(source: string): string {
     default:
       return "Google 자료";
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
 }
