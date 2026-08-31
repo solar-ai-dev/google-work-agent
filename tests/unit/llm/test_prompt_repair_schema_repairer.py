@@ -1,6 +1,4 @@
-"""Unit tests for PromptRepairSchemaRepairer, the real Schema Repair
-boundary that re-invokes the routed provider with a failed prompt's sibling
-``<prompt_id>.repair`` slot (see application/llm.py)."""
+"""Unit tests for base-slot + bounded-failure Schema Repair."""
 
 from __future__ import annotations
 
@@ -17,6 +15,7 @@ from tests.support.prompt_manifests import (
 from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiStructuredInferenceAdapter,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
 from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
     PromptRepairSchemaRepairer,
 )
@@ -59,11 +58,11 @@ def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceA
     )
 
 
-def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
+def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     tmp_path: Path,
 ) -> None:
     manifest_path = write_runtime_active_manifest(
-        tmp_path, prompt_ids=["work_analysis.analyze.repair"]
+        tmp_path, prompt_ids=["work_analysis.analyze"]
     )
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
@@ -77,10 +76,11 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
         )
     )
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
+    active_prompt_ref = load_prompt_reference("work_analysis.analyze", manifest_path)
 
     result = repairer.repair(
         provider=_provider(transport),
-        prompt_ref=ANALYZE_PROMPT_REF,
+        prompt_ref=active_prompt_ref,
         prompt_input={"topic": "hello"},
         failed_output={"answer": 123},
         output_schema=OUTPUT_SCHEMA,
@@ -95,7 +95,7 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     assert result == {"answer": "fixed"}
     assert len(transport.invocations) == 1
     call = transport.invocations[0]
-    assert call["prompt_id"] == "work_analysis.analyze.repair"
+    assert call["prompt_id"] == "work_analysis.analyze"
     repair_input = cast(dict[str, object], call["prompt_input"])
     # 15 section 9.2 / prompt-runtime-input-contract-v1.json: exactly
     # base_projection + candidate_output + failure_record at root -- no
@@ -110,16 +110,9 @@ def test_repair_dispatches_the_sibling_repair_prompt_with_full_input_shape(
     assert failure_record["failure_id"] == "work_analysis.analyze:1"
 
 
-def test_repair_is_derived_from_prompt_id_not_subgraph_name(tmp_path: Path) -> None:
-    """The sibling repair slot is derived from prompt_ref.prompt_id itself
-    ("work_analysis.analyze" -> "work_analysis.analyze.repair"), not from
-    PromptReference.subgraph_name. Both happen to be "work_analysis" here,
-    so this pins the derivation source with a subgraph_name that would
-    still resolve the same slot only by coincidence -- a repairer that
-    read subgraph_name instead would still pass this one test but break on
-    slots where the two diverge (e.g. the retrieval role's several nodes)."""
+def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
     manifest_path = write_runtime_active_manifest(
-        tmp_path, prompt_ids=["work_analysis.analyze.repair"]
+        tmp_path, prompt_ids=["work_analysis.analyze"]
     )
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
@@ -133,10 +126,11 @@ def test_repair_is_derived_from_prompt_id_not_subgraph_name(tmp_path: Path) -> N
         )
     )
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
+    active_prompt_ref = load_prompt_reference("work_analysis.analyze", manifest_path)
 
     repairer.repair(
         provider=_provider(transport),
-        prompt_ref=ANALYZE_PROMPT_REF,
+        prompt_ref=active_prompt_ref,
         prompt_input={},
         failed_output={"answer": 1},
         output_schema=OUTPUT_SCHEMA,
@@ -148,13 +142,11 @@ def test_repair_is_derived_from_prompt_id_not_subgraph_name(tmp_path: Path) -> N
         validator_errors=("$.answer must be string",),
     )
 
-    assert transport.invocations[0]["prompt_id"] == "work_analysis.analyze.repair"
+    assert transport.invocations[0]["prompt_id"] == "work_analysis.analyze"
 
 
 def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:
-    """Uses the real canonical manifest: every *.repair slot in it is
-    currently DRAFT (not yet promoted through Node DEV -> Node HOLDOUT ->
-    G01 Safety Gate). Repair must refuse to dispatch an unapproved prompt."""
+    """The DRAFT base source must remain unavailable to Product repair."""
     transport = FakeAPIProviderTransport()
     repairer = PromptRepairSchemaRepairer(manifest_path=canonical_prompt_manifest_path())
 
@@ -176,7 +168,7 @@ def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:
     assert transport.invocations == []
 
 
-def test_repair_fails_closed_when_no_sibling_slot_exists_at_all(tmp_path: Path) -> None:
+def test_repair_fails_closed_when_base_slot_does_not_exist(tmp_path: Path) -> None:
     manifest_path = canonical_prompt_manifest_path()
     transport = FakeAPIProviderTransport()
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)

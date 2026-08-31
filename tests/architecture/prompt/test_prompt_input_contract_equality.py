@@ -52,3 +52,10 @@ def test_forbidden_product_prompt_input_families_are_closed() -> None:
     }
 
     assert required.issubset(forbidden)
+
+
+def test_retrieval_followup_projection_matches_the_canonical_plural_attempt_field() -> None:
+    entry = load_prompt_input_contract().entry("retrieval.plan_query")
+
+    assert "prior_query_attempts" in entry.optional_root_fields
+    assert "prior_query_attempt" not in entry.optional_root_fields

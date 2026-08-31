@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+import pytest
+
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
+    _validate_ambiguity,
     detect_ambiguity,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
@@ -106,3 +109,14 @@ def test_detect_ambiguity__canonical_call__owns_independent_ambiguity() -> None:
         "user_request": "일정을 잡아줘",
         "goal_candidate": candidate,
     }
+
+
+def test_detect_ambiguity_rejects_metadata_without_confirmation() -> None:
+    with pytest.raises(ValueError, match="non-confirmation ambiguity metadata must be empty"):
+        _validate_ambiguity(
+            {
+                "requires_confirmation": False,
+                "reason_codes": ["MISSING_PROJECT_NAME"],
+                "missing_fields": ["project_name"],
+            }
+        )

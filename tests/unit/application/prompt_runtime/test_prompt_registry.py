@@ -119,10 +119,40 @@ def test_runtime_active_label_without_gate_evidence_fails_closed(tmp_path: Path)
     )
     slot["activation_status"] = "RUNTIME_ACTIVE"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    registry = PromptRegistry(manifest_path, contract_path)
+    with pytest.raises(PromptRegistryError, match="requires complete release evidence"):
+        PromptRegistry(manifest_path, contract_path)
 
-    with pytest.raises(InactivePromptArtifactError, match="activation-gate complete"):
-        registry.lookup_by_id("planning.compose_answer")
+
+@pytest.mark.parametrize(
+    ("activation_status", "evidence", "message"),
+    [
+        ("DRAFT", (True, False, False, False), "DRAFT cannot claim"),
+        ("DEV_VALIDATED", (True, True, False, False), "DEV_VALIDATED evidence"),
+        ("HOLDOUT_VALIDATED", (False, True, False, False), "HOLDOUT evidence requires DEV"),
+        ("HOLDOUT_VALIDATED", (True, True, False, True), "approval requires Safety"),
+        ("RETIRED", (True, True, True, False), "requires complete release evidence"),
+    ],
+)
+def test_prompt_registry_rejects_illegal_activation_lifecycle(
+    tmp_path: Path,
+    activation_status: str,
+    evidence: tuple[bool, bool, bool, bool],
+    message: str,
+) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slot = cast(list[dict[str, object]], manifest["slots"])[0]
+    slot["activation_status"] = activation_status
+    for field, value in zip(
+        ("node_dev_pass", "node_holdout_pass", "safety_gate_pass", "manifest_approved"),
+        evidence,
+        strict=True,
+    ):
+        slot[field] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(PromptRegistryError, match=message):
+        PromptRegistry(manifest_path, contract_path)
 
 
 def test_prompt_registry_rejects_source_hash_drift(tmp_path: Path) -> None:

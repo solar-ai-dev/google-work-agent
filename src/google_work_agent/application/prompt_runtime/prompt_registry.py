@@ -232,7 +232,7 @@ class PromptRegistry:
             raise PromptRegistryError(
                 f"source path mismatch for {prompt_slot_id}: {source!r} != {expected_source!r}"
             )
-        return _PromptManifestEntry(
+        entry = _PromptManifestEntry(
             prompt_slot_id=prompt_slot_id,
             prompt_id=prompt_id,
             runtime_node_id=runtime_node_id,
@@ -264,6 +264,8 @@ class PromptRegistry:
             ),
             source_path=(self._manifest_path.parent / source).resolve(),
         )
+        _validate_activation_lifecycle(entry)
+        return entry
 
     def _validate_sources(self, entries: dict[str, _PromptManifestEntry]) -> frozenset[str]:
         source_dir = self._manifest_path.parent / "sources"
@@ -424,6 +426,47 @@ def _read_verified_source(entry: _PromptManifestEntry) -> str:
         raise PromptRegistryError(
             f"Prompt source is not strict UTF-8: {entry.prompt_slot_id}"
         ) from error
+
+
+def _validate_activation_lifecycle(entry: _PromptManifestEntry) -> None:
+    evidence = (
+        entry.node_dev_pass,
+        entry.node_holdout_pass,
+        entry.safety_gate_pass,
+        entry.manifest_approved,
+    )
+    if entry.node_holdout_pass and not entry.node_dev_pass:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} HOLDOUT evidence requires DEV evidence"
+        )
+    if entry.safety_gate_pass and not entry.node_holdout_pass:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} Safety evidence requires HOLDOUT evidence"
+        )
+    if entry.manifest_approved and not entry.safety_gate_pass:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} manifest approval requires Safety evidence"
+        )
+
+    status = entry.activation_status
+    if status == "DRAFT" and any(evidence):
+        raise PromptRegistryError(f"{entry.prompt_slot_id} DRAFT cannot claim release evidence")
+    if status == "DEV_VALIDATED" and evidence != (True, False, False, False):
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} DEV_VALIDATED evidence is inconsistent"
+        )
+    if status == "HOLDOUT_VALIDATED" and (
+        not entry.node_dev_pass
+        or not entry.node_holdout_pass
+        or entry.manifest_approved
+    ):
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} HOLDOUT_VALIDATED evidence is inconsistent"
+        )
+    if status in {"RUNTIME_ACTIVE", "RETIRED"} and not entry.activation_evidence_complete:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} {status} requires complete release evidence"
+        )
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, object]:

@@ -604,9 +604,6 @@ class LLMRuntimeService:
 
 
 _JSON_PATH_PREFIX = re.compile(r"^\$[\w.\[\]]*")
-_SEMANTIC_VARIANT_SUFFIXES = (".revise", ".recheck")
-
-
 def _leading_json_path(message: str) -> str | None:
     match = _JSON_PATH_PREFIX.match(message)
     if match is None or match.group(0) == "$":
@@ -614,25 +611,13 @@ def _leading_json_path(message: str) -> str | None:
     return match.group(0)
 
 
-def _repair_prompt_id(prompt_id: str) -> str:
-    """Return the registered SCHEMA_REPAIR slot for one semantic node variant."""
-
-    for suffix in _SEMANTIC_VARIANT_SUFFIXES:
-        if prompt_id.endswith(suffix):
-            return f"{prompt_id[: -len(suffix)]}.repair"
-    return f"{prompt_id}.repair"
-
-
 @dataclass(frozen=True, slots=True)
 class PromptRepairSchemaRepairer:
     """Real Schema Repair boundary.
 
-    Re-invokes the same routed ``provider`` with the failed semantic node's
-    registered SCHEMA_REPAIR sibling. Initial prompts resolve to
-    ``<prompt_id>.repair``; ``.revise``/``.recheck`` prompts normalize back to
-    the owning node's ``<node>.repair`` slot. This preserves the 27-slot
-    Runtime Prompt contract without inventing ``.revise.repair`` or
-    ``.recheck.repair`` PromptRefs.
+    Re-invokes the same routed ``provider`` with the exact active base Prompt.
+    The bounded FailureRecord and candidate are assembly metadata, not a
+    second ``<prompt_id>.repair`` source identity.
     """
 
     manifest_path: Path | None = None
@@ -661,14 +646,18 @@ class PromptRepairSchemaRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        repair_prompt_id = _repair_prompt_id(prompt_ref.prompt_id)
         try:
-            repair_prompt_ref = loader(repair_prompt_id, manifest_path)
+            repair_prompt_ref = loader(prompt_ref.prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
             raise LLMInvocationError(
                 LLMErrorCode.OUTPUT_SCHEMA_INVALID,
-                f"{repair_prompt_id} repair prompt is unavailable: {error}",
+                f"{prompt_ref.prompt_id} base prompt is unavailable for repair: {error}",
             ) from error
+        if repair_prompt_ref != prompt_ref:
+            raise LLMInvocationError(
+                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+                "repair PromptRef does not match the active base artifact",
+            )
 
         repair_input = _build_repair_input(
             prompt_ref=prompt_ref,
@@ -738,10 +727,9 @@ def _build_repair_input(
 class PromptRepairToolCallRepairer:
     """Real Schema Repair boundary for the native tool-calling invocation path.
 
-    Structurally parallel to ``PromptRepairSchemaRepairer`` and uses the same
-    semantic-variant normalization to the owning node's registered ``.repair``
-    slot. The repair call stays in tool-calling mode and is mapped back to the
-    node's Typed Result before validation resumes.
+    Structurally parallel to ``PromptRepairSchemaRepairer`` and reuses the
+    same active base source. The repair call stays in tool-calling mode and is
+    mapped back to the node's Typed Result before validation resumes.
     """
 
     manifest_path: Path | None = None
@@ -773,14 +761,18 @@ class PromptRepairToolCallRepairer:
 
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
-        repair_prompt_id = _repair_prompt_id(prompt_ref.prompt_id)
         try:
-            repair_prompt_ref = loader(repair_prompt_id, manifest_path)
+            repair_prompt_ref = loader(prompt_ref.prompt_id, manifest_path)
         except (LookupError, InactivePromptArtifactError) as error:
             raise LLMInvocationError(
                 LLMErrorCode.OUTPUT_SCHEMA_INVALID,
-                f"{repair_prompt_id} repair prompt is unavailable: {error}",
+                f"{prompt_ref.prompt_id} base prompt is unavailable for repair: {error}",
             ) from error
+        if repair_prompt_ref != prompt_ref:
+            raise LLMInvocationError(
+                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+                "repair PromptRef does not match the active base artifact",
+            )
 
         repair_input = _build_repair_input(
             prompt_ref=prompt_ref,

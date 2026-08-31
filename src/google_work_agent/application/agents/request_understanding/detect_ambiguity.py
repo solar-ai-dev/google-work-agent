@@ -94,6 +94,8 @@ def _validate_ambiguity(value: object) -> AmbiguityV1:
         raise ValueError("missing_fields must contain strings")
     if requires_confirmation and not reason_codes:
         raise ValueError("reason_codes are required when confirmation is required")
+    if not requires_confirmation and (reason_codes or missing_fields):
+        raise ValueError("non-confirmation ambiguity metadata must be empty")
     return {
         "requires_confirmation": requires_confirmation,
         "reason_codes": reason_codes,

@@ -15,7 +15,10 @@ from google_work_agent.application.prompt_runtime.assemble_prompt import (
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     build_failure_record_v1,
 )
-from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    InactivePromptArtifactError,
+    PromptRegistry,
+)
 
 
 def _active_registry(tmp_path: Path) -> PromptRegistry:
@@ -94,3 +97,59 @@ def test_assemble_prompt_adds_bounded_failure_instruction(tmp_path: Path) -> Non
     assert "Bounded failure instruction" in assembled
     assert "OUTPUT_SCHEMA_INVALID" in assembled
     assert "experiment_disposition" not in assembled
+
+
+def test_evaluation_scope_can_assemble_draft_without_enabling_product_selection() -> None:
+    registry = PromptRegistry()
+    prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
+
+    assembled = assemble_prompt(
+        prompt_ref,
+        _projection(),
+        registry=registry,
+        activation_scope="EVALUATION",
+    )
+
+    assert assembled.startswith("You are the Planning answer-composition node.")
+    with pytest.raises(InactivePromptArtifactError):
+        assemble_prompt(prompt_ref, _projection(), registry=registry)
+
+
+def test_unknown_activation_scope_fails_closed() -> None:
+    registry = PromptRegistry()
+    prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
+
+    with pytest.raises(PromptAssemblyError, match="unknown Prompt activation scope"):
+        assemble_prompt(
+            prompt_ref,
+            _projection(),
+            registry=registry,
+            activation_scope="OTHER",  # type: ignore[arg-type]
+        )
+
+
+def test_repair_envelope_reuses_base_source_and_binds_candidate(tmp_path: Path) -> None:
+    registry = _active_registry(tmp_path)
+    prompt_ref = registry.lookup_by_id("planning.compose_answer")
+    failure = build_failure_record_v1(
+        failure_reason_code="OUTPUT_SCHEMA_INVALID",
+        failure_origin="LLM_OUTPUT",
+        detected_by="RUNTIME_SCHEMA_VALIDATOR",
+        runtime_disposition="RETRYABLE",
+        experiment_disposition="RUN_REPAIR",
+        affected_field_paths=["$.answer"],
+    )
+
+    assembled = assemble_prompt(
+        prompt_ref,
+        {
+            "base_projection": _projection(),
+            "candidate_output": {"answer": 123},
+            "failure_record": failure,
+        },
+        registry=registry,
+    )
+
+    assert "Candidate output to repair" in assembled
+    assert '"answer":123' in assembled
+    assert "OUTPUT_SCHEMA_INVALID" in assembled
