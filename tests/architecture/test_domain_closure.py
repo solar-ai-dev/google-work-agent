@@ -269,13 +269,14 @@ def test_required_guard_tree_has_forty_mirrored_behavioral_owners() -> None:
     assert actual_authorities == GUARD_AUTHORITIES
 
 
-def test_formal_domain_ledger_universe_is_exactly_sixty_one_rows() -> None:
+def test_formal_domain_ledger_universe_is_exactly_one_hundred_one_rows() -> None:
     assert (
         1
         + sum(map(len, MODEL_AUTHORITIES.values()))
         + len(VOCABULARY_AUTHORITIES)
         + len(TRANSITION_AUTHORITIES)
-        == 61
+        + len(GUARD_AUTHORITIES)
+        == 101
     )
 
 
@@ -320,7 +321,7 @@ def test_every_domain_transition_authority_is_owner_local_and_exact() -> None:
         transition_functions = [
             node.name
             for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name.startswith("transition_")
         ]
         if transition_functions and path.parent.name != "transitions":
@@ -380,7 +381,7 @@ def test_domain_package_barrel_exports_no_concrete_authority() -> None:
     module = import_module("google_work_agent.domain")
     assert module.__all__ == ()
     tree = ast.parse((DOMAIN / "__init__.py").read_text(encoding="utf-8"))
-    assert not any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in tree.body)
+    assert not any(isinstance(node, ast.Import | ast.ImportFrom) for node in tree.body)
 
 
 def test_lifecycle_repositories_expose_only_query_persistence_and_cas() -> None:
