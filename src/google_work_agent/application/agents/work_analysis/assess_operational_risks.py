@@ -15,11 +15,9 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkFactV1,
     WorkRelationV1,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 _RISK_KINDS = (
@@ -76,7 +74,7 @@ def assess_operational_risks(
     work_facts: Sequence[WorkFactV1],
     validated_relations: Sequence[WorkRelationV1],
     evidence: list[dict[str, object]],
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
     trace_context: ObservabilityContext,

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.production_runtime import build_test_production_container
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
@@ -24,7 +25,7 @@ def test_build_container_classifies_migration_integrity_failure(
     monkeypatch.setattr(composition, "apply_migrations", fail_integrity)
 
     with pytest.raises(CoreInitializationError) as exc_info:
-        dev.build_container(runtime_root=tmp_path)
+        build_test_production_container(runtime_root=tmp_path)
 
     assert exc_info.value.safe_code == "MIGRATION_FAILED"
 

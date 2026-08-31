@@ -1,7 +1,14 @@
 """FastAPI application composition for the local product core."""
 
+from typing import cast
+
 from fastapi import FastAPI
 
+from google_work_agent.api.composition import (
+    DeferredApiContainer,
+    ProductionRuntimeConfig,
+    build_production_runtime,
+)
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.errors.error_response import install_error_response_handlers
 from google_work_agent.api.lifespan import build_lifespan
@@ -32,7 +39,41 @@ from google_work_agent.api.routes.frontend_assets import create_frontend_asset_r
 from google_work_agent.api.security.bind import LocalBindPolicy
 
 
-def create_app(container: ApiContainer) -> FastAPI:
+def create_app(
+    container: ApiContainer | None = None,
+    *,
+    production_config: ProductionRuntimeConfig | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    bootstrap_secret: str | None = None,
+    service_instance_id: str | None = None,
+) -> FastAPI:
+    if container is None:
+        if production_config is None or bootstrap_secret is None or service_instance_id is None:
+            raise ValueError(
+                "production_config, bootstrap_secret, and service_instance_id are required"
+            )
+
+        def build_core(**runtime_inputs: object) -> ApiContainer:
+            return build_production_runtime(
+                **runtime_inputs,  # type: ignore[arg-type]
+                runtime_root=production_config.runtime_root,
+                working_directory=production_config.working_directory,
+                mcp_manifest_version=production_config.mcp_manifest_version,
+                mcp_module_name=production_config.mcp_module_name,
+                keyring_store=production_config.keyring_store,
+            )
+
+        container = cast(
+            ApiContainer,
+            DeferredApiContainer(
+                host=host,
+                port=port,
+                service_instance_id=service_instance_id,
+                bootstrap_secret=bootstrap_secret,
+                core_builder=build_core,
+            ),
+        )
     LocalBindPolicy(host=container.local_bind_host, port=container.local_bind_port).validate()
     docs_url = "/docs" if container.api_docs_enabled else None
     openapi_url = "/openapi.json" if container.api_docs_enabled else None

@@ -10,6 +10,9 @@ from typing import cast
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
+)
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
     approval_calendar_conflict_authority,
@@ -25,6 +28,10 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
 )
+from google_work_agent.application.use_cases.action.refresh_expired_action import (
+    RefreshExpiredActionCommand,
+    RefreshExpiredActionHandler,
+)
 from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     approval_duplicate_authority,
@@ -39,7 +46,16 @@ from google_work_agent.application.use_cases.action.write_persistence import (
     require_plan,
     require_run,
 )
+from google_work_agent.application.use_cases.approval.expire_approval import (
+    ExpireApprovalCommand,
+    ExpireApprovalHandler,
+)
+from google_work_agent.application.use_cases.claim._write_preflight import (
+    PreflightWriteGateway,
+    _WritePreflight,
+)
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
+from google_work_agent.application.use_cases.run.block_run import BlockRunHandler
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType, PolicyViolationError
@@ -91,6 +107,14 @@ class ClaimExecutionResult:
     conflict_detail: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ClaimPreflightRefreshResult:
+    requires_reapproval: bool
+    action_status: str
+    result_code: str
+    action_version: int
+
+
 class ClaimExecutionHandler:
     """Atomically consume Approval, claim Action, insert Attempt, audit and receipt.
 
@@ -103,10 +127,128 @@ class ClaimExecutionHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        preflight_gateway: PreflightWriteGateway | None = None,
+        work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
+        expire_approval: ExpireApprovalHandler | None = None,
+        refresh_expired_action: RefreshExpiredActionHandler | None = None,
+        block_run: BlockRunHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._registry = load_signed_tool_registry()
+        self._expire_approval = expire_approval
+        self._refresh_expired_action = refresh_expired_action
+        self._preflight = (
+            None
+            if preflight_gateway is None
+            else _WritePreflight(
+                unit_of_work_factory=unit_of_work_factory,
+                gateway=preflight_gateway,
+                now_ms=now_ms,
+                work_hours_provider=work_hours_provider,
+                expire_approval=expire_approval,
+                refresh_expired_action=refresh_expired_action,
+                block_run=block_run,
+            )
+        )
+
+    def preflight(self, *, action_id: str) -> dict[str, object]:
+        """Run the claim-owned provider-read safety phase."""
+
+        if self._preflight is None:
+            raise RuntimeError("claim preflight is not configured")
+        return self._preflight(action_id=action_id)
+
+    def action_status(self, action_id: str) -> str | None:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+        return None if action is None else action.status
+
+    def refresh_stale_preflight(
+        self,
+        *,
+        claim: ClaimExecutionResult,
+        source_snapshot: dict[str, object],
+    ) -> ClaimPreflightRefreshResult | None:
+        stale_reasons = {
+            "approval expired",
+            "approval action version is stale",
+            "approval arguments binding is stale",
+            "approval source snapshot is stale",
+            "approval policy version is stale",
+            "approval tool schema version is stale",
+        }
+        if (
+            claim.conflict_detail not in stale_reasons
+            or claim.approval_id is None
+            or self._expire_approval is None
+        ):
+            return None
+        with self._unit_of_work_factory() as unit_of_work:
+            approval = unit_of_work.approvals.get(claim.approval_id)
+            current_action = unit_of_work.actions.get(claim.action_id)
+        if approval is None or current_action is None:
+            raise LookupError("stale approval authority disappeared")
+        entry = self._registry.get_required(
+            current_action.connector_id, current_action.tool_name
+        )
+        current_source_snapshot = (
+            source_snapshot
+            if claim.conflict_detail == "approval source snapshot is stale"
+            else cast(dict[str, object], loads(approval.source_snapshot_json))
+        )
+        current_source_snapshot_hash = calculate_canonical_json_hash(
+            current_source_snapshot
+        )
+        expire_request = {
+            "approval_id": claim.approval_id,
+            "expected_action_version": claim.current_version,
+            "current_source_snapshot": current_source_snapshot,
+        }
+        expired = self._expire_approval(
+            ExpireApprovalCommand(
+                command_id=f"system:expire-approval:{claim.approval_id}",
+                request_hash=calculate_canonical_json_hash(expire_request),
+                approval_id=claim.approval_id,
+                expected_action_version=claim.current_version,
+                current_source_snapshot=current_source_snapshot,
+            )
+        )
+        if not expired.applied or self._refresh_expired_action is None:
+            return ClaimPreflightRefreshResult(
+                False,
+                expired.action_status,
+                expired.result_code,
+                expired.action_version,
+            )
+        refresh_request = {
+            "action_id": claim.action_id,
+            "expected_version": expired.action_version,
+            "fresh_source_snapshot": current_source_snapshot,
+            "fresh_source_snapshot_hash": current_source_snapshot_hash,
+            "fresh_policy_version": entry.registry_version,
+            "fresh_tool_schema_version": entry.input_schema_version,
+            "fresh_risk": current_action.risk,
+        }
+        refreshed = self._refresh_expired_action(
+            RefreshExpiredActionCommand(
+                command_id=f"system:refresh-expired-action:{claim.action_id}",
+                request_hash=calculate_canonical_json_hash(refresh_request),
+                action_id=claim.action_id,
+                expected_version=expired.action_version,
+                fresh_source_snapshot=current_source_snapshot,
+                fresh_source_snapshot_hash=current_source_snapshot_hash,
+                fresh_policy_version=entry.registry_version,
+                fresh_tool_schema_version=entry.input_schema_version,
+                fresh_risk=current_action.risk,
+            )
+        )
+        return ClaimPreflightRefreshResult(
+            True,
+            refreshed.action_status,
+            refreshed.result_code,
+            refreshed.action_version,
+        )
 
     def __call__(self, command: ClaimExecutionCommand) -> ClaimExecutionResult:
         with self._unit_of_work_factory() as unit_of_work:

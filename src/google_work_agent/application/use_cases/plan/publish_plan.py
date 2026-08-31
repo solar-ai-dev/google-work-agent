@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps
+from typing import overload
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.write_persistence import (
@@ -18,12 +19,15 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     require_run as _require_run,
 )
-from google_work_agent.application.use_cases.plan.save_write_plan import (
+from google_work_agent.application.use_cases.plan._write_plan_persistence import (
+    _WritePlanPersistence,
     resolve_existing_plan_receipt,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     PublishWritePlanResponse,
+    SaveWritePlanCommand,
+    SaveWritePlanResponse,
 )
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.plan.transitions.publish_plan import transition_publish_plan
@@ -38,8 +42,30 @@ class PublishPlanHandler:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._draft_persistence = _WritePlanPersistence(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
 
-    def __call__(self, command: PublishWritePlanCommand) -> PublishWritePlanResponse:
+    def save(self, command: SaveWritePlanCommand) -> SaveWritePlanResponse:
+        """Persist the draft as a private phase of the canonical publish operation."""
+
+        return self._draft_persistence(command)
+
+    @overload
+    def __call__(self, command: SaveWritePlanCommand) -> SaveWritePlanResponse: ...
+
+    @overload
+    def __call__(self, command: PublishWritePlanCommand) -> PublishWritePlanResponse: ...
+
+    def __call__(
+        self, command: SaveWritePlanCommand | PublishWritePlanCommand
+    ) -> SaveWritePlanResponse | PublishWritePlanResponse:
+        if isinstance(command, SaveWritePlanCommand):
+            return self.save(command)
+        return self._publish(command)
+
+    def _publish(self, command: PublishWritePlanCommand) -> PublishWritePlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:

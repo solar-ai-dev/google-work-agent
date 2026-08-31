@@ -41,7 +41,6 @@ from google_work_agent.application.use_cases.plan.project_dependencies import (
 )
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
-    RecordReviewResultHandler,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
@@ -303,10 +302,7 @@ def _continue_durable_corrective_write_plan(
 
     if proof["plan_review_status"] is PlanReviewStatus.REQUIRED:
         review_version, review_artifact_id = _corrective_review_input(state)
-        result = RecordReviewResultHandler(
-            unit_of_work_factory=runtime._unit_of_work_factory,
-            now_ms=runtime._now_ms,
-        )(
+        result = runtime._record_review_result(
             RecordReviewResultCommandV1(
                 command_id=_corrective_command_id(kind="review", plan_id=reserved_plan.id),
                 plan_id=reserved_plan.id,

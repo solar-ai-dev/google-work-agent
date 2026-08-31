@@ -112,6 +112,7 @@ class FakeEventSource {
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  vi.setSystemTime(new Date("2026-08-10T09:00:00+09:00"));
   localStorage.clear();
   FakeEventSource.instances = [];
   Object.defineProperty(window, "EventSource", { value: FakeEventSource, configurable: true });
@@ -119,6 +120,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   globalThis.fetch = originalFetch;
   window.history.replaceState(null, "", "/");
 });

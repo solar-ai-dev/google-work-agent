@@ -23,9 +23,6 @@ from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import R
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     build_failure_record_v1,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
     RunBudgetV2,
@@ -36,6 +33,7 @@ from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -76,7 +74,7 @@ EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 def select_evidence(
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     revision_prompt_ref: PromptReference,
     trace_context: ObservabilityContext,

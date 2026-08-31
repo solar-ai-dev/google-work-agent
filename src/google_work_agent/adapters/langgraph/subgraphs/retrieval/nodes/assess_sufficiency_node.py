@@ -8,13 +8,11 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -29,7 +27,7 @@ from ..state import RetrievalStateV2
 def assess_sufficiency_node(
     state: RetrievalStateV2,
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     trace_context: ObservabilityContext,
     tool_route_plan: ToolRoutePlanV2 | None,

@@ -1,15 +1,24 @@
 from typing import get_type_hints
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.adapters.langgraph.subgraph_state import (
-    AcquisitionLocalState,
-    ContextRetrievalInputState,
-    ContextRetrievalLocalState,
+from google_work_agent.adapters.langgraph.subgraphs.planning.state import (
     PlanningInputState,
     PlanningLocalState,
+)
+from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingInputState,
+)
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
+    ContextRetrievalInputState,
+    ContextRetrievalLocalState,
+)
+from google_work_agent.adapters.langgraph.subgraphs.review.state import (
     ReviewInputState,
+)
+from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRoutingInputState,
+)
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
 )
@@ -27,7 +36,6 @@ def test_parent_graph_state_excludes_every_subgraph_working_field() -> None:
 
 def test_each_local_state_owns_only_its_subgraph_working_fields() -> None:
     cases = (
-        (AcquisitionLocalState, "__acquisition_agent_local__"),
         (ContextRetrievalLocalState, "__context_agent_local__"),
         (WorkAnalysisLocalState, "__analysis_agent_local__"),
         (PlanningLocalState, "__planning_agent_local__"),

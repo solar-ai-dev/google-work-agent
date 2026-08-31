@@ -47,10 +47,10 @@ from google_work_agent.application.use_cases.run.adjust_context import (
 from google_work_agent.application.use_cases.run.confirm_run import (
     ConfirmRunCommand,
 )
-from google_work_agent.application.use_cases.run.get_execution_context import (
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetExecutionContextQuery,
+    GetRunSnapshotQuery,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotQuery
 from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
 )

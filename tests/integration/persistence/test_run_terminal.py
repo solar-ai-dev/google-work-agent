@@ -10,13 +10,9 @@ from google_work_agent.application.use_cases.run.block_run import (
     BlockRunCommand,
     BlockRunHandler,
 )
-from google_work_agent.application.use_cases.run.run_terminal import (
-    FailRunCommand,
-    FailRunService,
-    RunTransitionResponse,
-)
+from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 
-TerminalCommand = BlockRunCommand | FailRunCommand
+TerminalCommand = BlockRunCommand
 TerminalService = Callable[..., RunTransitionResponse]
 TerminalServiceFactory = Callable[[Path], TerminalService]
 
@@ -137,23 +133,6 @@ def _insert_active_approval(database_path: Path) -> None:
             "BLOCKED",
             "RUN_BLOCKED",
             1000,
-        ),
-        (
-            lambda path: FailRunService(
-                unit_of_work_factory=sqlite_unit_of_work_factory(path),
-                now_ms=lambda: 1000,
-            ),
-            FailRunCommand(
-                command_id="command-fail",
-                request_hash="b" * 64,
-                run_id="run-1",
-                expected_version=0,
-                reason_code="OUTPUT_SCHEMA_INVALID",
-            ),
-            "ANALYZING",
-            "RECOVERY_REQUIRED",
-            "RUN_RECOVERY_REQUIRED",
-            None,
         ),
     ),
 )
@@ -318,20 +297,6 @@ def test_block_run_version_conflict_does_not_revoke_active_approval(
             ),
             "ANALYZING",
         ),
-        (
-            lambda path: FailRunService(
-                unit_of_work_factory=sqlite_unit_of_work_factory(path),
-                now_ms=lambda: 1000,
-            ),
-            FailRunCommand(
-                command_id="command-fail-repeat",
-                request_hash="e" * 64,
-                run_id="run-1",
-                expected_version=0,
-                reason_code="OUTPUT_SCHEMA_INVALID",
-            ),
-            "RETRIEVING",
-        ),
     ),
 )
 def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash(
@@ -366,21 +331,6 @@ def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash
             ),
             "ANALYZING",
             "ANALYZING",
-        ),
-        (
-            lambda path: FailRunService(
-                unit_of_work_factory=sqlite_unit_of_work_factory(path),
-                now_ms=lambda: 1000,
-            ),
-            FailRunCommand(
-                command_id="command-fail-stale",
-                request_hash="h" * 64,
-                run_id="run-1",
-                expected_version=9,
-                reason_code="OUTPUT_SCHEMA_INVALID",
-            ),
-            "RETRIEVING",
-            "RETRIEVING",
         ),
     ),
 )

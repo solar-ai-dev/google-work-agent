@@ -199,17 +199,21 @@ def test_each_non_persistence_adapter_implements_its_port_surface() -> None:
 
 def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols() -> None:
     prompt_guard = _source("application/prompt_runtime/dispatch_guarded_prompt.py")
-    application_runtime = _source("application/use_cases/llm/structured_inference_runtime.py")
     adapter_router = _source("adapters/llm/runtime/structured_inference_router.py")
 
     assert "class _StructuredProvider(Protocol)" not in prompt_guard
     assert "class _ToolCallingProvider(Protocol)" not in prompt_guard
-    assert "class LLMEventRecorder(Protocol)" not in application_runtime
     assert "class LLMEventRecorder(Protocol)" not in adapter_router
     assert "StructuredLLMProvider," in prompt_guard
     assert "ToolCallingLLMProvider," in prompt_guard
-    assert "LLMEventRecorder," in application_runtime
     assert "LLMEventRecorder," in adapter_router
+    assert not any((
+        Path("src")
+        / "google_work_agent"
+        / "application"
+        / "use_cases"
+        / "llm"
+    ).rglob("*.py"))
 
 
 @pytest.mark.parametrize(
@@ -319,7 +323,6 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
 
 def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:
     router_source = _source("adapters/llm/runtime/structured_inference_router.py")
-    application_source = _source("application/use_cases/llm/structured_inference_runtime.py")
     launcher = _source("launcher/dev.py")
     llm_exports = _source("adapters/llm/__init__.py")
 
@@ -328,11 +331,15 @@ def test_structured_inference_router_is_the_only_runtime_selection_authority() -
     assert "def _should_fallback(" in router_source
     assert "ActualRuntime.LOCAL_GPU" in router_source
     assert "ActualRuntime.API_LLM" in router_source
-    assert "self.structured_inference.infer(" in application_source
-    assert "google_work_agent.adapters" not in application_source
-    assert "router.decide" not in application_source
-    assert "def _invoke_provider(" not in application_source
-    assert "def _should_fallback(" not in application_source
+    assert "def _invoke_provider(" in router_source
+    assert "def _should_fallback(" in router_source
+    assert not any((
+        Path("src")
+        / "google_work_agent"
+        / "application"
+        / "use_cases"
+        / "llm"
+    ).rglob("*.py"))
     assert "DeterministicLLMRuntimeRouter" not in launcher
     assert "DeterministicLLMRuntimeRouter" not in llm_exports
     assert not (Path("src") / "google_work_agent" / "adapters/llm/router.py").exists()

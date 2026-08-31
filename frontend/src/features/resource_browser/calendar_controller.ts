@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem } from "../../api/contract";
-import { calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "../calendar";
+import { calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "./calendar_month_view";
 import { listResources } from "./api/list_resources";
 import { ResourceBrowserSessionCache } from "./session_page_cache";
 

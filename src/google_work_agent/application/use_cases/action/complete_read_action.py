@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.use_cases.action._read_execution import _ReadExecution
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.read_contracts import (
     CompleteReadActionCommand,
+    ExecutedReadAction,
     ReadActionCommandResponse,
 )
 from google_work_agent.application.use_cases.action.read_persistence import (
@@ -18,6 +20,9 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     handle_existing_complete_receipt,
     require_action,
     require_plan,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
@@ -37,10 +42,26 @@ class CompleteReadActionHandler:
     """Persist the successful result of one read action."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int] = lambda: 0,
+        gateway: ConnectorReadProjection | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._execution = (
+            None
+            if gateway is None
+            else _ReadExecution(unit_of_work_factory=unit_of_work_factory, gateway=gateway)
+        )
+
+    def execute(self, *, action_id: str) -> ExecutedReadAction:
+        """Run the external read phase outside the persistence transaction."""
+
+        if self._execution is None:
+            raise RuntimeError("complete_read_action requires a connector read projection")
+        return self._execution(action_id=action_id)
 
     def __call__(self, command: CompleteReadActionCommand) -> ReadActionCommandResponse:
         with self._unit_of_work_factory() as unit_of_work:

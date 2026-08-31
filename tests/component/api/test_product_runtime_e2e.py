@@ -59,7 +59,10 @@ from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemor
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import build_production_runtime
+from google_work_agent.api.composition import (
+    _build_require_recovery,
+    _build_workflow_runtime,
+)
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.cookies import local_session_cookie_name
 from google_work_agent.api.security.sessions import calculate_session_digest
@@ -86,10 +89,9 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.system.api_access_port import (
@@ -429,9 +431,9 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         checkpoint_port=checkpoint,
         prompt_manifest_path=_runtime_active_manifest_path(tmp_path),
     )
-    get_execution_context = GetExecutionContextHandler(
+    get_execution_context = GetRunSnapshotHandler(
         unit_of_work_factory=read_unit_of_work_factory
-    )
+    ).execution_context
     publisher = InMemorySseEventBuffer(service_instance_id="svc-product", capacity_per_run=32)
     id_generator = DeterministicUUID(prefix="api")
 
@@ -445,7 +447,7 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         checkpoint=checkpoint,
     )
 
-    production_runtime = build_production_runtime(
+    production_runtime = _build_workflow_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
         checkpoint=checkpoint,
@@ -456,6 +458,12 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         lookup_unknown_result=lambda command: None,
         recover_existing_result=lambda command: None,
         resolve_as_failed=lambda command: None,
+        require_recovery=_build_require_recovery(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint=checkpoint,
+            now_ms=clock.now_ms,
+            resume_target_registry=resume_target_registry,
+        ),
         materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
         now_ms=clock.now_ms,
         reconciliation_interval_seconds=0.2,

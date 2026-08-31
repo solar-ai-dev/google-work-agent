@@ -14,11 +14,9 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 _DISPOSITIONS = (
@@ -95,7 +93,7 @@ def assess_information_gaps(
     request_intent: RequestIntentV2,
     work_facts: Sequence[WorkFactV1],
     evidence: list[dict[str, object]],
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
     trace_context: ObservabilityContext,

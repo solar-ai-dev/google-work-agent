@@ -15,17 +15,15 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAmbiguityV1,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 
 def assess_information_gaps_node(
     state: dict[str, object],
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     trace_context: ObservabilityContext,
 ) -> WorkAnalysisStateV2:

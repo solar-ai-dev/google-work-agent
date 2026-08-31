@@ -1,4 +1,4 @@
-"""Action-owner-local provider-read safety checks before a write claim."""
+"""Claim-owner-local provider-read safety checks before a write claim."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ class PreflightWriteGateway(
     def get_task(self, *, task_list_id: str, task_id: str) -> ResourceSnapshot: ...
 
 
-class PreflightWriteActionService:
+class _WritePreflight:
     """Read the approved target immediately before the claim transaction."""
 
     def __init__(

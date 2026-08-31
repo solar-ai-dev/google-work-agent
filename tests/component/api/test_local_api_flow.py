@@ -27,7 +27,10 @@ from google_work_agent.adapters.readiness.composite import (
 from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import build_production_runtime
+from google_work_agent.api.composition import (
+    _build_require_recovery,
+    _build_workflow_runtime,
+)
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
@@ -44,10 +47,9 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.ports.system.api_access_port import (
@@ -96,7 +98,9 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
     runtime = FakeWorkflowRuntime()
     publisher = InMemorySseEventBuffer(service_instance_id="svc-test", capacity_per_run=8)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    get_execution_context = GetRunSnapshotHandler(
+        unit_of_work_factory=unit_of_work_factory
+    ).execution_context
     id_generator = DeterministicUUID(prefix="req")
 
     checkpoint, materialize, invoke = build_test_admission_callbacks(
@@ -112,7 +116,7 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
     )
-    production_runtime = build_production_runtime(
+    production_runtime = _build_workflow_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
         checkpoint=checkpoint,
@@ -123,6 +127,12 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         lookup_unknown_result=lambda command: None,
         recover_existing_result=lambda command: None,
         resolve_as_failed=lambda command: None,
+        require_recovery=_build_require_recovery(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint=checkpoint,
+            now_ms=clock.now_ms,
+            resume_target_registry=resume_target_registry,
+        ),
         materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
         now_ms=clock.now_ms,
     )

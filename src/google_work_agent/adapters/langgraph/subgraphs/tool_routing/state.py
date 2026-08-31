@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentSubgraphInputEnvelope,
-    ToolRoutingInputState,
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
@@ -33,6 +32,19 @@ from google_work_agent.application.use_cases.run.terminal_contract import (
 from google_work_agent.ports.system.contracts.confirmation import (
     UserInterruptV1,
 )
+from google_work_agent.ports.system.contracts.workflow_signal import (
+    RouteReconsiderationRequiredV1,
+)
+
+
+class ToolRoutingInputState(AgentSubgraphInputEnvelope, total=False):
+    """Parent projection owned by Tool Routing."""
+
+    request_intent: RequestIntentV2
+    tool_route_plan: ToolRoutePlanV2 | None
+    workflow_signal: ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | None
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
 class ToolRouteStateV1(ToolRoutingInputState, total=False):

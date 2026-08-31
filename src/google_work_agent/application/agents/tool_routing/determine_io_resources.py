@@ -25,9 +25,6 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
@@ -43,6 +40,7 @@ from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -87,7 +85,7 @@ ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 def determine_io_resources(
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     tool_catalog: SignedToolRegistry,
     request_intent: RequestIntentV2,
     request: WorkflowStartRequest,

@@ -1,4 +1,4 @@
-"""Save write plans through the Plan owner."""
+"""Private draft persistence used only by the canonical publish_plan operation."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-class SaveWritePlanService:
+class _WritePlanPersistence:
     def __init__(
         self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
     ) -> None:

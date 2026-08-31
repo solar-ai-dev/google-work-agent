@@ -13,7 +13,6 @@ from tests.integration.persistence.test_write_actions import (
     GoogleWorkspaceGatewayError,
     Path,
     PolicyViolationError,
-    PreflightWriteActionService,
     StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
     VerifyWriteActionCommand,
@@ -23,6 +22,7 @@ from tests.integration.persistence.test_write_actions import (
     _insert_calendar_event_reference,
     _insert_task_delete_reference,
     _prepare_effect_write_plan,
+    build_claim_preflight,
     classify_write_delivery,
     is_reauth_required_error,
     pytest,
@@ -91,7 +91,7 @@ def test_gmail_send_uses_approval_claim_sent_lookup_and_verification(
         clock=clock,
         suffix="send",
     )
-    PreflightWriteActionService(
+    build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=fixture_gateway,
     )(action_id="action-send")
@@ -162,7 +162,7 @@ def test_calendar_delete_uses_preflight_claim_get_absent_and_verification(
         clock=clock,
         suffix="delete",
     )
-    PreflightWriteActionService(
+    build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=fixture_gateway,
     )(action_id="action-delete")
@@ -235,7 +235,7 @@ def test_calendar_delete_preflight_rejects_recurring_series_scope(
     _approve_effect_action(write_database=write_database, clock=clock, suffix="delete-series")
 
     with pytest.raises(PolicyViolationError, match="recurring series deletion"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=fixture_gateway,
         )(action_id="action-delete-series")
@@ -261,7 +261,7 @@ def test_calendar_delete_preflight_rejects_target_version_change(
     _approve_effect_action(write_database=write_database, clock=clock, suffix="delete-stale")
 
     with pytest.raises(PolicyViolationError, match="target version mismatch"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=fixture_gateway,
         )(action_id="action-delete-stale")
@@ -289,7 +289,7 @@ def test_task_delete_uses_preflight_claim_get_absent_and_verification(
         clock=clock,
         suffix="task-delete",
     )
-    PreflightWriteActionService(
+    build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=fixture_gateway,
     )(action_id="action-task-delete")
@@ -384,7 +384,7 @@ def test_task_delete_preflight_rejects_target_version_change(
     _approve_effect_action(write_database=write_database, clock=clock, suffix="task-delete-stale")
 
     with pytest.raises(PolicyViolationError, match="target version mismatch"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=fixture_gateway,
         )(action_id="action-task-delete-stale")

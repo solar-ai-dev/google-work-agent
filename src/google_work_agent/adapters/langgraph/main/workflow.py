@@ -14,6 +14,10 @@ from typing import Any, Literal, cast
 from langgraph.types import interrupt
 
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
+from google_work_agent.adapters.langgraph.main.application_services import (
+    WorkflowApplicationServices,
+    WorkflowRuntimeHooks,
+)
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     MainControlNodeBindings,
@@ -75,7 +79,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     route_supervisor,
 )
 from google_work_agent.adapters.langgraph.main.validate_planning_output import (
-    CanonicalDomainValidationService,
     CurrentRunResourceIdentityV1,
 )
 from google_work_agent.adapters.langgraph.pre_analysis_composition import (
@@ -104,6 +107,10 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
     WorkAnalysisSubgraph,
 )
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
+from google_work_agent.adapters.langgraph.write_execution_driver import (
+    UnknownRecoveryPhaseRequest,
+    WriteExecutionStructuralDriver,
+)
 from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -134,20 +141,8 @@ from google_work_agent.application.use_cases.action.calendar_conflicts import (
 )
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionCommand,
-    CancelPendingActionHandler,
 )
-from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
-)
-from google_work_agent.application.use_cases.action.execute_read_action import (
-    ExecuteReadActionService,
-)
-from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
 from google_work_agent.application.use_cases.action.feasibility import evidence_feasibility_risk
-from google_work_agent.application.use_cases.action.finalize_read_action import (
-    FinalizeReadActionHandler,
-)
 from google_work_agent.application.use_cases.action.read_contracts import (
     ClaimReadActionCommand,
     CompleteReadActionCommand,
@@ -158,53 +153,18 @@ from google_work_agent.application.use_cases.action.read_contracts import (
     ReadEvidenceDraft,
     SaveReadOnlyPlanCommand,
 )
-from google_work_agent.application.use_cases.action.refresh_expired_action import (
-    RefreshExpiredActionHandler,
-)
 from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
     evidence_duplicate_risk,
 )
-from google_work_agent.application.use_cases.action.write_preflight import (
-    PreflightWriteActionService,
-)
-from google_work_agent.application.use_cases.approval.expire_approval import ExpireApprovalHandler
-from google_work_agent.application.use_cases.claim.build_claim_context import (
-    BuildClaimContextHandler,
-)
-from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionHandler
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionCommandV1,
-    AbortClaimedExecutionHandler,
-)
-from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
-    BeginExecutionAttemptHandler,
-)
-from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
-    ClassifyDispatchResultHandler,
 )
 from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
     ConnectorWriteProjection,
 )
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
-    UnknownRecoveryPhaseRequest,
-    WriteExecutionPhaseCoordinator,
-)
-from google_work_agent.application.use_cases.execution_attempt.mark_failed import MarkFailedHandler
-from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
-    MarkUnknownResultHandler,
-)
 from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
     latest_attempt_for_action,
-)
-from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
-    RecoverExistingResultHandler,
-)
-from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
-    ResolveAsFailedHandler,
-)
-from google_work_agent.application.use_cases.execution_attempt.store_success import (
-    StoreSuccessHandler,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import (
     current_plan_tuple,
@@ -216,19 +176,8 @@ from google_work_agent.application.use_cases.plan.project_dependencies import (
 from google_work_agent.application.use_cases.plan.project_planning_output import (
     project_action_plan_v2_for_persistence,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
-    PublishReadOnlyPlanHandler,
-)
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
-    RecordReviewResultHandler,
-)
-from google_work_agent.application.use_cases.plan.save_read_only_plan import (
-    SaveReadOnlyPlanService,
-)
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
@@ -236,15 +185,8 @@ from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     WriteActionDraft,
     WriteEvidenceDraft,
 )
-from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
-    LookupUnknownResultHandler,
-)
-from google_work_agent.application.use_cases.recovery.require_recovery import (
-    RequireRecoveryHandler,
-)
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
-    ResolveRecoveryHandler,
 )
 from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
@@ -252,81 +194,52 @@ from google_work_agent.application.use_cases.resource.connector_read_projection 
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
 )
-from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
-    ResolveResourceRefHandler,
-)
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
-    BeginPlanningHandler,
 )
 from google_work_agent.application.use_cases.run.begin_retrieval import (
     BeginRetrievalCommand,
-    BeginRetrievalHandler,
 )
 from google_work_agent.application.use_cases.run.begin_verification import (
     BeginVerificationCommand,
-    BeginVerificationHandler,
 )
 from google_work_agent.application.use_cases.run.block_run import (
     BlockRunCommand,
-    BlockRunHandler,
-)
-from google_work_agent.application.use_cases.run.build_terminal_message import (
-    BuildTerminalMessageHandler,
 )
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
-    CompleteAnswerOnlyRunHandler,
 )
 from google_work_agent.application.use_cases.run.complete_read_only_run import (
     CompleteReadOnlyRunCommand,
-    CompleteReadOnlyRunHandler,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
-    CompleteWriteRunHandler,
 )
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
     ContinueCancelResolutionCommandV1,
-    ContinueCancelResolutionHandler,
     ContinueCancelResolutionResultV1,
 )
 from google_work_agent.application.use_cases.run.finalize_cancel import (
     FinalizeCancelCommand,
-    FinalizeCancelHandler,
 )
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
-    GetRunSnapshotHandler,
     GetRunSnapshotQuery,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
     approve_planning_revision,
 )
-from google_work_agent.application.use_cases.run.request_confirmation import (
-    RequestConfirmationHandler,
-)
-from google_work_agent.application.use_cases.run.require_reauth import RequireReauthHandler
 from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
-    StartAnalysisHandler,
 )
 from google_work_agent.application.use_cases.run.terminal_contract import (
     ReviewResult,
 )
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventCommand,
-    ProjectRunEventHandler,
 )
 from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
     EmitTraceEventCommand,
-    EmitTraceEventHandler,
-)
-from google_work_agent.application.use_cases.verification.store_verification import (
-    StoreVerificationHandler,
-)
-from google_work_agent.application.use_cases.verification.verify_effect import (
-    VerifyEffectHandler,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -420,6 +333,8 @@ class WorkflowRuntimeCore:
         signing_secret: str,
         service_instance_id: str,
         checkpoint_port: CheckpointPort,
+        application_services: WorkflowApplicationServices,
+        runtime_hooks: WorkflowRuntimeHooks,
         retrieval_cache: InMemoryRunRetrievalCache | None = None,
         claim_context_signer: Callable[[dict[str, object]], str] | None = None,
         mcp_process_instance_id: Callable[[], str] | None = None,
@@ -457,206 +372,59 @@ class WorkflowRuntimeCore:
         self._cancel_signal_lock = Lock()
         self._cancel_signals: set[str] = set()
         self._checkpointer = self._checkpoint_port
-        canonical_uow_factory = cast(Callable[[], CanonicalUnitOfWork], unit_of_work_factory)
-        self._start_analysis_handler = StartAnalysisHandler(
-            unit_of_work_factory=canonical_uow_factory,
-            now_ms=now_ms,
-        )
-        self._get_run_snapshot_handler = GetRunSnapshotHandler(
-            unit_of_work_factory=unit_of_work_factory,
-        )
-        self._build_terminal_message = BuildTerminalMessageHandler()
-        self._emit_terminal_trace = EmitTraceEventHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            environment=environment,
-            release_version=release_version,
-        )
-        self._project_terminal_event = (
-            None if sse_event_buffer is None else ProjectRunEventHandler(sse_event_buffer)
-        )
-        self._begin_retrieval_handler = BeginRetrievalHandler(
-            unit_of_work_factory=canonical_uow_factory,
-            now_ms=now_ms,
-        )
-        self._begin_planning_handler = BeginPlanningHandler(
-            unit_of_work_factory=canonical_uow_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            id_factory=id_factory,
-            resume_target_registry=self._resume_target_registry,
-        )
-        self._request_confirmation_handler = RequestConfirmationHandler(
-            unit_of_work_factory=canonical_uow_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            resume_target_registry=self._resume_target_registry,
-        )
+        runtime_hooks.bind(self)
+        services = application_services
+        self._start_analysis_handler = services.start_analysis
+        self._get_run_snapshot_handler = services.get_run_snapshot
+        self._build_terminal_message = services.build_terminal_message
+        self._emit_terminal_trace = services.emit_terminal_trace
+        self._project_terminal_event = services.project_terminal_event
+        self._begin_retrieval_handler = services.begin_retrieval
+        self._begin_planning_handler = services.begin_planning
+        self._request_confirmation_handler = services.request_confirmation
         self._read_result_cache = retrieval_cache or InMemoryRunRetrievalCache()
         self._evidence_store = RunScopedEvidenceStore()
-        self._canonical_domain_validation = CanonicalDomainValidationService(
-            tool_registry=tool_catalog,
-        )
-
-        self._complete_answer_only = CompleteAnswerOnlyRunHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            message_id_factory=id_factory,
-        )
-        self._complete_read_only_run = CompleteReadOnlyRunHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            message_id_factory=id_factory,
-        )
-        self._complete_write_run = CompleteWriteRunHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            message_id_factory=id_factory,
-        )
-        self._block_run = BlockRunHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            message_id_factory=id_factory,
-        )
-        self._save_write_plan = SaveWritePlanService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._save_read_plan = SaveReadOnlyPlanService(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._publish_read_plan = PublishReadOnlyPlanHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._claim_read = ClaimReadActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._execute_read = ExecuteReadActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            gateway=connector_reader,
-        )
-        self._complete_read = CompleteReadActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._finalize_read = FinalizeReadActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._fail_read = FailReadActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._publish_write_plan = PublishPlanHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._claim_execution = ClaimExecutionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._build_claim_context = BuildClaimContextHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-            id_factory=id_factory,
-            sign_claim_context=claim_context_signer or (lambda _payload: "test-signature"),
-        )
-        self._begin_execution_attempt = BeginExecutionAttemptHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._abort_claimed_execution = AbortClaimedExecutionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._classify_dispatch_result = ClassifyDispatchResultHandler()
-        self._expire_approval = ExpireApprovalHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._refresh_expired_action = RefreshExpiredActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            id_factory=id_factory,
-            resume_target_registry=self._resume_target_registry,
-            schedule_run_execution=None,
-        )
-        self._preflight_write = PreflightWriteActionService(
-            unit_of_work_factory=unit_of_work_factory,
-            gateway=connector_reader,
-            now_ms=now_ms,
-            work_hours_provider=self._work_hours_provider,
-            expire_approval=self._expire_approval,
-            refresh_expired_action=self._refresh_expired_action,
-            block_run=self._block_run,
-        )
-        self._store_write_success = StoreSuccessHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._mark_write_failed = MarkFailedHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._mark_write_unknown = MarkUnknownResultHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._verify_effect = VerifyEffectHandler(
-            connector_read=connector_reader.connector_reader,
-            tool_registry=tool_catalog,
-        )
-        self._store_verification = StoreVerificationHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._require_recovery = RequireRecoveryHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            resume_target_registry=self._resume_target_registry,
-        )
-        self._resolve_recovery = ResolveRecoveryHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            next_id=id_factory,
-            resume_target_registry=self._resume_target_registry,
-        )
-        self._require_write_reauth = RequireReauthHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-        )
-        self._lookup_unknown_result = LookupUnknownResultHandler(
-            connector_read=connector_reader.connector_reader,
-            tool_registry=tool_catalog,
-        )
-        self._recover_existing_result = RecoverExistingResultHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._resolve_as_failed = ResolveAsFailedHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._begin_write_verification = BeginVerificationHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-            resume_target_registry=self._resume_target_registry,
-        )
-        self._write_execution_phase = WriteExecutionPhaseCoordinator(
-            unit_of_work_factory=unit_of_work_factory,
+        self._canonical_domain_validation = services.domain_validation
+        self._complete_answer_only = services.complete_answer_only
+        self._complete_read_only_run = services.complete_read_only_run
+        self._complete_write_run = services.complete_write_run
+        self._block_run = services.block_run
+        self._publish_read_plan = services.publish_read_plan
+        self._save_read_plan = self._publish_read_plan.save
+        self._claim_read = services.claim_read
+        self._complete_read = services.complete_read
+        self._execute_read = self._complete_read.execute
+        self._finalize_read = services.finalize_read
+        self._fail_read = services.fail_read
+        self._publish_write_plan = services.publish_write_plan
+        self._save_write_plan = self._publish_write_plan.save
+        self._build_claim_context = services.build_claim_context
+        self._begin_execution_attempt = services.begin_execution_attempt
+        self._abort_claimed_execution = services.abort_claimed_execution
+        self._classify_dispatch_result = services.classify_dispatch_result
+        self._expire_approval = services.expire_approval
+        self._refresh_expired_action = services.refresh_expired_action
+        self._claim_execution = services.claim_execution
+        self._preflight_write = self._claim_execution.preflight
+        self._store_write_success = services.store_write_success
+        self._mark_write_failed = services.mark_write_failed
+        self._mark_write_unknown = services.mark_write_unknown
+        self._verify_effect = services.verify_effect
+        self._store_verification = services.store_verification
+        self._require_recovery = services.require_recovery
+        self._resolve_recovery = services.resolve_recovery
+        self._require_write_reauth = services.require_write_reauth
+        self._lookup_unknown_result = services.lookup_unknown_result
+        self._recover_existing_result = services.recover_existing_result
+        self._resolve_as_failed = services.resolve_as_failed
+        self._begin_write_verification = services.begin_write_verification
+        self._record_review_result = services.record_review_result
+        self._validate_action_arguments = services.validate_action_arguments
+        self._write_execution_phase = WriteExecutionStructuralDriver(
             id_factory=id_factory,
             request_hash=self._request_hash,
             should_stop_for_cancel=self._should_stop_for_cancel,
             preflight_write=self._preflight_write,
-            expire_approval=self._expire_approval,
-            refresh_expired_action=self._refresh_expired_action,
             claim_execution=self._claim_execution,
             build_claim_context=self._build_claim_context,
             begin_execution_attempt=self._begin_execution_attempt,
@@ -677,9 +445,6 @@ class WorkflowRuntimeCore:
             lookup_unknown_result=self._lookup_unknown_result,
             recover_existing_result=self._recover_existing_result,
             resolve_as_failed=self._resolve_as_failed,
-            resolve_resource_ref=ResolveResourceRefHandler(
-                unit_of_work_factory=unit_of_work_factory,
-            ),
         )
         self._write_execution_node = WriteExecutionNode(
             id_factory=id_factory,
@@ -712,23 +477,9 @@ class WorkflowRuntimeCore:
             ),
             latest_attempt_id=self._latest_attempt_id,
         )
-        self._cancel_pending_action = CancelPendingActionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
-        )
-        self._finalize_cancel = FinalizeCancelHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            checkpoint_port=self._checkpoint_port,
-            now_ms=now_ms,
-        )
-        self._continue_cancel_resolution = ContinueCancelResolutionHandler(
-            unit_of_work_factory=unit_of_work_factory,
-            settle_pending_action=self._settle_pending_cancel_action,
-            reconcile_inflight_action=self._reconcile_cancelling_action,
-            verify_executed_action=self._verify_cancelling_action,
-            resolve_unknown_action=self._resolve_cancelling_unknown_action,
-            finalize_cancel=None,
-        )
+        self._cancel_pending_action = services.cancel_pending_action
+        self._finalize_cancel = services.finalize_cancel
+        self._continue_cancel_resolution = services.continue_cancel_resolution
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
@@ -1770,10 +1521,7 @@ class WorkflowRuntimeCore:
             action_versions = {
                 action.id: action.version for action in unit_of_work.actions.list_for_plan(plan_id)
             }
-        result = RecordReviewResultHandler(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-        )(
+        result = self._record_review_result(
             RecordReviewResultCommandV1(
                 command_id=self._phase_command_id(plan.run_id, "record_review", review_version),
                 plan_id=plan.id,

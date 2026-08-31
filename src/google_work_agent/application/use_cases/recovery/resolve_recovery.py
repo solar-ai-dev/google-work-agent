@@ -183,6 +183,10 @@ class ResolveRecoveryHandler:
         self._schedule_run_execution = schedule_run_execution
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
+    def has_current_context(self, run_id: str) -> bool:
+        with self._unit_of_work_factory() as unit_of_work:
+            return unit_of_work.recovery_contexts.load_current_context(run_id) is not None
+
     def resolve_current(
         self,
         *,

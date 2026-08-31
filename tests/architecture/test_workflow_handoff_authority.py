@@ -78,7 +78,7 @@ def test_retry_and_stale_preflight_use_durable_review_handoff_authority() -> Non
     retry = (ROOT / "application/use_cases/action/prepare_write_retry.py").read_text(
         encoding="utf-8"
     )
-    preflight = (ROOT / "application/use_cases/action/write_preflight.py").read_text(
+    preflight = (ROOT / "application/use_cases/claim/_write_preflight.py").read_text(
         encoding="utf-8"
     )
 

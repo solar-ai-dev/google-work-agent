@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from json import loads
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
@@ -19,6 +20,10 @@ from google_work_agent.application.use_cases.recovery.project_recovery_options i
     ProjectRecoveryOptionsHandler,
     ProjectRecoveryOptionsQueryV1,
     ProjectRecoveryOptionsResultV1,
+)
+from google_work_agent.application.use_cases.run.guard_run_budget import (
+    RunBudgetV2,
+    validate_run_budget_v2,
 )
 from google_work_agent.application.use_cases.run.project_context_preview import (
     ProjectContextPreviewHandler,
@@ -48,6 +53,7 @@ from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_com
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +110,28 @@ class ActionSnapshotResult:
 @dataclass(frozen=True, slots=True)
 class GetRunSnapshotQuery:
     run_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class GetExecutionContextQuery:
+    """Owner-local workflow admission projection input."""
+
+    run_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class GetExecutionContextResult:
+    run_id: str
+    conversation_id: str
+    workflow_key: str
+    entry_mode: str
+    requested_mode: str
+    status: str
+    version: int
+    request_text: str
+    selected_resource_ids: tuple[str, ...]
+    run_budget: RunBudgetV2
+    selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +299,37 @@ class GetRunSnapshotHandler:
             },
         )
 
+    def execution_context(
+        self, query: GetExecutionContextQuery
+    ) -> GetExecutionContextResult | None:
+        """Project workflow input through the canonical Run snapshot query owner."""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            run = unit_of_work.runs.get(query.run_id)
+            if run is None:
+                return None
+            messages = _messages_for_run(
+                unit_of_work,
+                conversation_id=run.conversation_id,
+                run_id=run.id,
+                limit=self._message_limit,
+            )
+            resources = unit_of_work.resource_refs.list_for_run_bounded(query.run_id, limit=200)
+        first_user_message = next((item for item in messages if item.role == "USER"), None)
+        return GetExecutionContextResult(
+            run_id=run.id,
+            conversation_id=run.conversation_id,
+            workflow_key=run.langgraph_thread_id,
+            entry_mode=run.entry_mode,
+            requested_mode=run.requested_mode,
+            status=run.status.value,
+            version=run.version,
+            request_text="" if first_user_message is None else first_user_message.content,
+            selected_resource_ids=tuple(record.resource_id for record in resources),
+            run_budget=validate_run_budget_v2(loads(run.budget_json)),
+            selected_resources=tuple(_selected_resource_ref(record) for record in resources),
+        )
+
     def _optional_context_preview(self, run_id: str) -> ProjectContextPreviewResultV1 | None:
         if self._project_context_preview is None:
             return None
@@ -421,8 +480,31 @@ def _messages_for_run(
     return tuple(sorted(matches[:limit], key=lambda item: (item.created_at_ms, item.id)))
 
 
+def _selected_resource_ref(value: object) -> SelectedResourceRef:
+    durable_type = value.resource_type  # type: ignore[attr-defined]
+    source, projected_type = {
+        "gmail_thread": ("GMAIL", "THREAD"),
+        "gmail_message": ("GMAIL", "MESSAGE"),
+        "gmail_attachment": ("GMAIL", "ATTACHMENT"),
+        "gmail_draft": ("GMAIL", "DRAFT"),
+        "task_list": ("TASKS", "TASK_LIST"),
+        "task": ("TASKS", "TASK"),
+        "calendar": ("CALENDAR", "CALENDAR"),
+        "calendar_event": ("CALENDAR", "EVENT"),
+        "calendar_freebusy": ("CALENDAR", "FREEBUSY"),
+    }[durable_type]
+    return SelectedResourceRef(
+        source=source,
+        resource_type=projected_type,
+        resource_id=value.resource_id,  # type: ignore[attr-defined]
+        parent_resource_id=value.parent_resource_id,  # type: ignore[attr-defined]
+    )
+
+
 __all__ = [
     "ActionSnapshotResult",
+    "GetExecutionContextQuery",
+    "GetExecutionContextResult",
     "GetRunSnapshotHandler",
     "GetRunSnapshotQuery",
     "GetRunSnapshotResult",

@@ -152,6 +152,42 @@ def test_exact_published_scope_allows_one_api_call() -> None:
     assert provider.calls == 1
 
 
+def test_runtime_circuit_callbacks_guard_and_record_the_selected_leaf() -> None:
+    scope = _scope()
+    checkpoint = ExternalScopeCheckpoint(scope=scope)
+    provider = _Provider()
+    router = _router(checkpoint=checkpoint, api=provider)
+    events: list[tuple[str, ActualRuntime, str | None]] = []
+    router.before_runtime_dispatch = lambda runtime: events.append(("guard", runtime, None))
+    router.record_runtime_result = lambda runtime, error: events.append(
+        ("result", runtime, error)
+    )
+
+    router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope)
+
+    assert events == [
+        ("guard", ActualRuntime.API_LLM, None),
+        ("result", ActualRuntime.API_LLM, None),
+    ]
+
+
+def test_runtime_circuit_guard_blocks_before_provider_dispatch() -> None:
+    scope = _scope()
+    checkpoint = ExternalScopeCheckpoint(scope=scope)
+    provider = _Provider()
+    router = _router(checkpoint=checkpoint, api=provider)
+
+    def block(_runtime: ActualRuntime) -> None:
+        raise LLMInvocationError(LLMErrorCode.PROVIDER_UNAVAILABLE, "circuit open")
+
+    router.before_runtime_dispatch = block
+
+    with pytest.raises(LLMInvocationError, match="circuit open"):
+        router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope)
+
+    assert provider.calls == 0
+
+
 def test_consent_revoke_blocks_api_call_even_with_exact_scope() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)

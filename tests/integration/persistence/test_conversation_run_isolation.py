@@ -17,9 +17,9 @@ from pathlib import Path
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetExecutionContextQuery,
+    GetRunSnapshotHandler,
 )
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
@@ -138,7 +138,9 @@ def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) ->
         _command(command_id="command-b", request_hash="b" * 64, request_text="관련 메일 찾아줘")
     )
 
-    get_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    get_context = GetRunSnapshotHandler(
+        unit_of_work_factory=unit_of_work_factory
+    ).execution_context
     context_a = get_context(GetExecutionContextQuery(run_a.run_id))
     context_b = get_context(GetExecutionContextQuery(run_b.run_id))
 

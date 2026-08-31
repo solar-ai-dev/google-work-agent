@@ -1,4 +1,4 @@
-"""Execute claimed READ actions and project connector results."""
+"""Private connector-read phase of complete_read_action."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-class ExecuteReadActionService:
+class _ReadExecution:
     """Execute one claimed read action outside of any SQLite transaction."""
 
     def __init__(

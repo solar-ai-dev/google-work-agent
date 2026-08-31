@@ -86,10 +86,9 @@ from google_work_agent.application.use_cases.resource.opaque_continuation_access
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetRunSnapshotHandler,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
@@ -173,7 +172,9 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                 (),
             )
 
-    get_execution_context = GetExecutionContextHandler(unit_of_work_factory=unit_of_work_factory)
+    get_execution_context = GetRunSnapshotHandler(
+        unit_of_work_factory=unit_of_work_factory
+    ).execution_context
     bootstrap_store = InMemoryBootstrapGrantStore()
     bootstrap_store.provision(
         secret="bootstrap-secret",

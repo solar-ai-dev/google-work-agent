@@ -33,7 +33,6 @@ from tests.integration.persistence.test_write_actions import (
     FakeClockPort,
     Path,
     PolicyViolationError,
-    PreflightWriteActionService,
     ResourceSnapshot,
     ResourceType,
     _approve_preflight_action,
@@ -44,6 +43,7 @@ from tests.integration.persistence.test_write_actions import (
     _prepare_calendar_feasibility_action,
     _prepare_write_plan,
     _TaskDuplicatePreflightGateway,
+    build_claim_preflight,
     connect_sqlite,
     loads,
     pytest,
@@ -222,7 +222,7 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
     )
 
     with pytest.raises(PolicyViolationError, match="reapproval"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=gateway,  # type: ignore[arg-type]
             now_ms=clock.now_ms,
@@ -266,7 +266,7 @@ def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
         tasks=(_duplicate_task("existing-task", title=f"title-{suffix}"),),
     )
 
-    PreflightWriteActionService(
+    build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=gateway,  # type: ignore[arg-type]
         now_ms=clock.now_ms,
@@ -316,7 +316,7 @@ def test_task_duplicate_preflight_source_failure_is_fail_closed(
     )
 
     with pytest.raises(TimeoutError, match="source unavailable"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=gateway,  # type: ignore[arg-type]
             now_ms=clock.now_ms,
@@ -382,7 +382,7 @@ def test_feasibility_preflight_denial_blocks_run_before_claim(
     )
 
     with pytest.raises(PolicyViolationError, match="FEASIBILITY_BLOCKED"):
-        PreflightWriteActionService(
+        build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
             gateway=_FeasibilityPreflightGateway(busy_event=busy),  # type: ignore[arg-type]
             now_ms=clock.now_ms,
@@ -426,7 +426,7 @@ def test_feasibility_preflight_same_snapshot_allows_claim(write_database: Path) 
         ).applied
         is True
     )
-    PreflightWriteActionService(
+    build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         gateway=_FeasibilityPreflightGateway(),  # type: ignore[arg-type]
         now_ms=clock.now_ms,

@@ -43,6 +43,7 @@ ROOT_HELPERS = {
     "pre_analysis_composition.py",
     "subgraph_state.py",
     "write_execution.py",
+    "write_execution_driver.py",
     "write_reconciliation.py",
     "write_recovery.py",
 }

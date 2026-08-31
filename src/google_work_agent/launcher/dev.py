@@ -5,19 +5,12 @@ from __future__ import annotations
 import argparse
 import uuid
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import NoReturn
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.runtime import (
-    SafeModeController,
-)
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import (
-    DeferredApiContainer,
-    build_production_container,
-)
-from google_work_agent.api.container import ApiContainer
+from google_work_agent.api.composition import ProductionRuntimeConfig
 from google_work_agent.api.security.bind import LocalBindPolicy
 from google_work_agent.launcher.bootstrap_secret import create_bootstrap_secret
 from google_work_agent.launcher.development_constants import (
@@ -27,49 +20,36 @@ from google_work_agent.launcher.development_constants import (
 from google_work_agent.launcher.development_readiness import (
     DevelopmentReadinessAggregator as DevelopmentReadinessAggregator,
 )
-from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
 
-def build_container(
+def development_runtime_config(
     *,
-    host: str = DEFAULT_HOST,
-    port: int = DEFAULT_PORT,
     runtime_root: Path | None = None,
-    bootstrap_secret: str | None = None,
-    service_instance_id: str | None = None,
-    safe_mode_controller: SafeModeController | None = None,
     mcp_module_name: str | None = None,
-    keyring_store: SecretStorePort | None = None,
-) -> ApiContainer:
-    """Provide launcher-owned environment values to the API composition root."""
-    return build_production_container(
-        host=host,
-        port=port,
+) -> ProductionRuntimeConfig:
+    """Provide development-only paths and manifest identity."""
+
+    return ProductionRuntimeConfig(
         runtime_root=(runtime_root or PROJECT_ROOT / "runtime" / "development").resolve(),
         working_directory=PROJECT_ROOT,
         mcp_manifest_version=MCP_MANIFEST_VERSION,
-        bootstrap_secret=bootstrap_secret or create_bootstrap_secret(),
-        service_instance_id=service_instance_id,
-        safe_mode_controller=safe_mode_controller,
         mcp_module_name=mcp_module_name,
-        keyring_store=keyring_store,
     )
 
 
 def create_service_app() -> FastAPI:
     """Return an argument-free application factory for Uvicorn."""
 
-    shell = DeferredApiContainer(
+    return create_app(
+        production_config=development_runtime_config(),
         host=DEFAULT_HOST,
         port=DEFAULT_PORT,
         service_instance_id=f"dev-{uuid.uuid4()}",
         bootstrap_secret=create_bootstrap_secret(),
-        core_builder=build_container,
     )
-    return create_app(cast(ApiContainer, shell))
 
 
 def main() -> NoReturn:
@@ -81,22 +61,26 @@ def main() -> NoReturn:
     args = parser.parse_args()
     LocalBindPolicy(host=args.host, port=args.port).validate()
     bootstrap_secret = create_bootstrap_secret()
-    container = DeferredApiContainer(
-        host=args.host,
-        port=args.port,
-        service_instance_id=f"dev-{uuid.uuid4()}",
-        bootstrap_secret=bootstrap_secret,
-        core_builder=build_container,
-    )
+    service_instance_id = f"dev-{uuid.uuid4()}"
     print(
         "Open the Vite development UI with this one-time bootstrap fragment:\n"
         f"http://127.0.0.1:5173/#bootstrap_secret={bootstrap_secret}"
-        f"&service_instance_id={container.service_instance_id}",
+        f"&service_instance_id={service_instance_id}",
         flush=True,
     )
     import uvicorn
 
-    uvicorn.run(create_app(cast(ApiContainer, container)), host=args.host, port=args.port)
+    uvicorn.run(
+        create_app(
+            production_config=development_runtime_config(),
+            host=args.host,
+            port=args.port,
+            bootstrap_secret=bootstrap_secret,
+            service_instance_id=service_instance_id,
+        ),
+        host=args.host,
+        port=args.port,
+    )
     raise SystemExit(0)
 
 

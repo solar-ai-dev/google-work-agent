@@ -603,7 +603,7 @@ def _revoke_stale_dependent_approvals(
     gap blocking `refresh_expired_action`), so cancelling or re-approving it
     is left to the user via the existing CancelPendingAction/PROPOSED path.
 
-    SaveWritePlanService now populates `action_dependencies` for WRITE
+    PublishPlanHandler now populates `action_dependencies` for WRITE
     actions (GAP-F3 prerequisite: WRITE Action Dependency Persistence), so
     `list_dependents` returns real edges once a plan with
     `depends_on_action_ids` has been saved.

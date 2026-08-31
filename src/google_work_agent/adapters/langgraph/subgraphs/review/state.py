@@ -14,6 +14,7 @@ from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node imp
 from google_work_agent.adapters.langgraph.main.state import GraphState, RunInputV1
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentLocalStateV1,
+    AgentSubgraphInputEnvelope,
 )
 from google_work_agent.application.agents.planning.contracts.answer_draft import (
     WorkAnalysisResultV2,
@@ -63,6 +64,22 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
 )
 
 
+class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
+    """Parent projection owned by Review."""
+
+    request_intent: RequestIntentV2 | None
+    tool_route_plan: ToolRoutePlanV2 | None
+    retrieval_result: RetrievalResultV1 | None
+    work_analysis_result: WorkAnalysisResultV2 | None
+    planning_result: PlanningResultV2 | None
+    answer_draft: AnswerDraftV1 | None
+    plan_draft: ActionPlanDraftV1 | None
+    plan_review: PlanReviewResultV2 | None
+    __modify_review_plan_id__: str | None
+    __modify_review_version__: int | None
+    __modify_review_risks__: dict[str, dict[str, object]] | None
+
+
 class ReviewState(GraphState, total=False):
     """Typed local state for the five canonical Review runtime nodes."""
 
@@ -89,4 +106,4 @@ class ReviewState(GraphState, total=False):
     __review_retry_confirmation__: NotRequired[bool]
 
 
-__all__ = ["ReviewState"]
+__all__ = ["ReviewInputState", "ReviewState"]

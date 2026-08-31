@@ -11,15 +11,15 @@ from google_work_agent.adapters.langgraph.main.state import (
     VerificationSummaryV1,
     WorkflowPhase,
 )
+from google_work_agent.adapters.langgraph.write_execution_driver import (
+    UnknownRecoveryPhaseRequest,
+    WriteExecutionDisposition,
+    WriteExecutionPhaseRequest,
+    WriteExecutionStructuralDriver,
+)
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
-)
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
-    UnknownRecoveryPhaseRequest,
-    WriteExecutionDisposition,
-    WriteExecutionPhaseCoordinator,
-    WriteExecutionPhaseRequest,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
@@ -49,7 +49,7 @@ class WriteRecoveryCoordinator:
         self,
         *,
         latest_unknown_action: Callable[[str], tuple[ActionRecord, str, int] | None],
-        execution_phase: WriteExecutionPhaseCoordinator,
+        execution_phase: WriteExecutionStructuralDriver,
         write_run_completion_ready: Callable[[str, str], bool],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],

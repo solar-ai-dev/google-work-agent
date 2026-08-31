@@ -29,9 +29,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     ClaimWriteActionCommand,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
-)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -258,7 +255,7 @@ def test_reject_keeps_plan_and_run_active_when_independent_action_is_pending(
 ) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
-    assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
             command_id="save-independent-reject",
             request_hash="7" * 64,
@@ -421,7 +418,7 @@ def test_reject_blocks_proposed_direct_dependent_before_claim(
 ) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
-    assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
             command_id="save-proposed-dependency",
             request_hash="a" * 64,
@@ -488,7 +485,7 @@ def test_reject_blocks_and_revokes_transitive_pending_dependents(
 ) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
-    saved = SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    saved = PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
             command_id="save-reject-chain",
             request_hash="d" * 64,
@@ -582,7 +579,7 @@ def test_reject_preserves_verified_actions(
 ) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     factory = sqlite_unit_of_work_factory(modify_database)
-    assert SaveWritePlanService(unit_of_work_factory=factory, now_ms=clock.now_ms)(
+    assert PublishPlanHandler(unit_of_work_factory=factory, now_ms=clock.now_ms)(
         SaveWritePlanCommand(
             command_id=f"save-preserve-{rejected_action_id}",
             request_hash="3" * 64,

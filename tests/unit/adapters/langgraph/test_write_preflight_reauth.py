@@ -1,13 +1,13 @@
-from collections.abc import Callable
-from types import SimpleNamespace
+"""Preflight reauth routing tests for the LangGraph structural driver."""
+
 from typing import Any, cast
 
 import pytest
 
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionDisposition,
-    WriteExecutionPhaseCoordinator,
     WriteExecutionPhaseRequest,
+    WriteExecutionStructuralDriver,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
@@ -18,7 +18,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
-from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class _Call:
@@ -42,25 +41,14 @@ class _Call:
             raise self._error
         return self._result if self._result is not None else object()
 
+    def current_run(self, _run_id: str) -> tuple[str, int]:
+        return "ANALYZING", 7
 
-class _RunRepository:
-    def get(self, run_id: str) -> object | None:
-        return SimpleNamespace(version=7) if run_id == "run-1" else None
+    def project_persisted_query(self, **_kwargs: object) -> object:
+        return object()
 
-
-class _RunVersionUnitOfWork:
-    def __init__(self) -> None:
-        self.runs = _RunRepository()
-
-    def __enter__(self) -> "_RunVersionUnitOfWork":
-        return self
-
-    def __exit__(self, *_args: object) -> None:
-        return None
-
-
-def _run_version_uow() -> UnitOfWork:
-    return cast(UnitOfWork, _RunVersionUnitOfWork())
+    def run_id_for_action(self, _action_id: str) -> str:
+        return "run-1"
 
 
 @pytest.mark.parametrize(
@@ -101,14 +89,11 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
     )
     unused = _Call("unexpected", calls)
 
-    coordinator = WriteExecutionPhaseCoordinator(
-        unit_of_work_factory=cast(Callable[[], UnitOfWork], _run_version_uow),
+    coordinator = WriteExecutionStructuralDriver(
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,
         preflight_write=cast(Any, preflight),
-        expire_approval=None,
-        refresh_expired_action=None,
         claim_execution=cast(Any, claim),
         build_claim_context=cast(Any, unused),
         begin_execution_attempt=cast(Any, unused),
@@ -129,7 +114,6 @@ def test_preflight_credential_loss_requires_reauth_before_claim(
         lookup_unknown_result=cast(Any, unused),
         recover_existing_result=cast(Any, unused),
         resolve_as_failed=cast(Any, unused),
-        resolve_resource_ref=cast(Any, unused),
     )
 
     result = coordinator.execute(

@@ -8,6 +8,7 @@ from json import loads
 from typing import cast
 
 from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+from tests.support.legacy_write.snapshot_projection import project_snapshot
 
 from google_work_agent.application.use_cases.action.write_persistence import (
     require_action,
@@ -25,9 +26,6 @@ from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed
 )
 from google_work_agent.application.use_cases.recovery.source_projection import (
     project_source_resource,
-)
-from google_work_agent.application.use_cases.verification.normalize_snapshot import (
-    normalize_snapshot,
 )
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
@@ -110,7 +108,7 @@ class RecoverUpdateHandler:
         )
         actual_projection = normalize_actual_verification_projection(
             tool_name=action.tool_name,
-            actual=normalize_snapshot(snapshot),
+            actual=project_snapshot(snapshot),
         )
         expected = cast(dict[str, object], loads(action.expected_json))
 

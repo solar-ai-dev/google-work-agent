@@ -3,6 +3,7 @@
 # ruff: noqa: F401
 
 import sqlite3
+import time
 from collections.abc import Mapping
 from json import loads
 from pathlib import Path
@@ -25,8 +26,8 @@ from google_work_agent.application.use_cases.action.calendar_conflict_policy imp
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand,
 )
-from google_work_agent.application.use_cases.action.write_preflight import (
-    PreflightWriteActionService,
+from google_work_agent.application.use_cases.claim.claim_execution import (
+    ClaimExecutionHandler,
 )
 from google_work_agent.application.use_cases.claim.write_execution_integrity import read_claim_token
 from google_work_agent.application.use_cases.execution_attempt.begin_execution_attempt import (
@@ -64,9 +65,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_recovery_co
     RecoverUnknownUpdateActionCommand,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
-)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -132,6 +130,28 @@ from tests.support.legacy_write.write_result_persistence import (
 )
 from tests.support.legacy_write.write_verification import VerifyWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
+
+
+def build_claim_preflight(
+    *,
+    unit_of_work_factory,
+    gateway,
+    now_ms=None,
+    work_hours_provider=None,
+    expire_approval=None,
+    refresh_expired_action=None,
+    block_run=None,
+):
+    handler = ClaimExecutionHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms or (lambda: time.time_ns() // 1_000_000),
+        preflight_gateway=gateway,
+        work_hours_provider=work_hours_provider,
+        expire_approval=expire_approval,
+        refresh_expired_action=refresh_expired_action,
+        block_run=block_run,
+    )
+    return handler.preflight
 
 
 class SnapshotReader:
@@ -600,7 +620,7 @@ def _prepare_calendar_feasibility_action(
         "start": "1970-01-01T09:00:00+09:00",
         "end": "1970-01-01T10:00:00+09:00",
     }
-    save = SaveWritePlanService(
+    save = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database), now_ms=clock.now_ms
     )
     publish = PublishPlanHandler(
@@ -700,7 +720,7 @@ def _prepare_write_plan(
         finally:
             connection.close()
 
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -1232,7 +1252,7 @@ def _prepare_effect_write_plan(
     target_resource_ref_id: str | None = None,
     evidence_count: int = 1,
 ) -> None:
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )
@@ -1478,7 +1498,7 @@ def _prepare_update_claimed_action(
     finally:
         connection.close()
 
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )

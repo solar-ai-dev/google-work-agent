@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from evaluation.compat.planning_argument_orchestrator import (
     PlanningActionPreparationResultV1,
@@ -44,9 +44,6 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference as _load_prompt_reference,
-)
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
 )
 from google_work_agent.ports.llm import (
     PromptReference,
@@ -82,7 +79,7 @@ class PlanningArgumentWriterV2:
     def __init__(
         self,
         *,
-        llm_runtime: StructuredLLMRuntime,
+        llm_runtime: Any,
         prompt_ref: PromptReference | None = None,
         manifest_path: Path | None = None,
     ) -> None:

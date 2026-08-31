@@ -16,10 +16,11 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
 )
 from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunHandler
-from google_work_agent.application.use_cases.run.get_execution_context import (
-    GetExecutionContextHandler,
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
+    GetExecutionContextQuery,
+    GetExecutionContextResult,
+    GetRunSnapshotHandler,
 )
-from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.request_cancel import RequestCancelHandler
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthHandler,
@@ -61,7 +62,9 @@ class RunRouteDependencies:
     project_external_llm_transfer_scope_handler: object | None
     start_run_handler: StartRunHandler | None
     get_run_snapshot_handler: GetRunSnapshotHandler | None
-    get_execution_context_handler: GetExecutionContextHandler | None
+    get_execution_context_handler: (
+        Callable[[GetExecutionContextQuery], GetExecutionContextResult | None] | None
+    )
     list_run_events_handler: ListRunEventsHandler | None
     event_buffer: SseEventBufferPort | None
 
@@ -121,7 +124,7 @@ def get_run_route_dependencies(request: Request) -> RunRouteDependencies:
             GetRunSnapshotHandler | None, getattr(container, "get_run_snapshot_handler", None)
         ),
         get_execution_context_handler=cast(
-            GetExecutionContextHandler | None,
+            Callable[[GetExecutionContextQuery], GetExecutionContextResult | None] | None,
             getattr(container, "get_execution_context_handler", None),
         ),
         list_run_events_handler=cast(

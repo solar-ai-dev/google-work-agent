@@ -38,15 +38,6 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
-class FailRunCommand:
-    command_id: str
-    request_hash: str
-    run_id: str
-    expected_version: int
-    reason_code: str
-
-
-@dataclass(frozen=True, slots=True)
 class RunTransitionResponse:
     applied: bool
     result_code: str
@@ -57,30 +48,6 @@ class RunTransitionResponse:
     reason_code: str | None = None
     result_kind: str | None = None
     conflict_detail: str | None = None
-
-
-class FailRunService:
-    def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
-    ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
-        self._now_ms = now_ms
-
-    def __call__(self, command: FailRunCommand) -> RunTransitionResponse:
-        return _apply_run_transition(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-            command_id=command.command_id,
-            command_type="FailRun",
-            request_hash=command.request_hash,
-            run_id=command.run_id,
-            expected_version=command.expected_version,
-            reason_code=command.reason_code,
-            target_status=RunStatusV1.RECOVERY_REQUIRED,
-            event_type="RUN_RECOVERY_REQUIRED",
-            actor_id="fail_run",
-            persist_finished_at_ms=False,
-        )
 
 
 def derive_finalize_intent(
@@ -473,8 +440,6 @@ def _acquisition_failure_reason(acquisition_result: dict[str, object]) -> str:
 
 __all__ = [
     "build_finalize_state_update",
-    "FailRunCommand",
-    "FailRunService",
     "RunTransitionResponse",
     "derive_finalize_intent",
 ]

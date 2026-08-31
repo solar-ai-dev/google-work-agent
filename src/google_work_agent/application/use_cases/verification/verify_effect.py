@@ -1,9 +1,15 @@
 """Read and compare one external effect without lifecycle mutation."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from json import loads
 from typing import Literal, cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
+    ResolveResourceRefHandler,
+    ResolveResourceRefQuery,
+)
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
@@ -13,6 +19,7 @@ from google_work_agent.ports.connector.connector_failure import (
     ConnectorOperationFailure,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +59,69 @@ class VerifyEffectHandler:
         connector_read: ConnectorReadPort,
         tool_registry: SignedToolRegistry,
         connector_id: str = "google_workspace",
+        unit_of_work_factory: Callable[[], UnitOfWork] | None = None,
+        resolve_resource_ref: ResolveResourceRefHandler | None = None,
     ) -> None:
         self._connector_read = connector_read
         self._tool_registry = tool_registry
         self._connector_id = connector_id
+        self._unit_of_work_factory = unit_of_work_factory
+        self._resolve_resource_ref = resolve_resource_ref
+
+    def project_persisted_query(
+        self,
+        *,
+        run_id: str,
+        action_id: str,
+        execution_attempt_id: str,
+    ) -> VerifyEffectQueryV1:
+        if self._unit_of_work_factory is None or self._resolve_resource_ref is None:
+            raise RuntimeError("persisted verification projection is not configured")
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            attempt = unit_of_work.execution_attempts.get(execution_attempt_id)
+            if action is None or attempt is None:
+                raise LookupError("verification Action/Attempt binding is missing")
+            approval = unit_of_work.approvals.get(attempt.approval_id)
+            resource_ref_id = attempt.result_resource_ref_id or action.target_resource_ref_id
+        resource_ref = (
+            None
+            if resource_ref_id is None
+            else self._resolve_resource_ref(ResolveResourceRefQuery(resource_ref_id)).resource_ref
+        )
+        expected = cast(dict[str, object], loads(action.expected_json))
+        if action.effect_type == "SEND" and approval is not None:
+            expected = {**expected, "recovery_fingerprint": approval.recovery_fingerprint}
+        target = (
+            None
+            if resource_ref is None
+            else SelectedResourceRefV1(
+                schema_version=1,
+                resource_ref_id=resource_ref.id,
+                connector_id=resource_ref.connector_id,
+                resource_type=resource_ref.resource_type,
+                resource_id=resource_ref.resource_id,
+                parent_resource_id=resource_ref.parent_resource_id,
+            )
+        )
+        return VerifyEffectQueryV1(
+            run_id=run_id,
+            action_id=action_id,
+            execution_attempt_id=execution_attempt_id,
+            effect=cast(Literal["CREATE", "UPDATE", "DELETE", "SEND"], action.effect_type),
+            expected_effect=expected,
+            target_resource_ref=target,
+        )
+
+    def run_id_for_action(self, action_id: str) -> str:
+        if self._unit_of_work_factory is None:
+            raise RuntimeError("persisted verification projection is not configured")
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            bundle = None if action is None else unit_of_work.plans.load_bundle(action.plan_id)
+        if bundle is None:
+            raise LookupError(f"plan not found for action: {action_id}")
+        return bundle.plan.run_id
 
     def __call__(self, query: VerifyEffectQueryV1) -> VerificationResultV1:
         strategy = self._strategy(query.effect)

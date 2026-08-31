@@ -6,13 +6,11 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     SourceSegment,
 )
 from google_work_agent.application.agents.retrieval.select_evidence import select_evidence
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 from ..projections.select_evidence_projection import (
@@ -24,7 +22,7 @@ from ..state import RetrievalStateV2
 def select_evidence_node(
     state: RetrievalStateV2,
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     revision_prompt_ref: PromptReference,
     trace_context: ObservabilityContext,

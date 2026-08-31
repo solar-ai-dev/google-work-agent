@@ -10,10 +10,8 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -37,7 +35,7 @@ DETECT_AMBIGUITY_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 def detect_ambiguity(
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     request: WorkflowStartRequest,
     goal_candidate: RequestGoalCandidateV1,
     prompt_ref: PromptReference | None = None,

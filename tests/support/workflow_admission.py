@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import count
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -9,8 +10,11 @@ from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.application.use_cases.run.coordinator_outcomes import RunOutcomeHandler
-from google_work_agent.application.use_cases.run.get_execution_context import (
+from google_work_agent.adapters.system.workflow_outcome_projector import WorkflowOutcomeProjector
+from google_work_agent.application.use_cases.recovery.require_recovery import (
+    RequireRecoveryHandler,
+)
+from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetExecutionContextQuery,
 )
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
@@ -23,6 +27,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    MainControlResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
 )
@@ -52,10 +57,29 @@ def build_test_admission_callbacks(
     graph_builder.add_edge(START, "owner")
     graph_builder.add_edge("owner", END)
     graph = graph_builder.compile(checkpointer=checkpoint)
-    outcome_handler = RunOutcomeHandler(
-        unit_of_work_factory=unit_of_work_factory,
+    outcome_ids = count(1)
+
+    def recovery_target(run_id: str):  # type: ignore[no-untyped-def]
+        binding = checkpoint.load_workflow_binding(run_id)
+        if binding is None:
+            return None
+        return MainControlResumeTargetV2(
+            "MAIN_CONTROL",
+            "RECOVERY",
+            binding.graph_profile,
+            binding.graph_version,
+        )
+
+    outcome_handler = WorkflowOutcomeProjector(
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            checkpoint_port=checkpoint,
+            now_ms=now_ms,
+        ),
         project_run_event=ProjectRunEventHandler(event_publisher),
         now_ms=now_ms,
+        id_factory=lambda: f"test:workflow-outcome:{next(outcome_ids)}",
+        recovery_target=recovery_target,
     )
 
     def target(admission: WorkflowExecutionAdmissionV1) -> AgentNodeResumeTargetV2:

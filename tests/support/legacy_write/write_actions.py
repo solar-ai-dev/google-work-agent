@@ -69,12 +69,6 @@ from google_work_agent.application.use_cases.action.write_approval_contracts imp
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     ApproveWriteActionCommand as ApproveWriteActionCommand,
 )
-from google_work_agent.application.use_cases.action.write_preflight import (
-    PreflightWriteActionService as PreflightWriteActionService,
-)
-from google_work_agent.application.use_cases.action.write_preflight import (
-    PreflightWriteGateway as PreflightWriteGateway,
-)
 from google_work_agent.application.use_cases.claim.write_execution_integrity import (
     CLAIM_TOKEN_VERSION as CLAIM_TOKEN_VERSION,
 )
@@ -141,8 +135,8 @@ from google_work_agent.application.use_cases.execution_attempt.write_recovery_co
 from google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts import (
     ResolveUnknownWriteAsFailedCommand as ResolveUnknownWriteAsFailedCommand,
 )
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService as SaveWritePlanService,
+from google_work_agent.application.use_cases.plan.publish_plan import (
+    PublishPlanHandler as PublishPlanHandler,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand as PublishWritePlanCommand,

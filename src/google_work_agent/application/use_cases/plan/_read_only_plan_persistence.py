@@ -1,4 +1,4 @@
-"""Save READ-only plans through the Plan owner."""
+"""Private draft persistence used only by publish_read_only_plan."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventR
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-class SaveReadOnlyPlanService:
+class _ReadOnlyPlanPersistence:
     """Save one explicit read-only plan draft."""
 
     def __init__(

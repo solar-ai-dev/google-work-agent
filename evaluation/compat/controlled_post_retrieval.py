@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Literal, Required, TypedDict, cast
+from typing import Any, Literal, Required, TypedDict, cast
 
 from evaluation.compat.context_retrieval_result_validation import (
     validate_context_retrieval_result_v1,
@@ -51,9 +51,6 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference as _load_registry_prompt_reference,
-)
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports.llm import (
@@ -330,7 +327,7 @@ class ControlledPostRetrievalReplayRunner:
     """Run the E06-B controlled lane without acquisition, retrieval, or Google reads."""
 
     def __init__(
-        self, *, llm_runtime: StructuredLLMRuntime, manifest_path: Path | None = None
+        self, *, llm_runtime: Any, manifest_path: Path | None = None
     ) -> None:
         self._llm_runtime = llm_runtime
         self._manifest_path = manifest_path or _registry_default_prompt_manifest_path()

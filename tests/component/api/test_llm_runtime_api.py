@@ -26,9 +26,6 @@ from google_work_agent.adapters.system.filesystem_operational_command_replay imp
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    LLMRuntimeService as _LLMRuntimeService,
-)
 from google_work_agent.application.use_cases.llm_credential.delete_llm_credential import (
     DeleteLlmCredentialHandler,
 )
@@ -59,7 +56,7 @@ class _CoordinatorStub:
         return None
 
 
-def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
+def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter:
     kwargs.pop("router", None)
     router_kwargs = {
         key: kwargs[key]
@@ -78,17 +75,10 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
         if key in kwargs
     }
     kwargs.pop("api_provider")
-    kwargs.pop("hardware_probe", None)
-    kwargs.pop("api_provider_name", None)
-    kwargs.pop("credential_service", None)
-    checkpoint, projector = build_external_scope_gate()
+    kwargs.clear()
+    checkpoint, _projector = build_external_scope_gate()
     router_kwargs["checkpoint"] = checkpoint
-    kwargs.setdefault("project_external_scope", projector)
-    kwargs.setdefault("now_ms", lambda: 1)
-    return _LLMRuntimeService(
-        structured_inference=CanonicalStructuredInferenceRuntimeRouter(**router_kwargs),
-        **kwargs,
-    )
+    return CanonicalStructuredInferenceRuntimeRouter(**router_kwargs)
 
 
 class _AllowGuard:

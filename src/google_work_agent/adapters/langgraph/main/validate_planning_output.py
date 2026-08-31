@@ -98,8 +98,14 @@ class PolicyOverrideProvenanceDependency(RuntimeError):
 class CanonicalDomainValidationService:
     """Validate V2 artifacts without reintroducing legacy plan authority."""
 
-    def __init__(self, *, tool_registry: SignedToolRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        tool_registry: SignedToolRegistry,
+        validate_action_arguments: ValidateActionArgumentsHandler,
+    ) -> None:
         self._tool_registry = tool_registry
+        self._validate_action_arguments = validate_action_arguments
 
     def __call__(
         self,
@@ -121,6 +127,7 @@ class CanonicalDomainValidationService:
             policy_confirmation_receipts=policy_confirmation_receipts,
             resource_identity_reader=resource_identity_reader,
             tool_registry=self._tool_registry,
+            validate_action_arguments=self._validate_action_arguments,
         )
 
 
@@ -134,6 +141,7 @@ def build_domain_validation_output_from_v2(
     policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
+    validate_action_arguments: ValidateActionArgumentsHandler,
 ) -> DomainValidationOutputV1:
     try:
         if not isinstance(run_id, str) or not run_id:
@@ -144,6 +152,7 @@ def build_domain_validation_output_from_v2(
             evidence_drafts=evidence_drafts,
             resource_identity_reader=resource_identity_reader,
             tool_registry=tool_registry,
+            validate_action_arguments=validate_action_arguments,
         )
         _validate_pass_review_for_plan(plan_review, planning_result=plan)
         if work_analysis_result is not None:
@@ -189,6 +198,7 @@ def validate_action_plan_draft_v2_for_domain(
     evidence_drafts: Sequence[EvidenceDraftV1],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
+    validate_action_arguments: ValidateActionArgumentsHandler,
 ) -> ActionPlanDraftV2:
     root = _mapping(value, "$")
     if set(root) != {"schema_version", "meta", "actions"}:
@@ -209,6 +219,7 @@ def validate_action_plan_draft_v2_for_domain(
             evidence_by_id=evidence_by_id,
             resource_identity_reader=resource_identity_reader,
             tool_registry=tool_registry,
+            validate_action_arguments=validate_action_arguments,
         )
         for index, raw in enumerate(raw_actions)
     ]
@@ -326,6 +337,7 @@ def _validate_action(
     evidence_by_id: Mapping[str, EvidenceDraftV1],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
+    validate_action_arguments: ValidateActionArgumentsHandler,
 ) -> PlannedActionV2:
     item = _mapping(value, path)
     required = {
@@ -359,7 +371,7 @@ def _validate_action(
         schema = planning_tool_argument_schema(tool_id)
     except ValueError as error:
         raise CanonicalDomainValidationError(str(error)) from error
-    validation = ValidateActionArgumentsHandler()(ValidateActionArgumentsQueryV1(arguments, schema))
+    validation = validate_action_arguments(ValidateActionArgumentsQueryV1(arguments, schema))
     if not validation.valid:
         raise CanonicalDomainValidationError(
             f"{path}.arguments violate selected Tool schema: "

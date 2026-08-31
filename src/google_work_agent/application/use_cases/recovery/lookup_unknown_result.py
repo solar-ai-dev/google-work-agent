@@ -1,7 +1,9 @@
 """Look up an uncertain external result without issuing a Write."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from json import loads
+from typing import Literal, cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.verification.verify_effect import (
@@ -12,6 +14,7 @@ from google_work_agent.ports.connector.connector_failure import (
     ConnectorOperationFailure,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +36,13 @@ class UnknownResultLookupResultV1:
     reason_codes: list[str]
 
 
+@dataclass(frozen=True, slots=True)
+class PersistedUnknownLookupInput:
+    query: LookupUnknownResultQueryV1
+    tool_name: str
+    arguments: dict[str, object]
+
+
 class LookupUnknownResultHandler:
     def __init__(
         self,
@@ -40,10 +50,61 @@ class LookupUnknownResultHandler:
         connector_read: ConnectorReadPort,
         tool_registry: SignedToolRegistry,
         connector_id: str = "google_workspace",
+        unit_of_work_factory: Callable[[], UnitOfWork] | None = None,
     ) -> None:
         self._connector_read = connector_read
         self._tool_registry = tool_registry
         self._connector_id = connector_id
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def project_persisted_query(
+        self,
+        *,
+        run_id: str,
+        action_id: str,
+        execution_attempt_id: str,
+        effect: Literal["CREATE", "UPDATE", "DELETE", "SEND"],
+    ) -> PersistedUnknownLookupInput:
+        if self._unit_of_work_factory is None:
+            raise RuntimeError("persisted unknown-result projection is not configured")
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            attempt = unit_of_work.execution_attempts.get(execution_attempt_id)
+            if action is None or attempt is None:
+                raise LookupError("unknown-result Action/Attempt binding is missing")
+            approval = unit_of_work.approvals.get(attempt.approval_id)
+            resource_ref = (
+                None
+                if action.target_resource_ref_id is None
+                else unit_of_work.resource_refs.get(action.target_resource_ref_id)
+            )
+        if approval is None:
+            raise LookupError("unknown-result Approval binding is missing")
+        arguments = cast(dict[str, object], loads(action.arguments_json))
+        target = (
+            _create_recovery_search_scope(action.tool_name, arguments)
+            if resource_ref is None
+            else SelectedResourceRefV1(
+                schema_version=1,
+                resource_ref_id=resource_ref.id,
+                connector_id=resource_ref.connector_id,
+                resource_type=resource_ref.resource_type,
+                resource_id=resource_ref.resource_id,
+                parent_resource_id=resource_ref.parent_resource_id,
+            )
+        )
+        return PersistedUnknownLookupInput(
+            query=LookupUnknownResultQueryV1(
+                run_id=run_id,
+                action_id=action_id,
+                execution_attempt_id=execution_attempt_id,
+                effect=effect,
+                recovery_fingerprint=approval.recovery_fingerprint,
+                target_resource_ref=target,
+            ),
+            tool_name=action.tool_name,
+            arguments=arguments,
+        )
 
     def __call__(self, query: LookupUnknownResultQueryV1) -> UnknownResultLookupResultV1:
         strategy, tool_id, arguments = self._request(query)
@@ -211,8 +272,32 @@ def _contains_fingerprint(value: object, fingerprint: str) -> bool:
     return False
 
 
+def _create_recovery_search_scope(
+    tool_name: str, arguments: dict[str, object]
+) -> SelectedResourceRefV1 | None:
+    if tool_name == "tasks_create_task":
+        parent_id = arguments.get("task_list_id")
+        resource_type = "task"
+    elif tool_name == "calendar_create_event":
+        parent_id = arguments.get("calendar_id")
+        resource_type = "calendar_event"
+    else:
+        return None
+    if not isinstance(parent_id, str) or not parent_id:
+        raise ValueError("create recovery requires a container identity")
+    return SelectedResourceRefV1(
+        schema_version=1,
+        resource_ref_id="recovery-search-scope",
+        connector_id="google_workspace",
+        resource_type=resource_type,
+        resource_id="recovery-search-scope",
+        parent_resource_id=parent_id,
+    )
+
+
 __all__ = [
     "LookupUnknownResultHandler",
     "LookupUnknownResultQueryV1",
+    "PersistedUnknownLookupInput",
     "UnknownResultLookupResultV1",
 ]

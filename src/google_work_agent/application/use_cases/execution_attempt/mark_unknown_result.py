@@ -83,6 +83,14 @@ class MarkUnknownResultHandler:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
 
+    def recovery_projection(self, *, action_id: str, attempt_id: str) -> tuple[str, int]:
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            attempt = unit_of_work.execution_attempts.get(attempt_id)
+        if action is None or attempt is None:
+            raise LookupError("unknown-result Action/Attempt binding is missing")
+        return action.effect_type, attempt.version
+
     def __call__(self, command: MarkUnknownResultCommand) -> MarkUnknownResultResult:
         if command.delivery_certainty is DeliveryCertainty.NOT_SENT:
             raise ValueError("UNKNOWN_RESULT requires a possibly dispatched write")

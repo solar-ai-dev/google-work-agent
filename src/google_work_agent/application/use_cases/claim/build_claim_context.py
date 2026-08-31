@@ -2,7 +2,8 @@
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Literal
+from json import loads
+from typing import Literal, cast
 
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.approval.model import ApprovalStatusV1
@@ -45,6 +46,13 @@ class BuildClaimContextQueryV1:
     final_tool_arguments: dict[str, object]
     service_instance_id: str
     mcp_process_instance_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedExecutionInput:
+    tool_name: str
+    arguments: dict[str, object]
+    recovery_fingerprint: str
 
 
 class BuildClaimContextHandler:
@@ -116,6 +124,22 @@ class BuildClaimContextHandler:
             signature=signature,
         )
 
+    def load_claimed_execution_input(
+        self, *, action_id: str, approval_id: str
+    ) -> ClaimedExecutionInput:
+        """Project committed Claim inputs without exposing repositories to the driver."""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            action = unit_of_work.actions.get(action_id)
+            approval = unit_of_work.approvals.get(approval_id)
+        if action is None or approval is None or approval.action_id != action.id:
+            raise LookupError("committed Claim input is missing")
+        return ClaimedExecutionInput(
+            tool_name=action.tool_name,
+            arguments=cast(dict[str, object], loads(action.arguments_json)),
+            recovery_fingerprint=approval.recovery_fingerprint,
+        )
+
 
 def claim_context_payload(context: ClaimContextV2) -> dict[str, object]:
     return asdict(context)
@@ -124,6 +148,7 @@ def claim_context_payload(context: ClaimContextV2) -> dict[str, object]:
 __all__ = [
     "BuildClaimContextHandler",
     "BuildClaimContextQueryV1",
+    "ClaimedExecutionInput",
     "ClaimContextV2",
     "claim_context_payload",
 ]

@@ -36,5 +36,4 @@ class StructuredInferencePort(Protocol):
         external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredInferenceResultV1: ...
 
-
 __all__ = ["StructuredInferencePort", "StructuredInferenceResultV1"]

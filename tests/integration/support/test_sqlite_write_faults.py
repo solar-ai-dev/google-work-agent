@@ -17,9 +17,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     StoreWriteActionSuccessCommand,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
-)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -173,7 +170,7 @@ def _prepare_claimed_write_action(database_path: Path, clock: FakeClockPort) -> 
         "version": "1",
         "payload": payload,
     }
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=clock.now_ms,
     )

@@ -12,15 +12,15 @@ from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     WorkflowPhase,
 )
+from google_work_agent.adapters.langgraph.write_execution_driver import (
+    WriteExecutionDisposition,
+    WriteExecutionPhaseRequest,
+    WriteExecutionPhaseResult,
+    WriteExecutionStructuralDriver,
+)
 from google_work_agent.adapters.langgraph.write_reconciliation import (
     ReconcileAggregate,
     reconcile_write_conflict,
-)
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
-    WriteExecutionDisposition,
-    WriteExecutionPhaseCoordinator,
-    WriteExecutionPhaseRequest,
-    WriteExecutionPhaseResult,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -39,7 +39,7 @@ class WriteExecutionNode:
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
         has_independent_executable_action: Callable[[str, str], bool],
         execute_read_only_plan: Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState],
-        execution_phase: WriteExecutionPhaseCoordinator,
+        execution_phase: WriteExecutionStructuralDriver,
         has_persisted_cancel_intent: Callable[[str], bool],
     ) -> None:
         self._id_factory = id_factory

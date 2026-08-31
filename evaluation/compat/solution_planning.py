@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from functools import partial
 from pathlib import Path
-from typing import Final, TypedDict, cast
+from typing import Any, Final, TypedDict, cast
 
 import google_work_agent.application.agents.retrieval.contracts.schema_validation as _schema
 from evaluation.compat.work_analysis_result_v1 import (
@@ -58,9 +58,6 @@ from google_work_agent.application.tool_registry.signed_tool_registry import (
 from google_work_agent.application.use_cases.action.policy import (
     EvidencePolicyInput,
     validate_evidence_policy,
-)
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
 )
 from google_work_agent.application.use_cases.run.terminal_contract import (
     PlanningResult,
@@ -289,7 +286,7 @@ class SolutionPlanningAgent:
     def __init__(
         self,
         *,
-        llm_runtime: StructuredLLMRuntime,
+        llm_runtime: Any,
         answer_only_prompt_ref: PromptReference | None = None,
         draft_plan_prompt_ref: PromptReference | None = None,
         revise_answer_prompt_ref: PromptReference | None = None,

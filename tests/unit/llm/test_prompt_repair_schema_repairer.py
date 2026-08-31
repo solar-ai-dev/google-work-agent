@@ -15,10 +15,10 @@ from tests.support.prompt_manifests import (
 from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiStructuredInferenceAdapter,
 )
-from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
+from google_work_agent.adapters.llm.runtime.prompt_repair_schema_repairer import (
     PromptRepairSchemaRepairer,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
 from google_work_agent.ports.llm import (
     LLMErrorCode,
     LLMInvocationError,

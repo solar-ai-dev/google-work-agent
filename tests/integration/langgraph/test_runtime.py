@@ -45,10 +45,18 @@ from tests.support.prompt_manifests import (
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
 
+from google_work_agent.adapters.langgraph.main.application_services import WorkflowRuntimeHooks
+from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+    RESUME_CONTRACT_VERSION,
+)
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.profiles import (
     GraphProfile,
     supported_graph_profiles,
+)
+from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
+from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+    ResumeTargetRegistry,
 )
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
@@ -56,6 +64,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_un
 from google_work_agent.adapters.system.memory.run_retrieval_cache import (
     InMemoryRunRetrievalCache,
 )
+from google_work_agent.api.composition import _build_workflow_application_services
 from google_work_agent.application.agents.planning.contracts.planning_result import (
     ActionPlanDraftV1,
     AnswerDraftV1,
@@ -76,6 +85,9 @@ from google_work_agent.application.prompt_runtime.prompt_registry import Inactiv
 from google_work_agent.application.tool_registry import (
     SignedToolRegistry,
     load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
+    CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.action.write_action_mutation_contracts import (
     ModifyWriteActionCommand,
@@ -100,6 +112,7 @@ from google_work_agent.application.use_cases.resource.connector_read_projection 
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
 )
+from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunSnapshotHandler
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -1600,6 +1613,33 @@ def _make_runtime_with_llm(
         ),
         connector_reader=connector_reader,
     )
+    resolved_checkpoint = checkpoint_port or sqlite_checkpoint(
+        database_path.with_name("checkpoints.db")
+    )
+    resume_target_registry = ResumeTargetRegistry(
+        node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
+        graph_version=RESUME_CONTRACT_VERSION,
+    )
+    runtime_hooks = WorkflowRuntimeHooks()
+    application_services = _build_workflow_application_services(
+        unit_of_work_factory=unit_of_work_factory,
+        get_run_snapshot=GetRunSnapshotHandler(
+            unit_of_work_factory=unit_of_work_factory
+        ),
+        connector_reader=connector_reader,
+        tool_catalog=tool_catalog,
+        now_ms=clock.now_ms,
+        id_factory=ids.next_id,
+        service_instance_id="stage17-service",
+        checkpoint=resolved_checkpoint,
+        resume_target_registry=resume_target_registry,
+        runtime_hooks=runtime_hooks,
+        claim_context_signer=None,
+        work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
+        sse_event_buffer=None,
+        environment="TEST",
+        release_version="test",
+    )
     return LangGraphWorkflowRuntime(
         unit_of_work_factory=unit_of_work_factory,
         llm_runtime=llm_runtime,
@@ -1610,8 +1650,10 @@ def _make_runtime_with_llm(
         id_factory=ids.next_id,
         signing_secret="stage17-secret",
         service_instance_id="stage17-service",
-        checkpoint_port=checkpoint_port
-        or sqlite_checkpoint(database_path.with_name("checkpoints.db")),
+        checkpoint_port=resolved_checkpoint,
+        application_services=application_services,
+        runtime_hooks=runtime_hooks,
+        resume_target_registry=resume_target_registry,
         graph_profile=graph_profile,
         prompt_manifest_path=prompt_manifest_path,
         default_tasklist_id_provider=(

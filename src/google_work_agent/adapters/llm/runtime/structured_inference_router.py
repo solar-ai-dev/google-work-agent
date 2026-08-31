@@ -68,6 +68,13 @@ class StructuredInferenceRuntimeRouter:
     prompt_manifest_path: Path | None = None
     checkpoint: CheckpointPort | None = None
     before_provider_dispatch: Callable[[], None] = lambda: None
+    before_runtime_dispatch: Callable[[ActualRuntime], None] = lambda _runtime: None
+    record_runtime_result: Callable[[ActualRuntime, str | None], None] = (
+        lambda _runtime, _error_code: None
+    )
+    external_scope_projector: Callable[
+        [str, tuple[str, ...], tuple[str, ...]], ExternalLlmTransferScopeV1
+    ] | None = None
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
@@ -197,6 +204,7 @@ class StructuredInferenceRuntimeRouter:
                 external_transfer_scope=external_transfer_scope,
             )
             return _canonical_result(result)
+
         except LLMInvocationError as error:
             if not self._should_fallback(
                 error=error,
@@ -242,6 +250,87 @@ class StructuredInferenceRuntimeRouter:
                 status="COMPLETED",
             )
             return _canonical_result(result)
+
+    def invoke_structured(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
+    ) -> StructuredLLMResult:
+        """Compatibility-shaped call that still delegates to the sole router authority."""
+
+        requested_mode = RequestedRuntimeMode(self.settings_service().requested_runtime_mode)
+        external_scope = self._project_external_scope(
+            requested_mode=requested_mode,
+            prompt_input=prompt_input,
+            trace_context=trace_context,
+        )
+        result = self.infer(
+            requested_mode.value,
+            prompt_ref,
+            prompt_input,
+            output_schema,
+            external_scope,
+        )
+        if semantic_validate is not None:
+            semantic_validate(result.structured_output)
+        return StructuredLLMResult(
+            structured_output=result.structured_output,
+            provider=result.provider,
+            model=result.model,
+            requested_mode=requested_mode,
+            actual_runtime=ActualRuntime(result.actual_runtime),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.input_tokens + result.output_tokens,
+            latency_ms=result.latency_ms,
+            estimated_cost_usd=None,
+            fallback_reason=result.fallback_reason,
+            structured_output_attempts=1,
+            provider_request_id=None,
+            safe_error_code=None,
+        )
+
+    def discard_run(self, *, run_id: str) -> None:
+        """Run budgets live in checkpointed workflow state, not this router."""
+
+        del run_id
+
+    def test_connection(self) -> dict[str, object]:
+        settings = self.settings_service()
+        if (
+            RequestedRuntimeMode(settings.requested_runtime_mode)
+            is RequestedRuntimeMode.API_LLM
+            and not settings.external_llm_consent
+        ):
+            raise LLMInvocationError(
+                LLMErrorCode.CONSENT_REQUIRED,
+                "external LLM consent is disabled",
+            )
+        return self.get_runtime_status(settings)
+
+    def _project_external_scope(
+        self,
+        *,
+        requested_mode: RequestedRuntimeMode,
+        prompt_input: Mapping[str, object],
+        trace_context: ObservabilityContext,
+    ) -> ExternalLlmTransferScopeV1 | None:
+        if (
+            requested_mode is RequestedRuntimeMode.LOCAL_GPU
+            or trace_context.run_id is None
+            or self.external_scope_projector is None
+        ):
+            return None
+        source_kinds = tuple(sorted(str(key) for key in prompt_input)) or ("PROMPT_INPUT",)
+        return self.external_scope_projector(
+            trace_context.run_id,
+            source_kinds,
+            _external_data_classes(source_kinds),
+        )
 
     def decide(self, request: RouteDecisionInput) -> RouteDecision:
         """Preserved deterministic requested-mode and availability rules."""
@@ -305,6 +394,38 @@ class StructuredInferenceRuntimeRouter:
         return self.ollama_provider_factory(approved_model, settings)
 
     def _invoke_provider(
+        self,
+        *,
+        provider: StructuredLLMProvider,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        output_schema: OutputSchemaDefinition,
+        requested_mode: RequestedRuntimeMode,
+        trace_context: ObservabilityContext,
+        fallback_reason: str | None,
+        semantic_validate: Callable[[object], object] | None,
+        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
+    ) -> StructuredLLMResult:
+        self.before_runtime_dispatch(provider.runtime)
+        try:
+            result = self._invoke_provider_unchecked(
+                provider=provider,
+                prompt_ref=prompt_ref,
+                prompt_input=prompt_input,
+                output_schema=output_schema,
+                requested_mode=requested_mode,
+                trace_context=trace_context,
+                fallback_reason=fallback_reason,
+                semantic_validate=semantic_validate,
+                external_transfer_scope=external_transfer_scope,
+            )
+        except LLMInvocationError as error:
+            self.record_runtime_result(provider.runtime, error.code.value)
+            raise
+        self.record_runtime_result(provider.runtime, None)
+        return result
+
+    def _invoke_provider_unchecked(
         self,
         *,
         provider: StructuredLLMProvider,
@@ -638,3 +759,28 @@ def _canonical_result(result: StructuredLLMResult) -> StructuredInferenceResultV
         latency_ms=result.latency_ms,
         fallback_reason=result.fallback_reason,
     )
+
+
+def _external_data_classes(source_kinds: tuple[str, ...]) -> tuple[str, ...]:
+    """Classify bounded prompt field names without disclosing prompt values."""
+
+    lowered = tuple(item.lower() for item in source_kinds)
+    classes: set[str] = set()
+    if any(any(marker in item for marker in ("user", "request", "query")) for item in lowered):
+        classes.add("USER_REQUEST")
+    if any(
+        any(marker in item for marker in ("resource", "calendar", "gmail", "task", "tool"))
+        for item in lowered
+    ):
+        classes.add("RESOURCE_METADATA")
+    if any(any(marker in item for marker in ("evidence", "excerpt", "source")) for item in lowered):
+        classes.add("EVIDENCE_EXCERPT")
+    if (
+        any(
+            any(marker in item for marker in ("plan", "context", "analysis", "route", "goal"))
+            for item in lowered
+        )
+        or not classes
+    ):
+        classes.add("PLAN_CONTEXT")
+    return tuple(sorted(classes))

@@ -110,6 +110,15 @@ class RequireRecoveryHandler:
             self._checkpoint_port.store_same_run_checkpoint(checkpoint_update)
         return r
 
+    def current_run(self, run_id: str) -> tuple[str, int]:
+        """Project the Run status/version required to build this exact command."""
+
+        with self._f() as unit_of_work:
+            run = unit_of_work.runs.get(run_id)
+        if run is None:
+            raise LookupError(f"run not found: {run_id}")
+        return run.status.value, run.version
+
     @staticmethod
     def apply_in_unit_of_work(
         unit_of_work: UnitOfWork,

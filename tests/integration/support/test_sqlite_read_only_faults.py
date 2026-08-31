@@ -13,9 +13,6 @@ from google_work_agent.application.use_cases.action.claim_read_action import Cla
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,
 )
-from google_work_agent.application.use_cases.action.execute_read_action import (
-    ExecuteReadActionService,
-)
 from google_work_agent.application.use_cases.action.finalize_read_action import (
     FinalizeReadActionHandler,
 )
@@ -30,9 +27,6 @@ from google_work_agent.application.use_cases.action.read_contracts import (
 )
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
-)
-from google_work_agent.application.use_cases.plan.save_read_only_plan import (
-    SaveReadOnlyPlanService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.integration.persistence.review_support import record_pass_review
@@ -95,11 +89,11 @@ def test_complete_read_action_fault_rolls_back_resource_evidence_receipt_and_act
     _prepare_single_action_plan(
         read_only_fault_database, plan_id="plan-fault", action_id="action-fault"
     )
-    execute_service = ExecuteReadActionService(
+    execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
         gateway=fault_gateway,
     )
-    executed = execute_service(action_id="action-fault")
+    executed = execute_service.execute(action_id="action-fault")
     complete_service = CompleteReadActionHandler(
         unit_of_work_factory=fault_injecting_unit_of_work_factory(
             read_only_fault_database,
@@ -162,11 +156,11 @@ def test_finalize_read_action_fault_rolls_back_parent_aggregate_reconciliation(
     _prepare_single_action_plan(
         read_only_fault_database, plan_id="plan-finalize", action_id="action-finalize"
     )
-    execute_service = ExecuteReadActionService(
+    execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
         gateway=fault_gateway,
     )
-    executed = execute_service(action_id="action-finalize")
+    executed = execute_service.execute(action_id="action-finalize")
     CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
         now_ms=lambda: 1030,
@@ -238,7 +232,7 @@ def test_finalize_read_action_fault_rolls_back_parent_aggregate_reconciliation(
 
 
 def _prepare_single_action_plan(database_path: Path, *, plan_id: str, action_id: str) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )

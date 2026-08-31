@@ -34,10 +34,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorTarget,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraph_state import (
-    PlanningInputState,
-    PlanningLocalState,
-)
 from google_work_agent.adapters.langgraph.subgraphs.planning.nodes import (
     assemble_plan_node as assemble_node_module,
 )
@@ -73,6 +69,10 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 )
 from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
     route_after_outline_answer as outline_answer_routing,
+)
+from google_work_agent.adapters.langgraph.subgraphs.planning.state import (
+    PlanningInputState,
+    PlanningLocalState,
 )
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -113,13 +113,11 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     approve_planning_revision,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -158,7 +156,7 @@ class PlanningSubgraph:
         self,
         *,
         dependencies: PlanningRuntimeDependencies | None = None,
-        llm_runtime: StructuredLLMRuntime | None = None,
+        llm_runtime: StructuredInferencePort | None = None,
         prompt_manifest_path: Path | None = None,
         id_factory: Callable[[], str] | None = None,
         graph_profile: GraphProfile | None = None,

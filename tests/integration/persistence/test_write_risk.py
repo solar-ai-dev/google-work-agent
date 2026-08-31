@@ -40,10 +40,10 @@ from tests.integration.persistence.test_write_actions import (
     GoogleWorkspaceErrorCode,
     InvariantViolationError,
     Path,
+    PublishPlanHandler,
     RequireReauthHandler,
     RequireWriteReauthCommand,
     SaveWritePlanCommand,
-    SaveWritePlanService,
     SnapshotReader,
     WriteActionDraft,
     WriteEvidenceDraft,
@@ -391,7 +391,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
 def test_action_risk_over_16_kib_is_rejected_before_plan_persistence(
     write_database: Path,
 ) -> None:
-    service = SaveWritePlanService(
+    service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=FakeClockPort(1000).now_ms,
     )

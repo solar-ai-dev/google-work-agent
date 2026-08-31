@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypedDict
 
+from google_work_agent.adapters.langgraph.main.state import RunInputV1
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentSubgraphInputEnvelope,
-    RequestUnderstandingInputState,
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     AmbiguityV1,
@@ -29,6 +29,14 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowStartRequest,
 )
+
+
+class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):
+    """Parent projection owned by Request Understanding."""
+
+    run_input: RunInputV1
+    user_interrupt: UserInterruptV1 | None
+    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
 
 
 class RequestUnderstandingStateV2(RequestUnderstandingInputState, total=False):

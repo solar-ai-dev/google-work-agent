@@ -1,8 +1,16 @@
+"""Behavior tests for the LangGraph write execution structural driver."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
 
+from google_work_agent.adapters.langgraph.write_execution_driver import (
+    UnknownRecoveryPhaseRequest,
+    WriteExecutionDisposition,
+    WriteExecutionPhaseRequest,
+    WriteExecutionStructuralDriver,
+)
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionResult
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
@@ -14,12 +22,6 @@ from google_work_agent.application.use_cases.execution_attempt.classify_dispatch
 from google_work_agent.application.use_cases.execution_attempt.connector_write_projection import (
     ConnectorWriteProjection,
 )
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
-    UnknownRecoveryPhaseRequest,
-    WriteExecutionDisposition,
-    WriteExecutionPhaseCoordinator,
-    WriteExecutionPhaseRequest,
-)
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     PreparedWriteDispatch,
 )
@@ -27,11 +29,12 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
     WriteActionResponse,
     WriteRunResponse,
 )
-from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
-    ResolveResourceRefHandler,
+from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
+    LookupUnknownResultQueryV1,
 )
 from google_work_agent.application.use_cases.verification.verify_effect import (
     VerificationResultV1,
+    VerifyEffectQueryV1,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
@@ -67,6 +70,54 @@ class _RecordedCall:
         if self._error is not None:
             raise self._error
         return self._result
+
+    def refresh_stale_preflight(self, **_kwargs: object) -> None:
+        return None
+
+    def action_status(self, _action_id: str) -> str:
+        return ActionStatusV1.EXECUTING.value
+
+    def load_claimed_execution_input(self, **_kwargs: object) -> object:
+        return SimpleNamespace(
+            tool_name="tasks_create_task",
+            arguments={"task_list_id": "list-1", "title": "Task"},
+            recovery_fingerprint="recovery-fingerprint",
+        )
+
+    def project_persisted_query(self, **kwargs: object) -> object:
+        if self._name == "lookup_unknown":
+            return SimpleNamespace(
+                query=LookupUnknownResultQueryV1(
+                    run_id=str(kwargs["run_id"]),
+                    action_id=str(kwargs["action_id"]),
+                    execution_attempt_id=str(kwargs["execution_attempt_id"]),
+                    effect=cast(Any, kwargs["effect"]),
+                    recovery_fingerprint="recovery-fingerprint",
+                    target_resource_ref=None,
+                ),
+                tool_name="tasks_create_task",
+                arguments={"task_list_id": "list-1", "title": "Task"},
+            )
+        return VerifyEffectQueryV1(
+            run_id=str(kwargs["run_id"]),
+            action_id=str(kwargs["action_id"]),
+            execution_attempt_id=str(kwargs["execution_attempt_id"]),
+            effect="CREATE",
+            expected_effect={"title": "Task"},
+            target_resource_ref=None,
+        )
+
+    def run_id_for_action(self, _action_id: str) -> str:
+        return "run-1"
+
+    def current_run(self, _run_id: str) -> tuple[str, int]:
+        return RunStatusV1.RECOVERY_REQUIRED.value, 4
+
+    def has_current_context(self, _run_id: str) -> bool:
+        return False
+
+    def recovery_projection(self, **_kwargs: object) -> tuple[str, int]:
+        return "CREATE", 1
 
 
 class _Repository:
@@ -460,7 +511,7 @@ def _coordinator(
     claim_call: _RecordedCall | None = None,
     classify_dispatch_result: object | None = None,
     begin_error: Exception | None = None,
-) -> WriteExecutionPhaseCoordinator:
+) -> WriteExecutionStructuralDriver:
     snapshot = ResourceSnapshot(
         fixture_snapshot_id="snapshot-1",
         resource_type=ResourceType.TASK,
@@ -492,17 +543,13 @@ def _coordinator(
         plan_status="ACTIVE",
         result_kind="REAUTH_REQUIRED",
     )
-    uow = _UnitOfWork()
-    return WriteExecutionPhaseCoordinator(
-        unit_of_work_factory=cast(Any, lambda: uow),
+    return WriteExecutionStructuralDriver(
         id_factory=lambda: "generated-id",
         request_hash=lambda _payload: "request-hash",
         should_stop_for_cancel=lambda _run_id: False,
         preflight_write=cast(
             Any, _RecordedCall(name="preflight", calls=calls, result=preflight_result)
         ),
-        expire_approval=None,
-        refresh_expired_action=None,
         claim_execution=cast(
             Any,
             claim_call
@@ -590,9 +637,6 @@ def _coordinator(
         ),
         recover_existing_result=cast(Any, _RecordedCall(name="recover_existing", calls=calls)),
         resolve_as_failed=cast(Any, _RecordedCall(name="resolve_as_failed", calls=calls)),
-        resolve_resource_ref=ResolveResourceRefHandler(
-            unit_of_work_factory=cast(Any, lambda: uow),
-        ),
     )
 
 

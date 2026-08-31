@@ -45,7 +45,6 @@ from google_work_agent.application.use_cases.action.task_duplicates import (
 )
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
-    RecordReviewResultHandler,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
@@ -528,10 +527,7 @@ class PlanPersistenceMixin:
         review_version: int,
         action_versions: Mapping[str, int],
     ) -> None:
-        result = RecordReviewResultHandler(
-            unit_of_work_factory=self._unit_of_work_factory,
-            now_ms=self._now_ms,
-        )(
+        result = self._record_review_result(
             RecordReviewResultCommandV1(
                 command_id=self._id_factory(),
                 plan_id=plan_id,

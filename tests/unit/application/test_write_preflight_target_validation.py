@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from google_work_agent.application.use_cases.action.write_preflight import validate_preflight_target
+from google_work_agent.application.use_cases.claim._write_preflight import (
+    validate_preflight_target,
+)
 from google_work_agent.domain.action.model import PolicyViolationError
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.ports.connector.contracts.google_workspace import (

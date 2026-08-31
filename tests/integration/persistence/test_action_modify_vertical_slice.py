@@ -33,9 +33,6 @@ from google_work_agent.application.use_cases.plan.project_dependencies import (
     project_dependency_ids,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
-)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -121,7 +118,7 @@ def _save_and_publish_task_action(
     *, database_path: Path, clock: FakeClockPort, action_id: str, plan_id: str
 ) -> None:
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     publish_service = PublishPlanHandler(
@@ -927,14 +924,14 @@ def test_modify_revokes_stale_approval_on_a_direct_dependent_action(
     trigger dependency re-review; a full Supervisor re-plan does not exist
     yet (separate GAP), but a stale dependent must never stay claimable on
     its old Approval. The dependency edge below is saved through the real
-    `SaveWritePlanService` (`WriteActionDraft.depends_on_action_ids`), not
+    `PublishPlanHandler` (`WriteActionDraft.depends_on_action_ids`), not
     seeded directly, proving the safety net is reachable through the actual
     production WRITE plan path.
     """
 
     clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(modify_database)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     publish_service = PublishPlanHandler(

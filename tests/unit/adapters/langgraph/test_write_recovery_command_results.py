@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
-    WriteExecutionPhaseCoordinator,
+from google_work_agent.adapters.langgraph.write_execution_driver import (
+    WriteExecutionStructuralDriver,
 )
+from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoordinator
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
 )
@@ -118,7 +118,7 @@ def _coordinator(
             if action.status == ActionStatusV1.UNKNOWN_RESULT.value
             else (lambda _run_id: None)
         ),
-        execution_phase=cast(WriteExecutionPhaseCoordinator, phase),
+        execution_phase=cast(WriteExecutionStructuralDriver, phase),
         write_run_completion_ready=completion,
         plans_for_run=lambda _run_id: (_plan(),),
         list_actions=lambda _plan_id: (action,),

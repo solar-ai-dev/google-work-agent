@@ -12,9 +12,6 @@ from google_work_agent.application.use_cases.action.claim_read_action import Cla
 from google_work_agent.application.use_cases.action.complete_read_action import (
     CompleteReadActionHandler,
 )
-from google_work_agent.application.use_cases.action.execute_read_action import (
-    ExecuteReadActionService,
-)
 from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
 from google_work_agent.application.use_cases.action.finalize_read_action import (
     FinalizeReadActionHandler,
@@ -33,9 +30,6 @@ from google_work_agent.application.use_cases.action.read_contracts import (
 )
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
-)
-from google_work_agent.application.use_cases.plan.save_read_only_plan import (
-    SaveReadOnlyPlanService,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import PlanStatusV1
@@ -94,7 +88,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
     read_only_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -106,7 +100,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1020,
     )
-    execute_service = ExecuteReadActionService(
+    execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         gateway=fixture_gateway,
     )
@@ -188,7 +182,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
     finally:
         connection.close()
 
-    executed = execute_service(action_id="action-1")
+    executed = execute_service.execute(action_id="action-1")
     assert fixture_gateway.call_log[-1].operation == "get_gmail_thread"
 
     completed = complete_service(
@@ -283,7 +277,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
     read_only_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -299,7 +293,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1030,
     )
-    execute_service = ExecuteReadActionService(
+    execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         gateway=fixture_gateway,
     )
@@ -423,7 +417,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
     )
     assert claimed_branch.applied is True
 
-    executed = execute_service(action_id="action-branch")
+    executed = execute_service.execute(action_id="action-branch")
     completed = complete_service(
         CompleteReadActionCommand(
             command_id="complete-branch",
@@ -476,7 +470,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
 def test_save_read_only_plan_rejects_non_read_tool_without_persisting_partial_rows(
     read_only_database: Path,
 ) -> None:
-    service = SaveReadOnlyPlanService(
+    service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -532,7 +526,7 @@ def test_save_read_only_plan_rejects_non_read_tool_without_persisting_partial_ro
 def test_save_read_only_plan_replays_same_command_id_and_hash(
     read_only_database: Path,
 ) -> None:
-    service = SaveReadOnlyPlanService(
+    service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -593,7 +587,7 @@ def test_claim_read_action_rejects_stale_version_without_gateway_call(
     read_only_database: Path,
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -689,7 +683,7 @@ def test_claim_read_action_rejects_before_plan_is_current(
     Action row itself is PROPOSED. A DRAFT Plan / PLANNING Run is stale
     lineage and must fail closed before any provider call.
     """
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -764,7 +758,7 @@ def test_claim_read_action_rejects_durable_cancel_intent_before_gateway_call(
     """Issue #131 / 002-02: a durable cancel intent must block ClaimReadAction
     before any provider call, even though the Plan/Run are otherwise current.
     """
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -897,7 +891,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
             ),
         ),
     )
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -956,11 +950,11 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
     claimed = claim_service(claim_command)
     assert claimed.applied is True
 
-    execute_service = ExecuteReadActionService(
+    execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         gateway=fixture_gateway,
     )
-    executed = execute_service(action_id="action-received")
+    executed = execute_service.execute(action_id="action-received")
 
     complete_command = CompleteReadActionCommand(
         command_id="complete-received",
@@ -1193,7 +1187,7 @@ def test_received_receipts_recover_already_applied_save_publish_and_claim(
             ),
         ),
     )
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
         now_ms=lambda: 1000,
     )
@@ -1359,7 +1353,7 @@ def _reset_receipt_to_received(database_path: Path, command_id: str) -> None:
 
 
 def _prepare_received_complete_partial_state(database_path: Path) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )
@@ -1455,7 +1449,7 @@ def _prepare_received_complete_partial_state(database_path: Path) -> None:
 
 
 def _prepare_fail_action_state(database_path: Path, *, action_id: str, plan_id: str) -> None:
-    save_service = SaveReadOnlyPlanService(
+    save_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
         now_ms=lambda: 1000,
     )

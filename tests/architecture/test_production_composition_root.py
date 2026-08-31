@@ -17,6 +17,7 @@ def test_background_executor_has_one_production_binding_in_composition_root() ->
 def test_production_composition_symbol_is_exact() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     assert "def build_production_runtime(" in source
+    assert "def build_production_container(" not in source
     assert "CheckpointEffectiveBindingResolver(" in source
     assert "checkpoint, resume_target_registry" in source
 
@@ -49,8 +50,23 @@ def test_launcher_only_supplies_environment_values_to_composition() -> None:
 
     assert forbidden_constructors == []
     source = launcher.read_text(encoding="utf-8")
-    assert "build_production_container(" in source
-    assert "DeferredApiContainer(" in source
+    assert "build_production_runtime" not in source
+    assert "build_production_container" not in source
+    assert "DeferredApiContainer" not in source
+    assert "ProductionRuntimeConfig(" in source
+    assert "create_app(" in source
+
+
+def test_fastapi_app_calls_the_only_public_production_builder() -> None:
+    app_source = (ROOT / "api" / "app.py").read_text(encoding="utf-8")
+    assert app_source.count("build_production_runtime(") == 1
+    production_callers = [
+        path
+        for path in ROOT.rglob("*.py")
+        if path != ROOT / "api" / "composition.py"
+        and "build_production_runtime(" in path.read_text(encoding="utf-8")
+    ]
+    assert production_callers == [ROOT / "api" / "app.py"]
 
 
 def test_legacy_launcher_composition_authority_is_absent() -> None:

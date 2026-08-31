@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from json import dumps, loads
 
 from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
+from tests.support.legacy_write.snapshot_projection import project_snapshot
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.write_action_arguments import (
@@ -26,9 +27,6 @@ from google_work_agent.application.use_cases.action.write_persistence import (
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
-)
-from google_work_agent.application.use_cases.verification.normalize_snapshot import (
-    normalize_snapshot,
 )
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
@@ -257,7 +255,7 @@ class VerifyActionHandler:
                     raise RuntimeError("verification snapshot is required")
                 actual_projection = normalize_actual_verification_projection(
                     tool_name=action.tool_name,
-                    actual=normalize_snapshot(actual_snapshot),
+                    actual=project_snapshot(actual_snapshot),
                 )
                 diff = calculate_verification_subset_diff(expected, actual_projection)
                 verification_status = (

@@ -10,6 +10,9 @@ from typing import NoReturn, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.support.production_runtime import (
+    build_test_production_container as build_container,
+)
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
@@ -20,7 +23,6 @@ from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
 from google_work_agent.api.container import ApiContainer
-from google_work_agent.launcher.dev import build_container
 
 
 @pytest.mark.parametrize(

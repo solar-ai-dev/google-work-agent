@@ -11,6 +11,9 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from fastapi.testclient import TestClient
+from tests.support.production_runtime import (
+    build_test_production_container as build_container,
+)
 from uvicorn import Config, Server
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
@@ -24,7 +27,7 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
     CreateStagedAttachmentCommand,
     CreateStagedAttachmentHandler,
 )
-from google_work_agent.launcher.dev import DevelopmentReadinessAggregator, build_container
+from google_work_agent.launcher.dev import DevelopmentReadinessAggregator
 
 
 def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path) -> None:

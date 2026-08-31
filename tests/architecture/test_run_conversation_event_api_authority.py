@@ -214,8 +214,8 @@ def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
 def test_run_context_handler_is_composed_once_and_never_constructed_in_route() -> None:
     route = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
     composition = (ROOT / "src/google_work_agent/api/composition.py").read_text(encoding="utf-8")
-    assert "GetExecutionContextHandler(" not in route
-    assert composition.count("GetExecutionContextHandler(") == 1
+    assert "GetRunSnapshotHandler(" not in route
+    assert composition.count("GetRunSnapshotHandler(") == 1
     assert "get_execution_context_handler=get_execution_context" in composition
 
 
@@ -249,7 +249,6 @@ def test_recovery_has_one_canonical_writer_and_no_legacy_concrete_authority() ->
 def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None:
     handlers = (
         ROOT / "src/google_work_agent/application/use_cases/run/get_run_snapshot.py",
-        ROOT / "src/google_work_agent/application/use_cases/run/get_execution_context.py",
         ROOT / "src/google_work_agent/application/use_cases/sse_event/list_run_events.py",
         ROOT
         / "src/google_work_agent/application/use_cases/conversation/get_conversation_history.py",

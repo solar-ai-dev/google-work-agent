@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResourceItem } from "../../api/contract";
-import { CalendarPanel } from "../calendar";
-import { GmailPanel } from "../gmail";
-import { TasksPanel } from "../tasks";
+import { CalendarPanel } from "./calendar_panel";
+import { GmailPanel } from "./gmail_panel";
+import { TasksPanel } from "./tasks_panel";
 import { useCalendar } from "./calendar_controller";
 import { useGmail } from "./gmail_controller";
 import { useTasks } from "./tasks_controller";

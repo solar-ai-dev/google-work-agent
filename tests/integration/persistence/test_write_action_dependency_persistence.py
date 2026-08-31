@@ -1,7 +1,7 @@
 """GAP-F3 prerequisite: WRITE Action Dependency Persistence.
 
 Covers the fix for the gap tracked in `start_run.py`'s
-`_revoke_stale_dependent_approvals` docstring: `SaveWritePlanService` now
+`_revoke_stale_dependent_approvals` docstring: `PublishPlanHandler` now
 persists `depends_on_action_ids` into `action_dependencies` for WRITE
 plans (previously only READ-only plans did), so that pre-existing safety
 net becomes reachable through the real production path instead of only
@@ -32,9 +32,6 @@ from google_work_agent.application.use_cases.plan.project_dependencies import (
     project_dependency_ids,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.save_write_plan import (
-    SaveWritePlanService,
-)
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
     SaveWritePlanCommand,
@@ -128,7 +125,7 @@ def _evidence(*action_ids: str) -> tuple[WriteEvidenceDraft, ...]:
 def test_save_write_plan_persists_a_single_dependency_edge(dependency_database: Path) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(dependency_database)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
 
@@ -165,7 +162,7 @@ def test_save_write_plan_persists_a_single_dependency_edge(dependency_database: 
 def test_save_write_plan_persists_a_chain_of_dependencies(dependency_database: Path) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(dependency_database)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
 
@@ -207,7 +204,7 @@ def test_save_write_plan_persists_a_chain_of_dependencies(dependency_database: P
 def test_save_write_plan_without_dependencies_persists_no_rows(dependency_database: Path) -> None:
     clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(dependency_database)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
 
@@ -254,7 +251,7 @@ def test_mark_write_action_failed_blocks_claim_without_terminalizing_dependent(
 
     clock = FakeClockPort(initial_ms=1_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(dependency_database)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory, now_ms=clock.now_ms
     )
     publish_service = PublishPlanHandler(

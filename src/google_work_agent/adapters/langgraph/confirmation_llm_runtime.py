@@ -38,7 +38,7 @@ _ORIGIN_PROMPT_IDS: dict[str, frozenset[str]] = {
 
 
 class ConfirmationAwareLLMRuntime:
-    """Delegate StructuredLLMRuntime while adding one bounded owner response."""
+    """Delegate StructuredInferencePort while adding one bounded owner response."""
 
     def __init__(self, delegate: Any) -> None:
         self._delegate = delegate

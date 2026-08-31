@@ -1,6 +1,8 @@
 from typing import TypedDict
 
-from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
+    WorkAnalysisLocalState,
+)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
 )

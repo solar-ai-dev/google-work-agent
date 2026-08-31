@@ -29,8 +29,8 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    LLMRuntimeService as _LLMRuntimeService,
+from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
+    ProjectExternalLlmTransferScopeQueryV1,
 )
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -129,8 +129,8 @@ def _status_service(
     )
 
 
-def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
-    """Inject the canonical Router into historical application-service tests."""
+def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter:
+    """Build the sole canonical structured-inference router."""
     kwargs.pop("router", None)
     router_kwargs = {
         key: kwargs[key]
@@ -148,19 +148,22 @@ def LLMRuntimeService(**kwargs: object) -> _LLMRuntimeService:  # noqa: N802
         if key in kwargs
     }
     router_kwargs.setdefault("hardware_probe", _HardwareProbe())
-    kwargs.pop("hardware_probe", None)
-    kwargs.pop("api_provider")
-    kwargs.pop("credential_service", None)
+    kwargs.clear()
     checkpoint, projector = build_external_scope_gate()
     router_kwargs["checkpoint"] = checkpoint
-    kwargs.setdefault("project_external_scope", projector)
-    kwargs.setdefault("now_ms", lambda: 1)
-    return _LLMRuntimeService(
-        structured_inference=CanonicalStructuredInferenceRuntimeRouter(
-            api_provider_name="generic", **router_kwargs
-        ),
-        **kwargs,
+    router = CanonicalStructuredInferenceRuntimeRouter(
+        api_provider_name="generic", **router_kwargs
     )
+    router.external_scope_projector = lambda run_id, source_kinds, data_classes: projector(
+        ProjectExternalLlmTransferScopeQueryV1(
+            schema_version=1,
+            run_id=run_id,
+            source_kinds=source_kinds,
+            data_classes=data_classes,  # type: ignore[arg-type]
+            occurred_at_ms=1,
+        )
+    )
+    return router
 
 
 def test_api_only_invokes_external_provider() -> None:
@@ -188,7 +191,7 @@ def test_api_only_invokes_external_provider() -> None:
         requested_runtime_mode="API_LLM",
         external_llm_consent=True,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="API_ONLY",
@@ -227,12 +230,12 @@ def test_api_only_invokes_external_provider() -> None:
 
 
 def test_discard_run_is_a_harmless_noop() -> None:
-    """G3 RunBudgetV2: LLMRuntimeService no longer owns any per-run LLM call
+    """G3 RunBudgetV2: the structured-inference router does not own any per-run LLM call
     accounting (that authority moved to the checkpoint-persistent
     retry_budget/RunBudgetV2, gated by agent_kernel.ensure_llm_call_budget
     at each native subgraph node -- see test_supervisor.py and
     test_agent_kernel_budget.py). discard_run stays on the
-    StructuredLLMRuntime Protocol purely for its existing runtime.py caller
+    StructuredInferencePort contract for its workflow callers
     (Run finalize cleanup) and must not raise or affect any other run.
     """
     api_transport = FakeAPIProviderTransport()
@@ -258,7 +261,7 @@ def test_discard_run_is_a_harmless_noop() -> None:
         requested_runtime_mode="API_LLM",
         external_llm_consent=True,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="API_ONLY",
@@ -325,7 +328,7 @@ def test_auto_falls_back_once_after_local_gpu_failure() -> None:
         approved_model_id=approved_model().model_id,
     )
     recorder = RecordingEventRecorder()
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="LOCAL_CAPABLE",
@@ -383,7 +386,7 @@ def test_local_gpu_mode_never_falls_back_to_api() -> None:
         ollama_endpoint="http://127.0.0.1:11434",
         approved_model_id=approved_model().model_id,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="LOCAL_CAPABLE",
@@ -444,7 +447,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
         approved_model_id=approved_model().model_id,
     )
     not_validated_probe = _HardwareProbe(eligible=False)
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="LOCAL_CAPABLE",
@@ -508,7 +511,7 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
         requested_runtime_mode="API_LLM",
         external_llm_consent=True,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="API_ONLY",
@@ -573,7 +576,7 @@ def test_application_semantic_validation_does_not_create_a_second_router_repair_
         requested_runtime_mode="API_LLM",
         external_llm_consent=True,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="API_ONLY",
@@ -639,7 +642,7 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
         requested_runtime_mode="API_LLM",
         external_llm_consent=True,
     )
-    service = LLMRuntimeService(
+    service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
             build_profile="API_ONLY",

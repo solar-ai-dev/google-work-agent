@@ -1,24 +1,24 @@
 # ruff: noqa: E501
 
-from google_work_agent.adapters.langgraph.subgraph_state import WorkAnalysisLocalState
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.resolve_temporal_dependencies_projection import (
     project_resolve_temporal_dependencies_input,
 )
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
+    WorkAnalysisLocalState,
+    WorkAnalysisStateV2,
+)
 from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import (
     resolve_temporal_dependencies,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 
 def resolve_temporal_dependencies_node(
     state: WorkAnalysisLocalState,
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     trace_context: ObservabilityContext,
     confirmation_response: dict[str, object] | None = None,

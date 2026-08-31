@@ -30,9 +30,12 @@ def test_run_repository_has_no_phase_transition_command_authority() -> None:
 
 def test_workflow_uses_explicit_phase_handlers_without_dynamic_repository_dispatch() -> None:
     source = (ROOT / "adapters" / "langgraph" / "main" / "workflow.py").read_text(encoding="utf-8")
-    assert "StartAnalysisHandler(" in source
-    assert "BeginRetrievalHandler(" in source
-    assert "BeginPlanningHandler(" in source
+    assert "services.start_analysis" in source
+    assert "services.begin_retrieval" in source
+    assert "services.begin_planning" in source
+    assert "StartAnalysisHandler(" not in source
+    assert "BeginRetrievalHandler(" not in source
+    assert "BeginPlanningHandler(" not in source
     assert "getattr(unit_of_work.runs" not in source
     assert ".runs.replan(" not in source
 

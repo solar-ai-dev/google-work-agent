@@ -12,6 +12,9 @@ from google_work_agent.adapters.langgraph.main.validate_planning_output import (
 from google_work_agent.application.tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.application.use_cases.action.validate_action_arguments import (
+    ValidateActionArgumentsHandler,
+)
 
 
 class _ResourceReader:
@@ -166,6 +169,7 @@ def _call(plan, *, review=None, evidence=None, reader=None, analysis=None, recei
         policy_confirmation_receipts=receipts,
         resource_identity_reader=reader or _reader(),
         tool_registry=load_signed_tool_registry(),
+        validate_action_arguments=ValidateActionArgumentsHandler(),
     )
 
 

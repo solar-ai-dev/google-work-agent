@@ -32,15 +32,13 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     MAX_ADDITIONAL_ACQUISITIONS,
     RunBudgetV2,
     build_default_run_budget,
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -49,7 +47,7 @@ from google_work_agent.ports.system.contracts.observability import Observability
 
 def assess_sufficiency(
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     trace_context: ObservabilityContext,
     request_intent: RequestIntentV2,

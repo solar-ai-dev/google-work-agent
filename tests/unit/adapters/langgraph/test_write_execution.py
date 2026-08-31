@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
-from google_work_agent.application.use_cases.execution_attempt.execution_phase import (
+from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionDisposition,
     WriteExecutionPhaseResult,
 )

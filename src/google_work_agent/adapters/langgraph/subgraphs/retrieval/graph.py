@@ -48,8 +48,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentLocalStateV1,
-    ContextRetrievalInputState,
-    ContextRetrievalLocalState,
 )
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.assess_sufficiency_node import (
     assess_sufficiency_node,
@@ -105,7 +103,11 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_afte
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_select_evidence import (  # noqa: E501
     route_after_select_evidence,
 )
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import RetrievalStateV2
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
+    ContextRetrievalInputState,
+    ContextRetrievalLocalState,
+    RetrievalStateV2,
+)
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
@@ -164,13 +166,11 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -309,7 +309,7 @@ class RetrievalSubgraph:
     def __init__(
         self,
         *,
-        llm_runtime: StructuredLLMRuntime,
+        llm_runtime: StructuredInferencePort,
         prompt_manifest_path: Path | None,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,

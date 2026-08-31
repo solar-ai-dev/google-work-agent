@@ -13,9 +13,6 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     legacy_post_call_projection,
     provider_dispatch_budget_scope,
@@ -30,6 +27,7 @@ from google_work_agent.ports.llm import (
     OutputSchemaDefinition,
     PromptReference,
 )
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -53,7 +51,7 @@ TOOL_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 def select_tool_if_needed(
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     route_id: str,
     connector_id: str,
     resource_type: str,

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import google_work_agent.application.use_cases.plan.save_write_plan as write_plan
+import google_work_agent.application.use_cases.plan.publish_plan as write_plan
 import google_work_agent.application.use_cases.plan.write_plan_contracts as write_plan_contracts
 import tests.support.legacy_write.write_actions as write_actions
 import tests.support.legacy_write.write_cancellation as write_cancellation
@@ -26,7 +26,7 @@ def test_legacy_write_facade_is_test_only_and_absent_from_production() -> None:
         "write_verification.py",
     ):
         assert not (application_root / name).exists()
-    assert write_actions.SaveWritePlanService is write_plan.SaveWritePlanService
+    assert write_actions.PublishPlanHandler is write_plan.PublishPlanHandler
     assert write_actions.SaveWritePlanCommand is write_plan_contracts.SaveWritePlanCommand
     assert not hasattr(write_actions, "ApproveWriteActionService")
     assert write_actions.ClaimWriteActionService is write_claim.ClaimWriteActionService

@@ -9,7 +9,6 @@ from json import loads as _loads
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     DEFAULT_APPROVAL_TTL_MS,
 )
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -33,6 +32,7 @@ from tests.integration.persistence.test_write_actions import (
     GoogleGatewayFaultKind,
     GoogleWorkspaceGateway,
     Path,
+    PublishPlanHandler,
     PublishWritePlanCommand,
     RequestRunCancellationCommand,
     RequestRunCancellationService,
@@ -40,7 +40,6 @@ from tests.integration.persistence.test_write_actions import (
     RunCommand,
     RunStatusV1,
     SaveWritePlanCommand,
-    SaveWritePlanService,
     StoreWriteActionSuccessCommand,
     StoreWriteActionSuccessService,
     VerifyWriteActionCommand,
@@ -127,7 +126,7 @@ def test_write_happy_path_requires_approval_then_executes_and_verifies(
     fixture_gateway: FakeGoogleGateway,
 ) -> None:
     clock = FakeClockPort(1000)
-    save_service = SaveWritePlanService(
+    save_service = PublishPlanHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
     )

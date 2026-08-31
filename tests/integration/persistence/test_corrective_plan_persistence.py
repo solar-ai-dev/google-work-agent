@@ -25,14 +25,16 @@ from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
-from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.record_review_result import (
+    RecordReviewResultHandler,
+)
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from tests.support.checkpoint import sqlite_checkpoint
-from tests.support.legacy_write.write_actions import SaveWritePlanService
+from tests.support.legacy_write.write_actions import PublishPlanHandler
 from tests.support.resolve_recovery_adapter import (
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,
@@ -158,11 +160,15 @@ class _CorrectivePersistenceHarness:
     def __init__(self, database_path: Path, *, fail_publish_once: bool = False) -> None:
         self._unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
         self._now_ms = lambda: 10
-        self._save_delegate = SaveWritePlanService(
+        self._save_delegate = PublishPlanHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )
         self._publish_delegate = PublishPlanHandler(
+            unit_of_work_factory=self._unit_of_work_factory,
+            now_ms=self._now_ms,
+        )
+        self._record_review_result = RecordReviewResultHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
         )

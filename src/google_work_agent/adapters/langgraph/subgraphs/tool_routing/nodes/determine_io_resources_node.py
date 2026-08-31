@@ -11,19 +11,17 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     consume_llm_provider_calls,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 
 
 def determine_io_resources_node(
     state: ToolRouteStateV1,
     *,
-    llm_runtime: StructuredLLMRuntime,
+    llm_runtime: StructuredInferencePort,
     tool_catalog: SignedToolRegistry,
     prompt_ref: PromptReference | None,
 ) -> ToolRouteStateV1:

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from json import dumps
+from typing import overload
 
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.read_contracts import (
     PublishReadOnlyPlanCommand,
     PublishReadOnlyPlanResponse,
+    SaveReadOnlyPlanCommand,
+    SaveReadOnlyPlanResponse,
 )
 from google_work_agent.application.use_cases.action.read_persistence import (
     audit_event,
@@ -16,6 +19,9 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     handle_existing_publish_receipt,
     require_plan,
     require_run,
+)
+from google_work_agent.application.use_cases.plan._read_only_plan_persistence import (
+    _ReadOnlyPlanPersistence,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import EffectType
@@ -36,8 +42,32 @@ class PublishReadOnlyPlanHandler:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._draft_persistence = _ReadOnlyPlanPersistence(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+        )
 
-    def __call__(self, command: PublishReadOnlyPlanCommand) -> PublishReadOnlyPlanResponse:
+    def save(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse:
+        """Persist the draft as a private phase of this canonical operation."""
+
+        return self._draft_persistence(command)
+
+    @overload
+    def __call__(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse: ...
+
+    @overload
+    def __call__(self, command: PublishReadOnlyPlanCommand) -> PublishReadOnlyPlanResponse: ...
+
+    def __call__(
+        self, command: SaveReadOnlyPlanCommand | PublishReadOnlyPlanCommand
+    ) -> SaveReadOnlyPlanResponse | PublishReadOnlyPlanResponse:
+        if isinstance(command, SaveReadOnlyPlanCommand):
+            return self.save(command)
+        return self._publish(command)
+
+    def _publish(
+        self, command: PublishReadOnlyPlanCommand
+    ) -> PublishReadOnlyPlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
             existing_receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing_receipt is not None:

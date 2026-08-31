@@ -32,10 +32,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorTarget,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraph_state import (
-    WorkAnalysisInputState,
-    WorkAnalysisLocalState,
-)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assemble_work_analysis_node import (
     assemble_work_analysis_node,
 )
@@ -84,6 +80,10 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_validate_relations import (
     route_after_validate_relations,
 )
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
+    WorkAnalysisInputState,
+    WorkAnalysisLocalState,
+)
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
@@ -105,13 +105,11 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.application.use_cases.llm.structured_inference_runtime import (
-    StructuredLLMRuntime,
-)
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
 from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
@@ -135,7 +133,7 @@ class WorkAnalysisSubgraph:
     def __init__(
         self,
         *,
-        llm_runtime: StructuredLLMRuntime,
+        llm_runtime: StructuredInferencePort,
         prompt_manifest_path: Path | None,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
