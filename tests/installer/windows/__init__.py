@@ -1,0 +1,1 @@
+"""Windows installer definition tests."""
