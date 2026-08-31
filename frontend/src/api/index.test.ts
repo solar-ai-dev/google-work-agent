@@ -65,40 +65,11 @@ describe("api index wrappers", () => {
         path: "/api/v1/identity/google-account",
         method: "GET",
       },
-      {
-        call: () => api.listConversations("cursor-1"),
-        path: "/api/v1/conversations?page_size=50&cursor=cursor-1",
-        method: "GET",
-      },
-      {
-        call: () =>
-          api.createConversation({
-            command_id: "command-1",
-            title: "Inbox triage",
-          }),
-        path: "/api/v1/conversations",
-        method: "POST",
-        bodyIncludes: { schema_version: 1, title: "Inbox triage" },
-      },
       { call: () => api.getRunSnapshot("run-1"), path: "/api/v1/runs/run-1", method: "GET" },
       {
         call: () => api.getRunContext("run-1"),
         path: "/api/v1/runs/run-1/context",
         method: "GET",
-      },
-      {
-        call: () =>
-          api.startRun({
-            command_id: "command-2",
-            conversation_id: "conversation-1",
-            request_text: "Summarize",
-            entry_mode: "AGENT_SEARCH",
-            selected_resource_handles: [],
-            requested_mode: "AUTO",
-          }),
-        path: "/api/v1/runs",
-        method: "POST",
-        bodyIncludes: { conversation_id: "conversation-1", request_text: "Summarize" },
       },
       {
         call: () =>
@@ -196,46 +167,10 @@ describe("api index wrappers", () => {
         bodyIncludes: { expected_version: 3 },
       },
       {
-        call: () => api.listGmailResources("follow up", "page-1"),
-        path: "/api/v1/resources/gmail?query=follow+up&page_size=20&page_token=page-1",
-        method: "GET",
-      },
-      {
-        call: () => api.listGmailResources("follow up", "page-1", 20, false),
-        path: "/api/v1/resources/gmail?query=follow+up&page_size=20&page_token=page-1&include_thread_metadata=false",
-        method: "GET",
-      },
-      {
-        call: () => api.getGmailResourceDetail("thread/1"),
-        path: "/api/v1/resources/gmail/thread%2F1",
-        method: "GET",
-      },
-      {
-        call: () => api.downloadGmailAttachment("message/1", "attachment/1"),
-        path: "/api/v1/gmail/messages/message%2F1/attachments/attachment%2F1",
-        method: "GET",
-      },
-      {
         call: () => api.stageAttachment(new File(["abc"], "a.txt", { type: "text/plain" })),
         path: "/api/v1/attachments/stage",
         method: "POST",
         formIncludes: { filename: "a.txt", mime_type: "text/plain" },
-      },
-      {
-        call: () => api.listTaskResources("list-1", "page-2"),
-        path: "/api/v1/resources/tasks?page_size=100&task_list_id=list-1&page_token=page-2",
-        method: "GET",
-      },
-      {
-        call: () => api.listCalendarResources(
-          "calendar-1",
-          "page-3",
-          100,
-          "2026-08-10T00:00:00Z",
-          "2026-11-08T00:00:00Z",
-        ),
-        path: "/api/v1/resources/calendar?page_size=100&calendar_id=calendar-1&page_token=page-3&time_min=2026-08-10T00%3A00%3A00Z&time_max=2026-11-08T00%3A00%3A00Z",
-        method: "GET",
       },
     ];
 

@@ -1,17 +1,17 @@
+import type { ReactNode } from "react";
 import type { ConversationViewModel } from "../conversation";
 import { ConversationView } from "../conversation";
-import { ResourceDetail, type ResourceDetailProps } from "./ResourceDetail";
 
 export type CenterWorkspaceProps = {
-  resourceDetail: ResourceDetailProps;
+  resourceViewer: ReactNode;
   conversationViewModel: ConversationViewModel;
 };
 
-export function CenterWorkspace({ resourceDetail, conversationViewModel }: CenterWorkspaceProps): JSX.Element {
+export function CenterWorkspace({ resourceViewer, conversationViewModel }: CenterWorkspaceProps): JSX.Element {
   return (
     <main className="panel center-workspace">
       <ConversationView viewModel={conversationViewModel}>
-        <ResourceDetail {...resourceDetail} />
+        {resourceViewer}
       </ConversationView>
     </main>
   );

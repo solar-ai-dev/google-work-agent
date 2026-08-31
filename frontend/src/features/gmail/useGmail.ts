@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getResourceCount, listGmailResources } from "../../api";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem, ResourceListResponse } from "../../api/contract";
+import { getResourceCount, listResources } from "../resource_browser/api/list_resources";
+import { ResourceBrowserSessionCache } from "../resource_browser/session_page_cache";
 
 type GmailPageCacheEntry = {
   pageToken: string | null;
@@ -59,10 +60,16 @@ export function useGmail({ accountId, active }: { accountId: string | null | und
     countLoading: false,
     count: null,
   });
-  const cacheRef = useRef(new Map<string, GmailCacheEntry>());
-  const countCacheRef = useRef(new Map<string, number | null>());
+  const cacheRef = useRef(new ResourceBrowserSessionCache<GmailCacheEntry>());
+  const countCacheRef = useRef(new ResourceBrowserSessionCache<number | null>());
   const inFlightRef = useRef(new Map<string, { includesMetadata: boolean; promise: Promise<GmailProviderPage> }>());
   const requestRef = useRef({ generation: 0, cacheKey: "", pageIndex: 0 });
+
+  useEffect(() => {
+    const scope = accountId ?? "anonymous";
+    cacheRef.current.bindScope(scope);
+    countCacheRef.current.bindScope(scope);
+  }, [accountId]);
 
   const requestPage = useCallback(async (
     currentCacheKey: string,
@@ -77,7 +84,7 @@ export function useGmail({ accountId, active }: { accountId: string | null | und
       if (!includeThreadMetadata || result.includesMetadata) return result;
       return requestPage(currentCacheKey, query, pageToken, true);
     }
-    const promise = listGmailResources(query, pageToken, GMAIL_BROWSE_SIZE, includeThreadMetadata)
+    const promise = listResources({ source: "gmail", query, continuation: pageToken, pageSize: GMAIL_BROWSE_SIZE, includeThreadMetadata })
       .then((response) => ({ response, includesMetadata: includeThreadMetadata }));
     inFlightRef.current.set(inFlightKey, { includesMetadata: includeThreadMetadata, promise });
     try {

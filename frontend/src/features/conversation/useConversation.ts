@@ -3,22 +3,20 @@ import {
   approveAction,
   cancelRun,
   confirmRun,
-  createConversation,
-  getConversationHistory,
   getRunContext,
   getRunSnapshot,
-  listConversations,
   modifyAction,
   stageAttachment,
   prepareRetry,
   rejectAction,
   resolveRecovery,
   resumeRun,
-  startRun,
 } from "../../api";
-import type { ConversationHistoryResponse, ConversationItem, ConversationMessage, CurrentGoogleAccountResponse, RunAction, RunContext, RunSnapshot } from "../../api/contract";
+import type { CurrentGoogleAccountResponse, RunAction, RunContext, RunSnapshot } from "../../api/contract";
 import { ApiClientError } from "../../api/client";
 import { subscribeRunEvents } from "../../api/sse";
+import { useRequestComposerController } from "../run/request_composer";
+import { useConversationHistoryProjection } from "./conversation_history_panel";
 
 export type PendingConfirmation = {
   interruptId: string;
@@ -34,86 +32,47 @@ type UseConversationOptions = {
 };
 
 export function useConversation({ currentAccount, selectedResourceHandles, onStatusLine }: UseConversationOptions) {
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [runContext, setRunContext] = useState<RunContext | null>(null);
-  const [historyMessages, setHistoryMessages] = useState<ConversationMessage[]>([]);
-  const [composerText, setComposerText] = useState("");
-  const [composerError, setComposerError] = useState<string | null>(null);
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
-  const conversationProjectionRef = useRef({ generation: 0, conversationId: null as string | null });
-  const historySyncedRunIdsRef = useRef(new Set<string>());
 
-  useEffect(() => () => subscriptionRef.current?.(), []);
-
-  const refreshConversations = useCallback(async (): Promise<ConversationItem[]> => {
-    const response = await listConversations();
-    setConversations(response.items);
-    return response.items;
-  }, []);
-
-  const beginConversationProjection = useCallback((conversationId: string | null): number => {
-    const generation = conversationProjectionRef.current.generation + 1;
-    conversationProjectionRef.current = { generation, conversationId };
+  const resetConversationRunProjection = useCallback((): void => {
     subscriptionRef.current?.();
     subscriptionRef.current = null;
     subscriptionRunIdRef.current = null;
-    historySyncedRunIdsRef.current = new Set<string>();
-    setSelectedConversationId(conversationId);
-    setHistoryMessages([]);
     setRunSnapshot(null);
     setRunContext(null);
     setPendingConfirmation(null);
     setConfirmationText("");
-    setComposerError(null);
-    return generation;
   }, []);
+  const history = useConversationHistoryProjection({ onStatusLine, onResetProjection: resetConversationRunProjection });
+  const {
+    conversations,
+    selectedConversationId,
+    historyMessages,
+    refreshConversations,
+    beginConversationProjection,
+    getConversationProjection,
+    isCurrentProjection,
+    reloadConversationHistory,
+    selectConversation: selectConversationHistory,
+    isRunHistorySynced,
+    markRunHistorySynced,
+  } = history;
 
-  const isCurrentProjection = useCallback((conversationId: string, generation: number): boolean => (
-    conversationProjectionRef.current.generation === generation
-    && conversationProjectionRef.current.conversationId === conversationId
-  ), []);
-
-  // Stored Domain history only. Runs that already finished need no further sync,
-  // so their transient projection never re-fetches the same rows.
-  const applyConversationHistory = useCallback((
-    history: ConversationHistoryResponse,
-    conversationId: string,
-    generation: number,
-  ): boolean => {
-    if (!isCurrentProjection(conversationId, generation)) return false;
-    setHistoryMessages(history.messages);
-    for (const run of history.runs) {
-      if (run.finished_at_ms !== null) historySyncedRunIdsRef.current.add(run.run_id);
-    }
-    return true;
-  }, [isCurrentProjection]);
-
-  const reloadConversationHistory = useCallback(async (
-    conversationId: string,
-    generation: number,
-  ): Promise<void> => {
-    try {
-      applyConversationHistory(await getConversationHistory(conversationId), conversationId, generation);
-    } catch (error) {
-      if (isCurrentProjection(conversationId, generation)) {
-        onStatusLine(error instanceof ApiClientError ? error.message : "이전 대화를 복구하지 못했습니다.");
-      }
-    }
-  }, [applyConversationHistory, isCurrentProjection, onStatusLine]);
+  useEffect(() => () => subscriptionRef.current?.(), []);
 
   const refreshRun = useCallback(async (
     runId: string,
-    conversationId = conversationProjectionRef.current.conversationId,
-    generation = conversationProjectionRef.current.generation,
+    conversationId = getConversationProjection().conversationId,
+    generation = getConversationProjection().generation,
   ): Promise<boolean> => {
     const [snapshot, contextResponse] = await Promise.all([getRunSnapshot(runId), getRunContext(runId)]);
-    if (conversationId === null || snapshot.run.conversation_id !== conversationId || conversationProjectionRef.current.generation !== generation || conversationProjectionRef.current.conversationId !== conversationId) return false;
+    if (conversationId === null || snapshot.run.conversation_id !== conversationId || !isCurrentProjection(conversationId, generation)) return false;
     setRunSnapshot(snapshot);
     setRunContext(contextResponse.context);
     const pending = snapshot.pending_interrupt;
@@ -129,18 +88,18 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     );
     if (
       snapshot.run.finished_at_ms !== null
-      && !historySyncedRunIdsRef.current.has(runId)
+      && !isRunHistorySynced(runId)
     ) {
-      historySyncedRunIdsRef.current.add(runId);
+      markRunHistorySynced(runId);
       await reloadConversationHistory(conversationId, generation);
     }
     return true;
-  }, [reloadConversationHistory]);
+  }, [getConversationProjection, isCurrentProjection, isRunHistorySynced, markRunHistorySynced, reloadConversationHistory]);
 
-  const selectRun = useCallback(async (runId: string, conversationId = conversationProjectionRef.current.conversationId, generation = conversationProjectionRef.current.generation): Promise<void> => {
+  const selectRun = useCallback(async (runId: string, conversationId = getConversationProjection().conversationId, generation = getConversationProjection().generation): Promise<void> => {
     if (conversationId === null) {
       const snapshot = await getRunSnapshot(runId);
-      if (conversationProjectionRef.current.generation !== generation) return;
+      if (getConversationProjection().generation !== generation) return;
       const resolvedConversationId = snapshot.run.conversation_id;
       const resolvedGeneration = beginConversationProjection(resolvedConversationId);
       await Promise.all([
@@ -159,56 +118,25 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
       },
     });
     subscriptionRunIdRef.current = runId;
-  }, [beginConversationProjection, onStatusLine, refreshRun, reloadConversationHistory]);
+  }, [beginConversationProjection, getConversationProjection, onStatusLine, refreshRun, reloadConversationHistory]);
 
   const selectConversation = useCallback(async (conversationId: string): Promise<void> => {
-    const generation = beginConversationProjection(conversationId);
-    try {
-      const history = await getConversationHistory(conversationId);
-      if (!applyConversationHistory(history, conversationId, generation)) return;
-      const latestRun = history.runs.at(-1);
-      if (latestRun) await selectRun(latestRun.run_id, conversationId, generation);
-    } catch (error) {
-      if (conversationProjectionRef.current.generation === generation && conversationProjectionRef.current.conversationId === conversationId) {
-        const message = error instanceof ApiClientError ? error.message : "대화 실행 정보를 불러오지 못했습니다.";
-        onStatusLine(message);
-        setComposerError(message);
-      }
-    }
-  }, [applyConversationHistory, beginConversationProjection, onStatusLine, selectRun]);
+    await selectConversationHistory(conversationId, selectRun);
+  }, [selectConversationHistory, selectRun]);
 
-  const handleStartRun = useCallback(async (quickPrompt?: string): Promise<void> => {
-    if (!currentAccount?.account_id) {
-      const message = "현재 연결된 계정 정보를 찾지 못했습니다.";
-      onStatusLine(message);
-      setComposerError(message);
-      return;
-    }
-    const requestText = (quickPrompt ?? composerText).trim();
-    if (!requestText || busyCommand) return;
-    setBusyCommand("start-run");
-    setComposerError(null);
-    try {
-      let conversationId = selectedConversationId;
-      let projectionGeneration = conversationProjectionRef.current.generation;
-      if (conversationId === null) {
-        const conversation = await createConversation({ command_id: crypto.randomUUID(), title: requestText.slice(0, 80) });
-        conversationId = conversation.conversation_id;
-        projectionGeneration = beginConversationProjection(conversationId);
-      }
-      const response = await startRun({ command_id: crypto.randomUUID(), conversation_id: conversationId, request_text: requestText, entry_mode: selectedResourceHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH", selected_resource_handles: selectedResourceHandles, requested_mode: "AUTO" });
-      await reloadConversationHistory(conversationId, projectionGeneration);
-      // The just-started run changes the server-owned list projection, so the
-      // sidebar needs a refetch regardless of whether this conversation is new.
-      await refreshConversations();
-      await selectRun(response.run_id, conversationId, projectionGeneration);
-      setComposerText("");
-    } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : "요청을 시작하지 못했습니다.";
-      onStatusLine(message);
-      setComposerError(message);
-    } finally { setBusyCommand(null); }
-  }, [beginConversationProjection, busyCommand, composerText, currentAccount, onStatusLine, refreshConversations, reloadConversationHistory, selectRun, selectedConversationId, selectedResourceHandles]);
+  const { composerText, composerError, setComposerText, setComposerError, handleStartRun } = useRequestComposerController({
+    currentAccountId: currentAccount?.account_id ?? null,
+    selectedConversationId,
+    selectedResourceHandles,
+    busyCommand,
+    setBusyCommand,
+    getProjectionGeneration: () => getConversationProjection().generation,
+    beginConversationProjection,
+    reloadConversationHistory,
+    refreshConversations,
+    selectRun,
+    onStatusLine,
+  });
 
   const handleApprove = useCallback(async (action: RunAction, duplicateAcknowledged = false, calendarConflictAcknowledged = false): Promise<void> => {
     if (!runSnapshot || !currentAccount?.account_id || busyCommand) return;

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listCalendarResources } from "../../api";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem } from "../../api/contract";
 import { calendarMonthRange, calendarRangeBoundary, configuredDateKey } from "../../app/CalendarMonthView";
+import { listResources } from "../resource_browser/api/list_resources";
+import { ResourceBrowserSessionCache } from "../resource_browser/session_page_cache";
 
 type CalendarMonthRequestInput = {
   cacheKey: string;
@@ -53,10 +54,14 @@ export function useCalendar({
   const [items, setItems] = useState<ResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cacheRef = useRef(new Map<string, CalendarMonthCacheEntry>());
+  const cacheRef = useRef(new ResourceBrowserSessionCache<CalendarMonthCacheEntry>());
   const requestRef = useRef({ generation: 0, cacheKey: "" });
   const cacheGenerationRef = useRef(new Map<string, number>());
   const inFlightRef = useRef(new Map<string, Promise<ResourceItem[]>>());
+
+  useEffect(() => {
+    cacheRef.current.bindScope(accountId ?? "anonymous");
+  }, [accountId]);
 
   const monthRequestInput = useCallback((nextMonthAnchor: string): CalendarMonthRequestInput => {
     const range = calendarMonthRange(nextMonthAnchor);
@@ -84,13 +89,14 @@ export function useCalendar({
       let nextItems: ResourceItem[] = [];
       let pageToken: string | null = null;
       do {
-        const response = await listCalendarResources(
-          input.calendarId,
-          pageToken,
-          CALENDAR_BROWSE_SIZE,
-          input.timeMin,
-          input.timeMax,
-        );
+        const response = await listResources({
+          source: "calendar",
+          calendarId: input.calendarId,
+          continuation: pageToken,
+          pageSize: CALENDAR_BROWSE_SIZE,
+          timeMin: input.timeMin,
+          timeMax: input.timeMax,
+        });
         nextItems = [...nextItems, ...response.items];
         pageToken = response.next_page_token;
       } while (pageToken !== null);

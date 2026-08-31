@@ -3,27 +3,20 @@ import {
   type ActionCommandResponse,
   type AttachmentDescriptorResponse,
   type BootstrapResponse,
-  type ConversationHistoryResponse,
-  type ConversationItem,
-  type ConversationListResponse,
   type CurrentGoogleAccountResponse,
   type GoogleConnectionResponse,
   type GoogleOAuthStartResponse,
-  type GmailResourceDetailResponse,
   type LLMApiKeyResponse,
   type LLMConnectionResponse,
   type LiveResponse,
   type ReadyResponse,
-  type ResourceCountResponse,
-  type ResourceListResponse,
   type RunCommandResponse,
   type RunContextResponse,
   type RunSnapshot,
   type RuntimeResponse,
   type SettingsResponse,
-  type StartRunResponse,
 } from "./contract";
-import { requestBlob, requestJson } from "./client";
+import { requestJson } from "./client";
 
 export function getLive(): Promise<LiveResponse> {
   return requestJson("/health/live");
@@ -72,7 +65,6 @@ export function patchSettings(payload: {
     },
   });
 }
-
 export function getLLMConnection(): Promise<LLMConnectionResponse> {
   return requestJson("/api/v1/credentials/llm/gemini");
 }
@@ -116,54 +108,12 @@ export function getCurrentAccount(): Promise<CurrentGoogleAccountResponse> {
   return requestJson("/api/v1/identity/google-account");
 }
 
-export function listConversations(
-  cursor?: string | null,
-  query?: string | null,
-): Promise<ConversationListResponse> {
-  const search = new URLSearchParams({ page_size: "50" });
-  if (cursor) {
-    search.set("cursor", cursor);
-  }
-  if (query) {
-    search.set("search", query);
-  }
-  return requestJson(`/api/v1/conversations?${search.toString()}`);
-}
-
-export function createConversation(payload: {
-  command_id: string;
-  title?: string | null;
-}): Promise<ConversationItem> {
-  return requestJson("/api/v1/conversations", {
-    method: "POST",
-    body: { schema_version: 1, ...payload },
-  });
-}
-
-export function getConversationHistory(conversationId: string): Promise<ConversationHistoryResponse> {
-  return requestJson(`/api/v1/conversations/${encodeURIComponent(conversationId)}/history`);
-}
-
 export function getRunSnapshot(runId: string): Promise<RunSnapshot> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`);
 }
 
 export function getRunContext(runId: string): Promise<RunContextResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/context`);
-}
-
-export function startRun(payload: {
-  command_id: string;
-  conversation_id: string;
-  request_text: string;
-  entry_mode: string;
-  selected_resource_handles: string[];
-  requested_mode: string;
-}): Promise<StartRunResponse> {
-  return requestJson("/api/v1/runs", {
-    method: "POST",
-    body: { ...payload, api_contract_version: API_CONTRACT_VERSION },
-  });
 }
 
 export function cancelRun(payload: {
@@ -309,26 +259,6 @@ export function prepareRetry(payload: {
   });
 }
 
-export function listGmailResources(
-  query: string,
-  pageToken?: string | null,
-  pageSize = 20,
-  includeThreadMetadata = true,
-): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ query, page_size: String(pageSize) });
-  if (pageToken) {
-    search.set("page_token", pageToken);
-  }
-  if (!includeThreadMetadata) {
-    search.set("include_thread_metadata", "false");
-  }
-  return requestJson(`/api/v1/resources/gmail?${search.toString()}`);
-}
-
-export function getGmailResourceDetail(resourceId: string): Promise<GmailResourceDetailResponse> {
-  return requestJson(`/api/v1/resources/gmail/${encodeURIComponent(resourceId)}`);
-}
-
 export async function stageAttachment(file: File): Promise<AttachmentDescriptorResponse> {
   const body = new FormData();
   body.set("command_id", crypto.randomUUID());
@@ -337,73 +267,4 @@ export async function stageAttachment(file: File): Promise<AttachmentDescriptorR
     method: "POST",
     body,
   });
-}
-
-export function downloadGmailAttachment(
-  messageId: string,
-  attachmentId: string,
-): Promise<Blob> {
-  return requestBlob(
-    `/api/v1/gmail/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
-  );
-}
-
-export function listTaskResources(
-  taskListId?: string | null,
-  pageToken?: string | null,
-  pageSize = 100,
-  statusScope: "incomplete" | "completed" = "incomplete",
-): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ page_size: String(pageSize) });
-  if (taskListId) {
-    search.set("task_list_id", taskListId);
-  }
-  if (pageToken) {
-    search.set("page_token", pageToken);
-  }
-  if (statusScope === "completed") search.set("status_scope", statusScope);
-  return requestJson(`/api/v1/resources/tasks?${search.toString()}`);
-}
-
-export function listCalendarResources(
-  calendarId?: string | null,
-  pageToken?: string | null,
-  pageSize = 100,
-  timeMin?: string | null,
-  timeMax?: string | null,
-): Promise<ResourceListResponse> {
-  const search = new URLSearchParams({ page_size: String(pageSize) });
-  if (calendarId) {
-    search.set("calendar_id", calendarId);
-  }
-  if (pageToken) {
-    search.set("page_token", pageToken);
-  }
-  if (timeMin) {
-    search.set("time_min", timeMin);
-  }
-  if (timeMax) {
-    search.set("time_max", timeMax);
-  }
-  return requestJson(`/api/v1/resources/calendar?${search.toString()}`);
-}
-
-export function getResourceCount(
-  source: "gmail" | "tasks" | "calendar",
-  options: {
-    query?: string | null;
-    taskListId?: string | null;
-    calendarId?: string | null;
-    timeMin?: string | null;
-    timeMax?: string | null;
-  } = {},
-): Promise<ResourceCountResponse> {
-  const search = new URLSearchParams();
-  if (options.query) search.set("query", options.query);
-  if (options.taskListId) search.set("task_list_id", options.taskListId);
-  if (options.calendarId) search.set("calendar_id", options.calendarId);
-  if (options.timeMin) search.set("time_min", options.timeMin);
-  if (options.timeMax) search.set("time_max", options.timeMax);
-  const suffix = search.size ? `?${search.toString()}` : "";
-  return requestJson(`/api/v1/resources/${source}/count${suffix}`);
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listTaskResources } from "../../api";
 import { ApiClientError } from "../../api/client";
 import type { ResourceItem } from "../../api/contract";
+import { listResources } from "../resource_browser/api/list_resources";
+import { ResourceBrowserSessionCache } from "../resource_browser/session_page_cache";
 
 export type TaskSort = "provider" | "scheduled_date";
 type SourceCount = { value: number; exact: boolean } | null;
@@ -51,13 +52,17 @@ export function useTasks({
   const [sort, setSortState] = useState<TaskSort>("provider");
   const [count, setCount] = useState<SourceCount>(null);
   const [completed, setCompleted] = useState({ expanded: false, initialized: false, items: [] as ResourceItem[], pageIndex: 0, loading: false, error: null as string | null });
-  const cacheRef = useRef(new Map<string, TaskCacheEntry>());
+  const cacheRef = useRef(new ResourceBrowserSessionCache<TaskCacheEntry>());
   const requestRef = useRef({ generation: 0, key: "" });
   const completedRequestRef = useRef(0);
   const preloadRef = useRef<Promise<SourceCount> | null>(null);
   const sortInFlightRef = useRef(new Set<string>());
   const previousFilterRef = useRef(filter);
   const previousBrowseScopeRef = useRef(`${accountId ?? "anon"}|${parentId ?? ""}`);
+
+  useEffect(() => {
+    cacheRef.current.bindScope(accountId ?? "anonymous");
+  }, [accountId]);
 
   const resetView = useCallback((): void => {
     requestRef.current = { generation: requestRef.current.generation + 1, key: "" };
@@ -81,7 +86,7 @@ export function useTasks({
       let pageToken: string | null = null;
       let completedItems: ResourceItem[] = [];
       do {
-        const response = await listTaskResources(parentId, pageToken, PROVIDER_BATCH_SIZE, "completed");
+        const response = await listResources({ source: "tasks", taskListId: parentId, continuation: pageToken, pageSize: PROVIDER_BATCH_SIZE, statusScope: "completed" });
         completedItems = [...new Map([...completedItems, ...response.items.filter((item) => item.metadata.task_status === "completed")].map((item) => [item.resource_id, item])).values()];
         pageToken = response.next_page_token;
       } while (pageToken !== null);
@@ -120,7 +125,7 @@ export function useTasks({
         let nextItems = force ? [] : defaultCached?.items ?? items;
         let token = force ? null : defaultCached?.nextPageToken ?? nextPageToken;
         do {
-          const response = await listTaskResources(parentId, token, PROVIDER_BATCH_SIZE);
+          const response = await listResources({ source: "tasks", taskListId: parentId, continuation: token, pageSize: PROVIDER_BATCH_SIZE });
           nextItems = [...nextItems, ...response.items];
           token = response.next_page_token;
         } while (token !== null);
@@ -143,7 +148,7 @@ export function useTasks({
     if (!force && cachedItems.length > 0 && cachedToken === null) return;
     setLoading(true); setError(null);
     try {
-      const response = await listTaskResources(parentId, force ? null : cachedToken, PROVIDER_BATCH_SIZE);
+      const response = await listResources({ source: "tasks", taskListId: parentId, continuation: force ? null : cachedToken, pageSize: PROVIDER_BATCH_SIZE });
       const nextItems = force || cachedItems.length === 0 ? response.items : [...cachedItems, ...response.items];
       const token = response.next_page_token;
       const nextTotal = token === null ? nextItems.length : null;
@@ -163,7 +168,7 @@ export function useTasks({
       const cached = cacheRef.current.get(key);
       if (cached) return { value: cached.items.length, exact: cached.nextPageToken === null };
       try {
-        const response = await listTaskResources(null, null, PROVIDER_BATCH_SIZE);
+        const response = await listResources({ source: "tasks", taskListId: null, continuation: null, pageSize: PROVIDER_BATCH_SIZE });
         const result = { value: response.items.length, exact: response.next_page_token === null };
         cacheRef.current.set(key, { items: response.items, nextPageToken: response.next_page_token, totalCount: result.exact ? result.value : null });
         setCount(result);

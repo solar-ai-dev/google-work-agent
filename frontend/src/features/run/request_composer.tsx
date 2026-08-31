@@ -1,0 +1,127 @@
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { ApiClientError } from "../../api/client";
+import { requestJson } from "../../api/client";
+import { API_CONTRACT_VERSION, type ConversationItem, type StartRunResponse } from "../../api/contract";
+
+export type SubmitNewRunInput = {
+  conversationId: string | null;
+  requestText: string;
+  selectionHandles: string[];
+};
+
+export type SubmitNewRunResult = { conversationId: string; runId: string; conversationCreated: boolean };
+
+export async function submitNewRun(input: SubmitNewRunInput): Promise<SubmitNewRunResult> {
+  const requestText = input.requestText.trim();
+  if (!requestText) throw new Error("A non-empty request is required.");
+  const selectionHandles = [...new Set(input.selectionHandles.map((handle) => handle.trim()).filter(Boolean))];
+  if (selectionHandles.length > 20) throw new Error("At most 20 selected resources are allowed.");
+  const conversation = input.conversationId === null
+    ? await requestJson<ConversationItem>("/api/v1/conversations", {
+        method: "POST",
+        body: { schema_version: 1, command_id: crypto.randomUUID(), title: requestText.slice(0, 80) },
+      })
+    : null;
+  const conversationId = conversation?.conversation_id ?? input.conversationId;
+  if (conversationId === null) throw new Error("Conversation identity is unavailable.");
+  const run = await requestJson<StartRunResponse>("/api/v1/runs", {
+    method: "POST",
+    body: {
+      command_id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      request_text: requestText,
+      entry_mode: selectionHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH",
+      selected_resource_handles: selectionHandles,
+      requested_mode: "AUTO",
+      api_contract_version: API_CONTRACT_VERSION,
+    },
+  });
+  return { conversationId, runId: run.run_id, conversationCreated: conversation !== null };
+}
+
+type RequestComposerControllerOptions = {
+  currentAccountId: string | null;
+  selectedConversationId: string | null;
+  selectedResourceHandles: string[];
+  busyCommand: string | null;
+  setBusyCommand: Dispatch<SetStateAction<string | null>>;
+  getProjectionGeneration: () => number;
+  beginConversationProjection: (conversationId: string) => number;
+  reloadConversationHistory: (conversationId: string, generation: number) => Promise<void>;
+  refreshConversations: () => Promise<unknown>;
+  selectRun: (runId: string, conversationId: string, generation: number) => Promise<void>;
+  onStatusLine: (message: string) => void;
+};
+
+export function useRequestComposerController(options: RequestComposerControllerOptions) {
+  const [composerText, setComposerText] = useState("");
+  const [composerError, setComposerError] = useState<string | null>(null);
+
+  useEffect(() => setComposerError(null), [options.selectedConversationId]);
+
+  const handleStartRun = useCallback(async (quickPrompt?: string): Promise<void> => {
+    if (!options.currentAccountId) {
+      const message = "현재 연결된 계정 정보를 찾지 못했습니다.";
+      options.onStatusLine(message);
+      setComposerError(message);
+      return;
+    }
+    const requestText = quickPrompt ?? composerText;
+    if (!requestText.trim() || options.busyCommand) return;
+    options.setBusyCommand("start-run");
+    setComposerError(null);
+    try {
+      let conversationId = options.selectedConversationId;
+      let generation = options.getProjectionGeneration();
+      const result = await submitNewRun({ conversationId, requestText, selectionHandles: options.selectedResourceHandles });
+      conversationId = result.conversationId;
+      if (result.conversationCreated) generation = options.beginConversationProjection(conversationId);
+      await options.reloadConversationHistory(conversationId, generation);
+      await options.refreshConversations();
+      await options.selectRun(result.runId, conversationId, generation);
+      setComposerText("");
+    } catch (error) {
+      const message = error instanceof ApiClientError ? error.message : "요청을 시작하지 못했습니다.";
+      options.onStatusLine(message);
+      setComposerError(message);
+    } finally {
+      options.setBusyCommand(null);
+    }
+  }, [composerText, options]);
+
+  return { composerText, composerError, setComposerText, setComposerError, handleStartRun };
+}
+
+type Props = {
+  text: string;
+  error: string | null;
+  busy: boolean;
+  prompt: string;
+  selectedResourceLabels: string[];
+  setText: Dispatch<SetStateAction<string>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+  onSubmit: (quickPrompt?: string) => Promise<void>;
+};
+
+export function RequestComposer({ text, error, busy, prompt, selectedResourceLabels, setText, setError, onSubmit }: Props): JSX.Element {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [text]);
+
+  return (
+    <div className="composer-dock">
+      <div className="composer-surface">
+        {selectedResourceLabels.length > 0 ? <div className="composer-context" aria-live="polite"><strong>요청에 사용할 자료 {selectedResourceLabels.length}개</strong><span>{selectedResourceLabels.join(" · ")}</span></div> : null}
+        <div className="composer-input-row">
+          <textarea ref={textareaRef} className="composer composer--main" aria-label={prompt} placeholder={prompt} rows={1} value={text} onChange={(event) => { setText(event.target.value); setError(null); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void onSubmit(); } }} />
+          <button className="icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busy} onClick={() => void onSubmit()}><svg className="composer-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4v16l16-8z" /></svg></button>
+        </div>
+      </div>
+      {error ? <p className="status-bad" role="alert">{error}</p> : null}
+    </div>
+  );
+}

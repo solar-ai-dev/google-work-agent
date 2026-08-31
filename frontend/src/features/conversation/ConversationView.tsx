@@ -8,6 +8,7 @@ import {
   taskDuplicateDecision,
 } from "./riskPresentation";
 import type { PendingConfirmation } from "./useConversation";
+import { RequestComposer } from "../run/request_composer";
 
 export type ConversationViewModel = {
   controller: {
@@ -39,23 +40,13 @@ export type ConversationViewModel = {
 export type ConversationViewProps = { children: ReactNode; viewModel: ConversationViewModel };
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
-  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceIds, selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
+  const { controller: { selectedConversationId, historyMessages, runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachFiles, handleCancelRun, handleResumeRun, handleConfirmation, handleResolveRecovery }, resourceContext: { selectedResourceLabels, composerPrompt }, formatTime } = viewModel;
   const showRunHeader = runSnapshot !== null;
   const isFailedRun = runSnapshot?.run.status === "FAILED";
   // The stored history already owns every persisted turn. The current run only
   // contributes the request text that is not persisted into history yet.
   const showTransientRequest = Boolean(runContext?.request_text)
     && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
-
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    const node = composerTextareaRef.current;
-    if (!node) return;
-    // CSS max-height clamps the rendered height, so this only needs to grow
-    // to fit content -- it never needs to know the cap itself.
-    node.style.height = "auto";
-    node.style.height = `${node.scrollHeight}px`;
-  }, [composerText]);
 
   const timelineRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -375,44 +366,16 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
         </section>
         </div>
 
-            <div className="composer-dock">
-              <div className="composer-surface">
-                {selectedResourceIds.length > 0 ? (
-                  <div className="composer-context" aria-live="polite">
-                    <strong>요청에 사용할 자료 {selectedResourceIds.length}개</strong>
-                    {selectedResourceLabels.length > 0 ? (
-                      <span>{selectedResourceLabels.join(" · ")}</span>
-                    ) : null}
-                  </div>
-                ) : null}
-                <div className="composer-input-row">
-                  <textarea
-                    ref={composerTextareaRef}
-                    className="composer composer--main"
-                    aria-label={composerPrompt}
-                    placeholder={composerPrompt}
-                    rows={1}
-                    value={composerText}
-                    onChange={(event) => {
-                      setComposerText(event.target.value);
-                      setComposerError(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleStartRun();
-                      }
-                    }}
-                  />
-                  <button className="icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busyCommand === "start-run"} onClick={() => void handleStartRun()}>
-                    <svg className="composer-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                      <path d="M4 4v16l16-8z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              {composerError ? <p className="status-bad" role="alert">{composerError}</p> : null}
-            </div>
+            <RequestComposer
+              text={composerText}
+              error={composerError}
+              busy={busyCommand === "start-run"}
+              prompt={composerPrompt}
+              selectedResourceLabels={selectedResourceLabels}
+              setText={setComposerText}
+              setError={setComposerError}
+              onSubmit={handleStartRun}
+            />
       </div>
     </>
   );
