@@ -31,9 +31,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.conversation_rep
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SqliteEvidenceRepository,
 )
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SqliteExecutionAttemptRepository,
-)
 from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
     SqliteMessageRepository,
 )
@@ -59,6 +56,10 @@ from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff
     SqliteWorkflowHandoffRepository,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+from .repositories.execution_attempt_repository import (
+    SqliteExecutionAttemptRepository,
+)
 
 
 class SqliteUnitOfWork:

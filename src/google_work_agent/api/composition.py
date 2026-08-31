@@ -225,6 +225,9 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 from google_work_agent.application.use_cases.diagnostic_bundle.create_diagnostic_bundle import (
     CreateDiagnosticBundleHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt import (
+    reconcile_inflight_executions as inflight_reconciliation,
+)
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionHandler,
 )
@@ -245,10 +248,6 @@ from google_work_agent.application.use_cases.execution_attempt.mark_failed impor
 )
 from google_work_agent.application.use_cases.execution_attempt.mark_unknown_result import (
     MarkUnknownResultHandler,
-)
-from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501  # noqa: E501
-    ReconcileInflightExecutionsHandler,
-    drain_inflight_executions_to_quiescence,
 )
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultHandler,
@@ -323,6 +322,7 @@ from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref i
 )
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
+    current_provider_dispatch_run_id,
 )
 from google_work_agent.application.use_cases.run.adjust_context import AdjustContextHandler
 from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningHandler
@@ -526,7 +526,7 @@ NON_PERSISTENCE_P0_BINDINGS: tuple[tuple[type[object], type[object]], ...] = (
 @dataclass(frozen=True, slots=True)
 class ProductionRuntime:
     checkpoint: SqliteCheckpointAdapter
-    reconcile_inflight_executions: ReconcileInflightExecutionsHandler
+    reconcile_inflight_executions: inflight_reconciliation.ReconcileInflightExecutionsHandler
     workflow_execution: BackgroundRunExecutorAdapter
     schedule_run_execution: ScheduleRunExecutionHandler
     redrive_workflow_handoffs: RedriveWorkflowHandoffsHandler
@@ -692,9 +692,7 @@ def _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
     )
-    resolve_resource_ref = ResolveResourceRefHandler(
-        unit_of_work_factory=unit_of_work_factory
-    )
+    resolve_resource_ref = ResolveResourceRefHandler(unit_of_work_factory=unit_of_work_factory)
     return WorkflowApplicationServices(
         start_analysis=start_analysis,
         get_run_snapshot=get_run_snapshot,
@@ -849,7 +847,7 @@ def _build_workflow_runtime(
         schedule_run_execution=schedule,
         id_factory=id_factory,
     )
-    reconcile_inflight = ReconcileInflightExecutionsHandler(
+    reconcile_inflight = inflight_reconciliation.ReconcileInflightExecutionsHandler(
         unit_of_work_factory=unit_of_work_factory,
         checkpoint_port=checkpoint,
         abort_claimed_execution=AbortClaimedExecutionHandler(
@@ -1003,9 +1001,7 @@ class ProductionRuntimeConfig:
             return None
         return _build_verified_frontend_site(
             install_root=self.working_directory.resolve(),
-            release_files={
-                entry.file_path: entry for entry in self.verified_release_files
-            },
+            release_files={entry.file_path: entry for entry in self.verified_release_files},
         )
 
     @classmethod
@@ -1094,9 +1090,7 @@ class ProductionRuntimeConfig:
             working_directory=working_directory,
             release_version=required_string("app_version"),
             build_channel=required_string("build_channel"),
-            deployment_profile=cast(
-                Literal["API_ONLY", "LOCAL_CAPABLE"], deployment_profile
-            ),
+            deployment_profile=cast(Literal["API_ONLY", "LOCAL_CAPABLE"], deployment_profile),
             oauth_environment=oauth_environment,
             oauth_client_id=required_string("oauth_client_id"),
             api_contract_version=required_string("api_contract_version"),
@@ -1190,11 +1184,7 @@ class _VerifiedFrontendSite:
     def resolve_asset(self, path: str) -> Path | None:
         requested = path if path else "index.html"
         relative = PurePosixPath(requested)
-        if (
-            relative.is_absolute()
-            or relative.as_posix() != requested
-            or ".." in relative.parts
-        ):
+        if relative.is_absolute() or relative.as_posix() != requested or ".." in relative.parts:
             return None
         binding = self.allowed_files.get(f"frontend/{requested}")
         if binding is None:
@@ -1314,9 +1304,7 @@ def _build_verified_frontend_site(
     install_root: Path,
     release_files: Mapping[str, _VerifiedReleaseFile],
 ) -> _VerifiedFrontendSite:
-    _required_release_file(release_files, "frontend/index.html").resolve_verified(
-        install_root
-    )
+    _required_release_file(release_files, "frontend/index.html").resolve_verified(install_root)
     return _VerifiedFrontendSite(
         root=install_root / "frontend",
         allowed_files=dict(release_files),
@@ -1786,9 +1774,7 @@ def build_production_runtime(
     api_contract_version: str,
     policy_version: str,
     database_migration_version: str,
-    configuration_source: Literal[
-        "SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"
-    ],
+    configuration_source: Literal["SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"],
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     service_instance_id: str | None = None,
@@ -1852,9 +1838,7 @@ def build_production_runtime(
         with connect_sqlite(database_path) as connection:
             migration_results = apply_migrations(connection, now_ms=clock.now_ms)
         if configuration_source == "SIGNED_RELEASE_MANIFEST":
-            actual_version = (
-                f"{migration_results[-1].version:04d}" if migration_results else "0000"
-            )
+            actual_version = f"{migration_results[-1].version:04d}" if migration_results else "0000"
             if database_migration_version != actual_version:
                 raise CoreInitializationError("MIGRATION_VERSION_MISMATCH")
     except (sqlite3.Error, MigrationError) as error:
@@ -2016,9 +2000,7 @@ def build_production_runtime(
 
     def _check_llm_circuit(runtime: ActualRuntime) -> None:
         key = _llm_circuit_key(runtime)
-        if check_component_circuit(
-            CheckComponentCircuitQueryV1(1, key, clock.now_ms())
-        ).allowed:
+        if check_component_circuit(CheckComponentCircuitQueryV1(1, key, clock.now_ms())).allowed:
             return
         raise LLMInvocationError(
             code=(
@@ -2029,9 +2011,7 @@ def build_production_runtime(
             message="component circuit is open",
         )
 
-    def _record_llm_circuit_result(
-        runtime: ActualRuntime, error_code: str | None
-    ) -> None:
+    def _record_llm_circuit_result(runtime: ActualRuntime, error_code: str | None) -> None:
         record_component_call_result(
             RecordComponentCallResultCommandV1(
                 1,
@@ -2081,6 +2061,7 @@ def build_production_runtime(
             start=settings.working_day_start_local,
             end=settings.working_day_end_local,
         )
+
     runtime_hooks = WorkflowRuntimeHooks()
     workflow_application_services = _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
@@ -2134,6 +2115,7 @@ def build_production_runtime(
     except InactivePromptArtifactError:
         prompt_active = False
         workflow_runtime = _PromptInactiveWorkflowRuntime()
+
     def _project_external_scope(
         run_id: str,
         source_kinds: tuple[str, ...],
@@ -2370,7 +2352,7 @@ def build_production_runtime(
 
     async def _reconcile_inflight_executions() -> None:
         await asyncio.to_thread(
-            drain_inflight_executions_to_quiescence,
+            inflight_reconciliation.drain_inflight_executions_to_quiescence,
             production_runtime.reconcile_inflight_executions,
         )
 
@@ -2388,7 +2370,6 @@ def build_production_runtime(
         production_runtime.workflow_execution.begin_shutdown()
         production_runtime.workflow_execution.await_drained(5_000)
         production_runtime.workflow_execution.close()
-        production_runtime.checkpoint.close()
 
     session_manager = InMemoryLocalSessionManager()
     grant_store = InMemoryBootstrapGrantStore()
@@ -2409,6 +2390,7 @@ def build_production_runtime(
         service_instance_id=service_instance_id,
         now_ms=clock.now_ms,
     )
+
     def _checkpoint_domain_wal() -> None:
         with connect_sqlite(database_path) as connection:
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -2846,6 +2828,7 @@ def _build_llm_runtime(
     )
     structured_inference = StructuredInferenceRuntimeRouter(
         before_provider_dispatch=account_provider_dispatch,
+        run_context_provider=current_provider_dispatch_run_id,
         settings_service=runtime_settings,
         status_service=status_service,
         credential_service=credential_service,

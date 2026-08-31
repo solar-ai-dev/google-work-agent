@@ -1,7 +1,5 @@
 """Duplicate and feasibility policy integration tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
@@ -224,9 +222,9 @@ def test_task_duplicate_preflight_new_match_revokes_stale_approval(
     with pytest.raises(PolicyViolationError, match="reapproval"):
         build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-            gateway=gateway,  # type: ignore[arg-type]
+            gateway=gateway,
             now_ms=clock.now_ms,
-            **_stale_lifecycle_dependencies(write_database, clock),  # type: ignore[arg-type]
+            **_stale_lifecycle_dependencies(write_database, clock),
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
@@ -268,7 +266,7 @@ def test_task_duplicate_preflight_same_acknowledged_match_allows_claim(
 
     build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-        gateway=gateway,  # type: ignore[arg-type]
+        gateway=gateway,
         now_ms=clock.now_ms,
     )(action_id=f"action-{suffix}")
 
@@ -318,7 +316,7 @@ def test_task_duplicate_preflight_source_failure_is_fail_closed(
     with pytest.raises(TimeoutError, match="source unavailable"):
         build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-            gateway=gateway,  # type: ignore[arg-type]
+            gateway=gateway,
             now_ms=clock.now_ms,
         )(action_id=f"action-{suffix}")
 
@@ -384,10 +382,10 @@ def test_feasibility_preflight_denial_blocks_run_before_claim(
     with pytest.raises(PolicyViolationError, match="FEASIBILITY_BLOCKED"):
         build_claim_preflight(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-            gateway=_FeasibilityPreflightGateway(busy_event=busy),  # type: ignore[arg-type]
+            gateway=_FeasibilityPreflightGateway(busy_event=busy),
             now_ms=clock.now_ms,
             work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
-            **_stale_lifecycle_dependencies(write_database, clock),  # type: ignore[arg-type]
+            **_stale_lifecycle_dependencies(write_database, clock),
         )(action_id=f"action-{suffix}")
 
     with sqlite_unit_of_work_factory(write_database)() as unit_of_work:
@@ -428,7 +426,7 @@ def test_feasibility_preflight_same_snapshot_allows_claim(write_database: Path) 
     )
     build_claim_preflight(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
-        gateway=_FeasibilityPreflightGateway(),  # type: ignore[arg-type]
+        gateway=_FeasibilityPreflightGateway(),
         now_ms=clock.now_ms,
         work_hours_provider=lambda: CalendarWorkHours(timezone="Asia/Seoul"),
     )(action_id=f"action-{suffix}")

@@ -135,9 +135,7 @@ def test_service_start_uses_verified_executable_and_stdin_only_for_secret(
     assert payload["bootstrap_secret"] == "one-time-secret"
     assert payload["signed_build_config"]["oauth_client_id"] == "desktop-client-id"
     assert payload["verified_release_files"] == installation.manifest["files"]
-    assert payload["code_signature_verified_paths"] == [
-        "service/GoogleWorkAgentService.exe"
-    ]
+    assert payload["code_signature_verified_paths"] == ["service/GoogleWorkAgentService.exe"]
     assert "client_secret" not in payload["signed_build_config"]
     assert process.stdin.closed_by_launcher is True
 

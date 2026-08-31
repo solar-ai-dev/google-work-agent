@@ -1,8 +1,3 @@
-# ruff: noqa: E501
-
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.resolve_entity_relations_projection import (
-    project_resolve_entity_relations_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisLocalState,
     WorkAnalysisStateV2,
@@ -12,7 +7,11 @@ from google_work_agent.application.agents.work_analysis.resolve_entity_relations
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
+
+from ..projections.resolve_entity_relations_projection import (
+    project_resolve_entity_relations_input,
+)
 
 
 def resolve_entity_relations_node(
@@ -20,7 +19,7 @@ def resolve_entity_relations_node(
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     confirmation_response: dict[str, object] | None = None,
 ) -> WorkAnalysisStateV2:
     return {
@@ -28,7 +27,7 @@ def resolve_entity_relations_node(
             **project_resolve_entity_relations_input(state),
             llm_runtime=llm_runtime,
             prompt_ref=prompt_ref,
-            trace_context=trace_context,
+            requested_mode=requested_mode,
             confirmation_response=confirmation_response,
         )
     }

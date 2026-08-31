@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from google_work_agent.adapters.persistence.sqlite.repositories import (
+    execution_attempt_repository,
+)
 from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
     SqliteActionRepository,
 )
@@ -14,9 +17,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SqliteEvidenceRepository,
-)
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SqliteExecutionAttemptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository import (
     SqlitePlanRepository,
@@ -123,7 +123,7 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
     assert _methods(ApprovalRepository) == _methods(SqliteApprovalRepository) == approval_methods
     assert (
         _methods(ExecutionAttemptRepository)
-        == _methods(SqliteExecutionAttemptRepository)
+        == _methods(execution_attempt_repository.SqliteExecutionAttemptRepository)
         == attempt_methods
     )
     assert (

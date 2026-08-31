@@ -1,7 +1,5 @@
 """Shared LangGraph runtime integration fixtures and compatibility exports."""
 
-# ruff: noqa: F401
-
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -28,9 +26,6 @@ from tests.support.google_gateway_connector_ports import (
     GoogleGatewayConnectorReadPort,
     GoogleGatewayConnectorWritePort,
 )
-from tests.support.google_gateway_connector_ports import (
-    LegacyGatewayWriteProjection as McpConnectorWriteAdapter,
-)
 from tests.support.legacy_write_action_mutation import (
     ModifyWriteActionService,
     RejectWriteActionService,
@@ -39,8 +34,6 @@ from tests.support.legacy_write_approval import ApproveWriteActionService
 from tests.support.prompt_manifests import (
     write_draft_manifest,
     write_manifest_with_legacy_profile_slots,
-    write_manifest_with_overrides,
-    write_runtime_active_manifest,
 )
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 from tests.unit.application.workflows.test_plan_review import _review_output
@@ -102,10 +95,6 @@ from google_work_agent.application.use_cases.execution_attempt.connector_write_p
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
     DispatchConnectorWriteHandler,
 )
-from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
-    ClaimWriteActionCommand,
-    StoreWriteActionSuccessCommand,
-)
 from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
 )
@@ -116,9 +105,13 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import GetRunS
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
+    OutputSchemaDefinition,
+    PromptReference,
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowOutcome,
@@ -126,6 +119,26 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowResumeRequest,
     WorkflowStartRequest,
 )
+
+__all__ = [
+    "ApproveWriteActionCommand",
+    "ApproveWriteActionService",
+    "GoogleGatewayFault",
+    "GoogleGatewayFaultKind",
+    "InactivePromptArtifactError",
+    "ModifyWriteActionCommand",
+    "ModifyWriteActionService",
+    "RejectWriteActionCommand",
+    "RejectWriteActionService",
+    "WorkflowOutcome",
+    "WorkflowRecoveryRequest",
+    "WorkflowResumeRequest",
+    "_review_output",
+    "_sufficiency_output",
+    "pytest",
+    "supported_graph_profiles",
+    "write_draft_manifest",
+]
 
 
 def _plan(source: str, constraints: dict[str, object]) -> dict[str, object]:
@@ -596,6 +609,33 @@ class _QueuedLLMRuntime:
     def invoke_structured(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
 
+    def infer(
+        self,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        result = self._invoke(
+            requested_mode=requested_mode,
+            prompt_ref=prompt_ref,
+            prompt_input=input_projection,
+            output_schema=output_schema_ref,
+        )
+        if not isinstance(result.structured_output, dict):
+            raise RuntimeError("canonical structured inference fixture must return an object")
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=result.structured_output,
+            provider=result.provider,
+            model=result.model,
+            actual_runtime=result.actual_runtime.value,
+            input_tokens=result.input_tokens or 0,
+            output_tokens=result.output_tokens or 0,
+            latency_ms=result.latency_ms,
+            fallback_reason=result.fallback_reason,
+        )
+
     def invoke_tool_call(self, **kwargs: object) -> StructuredLLMResult:
         return self._invoke(**kwargs)
 
@@ -722,7 +762,7 @@ class _QueuedLLMRuntime:
                             "reason_codes": [reason],
                         }
                     )
-            request_intent = cast(Mapping[str, object], prompt_input["request_intent"])
+            answer_intent = cast(Mapping[str, object], prompt_input["request_intent"])
             evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
             refs = [
                 cast(str, item.get("evidence_id", item.get("evidence_ref")))
@@ -731,7 +771,7 @@ class _QueuedLLMRuntime:
             ]
             return _llm_result(
                 {
-                    "sections": [str(request_intent.get("goal", "direct answer"))],
+                    "sections": [str(answer_intent.get("goal", "direct answer"))],
                     "evidence_refs": refs,
                 }
             )
@@ -852,7 +892,8 @@ def _legacy_selection_aliases(prompt_input: object) -> dict[str, str]:
     }
     stable_ids = [item.get("segment_id") for item in ordered]
     for index, value in enumerate(stable_ids, start=1):
-        result.setdefault(f"seg-{index}", value)
+        if isinstance(value, str):
+            result.setdefault(f"seg-{index}", value)
     return result
 
 
@@ -962,7 +1003,7 @@ def _synthesize_retrieval_query_plan(prompt_input: Mapping[str, object]) -> dict
         if resource_refs := route.get("resource_refs"):
             return [{"kind": "RESOURCE_REF", "resource_refs": resource_refs}]
         if resource_type == "CALENDAR":
-            constraints = [
+            constraints: list[dict[str, object]] = [
                 {
                     "kind": "TEMPORAL_RANGE",
                     "axis": "EVENT_TIME",
@@ -1410,6 +1451,8 @@ def _retrieval_result(
         "selected_segment_ids": ["seg-2"],
         "source_resource_refs": ["task:task-followup"],
         "source_statuses": [],
+        "availability_results": [],
+        "excluded_segment_ids": [],
         "missing_information": [],
         "retrieval_rounds": 1,
     }
@@ -1563,7 +1606,7 @@ def _make_runtime(
     database_path: Path,
     llm_payloads: Sequence[object],
     gateway: FakeGoogleGateway,
-    checkpoint_port=None,
+    checkpoint_port: CheckpointPort | None = None,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
     before_llm_invoke: Callable[[], None] | None = None,
@@ -1592,7 +1635,7 @@ def _make_runtime_with_llm(
     database_path: Path,
     llm_runtime: object,
     gateway: FakeGoogleGateway,
-    checkpoint_port=None,
+    checkpoint_port: CheckpointPort | None = None,
     graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
     prompt_manifest_path: Path | None = None,
     default_tasklist_id: str | None = "task-list-default",
@@ -1623,9 +1666,7 @@ def _make_runtime_with_llm(
     runtime_hooks = WorkflowRuntimeHooks()
     application_services = _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
-        get_run_snapshot=GetRunSnapshotHandler(
-            unit_of_work_factory=unit_of_work_factory
-        ),
+        get_run_snapshot=GetRunSnapshotHandler(unit_of_work_factory=unit_of_work_factory),
         connector_reader=connector_reader,
         tool_catalog=tool_catalog,
         now_ms=clock.now_ms,
@@ -1775,7 +1816,7 @@ def _start_request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="Please handle the follow-up.",
         selected_resource_ids=(),
-        run_budget=build_default_run_budget(),
+        run_budget=dict(build_default_run_budget()),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",
@@ -1793,7 +1834,7 @@ def _start_write_request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="Create the follow-up task in Google Tasks.",
         selected_resource_ids=(),
-        run_budget=build_default_run_budget(),
+        run_budget=dict(build_default_run_budget()),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",

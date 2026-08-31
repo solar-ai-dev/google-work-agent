@@ -138,9 +138,7 @@ def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) ->
         _command(command_id="command-b", request_hash="b" * 64, request_text="관련 메일 찾아줘")
     )
 
-    get_context = GetRunSnapshotHandler(
-        unit_of_work_factory=unit_of_work_factory
-    ).execution_context
+    get_context = GetRunSnapshotHandler(unit_of_work_factory=unit_of_work_factory).execution_context
     context_a = get_context(GetExecutionContextQuery(run_a.run_id))
     context_b = get_context(GetExecutionContextQuery(run_b.run_id))
 

@@ -125,6 +125,8 @@ def _router(
         runtime_policy=RuntimePolicy(),
         checkpoint=checkpoint,  # type: ignore[arg-type]
         schema_repairer=repairer,
+        run_context_provider=lambda: "run-1",
+        external_scope_projector=lambda _run_id, _source_kinds, _data_classes: _scope(),
     )
 
 
@@ -136,7 +138,7 @@ def test_api_provider_is_not_called_without_exact_published_scope(
     provider = _Provider()
     with pytest.raises(LLMInvocationError):
         _router(checkpoint=checkpoint, api=provider).infer(
-            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, _scope()
+            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA
         )
     assert provider.calls == 0
 
@@ -146,7 +148,7 @@ def test_exact_published_scope_allows_one_api_call() -> None:
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider()
     result = _router(checkpoint=checkpoint, api=provider).infer(
-        "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope
+        "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA
     )
     assert result.structured_output == {"answer": "ok"}
     assert provider.calls == 1
@@ -159,11 +161,9 @@ def test_runtime_circuit_callbacks_guard_and_record_the_selected_leaf() -> None:
     router = _router(checkpoint=checkpoint, api=provider)
     events: list[tuple[str, ActualRuntime, str | None]] = []
     router.before_runtime_dispatch = lambda runtime: events.append(("guard", runtime, None))
-    router.record_runtime_result = lambda runtime, error: events.append(
-        ("result", runtime, error)
-    )
+    router.record_runtime_result = lambda runtime, error: events.append(("result", runtime, error))
 
-    router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope)
+    router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA)
 
     assert events == [
         ("guard", ActualRuntime.API_LLM, None),
@@ -183,7 +183,7 @@ def test_runtime_circuit_guard_blocks_before_provider_dispatch() -> None:
     router.before_runtime_dispatch = block
 
     with pytest.raises(LLMInvocationError, match="circuit open"):
-        router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope)
+        router.infer("API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA)
 
     assert provider.calls == 0
 
@@ -194,7 +194,7 @@ def test_consent_revoke_blocks_api_call_even_with_exact_scope() -> None:
     provider = _Provider()
     with pytest.raises(LLMInvocationError) as captured:
         _router(checkpoint=checkpoint, api=provider, consent=False).infer(
-            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope
+            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA
         )
     assert captured.value.code is LLMErrorCode.CONSENT_REQUIRED
     assert provider.calls == 0
@@ -207,7 +207,7 @@ def test_scope_is_rechecked_before_api_schema_repair_call() -> None:
     repairer = _Repairer()
     with pytest.raises(LLMInvocationError):
         _router(checkpoint=checkpoint, api=provider, repairer=repairer).infer(
-            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA, scope
+            "API_LLM", PROMPT, {"user_request": "hello"}, SCHEMA
         )
     assert provider.calls == 1
     assert repairer.calls == 0
@@ -222,7 +222,7 @@ def test_auto_fallback_does_not_call_api_without_published_scope() -> None:
     )
     with pytest.raises(LLMInvocationError):
         _router(checkpoint=checkpoint, api=api, local=local).infer(
-            "AUTO", PROMPT, {"user_request": "hello"}, SCHEMA, _scope()
+            "AUTO", PROMPT, {"user_request": "hello"}, SCHEMA
         )
     assert local.calls == 1
     assert api.calls == 0

@@ -20,11 +20,16 @@ from google_work_agent.application.use_cases.run.start_analysis import (
     StartAnalysisCommand,
     StartAnalysisHandler,
 )
-from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
+from google_work_agent.ports.system.contracts.workflow_binding import (
+    GraphProfileIdV1,
+    WorkflowBindingV1,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     ContextAdjustmentControlV1,
     MainControlResumeTargetV2,
+    MainResumeStageIdV1,
+    RegisteredResumeTargetRefV2,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
@@ -37,16 +42,19 @@ class _RetrievalState(TypedDict):
 class _ResumeTargetRegistry:
     def issue_main_stage(
         self,
-        graph_profile: str,
-        stage_id: str,
+        graph_profile: GraphProfileIdV1,
+        stage_id: MainResumeStageIdV1,
         graph_version: str,
     ) -> MainControlResumeTargetV2:
         return MainControlResumeTargetV2(
             kind="MAIN_CONTROL",
-            stage_id=stage_id,  # type: ignore[arg-type]
-            graph_profile=graph_profile,  # type: ignore[arg-type]
+            stage_id=stage_id,
+            graph_profile=graph_profile,
             graph_version=graph_version,
         )
+
+    def validate(self, ref: RegisteredResumeTargetRefV2) -> None:
+        del ref
 
 
 def _database(tmp_path: Path, *, status: str, version: int = 0) -> Path:

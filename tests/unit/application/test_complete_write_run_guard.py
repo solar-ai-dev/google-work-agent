@@ -18,6 +18,9 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.verification.model import Verification as VerificationRecord
 from google_work_agent.domain.verification.model import VerificationStatus
+from google_work_agent.ports.persistence.command_receipt_repository import (
+    CommandReceiptRepository,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -33,10 +36,10 @@ class _ListRepo:
     def __init__(self, values: tuple[object, ...]) -> None:
         self.values = values
 
-    def list_for_action(self, _action_id: str):
+    def list_for_action(self, _action_id: str) -> tuple[object, ...]:
         return self.values
 
-    def get_active_for_approval(self, approval_id: str):
+    def get_active_for_approval(self, approval_id: str) -> object | None:
         return next(
             (
                 item
@@ -183,7 +186,7 @@ def _conflict(
         relevant_plans=(selected_plan,),
         plan=selected_plan,
         actions=(selected_action,),
-        cancel_reader=_CancelReader(cancel),
+        cancel_reader=cast(CommandReceiptRepository, _CancelReader(cancel)),
     )
 
 
@@ -262,7 +265,7 @@ def test_complete_write_run_rejects_multiple_non_superseded_plans() -> None:
         relevant_plans=(plan, replace(plan, id="plan-2", revision_no=2)),
         plan=None,
         actions=(),
-        cancel_reader=_CancelReader(False),
+        cancel_reader=cast(CommandReceiptRepository, _CancelReader(False)),
     )
 
     assert detail == "write completion requires exactly one non-superseded plan"

@@ -61,9 +61,7 @@ def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceA
 def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(
-        tmp_path, prompt_ids=["work_analysis.analyze"]
-    )
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["work_analysis.analyze"])
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -111,9 +109,7 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
 
 
 def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
-    manifest_path = write_runtime_active_manifest(
-        tmp_path, prompt_ids=["work_analysis.analyze"]
-    )
+    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["work_analysis.analyze"])
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(

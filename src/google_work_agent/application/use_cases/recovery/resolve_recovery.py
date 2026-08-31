@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
-from typing import Literal
+from typing import Literal, cast
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
@@ -22,6 +22,7 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalResultKindV1,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
@@ -669,7 +670,7 @@ class ResolveRecoveryHandler:
                 run_id=run_id,
                 expected_run_version=expected_run_version,
                 source_kind="RECOVERY_RESULT",
-                result_kind=result_kind,  # type: ignore[arg-type]
+                result_kind=_terminal_result_kind(result_kind),
                 answer_text=None,
                 reason_codes=[],
             )
@@ -785,3 +786,9 @@ class ResolveRecoveryHandler:
             response_json=dumps(asdict(result), sort_keys=True),
             completed_at_ms=now_ms,
         )
+
+
+def _terminal_result_kind(value: str | None) -> TerminalResultKindV1:
+    if value not in {"SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"}:
+        raise RuntimeError("terminal recovery produced an unsupported result kind")
+    return cast(TerminalResultKindV1, value)

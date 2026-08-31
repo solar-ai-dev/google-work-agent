@@ -24,43 +24,19 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     route_supervisor,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.bind_registry_candidates_node import (  # noqa: E501
-    bind_registry_candidates_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.determine_io_resources_node import (  # noqa: E501
-    determine_io_resources_node,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.finalize_route_node import (
     finalize_route_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.select_tool_if_needed_node import (  # noqa: E501
-    select_tool_if_needed_node,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.nodes.validate_route_node import (
     validate_route_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_bind_registry_candidates import (  # noqa: E501
-    route_after_bind_registry_candidates,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_determine_io_resources import (  # noqa: E501
-    route_after_determine_io_resources,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_finalize_route import (  # noqa: E501
-    route_after_finalize_route,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_select_tool_if_needed import (  # noqa: E501
-    route_after_select_tool_if_needed,
-)
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.routing.route_after_validate_route import (  # noqa: E501
-    route_after_validate_route,
 )
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import (
     ToolRouteStateV1,
     ToolRoutingInputState,
     ToolRoutingParentOutputState,
 )
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationQuestionV1,
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
@@ -75,6 +51,31 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
     UserInterruptV1,
+)
+
+from .nodes.bind_registry_candidates_node import (
+    bind_registry_candidates_node,
+)
+from .nodes.determine_io_resources_node import (
+    determine_io_resources_node,
+)
+from .nodes.select_tool_if_needed_node import (
+    select_tool_if_needed_node,
+)
+from .routing.route_after_bind_registry_candidates import (
+    route_after_bind_registry_candidates,
+)
+from .routing.route_after_determine_io_resources import (
+    route_after_determine_io_resources,
+)
+from .routing.route_after_finalize_route import (
+    route_after_finalize_route,
+)
+from .routing.route_after_select_tool_if_needed import (
+    route_after_select_tool_if_needed,
+)
+from .routing.route_after_validate_route import (
+    route_after_validate_route,
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
@@ -306,7 +307,7 @@ class ToolRoutingSubgraph:
         if isinstance(signal, Mapping) and signal.get("kind") == "SCOPE_EXPANSION_REQUIRED":
             typed_signal = cast(ScopeExpansionRequiredV1, signal)
             resources = ", ".join(typed_signal["required_resource_types"])
-            question: ClarificationQuestionV1 = {
+            question: request_understanding_output.ClarificationQuestionV1 = {
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
                 "question": (

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -30,6 +31,9 @@ from google_work_agent.application.use_cases.action.read_contracts import (
 )
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.plan.model import PlanStatusV1
@@ -102,7 +106,7 @@ def test_read_only_happy_path_persists_projection_and_completes_run(
     )
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
-        gateway=fixture_gateway,
+        gateway=cast(ConnectorReadProjection, fixture_gateway),
     )
     complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
@@ -295,7 +299,7 @@ def test_read_only_failure_keeps_unsettled_dependency_open_after_independent_bra
     )
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
-        gateway=fixture_gateway,
+        gateway=cast(ConnectorReadProjection, fixture_gateway),
     )
     complete_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
@@ -952,7 +956,7 @@ def test_received_receipts_can_resume_and_apply_save_publish_claim_complete_and_
 
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_database),
-        gateway=fixture_gateway,
+        gateway=cast(ConnectorReadProjection, fixture_gateway),
     )
     executed = execute_service.execute(action_id="action-received")
 

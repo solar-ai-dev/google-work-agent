@@ -1,11 +1,10 @@
 """Canonical owner-local state and parent patch for Request Understanding."""
 
 # LangGraph resolves inherited TypedDict annotations in this module namespace.
-# ruff: noqa: F401
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired
 
 from google_work_agent.adapters.langgraph.main.state import RunInputV1
 from google_work_agent.adapters.langgraph.subgraph_state import (
@@ -29,6 +28,8 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowStartRequest,
 )
+
+_TYPE_HINT_NAMESPACE = (RunBudgetV2, WorkflowStartRequest)
 
 
 class RequestUnderstandingInputState(AgentSubgraphInputEnvelope, total=False):

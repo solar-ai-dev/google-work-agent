@@ -72,7 +72,10 @@ def test_expected_projection_does_not_mutate_llm_plan_object() -> None:
 
 def test_legacy_read_expected_is_left_unchanged() -> None:
     plan = _plan()
-    action = plan["actions"][0]
+    actions = plan["actions"]
+    assert isinstance(actions, list)
+    action = actions[0]
+    assert isinstance(action, dict)
     action["effect"] = "READ"
     action["tool_name"] = "tasks_get_task"
     action["expected"] = {"legacy": True}

@@ -145,8 +145,8 @@ def test_edge_required_confirmation_stops_before_acquisition(tmp_path: Path) -> 
     try:
         result = start_with_admission(runtime, database_path, _start_request())
         assert result.payload["user_interrupt"]["origin_target"] == "request.detect_ambiguity"
-        snapshot = runtime._graph.get_state(  # noqa: SLF001
-            runtime._config_for_thread("thread-1"),  # noqa: SLF001
+        snapshot = runtime._graph.get_state(
+            runtime._config_for_thread("thread-1"),
             subgraphs=True,
         )
         assert snapshot.next == ("request_understanding",)
@@ -182,21 +182,22 @@ def test_chain_context_analysis_planning_answer_preserves_typed_outputs(
     )
 
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
+        context = runtime._context_subgraph.invoke(routed)
         assert context["__target__"] == "work_analysis"
         evidence_ref = context["retrieval_result"]["evidence_refs"][0]
         assert evidence_ref.startswith("evidence-seg_")
         assert CONTEXT_RAG_CANDIDATES_KEY not in context
 
-        analysis = runtime._analysis_subgraph.invoke(context)  # noqa: SLF001
+        analysis = runtime._analysis_subgraph.invoke(context)
         assert analysis["__target__"] == "planning_entry"
         assert analysis["work_analysis_result"]["work_facts"]
 
-        planned = runtime._planning_subgraph.invoke(analysis)  # noqa: SLF001
+        planned = runtime._planning_subgraph.invoke(analysis)
         assert planned["__target__"] == "response_synthesis"
         assert planned["answer_draft"]["evidence_refs"] == [evidence_ref]
         planning_input = next(
@@ -238,8 +239,8 @@ def test_edge_analysis_confirmation_never_enters_planning(tmp_path: Path) -> Non
         assert (
             result.payload["user_interrupt"]["origin_target"] == "analysis.assess_information_gaps"
         )
-        snapshot = runtime._graph.get_state(  # noqa: SLF001
-            runtime._config_for_thread("thread-1"),  # noqa: SLF001
+        snapshot = runtime._graph.get_state(
+            runtime._config_for_thread("thread-1"),
             subgraphs=True,
         )
         assert snapshot.next == ("work_analysis",)

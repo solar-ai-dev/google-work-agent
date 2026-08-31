@@ -1,3 +1,6 @@
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
 )
@@ -33,7 +36,7 @@ def test_finalize_route__freezes_prebound_v2_plan_without_reowning_preconditions
         tool_catalog=catalog,
         id_factory=lambda: next(ids),
     )
-    intent = {
+    intent: RequestIntentV2 = {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "task create",
@@ -68,7 +71,7 @@ def test_finalize_route__selection_outside_bound_set__blocks() -> None:
         tool_catalog=catalog,
         id_factory=lambda: next(ids),
     )
-    intent = {
+    intent: RequestIntentV2 = {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "task create",

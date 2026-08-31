@@ -46,9 +46,7 @@ def test_resource_continuations_are_local_session_account_bound_and_expiring() -
     containers = _read(
         SRC / "application" / "use_cases" / "resource" / "list_task_lists.py"
     ) + _read(SRC / "application" / "use_cases" / "resource" / "list_calendars.py")
-    store = _read(
-        SRC / "application" / "use_cases" / "resource" / "opaque_continuation_access.py"
-    )
+    store = _read(SRC / "application" / "use_cases" / "resource" / "opaque_continuation_access.py")
     assert "session_digest" in query and "account_id" in query
     assert containers.count("session_digest") >= 2
     assert containers.count("account_id") >= 2
@@ -64,9 +62,7 @@ def test_selection_handle_has_one_issuer_and_resolver_authority() -> None:
     assert _class_definitions("ResolveSelectionHandle") == [
         SRC / "application" / "use_cases" / "resource" / "resolve_selection_handle.py"
     ]
-    issuer = _read(
-        SRC / "application" / "use_cases" / "resource" / "issue_selection_handle.py"
-    )
+    issuer = _read(SRC / "application" / "use_cases" / "resource" / "issue_selection_handle.py")
     for field in (
         "service_instance_id",
         "session_digest",
@@ -84,13 +80,7 @@ def test_attachment_route_is_singular_multipart_transport_only() -> None:
     route = _read(SRC / "api" / "routes" / "attachments.py")
     dependencies = _read(SRC / "api" / "dependencies" / "attachments.py")
     frontend = _read(
-        ROOT
-        / "frontend"
-        / "src"
-        / "features"
-        / "attachment"
-        / "api"
-        / "stage_attachment.ts"
+        ROOT / "frontend" / "src" / "features" / "attachment" / "api" / "stage_attachment.ts"
     )
     assert "def create_router(" not in route
     assert "injected_dependencies" not in route

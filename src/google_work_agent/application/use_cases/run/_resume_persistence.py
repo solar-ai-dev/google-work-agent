@@ -19,7 +19,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.results import ResultCode
-from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.domain.run.model import Run, RunStatusV1
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -132,7 +132,7 @@ class _ResumePersistence:
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
-                response = cast(
+                replay_response = cast(
                     _ResumePersistenceResult,
                     resolve_existing_receipt(
                         unit_of_work=unit_of_work,
@@ -144,7 +144,11 @@ class _ResumePersistence:
                     ),
                 )
                 return _ResumePersistenceResult(
-                    **{**asdict(response), "should_enqueue": False, "request_replayed": True}
+                    **{
+                        **asdict(replay_response),
+                        "should_enqueue": False,
+                        "request_replayed": True,
+                    }
                 )
 
             now_ms = self._now_ms()
@@ -173,10 +177,10 @@ class _ResumePersistence:
                 action.status in _REAUTH_DISPATCH_UNCERTAIN_ACTION_STATUSES for action in actions
             )
 
-            response = self._validate(
+            validation_response = self._validate(
                 command, run, unknown_result_exists, authority, resume_payload
             )
-            if response is None:
+            if validation_response is None:
                 decision, should_enqueue = self._apply_transition(
                     unit_of_work,
                     command,
@@ -195,6 +199,8 @@ class _ResumePersistence:
                     request_replayed=False,
                     conflict_detail=decision.conflict_detail,
                 )
+            else:
+                response = validation_response
             if response.applied:
                 metadata = {"command_id": command.command_id, "resume_kind": command.resume_kind}
                 event_type = (
@@ -273,13 +279,13 @@ class _ResumePersistence:
     @staticmethod
     def _validate(
         command: _ResumePersistenceCommand,
-        run: object,
+        run: Run,
         unknown_result_exists: bool,
         authority: ResumeAuthority | None,
         resume_payload: dict[str, object],
     ) -> _ResumePersistenceResult | None:
-        status = run.status  # type: ignore[attr-defined]
-        version = run.version  # type: ignore[attr-defined]
+        status = run.status
+        version = run.version
         if command.expected_run_version != version:
             return _ResumePersistenceResult(
                 False,

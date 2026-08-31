@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import asdict
 from json import dumps, loads
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -491,7 +491,7 @@ def _control(kind: str, value: object | None) -> WorkflowControlEnvelopeV1 | Non
 def _binding(value: dict[str, object]) -> WorkflowExecutionBindingV1:
     return WorkflowExecutionBindingV1(
         schema_version=1,
-        execution_kind=cast(str, value["execution_kind"]),  # type: ignore[arg-type]
+        execution_kind=_execution_kind(value["execution_kind"]),
         run_id=str(value["run_id"]),
         langgraph_thread_id=str(value["langgraph_thread_id"]),
         graph_profile=cast(GraphProfileIdV1, value["graph_profile"]),
@@ -512,7 +512,7 @@ def _admission(value: object | None) -> WorkflowExecutionAdmissionV1 | None:
         admission_id=str(item["admission_id"]),
         handoff_id=str(item["handoff_id"]),
         handoff_run_sequence=int(str(item["handoff_run_sequence"])),
-        submission_kind=cast(str, item["submission_kind"]),  # type: ignore[arg-type]
+        submission_kind=_submission_kind(item["submission_kind"]),
         effective_binding=_binding(cast(dict[str, object], item["effective_binding"])),
         expected_run_version=int(str(item["expected_run_version"])),
     )
@@ -522,7 +522,7 @@ def _to_handoff(row: sqlite3.Row) -> WorkflowHandoffV1:
     resume_target = deserialize_resume_target(_load_json(row["resume_target_json"]))
     execution = RunExecutionRefV1(
         schema_version=1,
-        execution_kind=cast(str, row["execution_kind"]),  # type: ignore[arg-type]
+        execution_kind=_execution_kind(row["execution_kind"]),
         run_id=str(row["run_id"]),
         langgraph_thread_id=str(row["langgraph_thread_id"]),
         graph_profile=cast(GraphProfileIdV1, row["graph_profile"]),
@@ -538,7 +538,7 @@ def _to_handoff(row: sqlite3.Row) -> WorkflowHandoffV1:
         checkpoint_id=None if row["checkpoint_id"] is None else str(row["checkpoint_id"]),
         checkpoint_generation=int(row["checkpoint_generation"]),
         run_sequence=int(row["run_sequence"]),
-        control_kind=cast(str, row["control_kind"]),  # type: ignore[arg-type]
+        control_kind=_control_kind(row["control_kind"]),
         control=_control(str(row["control_kind"]), _load_json(row["control_payload_json"])),
         control_payload_hash=None
         if row["control_payload_hash"] is None
@@ -555,6 +555,36 @@ def _to_handoff(row: sqlite3.Row) -> WorkflowHandoffV1:
         if row["applied_checkpoint_generation"] is None
         else int(row["applied_checkpoint_generation"]),
         version=int(row["version"]),
+    )
+
+
+def _execution_kind(value: object) -> Literal["START", "RESUME"]:
+    if value not in {"START", "RESUME"}:
+        raise ValueError("invalid workflow execution kind")
+    return cast(Literal["START", "RESUME"], value)
+
+
+def _submission_kind(
+    value: object,
+) -> Literal["NORMAL_HANDOFF", "CONSUMED_CONTINUATION_RECOVERY"]:
+    if value not in {"NORMAL_HANDOFF", "CONSUMED_CONTINUATION_RECOVERY"}:
+        raise ValueError("invalid workflow submission kind")
+    return cast(Literal["NORMAL_HANDOFF", "CONSUMED_CONTINUATION_RECOVERY"], value)
+
+
+def _control_kind(
+    value: object,
+) -> Literal["NONE", "CONFIRMATION_RESPONSE", "CONTEXT_ADJUSTMENT", "RETRIEVAL_CACHE_RESTART"]:
+    if value not in {
+        "NONE",
+        "CONFIRMATION_RESPONSE",
+        "CONTEXT_ADJUSTMENT",
+        "RETRIEVAL_CACHE_RESTART",
+    }:
+        raise ValueError("invalid workflow control kind")
+    return cast(
+        Literal["NONE", "CONFIRMATION_RESPONSE", "CONTEXT_ADJUSTMENT", "RETRIEVAL_CACHE_RESTART"],
+        value,
     )
 
 

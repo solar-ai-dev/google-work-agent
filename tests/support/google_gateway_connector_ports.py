@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any, cast
 
+from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
 from google_work_agent.application.use_cases.claim.build_claim_context import claim_context_payload
 from google_work_agent.application.use_cases.execution_attempt.write_dispatch_models import (
     AuthorizedWriteDispatch,
@@ -56,7 +57,7 @@ class GoogleGatewayConnectorReadPort:
                 value = self.gateway.search_gmail_threads(
                     query=query,
                     page_token=cast(str | None, arguments.get("page_token")),
-                    page_size=int(arguments.get("page_size", 50)),
+                    page_size=coerce_int(arguments.get("page_size", 50)),
                 )
             output = _page(value)
         elif tool_id == "gmail_get_thread":
@@ -79,27 +80,30 @@ class GoogleGatewayConnectorReadPort:
             output = _page(
                 self.gateway.list_task_lists(
                     page_token=cast(str | None, arguments.get("page_token")),
-                    page_size=int(arguments.get("page_size", 50)),
+                    page_size=coerce_int(arguments.get("page_size", 50)),
                 )
             )
         elif tool_id == "tasks_list_tasks":
-            query = arguments.get("query")
+            tasks_query = arguments.get("query")
             output = (
                 _page(
                     ResourcePage(
                         self.gateway.search_by_recovery_fingerprint(
                             resource_type=ResourceType.TASK,
-                            recovery_fingerprint=str(query),
+                            recovery_fingerprint=str(tasks_query),
                         ),
                         None,
                     )
                 )
-                if isinstance(query, str) and query
+                if isinstance(tasks_query, str) and tasks_query
                 else _page(
                     self.gateway.list_tasks(
                         task_list_id=str(arguments["task_list_id"]),
                         page_token=cast(str | None, arguments.get("page_token")),
-                        page_size=int(arguments.get("page_size", 50)),
+                        page_size=coerce_int(arguments.get("page_size", 50)),
+                        show_completed=bool(arguments.get("show_completed", False)),
+                        show_hidden=bool(arguments.get("show_hidden", False)),
+                        show_deleted=bool(arguments.get("show_deleted", False)),
                     )
                 )
             )
@@ -116,7 +120,7 @@ class GoogleGatewayConnectorReadPort:
             output = _page(
                 self.gateway.list_calendars(
                     page_token=cast(str | None, arguments.get("page_token")),
-                    page_size=int(arguments.get("page_size", 50)),
+                    page_size=coerce_int(arguments.get("page_size", 50)),
                 )
             )
         elif tool_id == "calendar_list_events":
@@ -124,7 +128,7 @@ class GoogleGatewayConnectorReadPort:
                 self.gateway.list_calendar_events(
                     calendar_id=str(arguments["calendar_id"]),
                     page_token=cast(str | None, arguments.get("page_token")),
-                    page_size=int(arguments.get("page_size", 50)),
+                    page_size=coerce_int(arguments.get("page_size", 50)),
                     time_min=cast(str | None, arguments.get("time_min")),
                     time_max=cast(str | None, arguments.get("time_max")),
                     single_events=bool(arguments.get("single_events", False)),
@@ -228,57 +232,84 @@ class GoogleGatewayConnectorWritePort:
         self, tool_id: str, arguments: dict[str, object], claim_context: dict[str, object]
     ) -> ResourceSnapshot:
         if tool_id == "gmail_send":
-            return self.gateway.send_gmail(
-                draft_id=str(arguments["draft_id"]),
-                recovery_fingerprint=cast(str | None, arguments.get("recovery_fingerprint")),
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.send_gmail(
+                    draft_id=str(arguments["draft_id"]),
+                    recovery_fingerprint=cast(str | None, arguments.get("recovery_fingerprint")),
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "calendar_delete_event":
-            return self.gateway.delete_calendar_event(
-                calendar_id=str(arguments["calendar_id"]),
-                event_id=str(arguments["event_id"]),
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.delete_calendar_event(
+                    calendar_id=str(arguments["calendar_id"]),
+                    event_id=str(arguments["event_id"]),
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "tasks_delete_task":
-            return self.gateway.delete_task(
-                task_list_id=str(arguments["task_list_id"]),
-                task_id=str(arguments["task_id"]),
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.delete_task(
+                    task_list_id=str(arguments["task_list_id"]),
+                    task_id=str(arguments["task_id"]),
+                    claim_context=claim_context,
+                ),
             )
         payload = cast(dict[str, object], arguments["payload"])
         if tool_id == "gmail_create_draft":
-            return self.gateway.create_gmail_draft(payload=payload, claim_context=claim_context)
+            return cast(
+                ResourceSnapshot,
+                self.gateway.create_gmail_draft(payload=payload, claim_context=claim_context),
+            )
         if tool_id == "gmail_update_draft":
-            return self.gateway.update_gmail_draft(
-                draft_id=str(arguments["draft_id"]),
-                payload=payload,
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.update_gmail_draft(
+                    draft_id=str(arguments["draft_id"]),
+                    payload=payload,
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "tasks_create_task":
-            return self.gateway.create_task(
-                task_list_id=str(arguments["task_list_id"]),
-                payload=payload,
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.create_task(
+                    task_list_id=str(arguments["task_list_id"]),
+                    payload=payload,
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "tasks_update_task":
-            return self.gateway.update_task(
-                task_list_id=str(arguments["task_list_id"]),
-                task_id=str(arguments["task_id"]),
-                payload=payload,
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.update_task(
+                    task_list_id=str(arguments["task_list_id"]),
+                    task_id=str(arguments["task_id"]),
+                    payload=payload,
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "calendar_create_event":
-            return self.gateway.create_calendar_event(
-                calendar_id=str(arguments["calendar_id"]),
-                payload=payload,
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.create_calendar_event(
+                    calendar_id=str(arguments["calendar_id"]),
+                    payload=payload,
+                    claim_context=claim_context,
+                ),
             )
         if tool_id == "calendar_update_event":
-            return self.gateway.update_calendar_event(
-                calendar_id=str(arguments["calendar_id"]),
-                event_id=str(arguments["event_id"]),
-                payload=payload,
-                claim_context=claim_context,
+            return cast(
+                ResourceSnapshot,
+                self.gateway.update_calendar_event(
+                    calendar_id=str(arguments["calendar_id"]),
+                    event_id=str(arguments["event_id"]),
+                    payload=payload,
+                    claim_context=claim_context,
+                ),
             )
         raise LookupError(f"unsupported test write tool: {tool_id}")
 
@@ -370,17 +401,24 @@ class LegacyGatewayWriteProjection:
             or fallback_resource_id
         )
         if tool_name.startswith("gmail_"):
-            return (
+            return cast(
+                ResourceSnapshot,
                 self._gateway.get_gmail_message(message_id=resource_id)
                 if tool_name == "gmail_send"
-                else self._gateway.get_gmail_draft(draft_id=resource_id)
+                else self._gateway.get_gmail_draft(draft_id=resource_id),
             )
         if tool_name.startswith("tasks_"):
-            return self._gateway.get_task(
-                task_list_id=str(arguments["task_list_id"]), task_id=resource_id
+            return cast(
+                ResourceSnapshot,
+                self._gateway.get_task(
+                    task_list_id=str(arguments["task_list_id"]), task_id=resource_id
+                ),
             )
-        return self._gateway.get_calendar_event(
-            calendar_id=str(arguments["calendar_id"]), event_id=resource_id
+        return cast(
+            ResourceSnapshot,
+            self._gateway.get_calendar_event(
+                calendar_id=str(arguments["calendar_id"]), event_id=resource_id
+            ),
         )
 
     def search_recovery_candidates(
@@ -395,9 +433,12 @@ class LegacyGatewayWriteProjection:
             if tool_name.startswith("tasks_")
             else ResourceType.CALENDAR_EVENT
         )
-        return self._gateway.search_by_recovery_fingerprint(
-            resource_type=resource_type,
-            recovery_fingerprint=recovery_fingerprint,
+        return cast(
+            tuple[ResourceSnapshot, ...],
+            self._gateway.search_by_recovery_fingerprint(
+                resource_type=resource_type,
+                recovery_fingerprint=recovery_fingerprint,
+            ),
         )
 
 

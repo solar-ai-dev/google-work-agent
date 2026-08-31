@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
@@ -106,7 +106,7 @@ def _compile_graph(
     checkpointer: SqliteSaver,
     primary: PromptInputGuardedProvider,
     fallback: PromptInputGuardedProvider,
-):
+) -> Any:
     def dispatch_node(state: _BudgetState) -> _BudgetState:
         ensure_llm_call_budget(state, provider_calls_requested=2)
         try:

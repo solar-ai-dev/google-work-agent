@@ -7,11 +7,12 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict
 from json import dumps, loads
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from google_work_agent.adapters.persistence.sqlite.repositories.workflow_handoff_repository import (
     deserialize_resume_target,
 )
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.ports.persistence.recovery_repository import (
     RecoveryConflictError,
     RecoveryContextV1,
@@ -175,8 +176,8 @@ def _to_context(row: sqlite3.Row) -> RecoveryContextV1:
     context: RecoveryContextV1 = {
         "schema_version": 1,
         "run_id": str(row["run_id"]),
-        "reason": cast(str, row["reason"]),  # type: ignore[typeddict-item]
-        "scope": cast(str, row["scope"]),  # type: ignore[typeddict-item]
+        "reason": _recovery_reason(row["reason"]),
+        "scope": _recovery_scope(row["scope"]),
         "pre_recovery_status": str(row["pre_recovery_status"]),
         "recovery_fingerprint": str(row["recovery_fingerprint"]),
         "version": int(row["version"]),
@@ -204,3 +205,20 @@ def _to_context(row: sqlite3.Row) -> RecoveryContextV1:
     if row["last_recheck_input_hash"] is not None:
         context["last_recheck_input_hash"] = str(row["last_recheck_input_hash"])
     return context
+
+
+def _recovery_reason(value: object) -> RecoveryReasonV1:
+    if value not in {
+        "UNKNOWN_RESULT",
+        "VERIFICATION_MISMATCH",
+        "CHECKPOINT_MISMATCH",
+        "CONTRACT_VIOLATION",
+    }:
+        raise ValueError("invalid recovery reason")
+    return cast(RecoveryReasonV1, value)
+
+
+def _recovery_scope(value: object) -> Literal["RUN", "ACTION"]:
+    if value not in {"RUN", "ACTION"}:
+        raise ValueError("invalid recovery scope")
+    return cast(Literal["RUN", "ACTION"], value)

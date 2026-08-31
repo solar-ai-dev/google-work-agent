@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 type JsonValue = Any
 
@@ -48,11 +49,11 @@ class WorkflowStartRequest:
     conversation_id: str
     workflow_key: str
     entry_mode: str
-    requested_mode: str
+    requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
     request_text: str
     selected_resource_ids: tuple[str, ...]
     correlation: WorkflowCorrelationContext
-    run_budget: dict[str, JsonValue] = field(default_factory=dict)
+    run_budget: Mapping[str, JsonValue] = field(default_factory=dict)
     selected_resources: tuple[SelectedResourceRef, ...] = ()
 
 

@@ -15,6 +15,7 @@ from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
 from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.ports.connector.mcp_client_port import (
     MCPRestartResultV1,
+    MCPRuntimeMetadata,
     MCPToolCallResultV1,
     MCPToolDescriptorV1,
 )
@@ -46,9 +47,29 @@ class _Client:
         pass
 
 
+@dataclass
+class _Runtime:
+    client: _Client
+
+    def runtime_metadata(self) -> MCPRuntimeMetadata:
+        return MCPRuntimeMetadata("READY", "1", "1", "1", 1, None, 0, "process-1")
+
+    def list_tools(self) -> list[MCPToolDescriptorV1]:
+        return self.client.list_tools("google_workspace")
+
+    def call_tool(self, tool_id: str, arguments: Any, timeout_ms: int) -> MCPToolCallResultV1:
+        return self.client.call_tool("google_workspace", tool_id, arguments, timeout_ms)
+
+    def restart_once(self) -> MCPRestartResultV1:
+        return self.client.restart_once("google_workspace")
+
+    def close(self) -> None:
+        self.client.close()
+
+
 def _registry(client: _Client) -> ConnectorRuntimeRegistry:
     registry = ConnectorRuntimeRegistry()
-    registry.register("google_workspace", client)
+    registry.register("google_workspace", _Runtime(client))
     return registry
 
 

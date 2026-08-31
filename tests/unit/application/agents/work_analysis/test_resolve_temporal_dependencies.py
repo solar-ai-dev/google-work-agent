@@ -4,7 +4,7 @@ from google_work_agent.application.agents.work_analysis.resolve_temporal_depende
     resolve_temporal_dependencies,
 )
 
-from .conftest import TRACE, FakeRuntime, fact, prompt_ref
+from .conftest import FakeRuntime, fact, prompt_ref
 
 
 def test_temporal_dependency_preserves_candidate_boundary() -> None:
@@ -28,7 +28,7 @@ def test_temporal_dependency_preserves_candidate_boundary() -> None:
             "work_analysis.resolve_temporal_dependencies", "resolve_temporal_dependencies"
         ),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
     assert result == output["relation_candidates"]
 
@@ -55,5 +55,5 @@ def test_temporal_dependency_rejects_unknown_kind() -> None:
                 "work_analysis.resolve_temporal_dependencies", "resolve_temporal_dependencies"
             ),
             allowed_evidence_refs={"ev-1"},
-            trace_context=TRACE,
+            requested_mode="AUTO",
         )

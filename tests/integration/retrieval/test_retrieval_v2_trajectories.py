@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourcePage,
     ResourceType,
 )
+from google_work_agent.ports.llm import (
+    OutputSchemaDefinition,
+    PromptReference,
+    StructuredLLMResult,
+)
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from tests.integration.langgraph.test_runtime import (
     FIXTURE_ROOT,
     FakeGoogleGateway,
@@ -31,7 +37,7 @@ class _InitialSearchLLM:
 
     def invoke_structured(self, **kwargs: object) -> object:
         self.calls.append(dict(kwargs))
-        prompt_ref = kwargs["prompt_ref"]
+        prompt_ref = cast(PromptReference, kwargs["prompt_ref"])
         prompt_id = prompt_ref.prompt_id
         prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
         if prompt_id == "tool_routing.determine_io_resources":
@@ -83,6 +89,36 @@ class _InitialSearchLLM:
             return _llm_result({"schema_version": 2, "status": "SUFFICIENT", "issues": []})
         raise AssertionError(f"unexpected prompt: {prompt_id}")
 
+    def infer(
+        self,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        result = cast(
+            StructuredLLMResult,
+            self.invoke_structured(
+                requested_mode=requested_mode,
+                prompt_ref=prompt_ref,
+                prompt_input=input_projection,
+                output_schema=output_schema_ref,
+            ),
+        )
+        if not isinstance(result.structured_output, dict):
+            raise RuntimeError("canonical structured inference fixture must return an object")
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=result.structured_output,
+            provider=result.provider,
+            model=result.model,
+            actual_runtime=result.actual_runtime.value,
+            input_tokens=result.input_tokens or 0,
+            output_tokens=result.output_tokens or 0,
+            latency_ms=result.latency_ms,
+            fallback_reason=result.fallback_reason,
+        )
+
 
 class _ChangedSearchLLM(_InitialSearchLLM):
     def __init__(self) -> None:
@@ -93,7 +129,7 @@ class _ChangedSearchLLM(_InitialSearchLLM):
         self.followup_input: Mapping[str, object] | None = None
 
     def invoke_structured(self, **kwargs: object) -> object:
-        prompt_id = kwargs["prompt_ref"].prompt_id
+        prompt_id = cast(PromptReference, kwargs["prompt_ref"]).prompt_id
         prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
         if prompt_id == "retrieval.plan_query":
             self.calls.append(dict(kwargs))
@@ -155,7 +191,7 @@ class _ExternalRetrievalRequiredLLM(_ChangedSearchLLM):
     CHANGED SEARCH in ``_ChangedSearchLLM`` -- it must return INITIAL."""
 
     def invoke_structured(self, **kwargs: object) -> object:
-        prompt_id = kwargs["prompt_ref"].prompt_id
+        prompt_id = cast(PromptReference, kwargs["prompt_ref"]).prompt_id
         if prompt_id == "retrieval.plan_query":
             self.calls.append(dict(kwargs))
             self.planner_calls += 1
@@ -200,7 +236,7 @@ def _search_plan(route_id: object, mode: str, term: str) -> dict[str, object]:
 class _PagingGateway(FakeGoogleGateway):
     def search_gmail_threads(self, **kwargs: object) -> ResourcePage:
         page_token = cast(str | None, kwargs["page_token"])
-        items = self._sorted_resources(ResourceType.GMAIL_THREAD)  # noqa: SLF001
+        items = self._sorted_resources(ResourceType.GMAIL_THREAD)
         self.call_log.append(
             GoogleGatewayCallRecord("search_gmail_threads", dict(kwargs), True, False)
         )
@@ -212,7 +248,10 @@ class _PagingGateway(FakeGoogleGateway):
 
 class _NextPageLLM(_ChangedSearchLLM):
     def invoke_structured(self, **kwargs: object) -> object:
-        if kwargs["prompt_ref"].prompt_id == "retrieval.plan_query" and self.planner_calls == 1:
+        if (
+            cast(PromptReference, kwargs["prompt_ref"]).prompt_id == "retrieval.plan_query"
+            and self.planner_calls == 1
+        ):
             self.calls.append(dict(kwargs))
             self.planner_calls += 1
             prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
@@ -251,16 +290,20 @@ def test_ret_int_01_initial_search_reaches_evidence_and_retrieval_result(tmp_pat
         id_prefix="ret-int-01",
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["requested_resource_hints"] = ["GMAIL_THREAD"]
-        state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        result = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+        request_intent["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
+        result = runtime._context_subgraph.invoke(routed)
         assert result["retrieval_result"] is not None
         assert result["retrieval_result"]["coverage"] == "SUFFICIENT"
         assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 1
-        assert any(call["prompt_ref"].prompt_id == "retrieval.plan_query" for call in llm.calls)
+        assert any(
+            cast(PromptReference, call["prompt_ref"]).prompt_id == "retrieval.plan_query"
+            for call in llm.calls
+        )
         assert result["retrieval_result"]["evidence_refs"]
     finally:
         runtime.close()
@@ -280,12 +323,13 @@ def test_ret_int_02_changed_search_reaches_second_round_evidence(tmp_path: Any) 
         id_prefix="ret-int-02",
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["requested_resource_hints"] = ["GMAIL_THREAD"]
-        state["request_intent"]["meta"] = {"artifact_id": "intent-2", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        result = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+        request_intent["meta"] = {"artifact_id": "intent-2", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
+        result = runtime._context_subgraph.invoke(routed)
         assert llm.planner_calls == llm.sufficiency_calls == 2
         assert llm.followup_input is not None
         assert len(cast(list[object], llm.followup_input["prior_query_attempts"])) == 1
@@ -310,12 +354,13 @@ def test_ret_int_03_next_page_reaches_second_page_evidence(tmp_path: Any) -> Non
         id_prefix="ret-int-03",
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["requested_resource_hints"] = ["GMAIL_THREAD"]
-        state["request_intent"]["meta"] = {"artifact_id": "intent-3", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        result = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+        request_intent["meta"] = {"artifact_id": "intent-3", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
+        result = runtime._context_subgraph.invoke(routed)
         searches = [item for item in gateway.call_log if item.operation == "search_gmail_threads"]
         assert len(searches) == 2
         assert searches[0].arguments["page_token"] is None
@@ -351,16 +396,17 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
         id_prefix="ret-required",
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["requested_resource_hints"] = ["GMAIL_THREAD"]
-        state["request_intent"]["meta"] = {
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+        request_intent["meta"] = {
             "artifact_id": "intent-required",
             "revision": 1,
             "based_on": [],
         }
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
-        round_one = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
+        round_one = runtime._context_subgraph.invoke(routed)
         assert round_one["retrieval_result"]["coverage"] == "SUFFICIENT"
         assert round_one["retrieval_result"]["retrieval_rounds"] == 1
         assert llm.planner_calls == llm.sufficiency_calls == 1
@@ -376,7 +422,7 @@ def test_work_analysis_retrieval_required_reenters_retrieval_with_new_search(
                 }
             ],
         }
-        result = runtime._context_subgraph.invoke(round_one)  # noqa: SLF001
+        result = runtime._context_subgraph.invoke(round_one)
 
         assert [item.operation for item in gateway.call_log].count("search_gmail_threads") == 2
         assert llm.planner_calls == 2

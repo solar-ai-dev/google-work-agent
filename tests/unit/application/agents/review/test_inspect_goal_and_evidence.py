@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from google_work_agent.application.agents.review.inspect_goal_and_evidence import (
@@ -31,8 +33,8 @@ def _result(*, dimension: str = DIMENSION) -> dict[str, object]:
 def test_inspect_goal_and_evidence_uses_only_its_minimum_projection() -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
-    def invoke(prompt_id: str, prompt_input: dict[str, object]) -> dict[str, object]:
-        calls.append((prompt_id, prompt_input))
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        calls.append((prompt_id, dict(prompt_input)))
         return _result()
 
     result = inspect_goal_and_evidence(

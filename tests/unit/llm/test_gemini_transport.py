@@ -10,6 +10,7 @@ adapters/llm/gemini.py and adapters/llm/api_provider.py module comments).
 from __future__ import annotations
 
 import json
+from typing import cast
 from urllib.request import Request
 
 import pytest
@@ -37,6 +38,11 @@ class _HTTPResponse:
 
     def read(self) -> bytes:
         return self._body
+
+
+def _request_body(request: Request) -> dict[str, object]:
+    assert isinstance(request.data, bytes)
+    return cast(dict[str, object], json.loads(request.data.decode("utf-8")))
 
 
 def _prompt_ref() -> PromptReference:
@@ -90,7 +96,7 @@ def test_invoke_structured_omits_temperature_when_sampling_is_unset(
         instruction_text="You are a test assistant.",
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["generationConfig"] == {"responseMimeType": "application/json"}
 
 
@@ -117,7 +123,7 @@ def test_invoke_structured_sends_fixed_temperature_when_set(
         sampling_temperature=0.0,
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["generationConfig"] == {
         "responseMimeType": "application/json",
         "temperature": 0.0,
@@ -162,9 +168,10 @@ def test_provider_forwards_temperature_but_never_seed_to_gemini_transport(
         api_key="test-key",
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
-    assert sent_body["generationConfig"]["temperature"] == 0.0
-    assert "seed" not in sent_body["generationConfig"]
+    sent_body = _request_body(captured[0])
+    generation_config = cast(dict[str, object], sent_body["generationConfig"])
+    assert generation_config["temperature"] == 0.0
+    assert "seed" not in generation_config
     assert "seed" not in sent_body
 
 
@@ -196,5 +203,5 @@ def test_provider_omits_temperature_when_runtime_policy_leaves_sampling_unset(
         api_key="test-key",
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["generationConfig"] == {"responseMimeType": "application/json"}

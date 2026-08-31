@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -27,6 +28,9 @@ from google_work_agent.application.use_cases.action.read_contracts import (
 )
 from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
     PublishReadOnlyPlanHandler,
+)
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
 )
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.integration.persistence.review_support import record_pass_review
@@ -91,7 +95,7 @@ def test_complete_read_action_fault_rolls_back_resource_evidence_receipt_and_act
     )
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
-        gateway=fault_gateway,
+        gateway=cast(ConnectorReadProjection, fault_gateway),
     )
     executed = execute_service.execute(action_id="action-fault")
     complete_service = CompleteReadActionHandler(
@@ -158,7 +162,7 @@ def test_finalize_read_action_fault_rolls_back_parent_aggregate_reconciliation(
     )
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(read_only_fault_database),
-        gateway=fault_gateway,
+        gateway=cast(ConnectorReadProjection, fault_gateway),
     )
     executed = execute_service.execute(action_id="action-finalize")
     CompleteReadActionHandler(

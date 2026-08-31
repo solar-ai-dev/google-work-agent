@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import pytest
 from evaluation.compat.assemble_planning_answer import (
+    AnswerDraftCandidateV2,
     PlanningAnswerV2ValidationError,
     materialize_answer_draft_v2,
     validate_answer_draft_candidate_v2,
 )
 
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
 
-def _candidate():
+
+def _candidate() -> AnswerDraftCandidateV2:
     return {
         "schema_version": 2,
         "answer": "Harbor 메일은 공급망 패치가 필요하다고 보고합니다.",
@@ -16,7 +19,7 @@ def _candidate():
     }
 
 
-def _meta():
+def _meta() -> StateArtifactMetaV1:
     return {
         "artifact_id": "answer-1",
         "revision": 1,

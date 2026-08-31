@@ -1,10 +1,13 @@
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestGoalCandidateV1,
+)
 from google_work_agent.application.agents.request_understanding.finalize_intent import (
     finalize_intent,
 )
 
 
 def test_finalize_intent__valid_candidates__attaches_application_lineage() -> None:
-    goal_candidate = {
+    goal_candidate: RequestGoalCandidateV1 = {
         "goal": "goal",
         "completion_conditions": ["done"],
         "constraints": [],

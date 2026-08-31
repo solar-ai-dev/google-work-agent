@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -18,6 +19,7 @@ from google_work_agent.application.use_cases.run.project_context_preview import 
 )
 from google_work_agent.domain.plan.model import Plan, PlanReviewStatus, PlanStatusV1
 from google_work_agent.domain.run.model import Run, RunStatusV1
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class _UnitOfWork:
@@ -93,7 +95,7 @@ def test_stale_or_nonmember_adjustment_never_invokes_workflow() -> None:
     begin_calls: list[BeginPlanningCommand] = []
     schedule_calls: list[object] = []
     handler = AdjustContextHandler(
-        unit_of_work_factory=lambda: _UnitOfWork(),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, _UnitOfWork()),
         project_context_preview=lambda _query: _preview(),  # type: ignore[arg-type]
         begin_planning=lambda command: begin_calls.append(command),  # type: ignore[arg-type]
         schedule_run_execution=lambda command: schedule_calls.append(command),  # type: ignore[arg-type]
@@ -123,7 +125,7 @@ def test_current_selector_uses_server_plan_and_schedules_once() -> None:
         )
 
     handler = AdjustContextHandler(
-        unit_of_work_factory=lambda: _UnitOfWork(),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, _UnitOfWork()),
         project_context_preview=lambda _query: _preview(),  # type: ignore[arg-type]
         begin_planning=begin,  # type: ignore[arg-type]
         schedule_run_execution=lambda command: schedule_calls.append(command),  # type: ignore[arg-type]
@@ -153,7 +155,7 @@ def test_adjust_context_enforces_exact_discriminated_payload(
     command: AdjustContextCommandV1,
 ) -> None:
     handler = AdjustContextHandler(
-        unit_of_work_factory=lambda: _UnitOfWork(),  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, _UnitOfWork()),
         project_context_preview=lambda _query: _preview(),  # type: ignore[arg-type]
         begin_planning=lambda _command: None,  # type: ignore[arg-type]
         schedule_run_execution=lambda _command: None,  # type: ignore[arg-type]

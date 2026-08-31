@@ -93,9 +93,7 @@ def _actual_application_authorities() -> set[tuple[str, str]]:
     for path in APPLICATION_USE_CASES.rglob("*.py"):
         relative = path.relative_to(SRC).as_posix()
         for node in _tree(path).body:
-            if isinstance(node, ast.ClassDef) and node.name.endswith(
-                SEMANTIC_AUTHORITY_SUFFIXES
-            ):
+            if isinstance(node, ast.ClassDef) and node.name.endswith(SEMANTIC_AUTHORITY_SUFFIXES):
                 authorities.add((relative, node.name))
     return authorities
 
@@ -219,8 +217,7 @@ def test_create_app_is_the_only_fastapi_assembly_authority() -> None:
     owners: list[str] = []
     for path in SRC.rglob("*.py"):
         if any(
-            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            and node.name == "create_app"
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == "create_app"
             for node in _tree(path).body
         ):
             owners.append(path.relative_to(SRC).as_posix())

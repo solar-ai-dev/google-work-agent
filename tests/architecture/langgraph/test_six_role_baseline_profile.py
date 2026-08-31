@@ -9,9 +9,13 @@ from google_work_agent.adapters.langgraph.profiles.six_role_baseline import (
 
 
 def test_six_profile_has_six_physical_subgraphs_and_six_semantic_owners() -> None:
-    arguments = profile_build_arguments()
-    semantic_owners = arguments.pop("semantic_owners")
-    composition = build_six_role_baseline_graph(**arguments)
+    bindings, controls, route_next_node, checkpointer, semantic_owners = profile_build_arguments()
+    composition = build_six_role_baseline_graph(
+        bindings=bindings,
+        control_bindings=controls,
+        route_next_node=route_next_node,
+        checkpointer=checkpointer,
+    )
 
     assert tuple(composition.native_subgraphs()) == (
         "request_understanding",

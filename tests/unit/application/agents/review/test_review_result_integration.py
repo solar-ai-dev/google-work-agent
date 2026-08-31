@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.review.projections.project_review_signals_projection import (  # noqa: E501
-    project_review_workflow_signal_v2,
+from google_work_agent.adapters.langgraph.subgraphs.review.projections import (
+    project_review_signals_projection,
 )
 from google_work_agent.application.agents.review.aggregate_review_findings import (
     aggregate_review_findings,
@@ -62,8 +62,8 @@ def test_closed_precedence_is_safety_first_and_deterministic() -> None:
 def test_nonlocal_dispositions_project_typed_signals_and_pass_revise_do_not() -> None:
     pass_result = aggregate_review_findings([], artifact_id="review-pass", revision=1)
     revise = aggregate_review_findings([_finding("ISSUE")], artifact_id="review-revise", revision=1)
-    assert project_review_workflow_signal_v2(pass_result) is None
-    assert project_review_workflow_signal_v2(revise) is None
+    assert project_review_signals_projection.project_review_workflow_signal_v2(pass_result) is None
+    assert project_review_signals_projection.project_review_workflow_signal_v2(revise) is None
 
     retrieval = aggregate_review_findings(
         [_finding("EVIDENCE_GAP")], artifact_id="review-r", revision=1
@@ -72,9 +72,14 @@ def test_nonlocal_dispositions_project_typed_signals_and_pass_revise_do_not() ->
         [_finding("ROUTE_ISSUE")], artifact_id="review-route", revision=1
     )
     block = aggregate_review_findings([_finding("BLOCKER")], artifact_id="review-block", revision=1)
-    assert project_review_workflow_signal_v2(retrieval)["kind"] == "RETRIEVAL_REQUIRED"  # type: ignore[index]
-    assert project_review_workflow_signal_v2(route)["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"  # type: ignore[index]
-    assert project_review_workflow_signal_v2(block)["kind"] == "BLOCKED"  # type: ignore[index]
+    retrieval_signal = project_review_signals_projection.project_review_workflow_signal_v2(
+        retrieval
+    )
+    route_signal = project_review_signals_projection.project_review_workflow_signal_v2(route)
+    block_signal = project_review_signals_projection.project_review_workflow_signal_v2(block)
+    assert retrieval_signal is not None and retrieval_signal["kind"] == "RETRIEVAL_REQUIRED"
+    assert route_signal is not None and route_signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
+    assert block_signal is not None and block_signal["kind"] == "BLOCKED"
 
     confirmation = aggregate_review_findings(
         [_finding("CONFIRMATION")], artifact_id="review-c", revision=1
@@ -87,7 +92,7 @@ def test_nonlocal_dispositions_project_typed_signals_and_pass_revise_do_not() ->
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
     )
-    signal = project_review_workflow_signal_v2(
+    signal = project_review_signals_projection.project_review_workflow_signal_v2(
         confirmation,
         interrupt_id="interrupt-1",
         resume_target=target,

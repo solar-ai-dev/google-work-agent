@@ -73,6 +73,7 @@ def _build_claim(
         "expires_at_ms": issued_at_ms + 30_000,
         "nonce": "nonce-attachment-1",
     }
+    assert state.session_key is not None
     claim["signature"] = sign_claim_context(state.session_key, claim)
     return claim
 
@@ -86,7 +87,9 @@ def _reject_google_calls(*_args: object, **_kwargs: object) -> dict[str, object]
 # --------------------------------------------------------------------------
 
 
-def test_gmail_get_attachment_returns_bytes_and_hash(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_get_attachment_returns_bytes_and_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     raw = b"file content bytes"
 
     def google_api(
@@ -109,7 +112,9 @@ def test_gmail_get_attachment_returns_bytes_and_hash(monkeypatch) -> None:  # ty
     assert server._b64url_decode(cast(str, result["data_base64url"])) == raw
 
 
-def test_gmail_get_attachment_rejects_oversized_payload(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_get_attachment_rejects_oversized_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     oversized = b"x" * (server.MAX_ATTACHMENT_READ_BYTES + 1)
 
     def google_api(
@@ -129,7 +134,9 @@ def test_gmail_get_attachment_rejects_oversized_payload(monkeypatch) -> None:  #
     assert exc_info.value.safe_code == "ATTACHMENT_TOO_LARGE"
 
 
-def test_gmail_get_attachment_never_leaves_the_read_tool_boundary(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_get_attachment_never_leaves_the_read_tool_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The attachment READ tool itself performs no claim/persistence/trace side
     effects -- it is a pure request/response mapping, matching the contract
     that only the calling FastAPI route (not this process) streams bytes to
@@ -155,15 +162,15 @@ def test_gmail_get_attachment_never_leaves_the_read_tool_boundary(monkeypatch) -
 
 
 @pytest.fixture
-def staging(tmp_path: Path, monkeypatch) -> FilesystemAttachmentStagingAdapter:  # type: ignore[no-untyped-def]
+def staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FilesystemAttachmentStagingAdapter:
     staging_dir = tmp_path / "attachments"
     monkeypatch.setenv(server.ATTACHMENT_STAGING_DIR_ENV, str(staging_dir))
     return FilesystemAttachmentStagingAdapter(staging_dir=staging_dir)
 
 
 def test_gmail_create_draft_embeds_a_verified_staged_attachment(
-    monkeypatch,
-    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+    staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
     descriptor = staging.stage(
         operation_ref="stage-report",
@@ -211,8 +218,8 @@ def test_gmail_create_draft_embeds_a_verified_staged_attachment(
 
 
 def test_gmail_create_draft_rejects_missing_staged_attachment(
-    monkeypatch,
-    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+    staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
@@ -247,8 +254,8 @@ def test_gmail_create_draft_rejects_missing_staged_attachment(
 
 
 def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
-    monkeypatch,
-    staging: FilesystemAttachmentStagingAdapter,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+    staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     real_descriptor = staging.stage(
@@ -288,7 +295,9 @@ def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
     assert exc_info.value.dispatch_started is False
 
 
-def test_gmail_create_draft_rejects_expired_staged_attachment(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_gmail_create_draft_rejects_expired_staged_attachment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     clock = {"now": 1_000_000}
     staging_dir = tmp_path / "attachments"
     monkeypatch.setenv(server.ATTACHMENT_STAGING_DIR_ENV, str(staging_dir))
@@ -327,7 +336,7 @@ def test_gmail_create_draft_rejects_expired_staged_attachment(monkeypatch, tmp_p
 
 
 def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
-    monkeypatch,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(server.ATTACHMENT_STAGING_DIR_ENV, raising=False)
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -362,7 +371,7 @@ def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
 
 
 def test_gmail_create_draft_without_attachments_key_never_touches_staging(
-    monkeypatch,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(server.ATTACHMENT_STAGING_DIR_ENV, raising=False)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeTargetValidator,
@@ -19,8 +20,11 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
+    WorkflowExecutionReleaseReasonV1,
+    WorkflowExecutionSubmissionKindV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffV1,
+    WorkflowSubmitReasonV1,
 )
 from google_work_agent.ports.system.workflow_execution_port import WorkflowExecutionPort
 
@@ -34,7 +38,7 @@ type ScheduleRunExecutionResult = RunExecutionAcceptedV1
 @dataclass(frozen=True, slots=True)
 class ScheduleRunExecutionCommand:
     handoff_id: str
-    submission_kind: str = "NORMAL_HANDOFF"
+    submission_kind: WorkflowExecutionSubmissionKindV1 = "NORMAL_HANDOFF"
 
 
 class CheckpointEffectiveBindingResolver:
@@ -169,7 +173,7 @@ class ScheduleRunExecutionHandler:
                     admission_id=self._id_factory(),
                     handoff_id=handoff.handoff_id,
                     handoff_run_sequence=handoff.run_sequence,
-                    submission_kind=command.submission_kind,  # type: ignore[arg-type]
+                    submission_kind=command.submission_kind,
                     effective_binding=binding,
                     expected_run_version=run.version,
                 )
@@ -198,7 +202,7 @@ class ScheduleRunExecutionHandler:
                     current.handoff_id,
                     current.version,
                     admission.admission_id,
-                    result.reason_code,  # type: ignore[arg-type]
+                    _release_reason(result.reason_code),
                 )
                 unit_of_work.commit()
         return result
@@ -284,9 +288,21 @@ def _checkpoint_authorizes_recovery(
     return True
 
 
-def _rejected(reason_code: str) -> RunExecutionAcceptedV1:
+def _release_reason(reason_code: str) -> WorkflowExecutionReleaseReasonV1:
+    if reason_code not in {
+        "ALREADY_RUNNING",
+        "NOT_COMMITTED",
+        "BINDING_MISMATCH",
+        "SHUTTING_DOWN",
+        "AUTHORITY_EPOCH_CHANGED",
+    }:
+        raise ValueError(f"unsupported workflow execution release reason: {reason_code}")
+    return cast(WorkflowExecutionReleaseReasonV1, reason_code)
+
+
+def _rejected(reason_code: WorkflowSubmitReasonV1) -> RunExecutionAcceptedV1:
     return RunExecutionAcceptedV1(
         schema_version=1,
         accepted=False,
-        reason_code=reason_code,  # type: ignore[arg-type]
+        reason_code=reason_code,
     )

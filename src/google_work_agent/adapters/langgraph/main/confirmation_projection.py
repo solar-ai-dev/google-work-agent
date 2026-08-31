@@ -9,12 +9,11 @@ from google_work_agent.application.agents.planning.contracts.planning_result imp
     ActionPlanDraftV1,
     AnswerDraftV1,
 )
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
-)
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationOptionV1,
-    ClarificationQuestionV1,
 )
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -25,7 +24,9 @@ from google_work_agent.ports.system.contracts.confirmation import (
 )
 
 
-def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1:
+def validate_clarification_question_v1(
+    value: object,
+) -> request_understanding_output.ClarificationQuestionV1:
     if not isinstance(value, Mapping):
         raise ValueError("clarification question must be an object")
     expected = {
@@ -42,7 +43,7 @@ def validate_clarification_question_v1(value: object) -> ClarificationQuestionV1
     options_raw = value.get("options")
     if not isinstance(options_raw, list):
         raise ValueError("clarification options must be a list")
-    options: list[ClarificationOptionV1] = []
+    options: list[request_understanding_output.ClarificationOptionV1] = []
     option_ids: set[str] = set()
     for item in options_raw:
         if not isinstance(item, Mapping) or set(item) != {"option_id", "label"}:
@@ -85,7 +86,7 @@ def build_clarification_question_v1(
     known_context_summary: str,
     affected_field_paths: list[str] | None = None,
     options: list[dict[str, object]] | None = None,
-) -> ClarificationQuestionV1:
+) -> request_understanding_output.ClarificationQuestionV1:
     return validate_clarification_question_v1(
         {
             "schema_version": 1,
@@ -103,7 +104,7 @@ def build_solution_planning_clarification_question(
     *,
     result: AnswerDraftV1 | ActionPlanDraftV1,
     request_intent: RequestIntentV2,
-) -> ClarificationQuestionV1:
+) -> request_understanding_output.ClarificationQuestionV1:
     confirmation = result.get("confirmation")
     if not isinstance(confirmation, Mapping):
         raise ValueError("planning confirmation must be an object")
@@ -129,7 +130,9 @@ def build_solution_planning_clarification_question(
     )
 
 
-def build_user_interrupt_v1(question: ClarificationQuestionV1) -> UserInterruptV1:
+def build_user_interrupt_v1(
+    question: request_understanding_output.ClarificationQuestionV1,
+) -> UserInterruptV1:
     normalized = validate_clarification_question_v1(question)
     return validate_user_interrupt_v1(
         {

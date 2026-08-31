@@ -47,6 +47,9 @@ from tests.support.canonical_workflow_runtime import (
 from tests.support.checkpoint import sqlite_checkpoint
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
+
 
 def _build_runtime(
     *,
@@ -73,8 +76,8 @@ def _nested_context_retriever_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested context_retriever
     subgraph -- asserting on this is what actually distinguishes "same
     nested checkpoint resume" from a full subgraph restart."""
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert snapshot.next == ("context_retriever",)
     assert len(snapshot.tasks) == 1
     outer_task = snapshot.tasks[0]
@@ -112,7 +115,7 @@ def _attempt_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[object, object | None]:
+) -> tuple[ConfirmRunResult, WorkflowInvocationResult | None]:
     return resume_confirmation_with_handoff(
         runtime,
         database_path,
@@ -127,14 +130,14 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> object | None:
+) -> WorkflowInvocationResult | None:
     application_result, runtime_result = _attempt_confirmation(
         runtime=runtime,
         database_path=database_path,
         resume_payload=resume_payload,
         command_id=command_id,
     )
-    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert application_result.applied is True
     return runtime_result
 
 
@@ -231,7 +234,7 @@ def test_retrieval_resume_reuses_completed_read_and_query_plan(tmp_path: Path) -
     # exactly at the 8-call cap rather than a 9th (review) call being
     # denied. Asserting COMPLETED proves the same ordinary, unchanged
     # RunBudgetV2 accounting the old exhaustion assertion proved.
-    llm_runtime._queued.extend(  # noqa: SLF001
+    llm_runtime._queued.extend(
         _llm_result(payload)
         for payload in [
             _sufficiency_output("SUFFICIENT"),
@@ -295,14 +298,14 @@ def test_retrieval_resume_preserves_evidence_identity(tmp_path: Path) -> None:
     first = start_with_admission(runtime, database_path, _start_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
 
-    state_before = runtime._graph.get_state(  # noqa: SLF001
+    state_before = runtime._graph.get_state(
         runtime._invocation.config_for_thread("thread-1"),
-        subgraphs=True,  # noqa: SLF001
+        subgraphs=True,
     )
     nested_before = state_before.tasks[0].state.values
     evidence_drafts_before = nested_before["evidence_drafts"]
     round_no_before = nested_before["__context_current_round_no__"]
-    llm_runtime._queued.extend(  # noqa: SLF001
+    llm_runtime._queued.extend(
         _llm_result(payload)
         for payload in [
             _sufficiency_output("SUFFICIENT"),
@@ -329,9 +332,7 @@ def test_retrieval_resume_preserves_evidence_identity(tmp_path: Path) -> None:
         )
         assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         retrieval_result = state["retrieval_result"]
         assert retrieval_result is not None
         # Same evidence_refs/round -- never re-derived with new identities.
@@ -375,7 +376,7 @@ def test_retrieval_resume_applies_confirmation_response_within_prompt_boundary(
     )
     first = start_with_admission(runtime, database_path, _start_request())
     interrupt_id = first.payload["user_interrupt"]["interrupt_id"]
-    llm_runtime._queued.extend(  # noqa: SLF001
+    llm_runtime._queued.extend(
         _llm_result(payload)
         for payload in [
             _sufficiency_output("SUFFICIENT"),
@@ -452,7 +453,7 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
 
     # --- Round 2: still ambiguous -- must pause again, still inside the
     # same nested subgraph. ---
-    llm_runtime._queued.append(_llm_result(_sufficiency_output("NEEDS_CONFIRMATION")))  # noqa: SLF001
+    llm_runtime._queued.append(_llm_result(_sufficiency_output("NEEDS_CONFIRMATION")))
     second = _resume_confirmation(
         runtime=runtime,
         database_path=database_path,
@@ -477,7 +478,7 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
 
     # --- Round 3: resolved -- Retrieval and the downstream ANSWER path
     # complete within the Canonical NORMAL budget. ---
-    llm_runtime._queued.extend(  # noqa: SLF001
+    llm_runtime._queued.extend(
         _llm_result(payload)
         for payload in [
             _sufficiency_output("SUFFICIENT"),
@@ -505,9 +506,7 @@ def test_retrieval_resumes_second_consecutive_confirmation_round_via_same_nested
         # No provider read and no query planning at any point in rounds 2-3.
         assert len(_plan_query_calls(llm_runtime)) == 1
 
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         assert state["retrieval_result"] is not None
     finally:
         runtime.close()
@@ -548,8 +547,8 @@ def test_retrieval_resume_rejects_wrong_interrupt_id(tmp_path: Path) -> None:
             },
             command_id="command-2",
         )
-        assert application_result.applied is False  # type: ignore[attr-defined]
-        assert "interrupt" in application_result.conflict_detail  # type: ignore[attr-defined]
+        assert application_result.applied is False
+        assert "interrupt" in (application_result.conflict_detail or "")
         assert runtime_result is None
         # Fails closed: no Provider call happened while validating the
         # resume payload.
@@ -594,8 +593,8 @@ def test_retrieval_resume_rejects_option_id_outside_allowed_scope(tmp_path: Path
             },
             command_id="command-2",
         )
-        assert application_result.applied is False  # type: ignore[attr-defined]
-        assert "option" in application_result.conflict_detail  # type: ignore[attr-defined]
+        assert application_result.applied is False
+        assert "option" in (application_result.conflict_detail or "")
         assert runtime_result is None
     finally:
         runtime.close()

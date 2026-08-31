@@ -31,7 +31,7 @@ from google_work_agent.ports.system.artifact_signature_verifier import (
 )
 
 
-def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path) -> None:
+def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -59,7 +59,7 @@ def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path) -> N
         transport.close()
 
 
-def test_subprocess_transport_rejects_manifest_hash_mismatch(tmp_path) -> None:
+def test_subprocess_transport_rejects_manifest_hash_mismatch(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -92,7 +92,7 @@ def test_mcp_projection_rejects_duplicate_json_fields(tmp_path: Path) -> None:
         MCPServerManifest.load(manifest_path)
 
 
-def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path) -> None:
+def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -111,6 +111,7 @@ def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path) -> N
             1_000,
         )
         assert result.transport_status == "ERROR"
+        assert isinstance(result.payload, dict)
         assert result.payload["delivery_certainty"] == "SENT_RESPONSE_LOST"
     finally:
         transport.close()
@@ -169,14 +170,10 @@ def test_installed_transport_executes_verified_binary_without_pythonpath_or_pare
     client = StdioMCPClientAdapter(
         descriptor=build_google_workspace_connector_descriptor(
             config,
-            expected_tool_descriptors=tuple(
-                registry.descriptor_expectations("google_workspace")
-            ),
+            expected_tool_descriptors=tuple(registry.descriptor_expectations("google_workspace")),
         ),
         runtime_registry=ConnectorRuntimeRegistry(),
-        signature_verifier=StaticArtifactSignatureVerifier(
-            ArtifactSignatureDecision(allowed=True)
-        ),
+        signature_verifier=StaticArtifactSignatureVerifier(ArtifactSignatureDecision(allowed=True)),
     )
     client._process = None
 

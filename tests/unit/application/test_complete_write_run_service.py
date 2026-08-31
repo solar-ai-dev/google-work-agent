@@ -20,7 +20,7 @@ class _Receipts:
     def __init__(self) -> None:
         self.finished = 0
 
-    def get_by_command_id(self, _command_id: str):
+    def get_by_command_id(self, _command_id: str) -> None:
         return None
 
     def reserve_or_replay(self, **_kwargs: object) -> None:
@@ -41,7 +41,7 @@ class _Runs:
     def get(self, _run_id: str) -> RunRecord:
         return self.run
 
-    def update_if_version_and_status(self, *_args: object, **_kwargs: object):
+    def update_if_version_and_status(self, *_args: object, **_kwargs: object) -> bool:
         self.complete_calls += 1
         raise AssertionError("Run completion must not execute when aggregate guard fails")
 
@@ -136,7 +136,7 @@ class _Uow:
         )
         self.commits = 0
 
-    def __enter__(self):
+    def __enter__(self) -> _Uow:
         return self
 
     def __exit__(self, *_args: object) -> None:

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assemble_work_analysis import (  # noqa: E501
+from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing import (
     route_after_assemble_work_analysis,
 )
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
@@ -30,9 +30,16 @@ def test_finalize_uses_the_canonical_closed_router() -> None:
 
     assert "route_after_assemble_work_analysis" in graph
     assert "_route_after_finalize" not in graph
-    assert route_after_assemble_work_analysis({"final_analysis": {}}) == "end"
     assert (
-        route_after_assemble_work_analysis({"__work_analysis_retry_confirmation__": True})
+        route_after_assemble_work_analysis.route_after_assemble_work_analysis(
+            {"final_analysis": {}}
+        )
+        == "end"
+    )
+    assert (
+        route_after_assemble_work_analysis.route_after_assemble_work_analysis(
+            {"__work_analysis_retry_confirmation__": True}
+        )
         == "assess_operational_risks"
     )
 

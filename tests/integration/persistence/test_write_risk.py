@@ -1,7 +1,5 @@
 """Write reauth and persisted risk integration tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
 from dataclasses import replace
@@ -25,6 +23,9 @@ from google_work_agent.application.use_cases.run.request_cancel import (
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthCommand,
     ResumeAfterReauthHandler,
+)
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
 )
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -244,15 +245,18 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
     _register_preflight_resume_target(write_database, clock)
     registry = ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1")
     scheduled: list[str] = []
+
+    def schedule_cancel(command: ScheduleRunExecutionCommand) -> RunExecutionAcceptedV1:
+        scheduled.append(command.handoff_id)
+        return RunExecutionAcceptedV1(1, True, "ACCEPTED")
+
     cancel = RequestCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
         resume_target_registry=registry,
-        schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
-        ),
+        schedule_run_execution=schedule_cancel,
     )(RequestCancelCommand("run-1", 1, "cancel-reauth", "e" * 64))
     assert cancel.current_status == "CANCEL_REQUESTED"
 
@@ -294,6 +298,10 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
         finally:
             store.close()
 
+    def schedule_resume(command: ScheduleRunExecutionCommand) -> RunExecutionAcceptedV1:
+        scheduled.append(command.handoff_id)
+        return RunExecutionAcceptedV1(1, True, "ACCEPTED")
+
     resumed = ResumeAfterReauthHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         checkpoint_port=SqliteCheckpointAdapter(write_database, now_ms=clock.now_ms),
@@ -301,9 +309,7 @@ def test_cancel_requested_reauth_round_trip_restores_exact_checkpoint_status(
         resolve_resume_authority=authority,
         id_generator=DeterministicUUID(queued_ids=("handoff-resume",)),
         resume_target_registry=registry,
-        schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
-        ),
+        schedule_run_execution=schedule_resume,
     )(
         ResumeAfterReauthCommand(
             "resume-cancel-reauth",
@@ -373,7 +379,7 @@ def test_action_risk_round_trips_through_repository_and_run_snapshot(
     snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     ).get_run_snapshot("run-1")
     assert snapshot is not None
     assert snapshot.actions[0].risk == risk

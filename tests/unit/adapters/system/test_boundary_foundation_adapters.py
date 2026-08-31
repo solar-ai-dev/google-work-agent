@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
@@ -149,7 +150,7 @@ def test_sse_buffer_sanitizes_replays_expires_cursor_and_clears() -> None:
     assert buffer.list_after("run-1", None, 10).events == ()
 
 
-def test_diagnostics_bundle_is_sanitized_bounded_and_replayable(tmp_path) -> None:
+def test_diagnostics_bundle_is_sanitized_bounded_and_replayable(tmp_path: Path) -> None:
     adapter = FilesystemDiagnosticsAdapter(
         collect_snapshot=lambda: {"status": "ok", "api_key": "secret"},
         diagnostics_dir=tmp_path,
@@ -166,7 +167,7 @@ def test_diagnostics_bundle_is_sanitized_bounded_and_replayable(tmp_path) -> Non
     assert adapter.reconcile_bundle("diagnostics-op-1").status == "COMPLETED"
 
 
-def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_path) -> None:
+def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_path: Path) -> None:
     database_path = tmp_path / "app.sqlite3"
     connection = connect_sqlite(database_path)
     try:
@@ -203,7 +204,7 @@ def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_pat
         connection.close()
 
 
-def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path) -> None:
+def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path: Path) -> None:
     calls: list[str] = []
     component = _ShutdownComponent(calls)
     adapter = ProcessShutdownAdapter(
@@ -228,7 +229,7 @@ def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path
     assert adapter.reconcile_shutdown("shutdown-op-1").status == "COMPLETED"
 
 
-def test_checkpoint_external_llm_scope_is_typed_and_revision_monotonic(tmp_path) -> None:
+def test_checkpoint_external_llm_scope_is_typed_and_revision_monotonic(tmp_path: Path) -> None:
     database_path = tmp_path / "checkpoint.sqlite3"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection, now_ms=lambda: 1)

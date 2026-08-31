@@ -1,8 +1,8 @@
 """Write cancellation and cancel-recovery integration tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
+
+from typing import cast
 
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
@@ -16,8 +16,14 @@ from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
 )
+from google_work_agent.application.use_cases.run.schedule_run_execution import (
+    ScheduleRunExecutionCommand,
+)
 from google_work_agent.domain.recovery.model import RecoveryResolution
-from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    MainControlResumeTargetV2,
+    RunExecutionAcceptedV1,
+)
 from tests.integration.persistence.test_write_actions import (
     ApproveWriteActionCommand,
     ApproveWriteActionService,
@@ -75,15 +81,18 @@ def test_production_request_cancel_stops_at_cancel_requested_and_stages_resoluti
     _prepare_write_plan(write_database=write_database, clock=clock, suffix="prod-cancel")
     _register_preflight_resume_target(write_database, clock)
     scheduled: list[str] = []
+
+    def schedule(command: ScheduleRunExecutionCommand) -> RunExecutionAcceptedV1:
+        scheduled.append(command.handoff_id)
+        return RunExecutionAcceptedV1(1, True, "ACCEPTED")
+
     result = RequestCancelHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         checkpoint_port=sqlite_checkpoint(write_database),
         now_ms=clock.now_ms,
         id_generator=DeterministicUUID(queued_ids=("handoff-cancel",)),
         resume_target_registry=ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
-        schedule_run_execution=lambda command: (
-            scheduled.append(command.handoff_id) or RunExecutionAcceptedV1(1, True, "ACCEPTED")
-        ),
+        schedule_run_execution=schedule,
     )(RequestCancelCommand("run-1", 1, "cmd-prod-cancel", "d" * 64))
 
     assert result.applied
@@ -98,7 +107,9 @@ def test_production_request_cancel_stops_at_cancel_requested_and_stages_resoluti
     assert action is not None and action.status != "CANCELLED"
     assert handoff is not None
     assert handoff.execution.resume_target is not None
-    assert handoff.execution.resume_target.stage_id == "CANCEL_RESOLUTION"
+    resume_target = handoff.execution.resume_target
+    assert isinstance(resume_target, MainControlResumeTargetV2)
+    assert resume_target.stage_id == "CANCEL_RESOLUTION"
 
 
 def test_waiting_approval_cancel_revokes_approval_and_finalizes_cancelled(
@@ -344,8 +355,9 @@ def test_cancel_version_and_hash_conflicts_are_atomic_and_replay_is_idempotent(
         "result_code": ResultCode.DUPLICATE_COMMAND.value,
     }
     assert envelope["result_code"] == ResultCode.DUPLICATE_COMMAND.value
-    assert envelope["correlation"]["run_id"] == command.run_id
-    assert envelope["correlation"]["action_id"] is None
+    correlation = cast(dict[str, object], envelope["correlation"])
+    assert correlation["run_id"] == command.run_id
+    assert correlation["action_id"] is None
     # No raw payload/secret sneaks in beyond the allowlisted identifiers.
     raw = str(envelope)
     assert "arguments" not in raw
@@ -485,7 +497,7 @@ def test_executed_cancel_moves_run_to_verifying_without_cancelling_result(
     snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     ).get_run_snapshot("run-1")
     assert snapshot is not None
     assert snapshot.terminal_result_kind == "NONE"
@@ -600,7 +612,7 @@ def test_verified_partial_cancel_preserves_fact_and_cancels_pending_sibling(
     snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     ).get_run_snapshot("run-1")
     assert snapshot is not None
     assert snapshot.terminal_result_kind == "PARTIAL"
@@ -708,7 +720,7 @@ def test_unknown_result_cancel_enters_recovery_without_blind_retry(
     snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     ).get_run_snapshot("run-1")
     assert snapshot is not None
     assert snapshot.terminal_result_kind == "NONE"
@@ -775,7 +787,7 @@ def test_cancel_result_reflects_durably_observed_external_mutation(
     snapshot = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     ).get_run_snapshot("run-1")
     assert snapshot is not None
     assert snapshot.terminal_result_kind == expected_result_kind
@@ -1005,7 +1017,7 @@ def test_failed_cancel_audit_marker_does_not_authorize_verifying_continuation(
     query_service = SnapshotReader(
         database_path=write_database,
         connection_factory=connect_sqlite,
-        runtime_status_provider=None,  # type: ignore[arg-type]
+        runtime_status_provider=None,
     )
     assert query_service.has_cancel_intent("run-1") is False
     result = FinalizeCancelHandler(

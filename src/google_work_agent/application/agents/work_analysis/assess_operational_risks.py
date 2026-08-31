@@ -18,7 +18,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 _RISK_KINDS = (
     "SCHEDULE_CONFLICT",
@@ -77,7 +77,7 @@ def assess_operational_risks(
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     policy_summary: dict[str, object] | None = None,
     confirmation_response: dict[str, object] | None = None,
 ) -> OperationalRiskAssessmentV1:
@@ -113,12 +113,11 @@ def assess_operational_risks(
             raise ValueError("action_necessity_reason must be non-empty or null")
         return value
 
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=ASSESS_OPERATIONAL_RISKS_OUTPUT_SCHEMA,
-        trace_context=trace_context,
-        semantic_validate=validate,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        prompt_input,
+        ASSESS_OPERATIONAL_RISKS_OUTPUT_SCHEMA,
     )
     validated = cast(Mapping[str, object], validate(result.structured_output))
     return cast(OperationalRiskAssessmentV1, dict(validated))

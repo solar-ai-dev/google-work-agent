@@ -132,8 +132,9 @@ def test_real_execution_error_routes_to_exactly_one_durable_finalizer(
     assert result.route == expected_route  # type: ignore[union-attr]
     assert [name for name, _command_value in calls] == [expected_route]
     routed_command = calls[0][1]
+    assert isinstance(routed_command, (MarkFailedCommand, MarkUnknownResultCommand))
     assert routed_command.delivery_certainty is expected_certainty
-    if expected_route == "unknown":
+    if isinstance(routed_command, MarkUnknownResultCommand):
         assert calls[0][0] != "failed"
         assert routed_command.mcp_request_id == "mcp-c3r"
     else:

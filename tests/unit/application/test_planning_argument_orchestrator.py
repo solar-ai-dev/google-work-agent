@@ -13,6 +13,15 @@ from evaluation.compat.planning_argument_writer import (
 )
 from evaluation.compat.planning_arguments import DefaultContainerResolver
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+)
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    OutputToolRouteV1,
+)
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm import (
     ActualRuntime,
@@ -37,7 +46,7 @@ class _Runtime:
         route_id = route["route_id"]
         self.route_ids.append(route_id)
         if route["selected_tool_id"] == "tasks_create_task":
-            arguments = {"payload": {"title": "Task"}}
+            arguments: dict[str, object] = {"payload": {"title": "Task"}}
         else:
             arguments = {"payload": {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}}
         candidate: dict[str, object] = {
@@ -92,7 +101,7 @@ def _request() -> WorkflowStartRequest:
         requested_mode="API_LLM",
         request_text="Create a task and draft an email",
         selected_resource_ids=(),
-        run_budget=build_default_run_budget(),
+        run_budget=dict(build_default_run_budget()),
         correlation=WorkflowCorrelationContext(
             request_id="request-1",
             command_id="command-1",
@@ -101,7 +110,7 @@ def _request() -> WorkflowStartRequest:
     )
 
 
-def _intent():
+def _intent() -> RequestIntentV2:
     return {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
@@ -115,7 +124,7 @@ def _intent():
     }
 
 
-def _task_route():
+def _task_route() -> OutputToolRouteV1:
     return {
         "route_id": "route-task",
         "resource_type": "TASK",
@@ -126,7 +135,7 @@ def _task_route():
     }
 
 
-def _gmail_route():
+def _gmail_route() -> OutputToolRouteV1:
     return {
         "route_id": "route-gmail",
         "resource_type": "GMAIL_DRAFT",
@@ -137,7 +146,7 @@ def _gmail_route():
     }
 
 
-def _evidence():
+def _evidence() -> list[EvidenceDraftV1]:
     return [
         {
             "schema_version": 1,
@@ -155,7 +164,7 @@ def _evidence():
 def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
-        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),
         default_container_resolver=DefaultContainerResolver(
             default_tasklist_id_provider=lambda: "default-list"
         ),
@@ -163,9 +172,9 @@ def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
     routes = (_task_route(), _gmail_route())
     results = orchestrator.compose(
         request=_request(),
-        request_intent=_intent(),  # type: ignore[arg-type]
-        output_routes=routes,  # type: ignore[arg-type]
-        evidence_drafts=_evidence(),  # type: ignore[arg-type]
+        request_intent=_intent(),
+        output_routes=routes,
+        evidence_drafts=_evidence(),
         analysis_result=None,
     )
     assert runtime.route_ids == ["route-task", "route-gmail"]
@@ -177,10 +186,10 @@ def test_orchestrator_invokes_writer_once_per_route_in_frozen_order() -> None:
 def test_missing_required_container_prepares_confirmation_without_writer_call() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
-        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),
         default_container_resolver=DefaultContainerResolver(),
     )
-    preparations = orchestrator.prepare_actions(output_routes=(_task_route(),))  # type: ignore[arg-type]
+    preparations = orchestrator.prepare_actions(output_routes=(_task_route(),))
     assert runtime.route_ids == []
     preparation = preparations[0]
     assert preparation["disposition"] == "NEEDS_CONFIRMATION"
@@ -206,20 +215,20 @@ def test_missing_required_container_prepares_confirmation_without_writer_call() 
 def test_only_ready_preparation_may_invoke_writer() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
-        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),
         default_container_resolver=DefaultContainerResolver(
             default_tasklist_id_provider=lambda: "default-list"
         ),
     )
     route = _task_route()
-    preparations = orchestrator.prepare_actions(output_routes=(route,))  # type: ignore[arg-type]
+    preparations = orchestrator.prepare_actions(output_routes=(route,))
     assert preparations[0]["disposition"] == "READY"
     results = orchestrator.compose_prepared(
         request=_request(),
-        request_intent=_intent(),  # type: ignore[arg-type]
-        output_routes=(route,),  # type: ignore[arg-type]
+        request_intent=_intent(),
+        output_routes=(route,),
         preparations=preparations,
-        evidence_drafts=_evidence(),  # type: ignore[arg-type]
+        evidence_drafts=_evidence(),
         analysis_result=None,
     )
     assert runtime.route_ids == ["route-task"]
@@ -229,18 +238,18 @@ def test_only_ready_preparation_may_invoke_writer() -> None:
 def test_non_ready_preparation_is_rejected_by_writer_boundary() -> None:
     runtime = _Runtime()
     orchestrator = PlanningArgumentOrchestrator(
-        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),  # type: ignore[arg-type]
+        writer=PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt()),
         default_container_resolver=DefaultContainerResolver(),
     )
     route = _task_route()
-    preparation = orchestrator.prepare_actions(output_routes=(route,))  # type: ignore[arg-type]
+    preparation = orchestrator.prepare_actions(output_routes=(route,))
     with pytest.raises(ValueError, match="READY preparation"):
         orchestrator.compose_prepared(
             request=_request(),
-            request_intent=_intent(),  # type: ignore[arg-type]
-            output_routes=(route,),  # type: ignore[arg-type]
+            request_intent=_intent(),
+            output_routes=(route,),
             preparations=preparation,
-            evidence_drafts=_evidence(),  # type: ignore[arg-type]
+            evidence_drafts=_evidence(),
             analysis_result=None,
         )
     assert runtime.route_ids == []

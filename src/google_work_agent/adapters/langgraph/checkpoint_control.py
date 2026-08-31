@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import asdict
 from typing import cast
 
+from langchain_core.runnables import RunnableConfig
 from langgraph._internal._constants import NULL_TASK_ID
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.pregel._io import map_command
@@ -26,7 +27,7 @@ class LangGraphCheckpointControlAdapter:
         self,
         *,
         checkpoint_port: CheckpointPort,
-        native_saver: BaseCheckpointSaver[object],
+        native_saver: BaseCheckpointSaver[str],
     ) -> None:
         self._checkpoint_port = checkpoint_port
         self._native_saver = native_saver
@@ -105,12 +106,12 @@ class LangGraphCheckpointControlAdapter:
             raise ValueError("native checkpoint is missing")
         return {
             str(channel): value
-            for task_id, channel, value in item.pending_writes
+            for task_id, channel, value in item.pending_writes or ()
             if task_id == NULL_TASK_ID
         }
 
     @staticmethod
-    def _config(checkpoint: GraphCheckpointEnvelopeV1) -> dict[str, object]:
+    def _config(checkpoint: GraphCheckpointEnvelopeV1) -> RunnableConfig:
         return {
             "configurable": {
                 "thread_id": checkpoint.langgraph_thread_id,
@@ -126,7 +127,7 @@ def _control_writes(
     goto_node: str | None,
 ) -> list[tuple[str, object]]:
     if control.kind == "CONFIRMATION_RESPONSE":
-        command = Command(
+        command: Command[str] = Command(
             resume={
                 "confirmation_response": dict(control.confirmation_response),
                 "policy_confirmation_receipt": (
@@ -167,7 +168,11 @@ def _control_writes(
                 update["pending_user_retrieval_need"] = dict(retrieval_need)
             else:
                 raise ValueError("unknown context adjustment kind")
-        command = Command(goto=goto_node, update=update) if goto_node else Command(update=update)
+        command = (
+            Command[str](goto=goto_node, update=update)
+            if goto_node
+            else Command[str](update=update)
+        )
     writes = list(map_command(command))
     if any(task_id != NULL_TASK_ID for task_id, _, _ in writes):
         raise AssertionError("workflow control writes must be checkpoint-level writes")

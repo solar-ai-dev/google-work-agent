@@ -3,19 +3,21 @@
 
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.rag_candidate_projection import (  # noqa: E501
-    EXACT_RESOURCE_REASON,
-    KEYWORD_MATCH_REASON,
-    RELATED_RESOURCE_REASON,
-    RESOURCE_SELECTED_FORCED_REASON,
-    RagScoringConfig,
-    rank_segments,
+from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections import (
+    rag_candidate_projection,
 )
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     ConstraintV1,
     RequestIntentV2,
 )
 from google_work_agent.application.agents.retrieval.normalize_segments import _SourceSegment
+
+EXACT_RESOURCE_REASON = rag_candidate_projection.EXACT_RESOURCE_REASON
+KEYWORD_MATCH_REASON = rag_candidate_projection.KEYWORD_MATCH_REASON
+RELATED_RESOURCE_REASON = rag_candidate_projection.RELATED_RESOURCE_REASON
+RESOURCE_SELECTED_FORCED_REASON = rag_candidate_projection.RESOURCE_SELECTED_FORCED_REASON
+RagScoringConfig = rag_candidate_projection.RagScoringConfig
+rank_segments = rag_candidate_projection.rank_segments
 
 
 def _segment(

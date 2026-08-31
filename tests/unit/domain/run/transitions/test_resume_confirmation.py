@@ -4,7 +4,7 @@ from google_work_agent.domain.run.transitions.resume_confirmation import (
 )
 
 
-def test_resume_confirmation_restores_registered_safe_phase():
+def test_resume_confirmation_restores_registered_safe_phase() -> None:
     assert (
         transition_resume_confirmation(
             RunStatusV1.WAITING_CONFIRMATION, resume_status=RunStatusV1.RETRIEVING

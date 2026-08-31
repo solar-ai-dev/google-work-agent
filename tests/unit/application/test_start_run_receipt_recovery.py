@@ -4,9 +4,11 @@ import itertools
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from json import dumps
+from typing import cast
 
 import pytest
 
+from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
@@ -17,6 +19,7 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
 from google_work_agent.domain.message.model import Message as MessageRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run as RunRecord
 from google_work_agent.domain.run.model import RunStatusV1
@@ -29,6 +32,8 @@ from google_work_agent.ports.persistence.trace_event_repository import (
     PersistedTraceEventRecord,
     TraceEventCursor,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionRefV1,
@@ -139,7 +144,7 @@ class _RunRepo:
             None,
         )
 
-    def create(self, run: object) -> None:
+    def create(self, run: RunRecord) -> None:
         self.add_count += 1
         self.records[run.id] = RunRecord(
             id=run.id,
@@ -200,7 +205,7 @@ class _ReceiptRepo:
             result_version=None,
             response=None,
             response_json=None,
-            created_at_ms=int(kwargs["created_at_ms"]),
+            created_at_ms=coerce_int(kwargs["created_at_ms"]),
             completed_at_ms=None,
         )
         return None
@@ -213,10 +218,10 @@ class _ReceiptRepo:
             status=CommandReceiptStatus.APPLIED
             if kwargs["applied"]
             else CommandReceiptStatus.REJECTED,
-            result_code=kwargs["result_code"],
-            result_version=int(kwargs["result_version"]),
+            result_code=ResultCode(str(kwargs["result_code"])),
+            result_version=coerce_int(kwargs["result_version"]),
             response_json=str(kwargs["response_json"]),
-            completed_at_ms=int(kwargs["completed_at_ms"]),
+            completed_at_ms=coerce_int(kwargs["completed_at_ms"]),
         )
 
 
@@ -264,10 +269,10 @@ class _WorkflowHandoffRepo:
 
 class _ResourceRefRepo:
     def __init__(self) -> None:
-        self.records: dict[str, object] = {}
+        self.records: dict[str, ResourceRefRecord] = {}
 
-    def upsert_bound_ref(self, record: object) -> object:
-        self.records[record.id] = record  # type: ignore[attr-defined]
+    def upsert_bound_ref(self, record: ResourceRefRecord) -> ResourceRefRecord:
+        self.records[record.id] = record
         return record
 
 
@@ -536,12 +541,12 @@ def _seed_complete_aggregate(
 
 def _handler(uow: _UnitOfWork) -> StartRunHandler:
     return StartRunHandler(
-        unit_of_work_factory=lambda: uow,
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
         now_ms=lambda: 20,
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
-        checkpoint_port=uow.workflow_bindings,
+        checkpoint_port=cast(CheckpointPort, uow.workflow_bindings),
     )
 
 
@@ -612,7 +617,11 @@ def test_completed_receipt_with_wrong_identity_fails_closed_before_replay(
         response_json=dumps(asdict(stored), sort_keys=True),
         completed_at_ms=15,
     )
-    uow.command_receipts.record = replace(receipt, **{field_name: wrong_value})
+    uow.command_receipts.record = (
+        replace(receipt, command_type=wrong_value)
+        if field_name == "command_type"
+        else replace(receipt, aggregate_type=wrong_value)
+    )
 
     with pytest.raises(RuntimeError, match="receipt identity does not match"):
         _handler(uow)(command)
@@ -760,8 +769,8 @@ def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None
     command = _command()
     uow.command_receipts.record = replace(_received(command), created_at_ms=0)
     handler = StartRunHandler(
-        unit_of_work_factory=lambda: uow,
-        checkpoint_port=uow.workflow_bindings,
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
+        checkpoint_port=cast(CheckpointPort, uow.workflow_bindings),
         now_ms=lambda: 10**15,
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",

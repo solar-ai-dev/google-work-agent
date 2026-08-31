@@ -7,6 +7,7 @@ import pytest
 
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     FAILURE_RECORD_FIELDS,
+    FailureRecordV1,
     FailureRecordValidationError,
     build_failure_record_v1,
     validate_failure_record_v1,
@@ -17,7 +18,7 @@ from tests.support.legacy_prompt_input_contract import (
 )
 
 
-def _record() -> dict[str, object]:
+def _record() -> FailureRecordV1:
     return build_failure_record_v1(
         failure_reason_code="TOOL_SELECTION_INVALID",
         failure_origin="LLM_OUTPUT",

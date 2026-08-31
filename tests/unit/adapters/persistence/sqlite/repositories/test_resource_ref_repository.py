@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
@@ -26,7 +27,7 @@ def test_upsert_uses_connector_aware_identity_and_returns_existing_server_id(
         connection.close()
 
 
-def _database(tmp_path: Path):
+def _database(tmp_path: Path) -> sqlite3.Connection:
     connection = connect_sqlite(tmp_path / "resource-ref.db")
     apply_migrations(connection, now_ms=lambda: 1)
     connection.execute(

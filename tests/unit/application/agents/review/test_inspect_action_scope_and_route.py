@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from google_work_agent.application.agents.review.inspect_action_scope_and_route import (
@@ -33,12 +35,17 @@ def test_inspect_action_scope_and_route_reads_frozen_route_without_mutating_it()
     original = {"output_plan": {"output_routes": [{"route_id": "route-1"}]}}
     calls: list[dict[str, object]] = []
 
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        assert prompt_id == DIMENSION
+        calls.append(dict(prompt_input))
+        return _result()
+
     result = inspect_action_scope_and_route(
         request_intent={"goal": "create"},
         tool_route_plan=route,
         planning_result={"schema_version": 2, "actions": [{"action_id": "action-1"}]},
         evidence=[],
-        invoke=lambda _prompt_id, prompt_input: calls.append(prompt_input) or _result(),
+        invoke=invoke,
     )
 
     assert result["findings"][0]["affected_route_ids"] == ["route-1"]

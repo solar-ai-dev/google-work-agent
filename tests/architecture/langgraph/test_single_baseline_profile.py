@@ -9,9 +9,13 @@ from google_work_agent.adapters.langgraph.profiles.single_baseline import (
 
 
 def test_single_profile_has_one_physical_subgraph_and_six_semantic_owners() -> None:
-    arguments = profile_build_arguments()
-    semantic_owners = arguments.pop("semantic_owners")
-    composition = build_single_baseline_graph(**arguments)
+    bindings, controls, route_next_node, checkpointer, semantic_owners = profile_build_arguments()
+    composition = build_single_baseline_graph(
+        bindings=bindings,
+        control_bindings=controls,
+        route_next_node=route_next_node,
+        checkpointer=checkpointer,
+    )
 
     assert tuple(composition.native_subgraphs()) == ("single_workflow",)
     assert len(set(SEMANTIC_OWNER_BINDINGS.values())) == 1

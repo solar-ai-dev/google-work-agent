@@ -23,31 +23,13 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     route_supervisor,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.detect_ambiguity_node import (  # noqa: E501
-    detect_ambiguity_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.finalize_intent_node import (  # noqa: E501
-    finalize_intent_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.nodes.identify_goal_node import (  # noqa: E501
-    identify_goal_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.routing.route_after_detect_ambiguity import (  # noqa: E501
-    route_after_detect_ambiguity,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.routing.route_after_finalize_intent import (  # noqa: E501
-    route_after_finalize_intent,
-)
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.routing.route_after_identify_goal import (  # noqa: E501
-    route_after_identify_goal,
-)
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingInputState,
     RequestUnderstandingParentOutputState,
     RequestUnderstandingStateV2,
 )
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationQuestionV1,
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
@@ -57,6 +39,25 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
     UserInterruptV1,
+)
+
+from .nodes.detect_ambiguity_node import (
+    detect_ambiguity_node,
+)
+from .nodes.finalize_intent_node import (
+    finalize_intent_node,
+)
+from .nodes.identify_goal_node import (
+    identify_goal_node,
+)
+from .routing.route_after_detect_ambiguity import (
+    route_after_detect_ambiguity,
+)
+from .routing.route_after_finalize_intent import (
+    route_after_finalize_intent,
+)
+from .routing.route_after_identify_goal import (
+    route_after_identify_goal,
 )
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
@@ -195,7 +196,7 @@ class RequestUnderstandingSubgraph:
         if ambiguity is None or candidate is None:
             raise ValueError("request-understanding ambiguity is required")
         missing = ", ".join(ambiguity["missing_fields"])
-        question: ClarificationQuestionV1 = {
+        question: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": "request.detect_ambiguity",
             "question": (

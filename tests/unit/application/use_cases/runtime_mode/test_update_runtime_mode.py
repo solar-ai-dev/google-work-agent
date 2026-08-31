@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,
 )
@@ -8,7 +10,7 @@ from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode im
 )
 
 
-def test_runtime_mode_update_is_replay_safe(tmp_path) -> None:
+def test_runtime_mode_update_is_replay_safe(tmp_path: Path) -> None:
     handler = UpdateRuntimeModeHandler(
         runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
         replay=FilesystemOperationalCommandReplayAdapter(tmp_path / "replay"),
@@ -25,7 +27,7 @@ def test_runtime_mode_update_is_replay_safe(tmp_path) -> None:
 
 
 def test_runtime_mode_update_is_blocked_before_reservation_when_a_run_is_active(
-    tmp_path,
+    tmp_path: Path,
 ) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path / "replay")
     handler = UpdateRuntimeModeHandler(

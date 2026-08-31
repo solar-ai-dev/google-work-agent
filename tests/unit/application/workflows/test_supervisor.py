@@ -31,6 +31,10 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
+from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    ToolRoutePlanV2,
+)
 from google_work_agent.application.use_cases.action.read_contracts import (
     ReadActionCommandResponse,
 )
@@ -871,10 +875,9 @@ def _state(
         "plan_draft": plan_draft,
         "plan_review": plan_review,
         "approved_plan_id": approved_plan_id,
-        "execution_summary": None,
-        "verification_summary": None,
         "finalize_intent": None,
         "user_interrupt": None,
+        "policy_confirmation_receipts": [],
         "retry_budget": retry_budget or build_default_run_budget(),
         "prompt_context": {},
         "trace_context": {},
@@ -899,8 +902,12 @@ def _request_intent() -> RequestIntentV2:
     }
 
 
-def _tool_route_plan() -> dict[str, object]:
-    meta = {"artifact_id": "route-plan-1", "revision": 1, "based_on": []}
+def _tool_route_plan() -> ToolRoutePlanV2:
+    meta: StateArtifactMetaV1 = {
+        "artifact_id": "route-plan-1",
+        "revision": 1,
+        "based_on": [],
+    }
     return {
         "schema_version": 2,
         "input_plan": {"schema_version": 1, "meta": meta, "input_routes": []},

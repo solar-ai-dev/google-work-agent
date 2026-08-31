@@ -86,12 +86,11 @@ def load_installed_connector_manifest(
 def _entry(payload: dict[str, object]) -> InstalledConnectorEntryV1:
     _require_exact_fields(payload, _ENTRY_FIELDS, "InstalledConnectorEntryV1")
     if payload.get("schema_version") != 1 or any(
-        not isinstance(payload.get(field), str)
-        for field in _ENTRY_FIELDS - {"schema_version"}
+        not isinstance(payload.get(field), str) for field in _ENTRY_FIELDS - {"schema_version"}
     ):
         raise ValueError("InstalledConnectorEntryV1 field type mismatch")
     return InstalledConnectorEntryV1(
-        schema_version=cast(int, payload["schema_version"]),  # type: ignore[arg-type]
+        schema_version=1,
         connector_id=str(payload["connector_id"]),
         provider_namespace=str(payload["provider_namespace"]),
         connector_package=str(payload["connector_package"]),

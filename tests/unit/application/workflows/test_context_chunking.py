@@ -236,7 +236,9 @@ def test_very_long_gmail_message_segments_are_bounded_by_max_segments() -> None:
     segments = _segments_from_acquisition(acquisition_result, DEFAULT_BUDGET)
 
     assert len(segments) == DEFAULT_BUDGET.max_segments
-    assert segments[0].locator["chunk_count"] > DEFAULT_BUDGET.max_segments
+    chunk_count = segments[0].locator["chunk_count"]
+    assert isinstance(chunk_count, int)
+    assert chunk_count > DEFAULT_BUDGET.max_segments
 
 
 def test_short_gmail_message_stays_a_single_segment() -> None:

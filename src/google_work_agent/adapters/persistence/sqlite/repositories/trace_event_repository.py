@@ -58,7 +58,8 @@ class SqliteTraceEventRepository:
                 )
             )
         self._connection.execute(
-            "INSERT INTO trace_events (run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO trace_events (run_id, action_id, event_type, status, duration_ms, "
+            "payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?);",
             (
                 event.run_id,
                 event.action_id,
@@ -91,7 +92,9 @@ class SqliteTraceEventRepository:
         run_id = None if cursor is None else cursor.run_id
         cursor_after = None if cursor is None else cursor.after_id
         rows = self._connection.execute(
-            "SELECT id, run_id, action_id, event_type, status, duration_ms, payload_json, created_at_ms FROM trace_events WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",  # noqa: E501
+            "SELECT id, run_id, action_id, event_type, status, duration_ms, payload_json, "
+            "created_at_ms FROM trace_events WHERE (? IS NULL OR run_id=?) "
+            "AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",
             (run_id, run_id, cursor_after, cursor_after, limit),
         ).fetchall()
         return tuple(self._record(r) for r in rows)

@@ -11,7 +11,7 @@ type TerminalMessageSourceKindV1 = Literal[
     "RECOVERY_RESULT",
     "INVALID_REQUEST",
 ]
-type _TerminalResultKindLiteralV1 = Literal["SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]
+type TerminalResultKindV1 = Literal["SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +20,7 @@ class BuildTerminalMessageQueryV1:
     run_id: str
     expected_run_version: int
     source_kind: TerminalMessageSourceKindV1
-    result_kind: _TerminalResultKindLiteralV1
+    result_kind: TerminalResultKindV1
     answer_text: str | None
     reason_codes: list[str]
 
@@ -28,7 +28,7 @@ class BuildTerminalMessageQueryV1:
 @dataclass(frozen=True, slots=True)
 class TerminalAssistantMessageInputV1:
     schema_version: Literal[1]
-    result_kind: _TerminalResultKindLiteralV1
+    result_kind: TerminalResultKindV1
     content: str
     reason_codes: list[str]
 
@@ -76,7 +76,7 @@ def _validate_query(query: BuildTerminalMessageQueryV1) -> None:
         raise ValueError("answer_text is only allowed for ANSWER_DRAFT")
 
 
-_DEFAULT_TERMINAL_CONTENT: dict[_TerminalResultKindLiteralV1, str] = {
+_DEFAULT_TERMINAL_CONTENT: dict[TerminalResultKindV1, str] = {
     "SUCCESS": "The requested work completed successfully.",
     "PARTIAL": "The requested work completed partially.",
     "BLOCKED": "The requested work was blocked safely.",

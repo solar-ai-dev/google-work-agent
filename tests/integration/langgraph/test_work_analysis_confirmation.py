@@ -59,6 +59,7 @@ from tests.support.canonical_workflow_runtime import (
 from tests.support.checkpoint import sqlite_checkpoint
 from tests.unit.application.workflows.test_context_retrieval import _sufficiency_output
 
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
@@ -153,7 +154,7 @@ def _queue_more(llm_runtime: _QueuedLLMRuntime, payloads: list[object]) -> None:
     see the module docstring for why: ``RunScopedEvidenceStore`` is
     in-process/run-memory-only, unrelated to the nested-checkpoint mechanism
     under test here."""
-    llm_runtime._queued.extend(_llm_result(item) for item in payloads)  # noqa: SLF001
+    llm_runtime._queued.extend(_llm_result(item) for item in payloads)
 
 
 def _resume_confirmation(
@@ -162,7 +163,7 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[object, WorkflowInvocationResult | None]:
+) -> tuple[ConfirmRunResult, WorkflowInvocationResult | None]:
     return resume_confirmation_with_handoff(
         runtime,
         database_path,
@@ -175,8 +176,8 @@ def _nested_work_analysis_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested work_analysis
     subgraph -- asserting on this is what actually distinguishes "same
     nested checkpoint resume" from a full subgraph restart."""
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert snapshot.next == ("work_analysis",)
     assert len(snapshot.tasks) == 1
     outer_task = snapshot.tasks[0]
@@ -376,9 +377,9 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
     )
     interrupt_id = payload["user_interrupt"]["interrupt_id"]
 
-    state_before = runtime._graph.get_state(  # noqa: SLF001
+    state_before = runtime._graph.get_state(
         runtime._invocation.config_for_thread("thread-1"),
-        subgraphs=True,  # noqa: SLF001
+        subgraphs=True,
     )
     nested_before = state_before.tasks[0].state.values
     invocation_id_before = nested_before["__analysis_agent_local__"]["invocation_id"]
@@ -406,9 +407,7 @@ def test_work_analysis_resume_preserves_retrieval_result_and_invocation_id(
         assert result is not None
         assert result.outcome is WorkflowOutcome.COMPLETED
 
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         retrieval_result = state["retrieval_result"]
         assert retrieval_result == retrieval_result_before
 
@@ -582,9 +581,7 @@ def _obsolete_second_consecutive_confirmation_round_via_same_nested_checkpoint(
             )
         ] == _retrieval_and_tool_route_calls_from_round1(llm_runtime)
 
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         assert state["work_analysis_result"] is not None
         assert state["work_analysis_result"]["schema_version"] == 2
     finally:

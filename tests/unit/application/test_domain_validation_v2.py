@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from inspect import Parameter, signature
+from typing import Any, cast
 
 import pytest
 
@@ -18,15 +20,17 @@ from google_work_agent.application.use_cases.action.validate_action_arguments im
 
 
 class _ResourceReader:
-    def __init__(self, resources):
+    def __init__(self, resources: dict[str, dict[str, object]]) -> None:
         self._resources = dict(resources)
 
-    def resolve_resource_identity(self, *, run_id: str, resource_handle: str):
+    def resolve_resource_identity(
+        self, *, run_id: str, resource_handle: str
+    ) -> dict[str, object] | None:
         assert run_id == "run-1"
         return self._resources.get(resource_handle)
 
 
-def _plan_meta():
+def _plan_meta() -> dict[str, Any]:
     return {
         "artifact_id": "plan-1",
         "revision": 1,
@@ -34,7 +38,7 @@ def _plan_meta():
     }
 
 
-def _review(*, plan_revision: int = 1):
+def _review(*, plan_revision: int = 1) -> dict[str, Any]:
     return {
         "schema_version": 2,
         "meta": {
@@ -47,7 +51,7 @@ def _review(*, plan_revision: int = 1):
     }
 
 
-def _evidence(resource_handle: str = "task:t1"):
+def _evidence(resource_handle: str = "task:t1") -> list[dict[str, Any]]:
     return [
         {
             "schema_version": 1,
@@ -62,7 +66,7 @@ def _evidence(resource_handle: str = "task:t1"):
     ]
 
 
-def _reader():
+def _reader() -> _ResourceReader:
     return _ResourceReader(
         {
             "task:t1": {
@@ -75,7 +79,7 @@ def _reader():
     )
 
 
-def _task_update_plan():
+def _task_update_plan() -> dict[str, Any]:
     return {
         "schema_version": 2,
         "meta": _plan_meta(),
@@ -97,7 +101,7 @@ def _task_update_plan():
     }
 
 
-def _task_create_plan():
+def _task_create_plan() -> dict[str, Any]:
     return {
         "schema_version": 2,
         "meta": _plan_meta(),
@@ -121,8 +125,8 @@ def _task_create_plan():
 def _analysis(
     *,
     action_necessity: str = "REQUIRED",
-    receipt_refs=(),
-):
+    receipt_refs: Sequence[object] = (),
+) -> dict[str, Any]:
     return {
         "schema_version": 2,
         "meta": {
@@ -141,7 +145,7 @@ def _analysis(
     }
 
 
-def _receipt(*, decision: str = "APPROVED"):
+def _receipt(*, decision: str = "APPROVED") -> dict[str, Any]:
     return {
         "schema_version": 1,
         "meta": {
@@ -159,15 +163,23 @@ def _receipt(*, decision: str = "APPROVED"):
     }
 
 
-def _call(plan, *, review=None, evidence=None, reader=None, analysis=None, receipts=()):
+def _call(
+    plan: Any,
+    *,
+    review: Any = None,
+    evidence: Any = None,
+    reader: Any = None,
+    analysis: Any = None,
+    receipts: Any = (),
+) -> Any:
     return build_domain_validation_output_from_v2(
         run_id="run-1",
         planning_result=plan,
-        plan_review=review or _review(),
+        plan_review=cast(Any, review or _review()),
         work_analysis_result=analysis,
-        evidence_drafts=evidence or _evidence(),
+        evidence_drafts=cast(Any, evidence or _evidence()),
         policy_confirmation_receipts=receipts,
-        resource_identity_reader=reader or _reader(),
+        resource_identity_reader=cast(Any, reader or _reader()),
         tool_registry=load_signed_tool_registry(),
         validate_action_arguments=ValidateActionArgumentsHandler(),
     )

@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import NotRequired, TypedDict
+
+
+class InspectConstraintsAndPolicySummaryInputV1(TypedDict):
+    request_intent: dict[str, object]
+    planning_result: dict[str, object]
+    policy_summary: dict[str, object]
+    work_analysis: NotRequired[dict[str, object]]
+    evidence: NotRequired[list[dict[str, object]]]
+    confirmation_response: NotRequired[dict[str, object]]
 
 
 def project_inspect_constraints_and_policy_summary_input(
     state: Mapping[str, object],
-) -> dict[str, object]:
+) -> InspectConstraintsAndPolicySummaryInputV1:
     request_intent = _mapping(state, "request_intent")
     planning_result = _mapping(state, "planning_result")
     policy_summary = _mapping(state, "policy_summary")
-    result: dict[str, object] = {
+    result: InspectConstraintsAndPolicySummaryInputV1 = {
         "request_intent": dict(request_intent),
         "planning_result": dict(planning_result),
         "policy_summary": dict(policy_summary),
@@ -43,4 +53,7 @@ def _mapping(state: Mapping[str, object], key: str) -> Mapping[str, object]:
     return value
 
 
-__all__ = ["project_inspect_constraints_and_policy_summary_input"]
+__all__ = [
+    "InspectConstraintsAndPolicySummaryInputV1",
+    "project_inspect_constraints_and_policy_summary_input",
+]

@@ -7,7 +7,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.block_run import transition_block_run
 
 
-def test_block_run_applies_canonical_transition():
+def test_block_run_applies_canonical_transition() -> None:
     assert (
         transition_block_run(
             RunStatusV1.CREATED,
@@ -21,7 +21,7 @@ def test_block_run_applies_canonical_transition():
     )
 
 
-def test_block_run_rejects_verifying_without_block_review():
+def test_block_run_rejects_verifying_without_block_review() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_block_run(
             RunStatusV1.VERIFYING,

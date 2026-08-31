@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from json import dumps
-from typing import cast
+from typing import Any, Protocol, cast
 
 from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
@@ -27,6 +27,14 @@ class ActionMutationReceiptResponse:
 
 
 type ReceiptResponse = object
+
+
+class _FinishReceiptResponse(Protocol):
+    @property
+    def applied(self) -> bool: ...
+
+    @property
+    def result_code(self) -> str: ...
 
 
 def resolve_json_receipt(
@@ -126,7 +134,7 @@ def resolve_existing_receipt(
 def finish_json_receipt(
     unit_of_work: UnitOfWork,
     command_id: str,
-    response: ReceiptResponse,
+    response: _FinishReceiptResponse,
     result_version: int,
     completed_at_ms: int,
 ) -> None:
@@ -135,6 +143,6 @@ def finish_json_receipt(
         applied=bool(response.applied),
         result_code=ResultCode(str(response.result_code)),
         result_version=result_version,
-        response_json=dumps(asdict(response), sort_keys=True),
+        response_json=dumps(asdict(cast(Any, response)), sort_keys=True),
         completed_at_ms=completed_at_ms,
     )

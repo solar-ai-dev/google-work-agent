@@ -1,5 +1,6 @@
 """Test migration adapter for pre-canonical recovery integration scenarios."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -8,6 +9,8 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryHandler,
 )
 from google_work_agent.domain.recovery.model import RecoveryResolution
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 
 RecoveryResolutionKind = RecoveryResolution
 
@@ -26,12 +29,18 @@ class ResolveMismatchRecoveryCommand:
 class ResolveMismatchRecoveryService:
     """Keep historical scenarios exercising the canonical recovery owner."""
 
-    def __init__(self, *, unit_of_work_factory, checkpoint_port, now_ms) -> None:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        checkpoint_port: CheckpointPort,
+        now_ms: Callable[[], int],
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._checkpoint_port = checkpoint_port
         self._now_ms = now_ms
 
-    def __call__(self, command: ResolveMismatchRecoveryCommand):
+    def __call__(self, command: ResolveMismatchRecoveryCommand) -> SimpleNamespace:
         with self._unit_of_work_factory() as unit_of_work:
             receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             context = unit_of_work.recovery_contexts.load_current_context(command.run_id)
@@ -71,15 +80,19 @@ class ResolveMismatchRecoveryService:
                     }
                 )
                 unit_of_work.commit()
+
+        def next_id() -> str:
+            return (
+                f"message:{command.command_id}"
+                if command.corrective_plan_id is None
+                else command.corrective_plan_id
+            )
+
         result = ResolveRecoveryHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             checkpoint_port=self._checkpoint_port,
             now_ms=self._now_ms,
-            next_id=(
-                (lambda: f"message:{command.command_id}")
-                if command.corrective_plan_id is None
-                else lambda: command.corrective_plan_id
-            ),
+            next_id=next_id,
         )(
             ResolveRecoveryCommandV1(
                 run_id=command.run_id,

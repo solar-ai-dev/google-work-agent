@@ -23,13 +23,13 @@ from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import (
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Transition:
     applied: bool
     current_status: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class _RunFacts:
     status: str
     next_allowed_commands: tuple[str, ...]

@@ -11,7 +11,7 @@ def test_exact_duplicate_defaults_to_not_required_without_llm_policy_authority()
         artifact_id="analysis-1",
         revision=1,
         based_on=[{"artifact_id": "intent-1", "revision": 1}],
-        work_facts=[fact("f1"), fact("f2")],  # type: ignore[list-item]
+        work_facts=[fact("f1"), fact("f2")],
         validated_relations=[
             {
                 "relation_id": "r1",
@@ -39,7 +39,7 @@ def test_duplicate_required_candidate_stays_undetermined_without_receipt() -> No
         artifact_id="analysis-1",
         revision=1,
         based_on=[{"artifact_id": "intent-1", "revision": 1}],
-        work_facts=[fact("f1"), fact("f2")],  # type: ignore[list-item]
+        work_facts=[fact("f1"), fact("f2")],
         validated_relations=[
             {
                 "relation_id": "r1",
@@ -82,7 +82,7 @@ def test_current_approved_duplicate_override_receipt_is_bound_into_result() -> N
         artifact_id="analysis-1",
         revision=1,
         based_on=based_on,  # type: ignore[arg-type]
-        work_facts=[fact("f1"), fact("f2")],  # type: ignore[list-item]
+        work_facts=[fact("f1"), fact("f2")],
         validated_relations=[
             {
                 "relation_id": "r1",

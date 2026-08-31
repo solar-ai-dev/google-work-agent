@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.projections.finalize_intent_projection import (  # noqa: E501
-    project_finalize_intent_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingStateV2,
 )
 from google_work_agent.application.agents.request_understanding.finalize_intent import (
     finalize_intent,
+)
+
+from ..projections.finalize_intent_projection import (
+    project_finalize_intent_input,
 )
 
 

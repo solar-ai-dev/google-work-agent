@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Literal, Required, TypedDict, cast
+from typing import Literal, Protocol, Required, TypedDict, cast
 
 from evaluation.compat.context_retrieval_result_validation import (
     validate_context_retrieval_result_v1,
@@ -66,6 +66,18 @@ ControlledProfileId = Literal[
     "E06B_B2_STAGED",
     "E06B_B3_SPECIALIZED",
 ]
+
+
+class _StructuredRuntime(Protocol):
+    def invoke_structured(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
+    ) -> StructuredLLMResult: ...
 
 
 class ContextReadyReplayInputV1(TypedDict):
@@ -327,7 +339,7 @@ class ControlledPostRetrievalReplayRunner:
     """Run the E06-B controlled lane without acquisition, retrieval, or Google reads."""
 
     def __init__(
-        self, *, llm_runtime: Any, manifest_path: Path | None = None
+        self, *, llm_runtime: _StructuredRuntime, manifest_path: Path | None = None
     ) -> None:
         self._llm_runtime = llm_runtime
         self._manifest_path = manifest_path or _registry_default_prompt_manifest_path()
@@ -1305,6 +1317,10 @@ def _validate_specialized_planning_output(
 ) -> ProfilePlanningProjectionV1:
     if answer_only:
         answer_draft = validate_answer_draft_v1(value, analysis_result=analysis_result)
+        if answer_draft["status"] == "ROUTE_RECONSIDERATION_REQUIRED":
+            raise ControlledPostRetrievalReplayError(
+                "controlled planning projection does not support route reconsideration"
+            )
         return {
             "schema_version": 2,
             "status": answer_draft["status"],
@@ -1312,6 +1328,10 @@ def _validate_specialized_planning_output(
             "plan_draft": None,
         }
     plan_draft = validate_action_plan_draft_v1(value, analysis_result=analysis_result)
+    if plan_draft["status"] == "ROUTE_RECONSIDERATION_REQUIRED":
+        raise ControlledPostRetrievalReplayError(
+            "controlled planning projection does not support route reconsideration"
+        )
     return {
         "schema_version": 2,
         "status": plan_draft["status"],

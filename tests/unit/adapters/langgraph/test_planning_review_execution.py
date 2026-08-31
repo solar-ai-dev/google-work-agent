@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
     PlanningRuntimeDependencies,
@@ -9,6 +10,12 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.graph import (
 from google_work_agent.adapters.langgraph.subgraphs.review.graph import (
     ReviewRuntimeDependencies,
     ReviewSubgraph,
+)
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    PlanningSemanticInvoker,
+)
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewSemanticInvoker,
 )
 
 
@@ -58,7 +65,9 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
         }
         return {"schema_version": 2, "answer": "done", "evidence_refs": ["e1"]}
 
-    graph = PlanningSubgraph(dependencies=PlanningRuntimeDependencies(invoke=invoke)).build()
+    graph = PlanningSubgraph(
+        dependencies=PlanningRuntimeDependencies(invoke=cast(PlanningSemanticInvoker, invoke))
+    ).build()
     result = graph.invoke(
         {
             "user_request": "Summarize it",
@@ -123,7 +132,8 @@ def test_compiled_planning_action_executes_exact_four_node_path() -> None:
 
     ids = iter(["action-1", "plan-1"])
     graph = PlanningSubgraph(
-        dependencies=PlanningRuntimeDependencies(invoke=invoke), id_factory=ids.__next__
+        dependencies=PlanningRuntimeDependencies(invoke=cast(PlanningSemanticInvoker, invoke)),
+        id_factory=ids.__next__,
     ).build()
     result = graph.invoke(
         {
@@ -160,7 +170,9 @@ def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_r
             )
         return _inspection(prompt_id, [])
 
-    graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()
+    graph = ReviewSubgraph(
+        dependencies=ReviewRuntimeDependencies(invoke=cast(ReviewSemanticInvoker, invoke))
+    ).build()
     result = graph.invoke(
         {
             "review_phase": "INITIAL",
@@ -203,7 +215,9 @@ def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
         calls.append(prompt_id)
         return _inspection(prompt_id, [])
 
-    graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()
+    graph = ReviewSubgraph(
+        dependencies=ReviewRuntimeDependencies(invoke=cast(ReviewSemanticInvoker, invoke))
+    ).build()
     result = graph.invoke(
         {
             "review_phase": "INITIAL",
@@ -279,7 +293,9 @@ def test_compiled_review_recheck_refreshes_only_affected_dimensions() -> None:
         route_id for issue in public_revision_issues for route_id in issue["affected_route_ids"]
     ]
 
-    graph = ReviewSubgraph(dependencies=ReviewRuntimeDependencies(invoke=invoke)).build()
+    graph = ReviewSubgraph(
+        dependencies=ReviewRuntimeDependencies(invoke=cast(ReviewSemanticInvoker, invoke))
+    ).build()
     result = graph.invoke(
         {
             "review_phase": "RECHECK",

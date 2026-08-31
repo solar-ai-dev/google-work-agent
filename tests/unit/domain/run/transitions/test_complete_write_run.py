@@ -10,7 +10,7 @@ from google_work_agent.domain.run.transitions.complete_write_run import (
 )
 
 
-def test_complete_write_run_applies_canonical_transition():
+def test_complete_write_run_applies_canonical_transition() -> None:
     assert (
         transition_complete_write_run(
             RunStatusV1.VERIFYING,
@@ -39,7 +39,7 @@ def test_complete_write_run_applies_canonical_transition():
     )
 
 
-def test_complete_write_run_rejects_unresolved_attempt():
+def test_complete_write_run_rejects_unresolved_attempt() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_complete_write_run(
             RunStatusV1.VERIFYING,
@@ -53,7 +53,7 @@ def test_complete_write_run_rejects_unresolved_attempt():
         )
 
 
-def test_complete_write_run_rejects_legacy_active_plan_and_failed_action():
+def test_complete_write_run_rejects_legacy_active_plan_and_failed_action() -> None:
     for plan_status, action_statuses in (
         (PlanStatusV1.ACTIVE, (ActionStatusV1.VERIFIED,)),
         (PlanStatusV1.WAITING_APPROVAL, (ActionStatusV1.FAILED,)),
@@ -71,7 +71,7 @@ def test_complete_write_run_rejects_legacy_active_plan_and_failed_action():
             )
 
 
-def test_complete_write_run_result_classifier_is_closed_and_exact():
+def test_complete_write_run_result_classifier_is_closed_and_exact() -> None:
     assert classify_complete_write_run_result((ActionStatusV1.VERIFIED,)).value == "SUCCESS"
     for status in (
         ActionStatusV1.REJECTED,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -16,6 +16,8 @@ from google_work_agent.ports.llm import (
     ProbeResult,
     PromptReference,
     ProviderResponsePayload,
+    ToolCallProviderResponse,
+    ToolDefinition,
 )
 
 
@@ -114,6 +116,38 @@ class FakeOllamaTransport:
         if isinstance(payload, Exception):
             raise payload
         return cast(ProviderResponsePayload, payload)
+
+    def invoke_tool_call(
+        self,
+        *,
+        endpoint: str,
+        model_id: str,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        tools: Sequence[ToolDefinition],
+        timeout_seconds: int,
+        instruction_text: str,
+        sampling_temperature: float | None = None,
+        sampling_seed: int | None = None,
+    ) -> ToolCallProviderResponse:
+        self.invocations.append(
+            {
+                "kind": "tool_call",
+                "endpoint": endpoint,
+                "model_id": model_id,
+                "prompt_id": prompt_ref.prompt_id,
+                "prompt_input": dict(prompt_input),
+                "tools": list(tools),
+                "timeout_seconds": timeout_seconds,
+                "instruction_text": instruction_text,
+                "sampling_temperature": sampling_temperature,
+                "sampling_seed": sampling_seed,
+            }
+        )
+        payload = self.queued_payloads.popleft()
+        if isinstance(payload, Exception):
+            raise payload
+        return cast(ToolCallProviderResponse, payload)
 
 
 @dataclass(frozen=True, slots=True)

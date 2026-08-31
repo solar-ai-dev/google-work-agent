@@ -8,7 +8,10 @@ from google_work_agent.application.agents.retrieval.execute_read import (
     RetrievalReadBindingError,
     execute_read,
 )
-from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1
+from google_work_agent.ports.connector.connector_read_port import (
+    ConnectorReadResultV1,
+    JsonValue,
+)
 from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCacheEntryV1
 
@@ -17,7 +20,12 @@ class _Reader:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    def execute_read(self, binding: object, tool_arguments: dict[str, object]):
+    def execute_read(
+        self,
+        binding: ValidatedConnectorToolBindingV1,
+        tool_arguments: dict[str, JsonValue],
+    ) -> ConnectorReadResultV1:
+        del binding
         self.calls.append(dict(tool_arguments))
         return ConnectorReadResultV1(1, "gmail_search_threads", "req", {}, None, 0)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Literal, cast
 
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
@@ -10,13 +11,10 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
 )
 from google_work_agent.ports.llm import (
-    ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
-    RequestedRuntimeMode,
-    StructuredLLMResult,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
@@ -28,39 +26,31 @@ class RecordingLLMRuntime:
     outputs: list[object]
     calls: list[dict[str, object]] = field(default_factory=list)
 
-    def invoke_structured(
+    def infer(
         self,
-        *,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
         prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        trace_context: ObservabilityContext,
-        semantic_validate=None,
-    ) -> StructuredLLMResult:
-        del semantic_validate
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
         self.calls.append(
             {
+                "requested_mode": requested_mode,
                 "prompt_ref": prompt_ref,
-                "prompt_input": prompt_input,
-                "output_schema": output_schema,
-                "trace_context": trace_context,
+                "prompt_input": input_projection,
+                "output_schema": output_schema_ref,
             }
         )
-        return StructuredLLMResult(
-            structured_output=self.outputs.pop(0),
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=cast(dict[str, object], self.outputs.pop(0)),
             provider="fake",
             model="fake",
-            requested_mode=RequestedRuntimeMode.AUTO,
-            actual_runtime=ActualRuntime.API_LLM,
+            actual_runtime="API_LLM",
             input_tokens=1,
             output_tokens=1,
-            total_tokens=2,
             latency_ms=1,
-            estimated_cost_usd=None,
             fallback_reason=None,
-            structured_output_attempts=1,
-            provider_request_id="provider-request-1",
-            safe_error_code=None,
         )
 
 
@@ -73,7 +63,7 @@ def _request() -> WorkflowStartRequest:
         requested_mode="AUTO",
         request_text="create task",
         selected_resource_ids=(),
-        run_budget=build_default_run_budget(),
+        run_budget=dict(build_default_run_budget()),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),
@@ -97,18 +87,19 @@ def _prompt_ref() -> PromptReference:
 
 
 def test_select_tool_if_needed__single_registry_candidate__does_not_require_llm() -> None:
+    budget = build_default_run_budget()
     selected, budget = select_tool_if_needed(
-        llm_runtime=None,
+        llm_runtime=RecordingLLMRuntime(outputs=[]),
         route_id="route-1",
         connector_id="google_workspace",
         resource_type="TASK",
         effect="CREATE",
         eligible_tool_ids=("tasks_create_task",),
-        request=None,
-        retry_budget={},
-    )  # type: ignore[arg-type]
+        request=_request(),
+        retry_budget=budget,
+    )
     assert selected == "tasks_create_task"
-    assert budget == {}
+    assert budget == build_default_run_budget()
 
 
 def test_select_tool_uses_exact_canonical_prompt_projection() -> None:
@@ -179,10 +170,11 @@ def test_select_semantic_revision_reuses_base_slot() -> None:
     )
 
     assert [call["prompt_ref"] for call in runtime.calls] == [_prompt_ref(), _prompt_ref()]
-    revision_input = runtime.calls[1]["prompt_input"]
+    revision_input = cast(Mapping[str, object], runtime.calls[1]["prompt_input"])
     assert set(revision_input) == {"base_projection", "candidate_output", "failure_record"}
-    assert set(revision_input["base_projection"]) == {
+    assert set(cast(Mapping[str, object], revision_input["base_projection"])) == {
         "route_candidate",
         "registered_candidates",
     }
-    assert revision_input["failure_record"]["affected_field_paths"] == ["$.selected_tool_id"]
+    failure_record = cast(Mapping[str, object], revision_input["failure_record"])
+    assert failure_record["affected_field_paths"] == ["$.selected_tool_id"]

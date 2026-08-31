@@ -6,11 +6,11 @@ from google_work_agent.domain.run.transitions.complete_answer_only_run import (
 )
 
 
-def test_complete_answer_only_run_applies_canonical_transition():
+def test_complete_answer_only_run_applies_canonical_transition() -> None:
     assert transition_complete_answer_only_run(RunStatusV1.ANALYZING) is RunStatusV1.COMPLETED
 
 
-def test_complete_answer_only_run_rejects_unrelated_status():
+def test_complete_answer_only_run_rejects_unrelated_status() -> None:
     try:
         transition_complete_answer_only_run(RunStatusV1.FAILED)
     except RunTransitionRejected:

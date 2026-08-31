@@ -19,7 +19,6 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -106,19 +105,11 @@ def identify_goal(
     }
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
-    result = llm_runtime.invoke_structured(
-        prompt_ref=resolved_prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=IDENTIFY_GOAL_OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(
-            request_id=request.correlation.request_id,
-            command_id=request.correlation.command_id,
-            conversation_id=request.conversation_id,
-            run_id=request.run_id,
-            langgraph_thread_id=request.workflow_key,
-            llm_call_id=f"{request.run_id}:request.identify_goal",
-        ),
-        semantic_validate=_validate_goal_candidate,
+    result = llm_runtime.infer(
+        request.requested_mode,
+        resolved_prompt_ref,
+        prompt_input,
+        IDENTIFY_GOAL_OUTPUT_SCHEMA,
     )
     return _validate_goal_candidate(result.structured_output)
 

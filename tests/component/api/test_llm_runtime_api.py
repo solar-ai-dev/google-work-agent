@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 from tests.support.external_llm_scope import build_external_scope_gate
@@ -58,7 +58,7 @@ class _CoordinatorStub:
 
 def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter:
     kwargs.pop("router", None)
-    router_kwargs = {
+    router_kwargs: dict[str, object] = {
         key: kwargs[key]
         for key in (
             "settings_service",
@@ -78,7 +78,7 @@ def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter
     kwargs.clear()
     checkpoint, _projector = build_external_scope_gate()
     router_kwargs["checkpoint"] = checkpoint
-    return CanonicalStructuredInferenceRuntimeRouter(**router_kwargs)
+    return CanonicalStructuredInferenceRuntimeRouter(**cast(Any, router_kwargs))
 
 
 class _AllowGuard:

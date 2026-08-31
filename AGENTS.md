@@ -1,27 +1,27 @@
 # Google Work Agent — Codex Instructions
 
 이 `AGENTS.md`는 저장소 루트 전체에 적용한다.
+
 하위 `AGENTS.md`는 경로별 규칙을 추가할 수 있지만 이 파일과 `/docs`의 Canonical 계약을 약화시키면 안 된다.
 
 ## Authority
 
-- 코딩 기준은 현재 저장소 `/docs`의 Canonical snapshot이다.
-- 항상 `00 Project Source Guide`에서 Concern Owner와 선행 읽기 순서를 먼저 확인한다.
-- behavior는 해당 Concern Owner가 소유하고, repository path/file/symbol/import/single-authority 규칙은 `16 Repository Architecture`가 소유한다.
-- 현재 코드, 기존 테스트, Git history, 기존 파일명은 설계 Authority가 아니다. 모두 migration input이다.
-- 현재 구현에서 target architecture를 역추론하지 않는다.
-- 문서에 없는 state, lifecycle, owner, Port, operation, contract/type, repository convention을 임의로 만들지 않는다.
-- 적용된 Migration은 수정하지 않는다. 필요한 DB 변경은 forward Migration으로 추가한다.
+* 코딩 기준은 현재 저장소 `/docs`의 Canonical snapshot이다.
+* 항상 `00 Project Source Guide`에서 Concern Owner와 선행 읽기 순서를 먼저 확인한다.
+* behavior는 해당 Concern Owner가 소유하고, repository path/file/symbol/import/single-authority 규칙은 `16 Repository Architecture`가 소유한다.
+* 현재 코드, 기존 테스트, Git history, 기존 파일명은 설계 Authority가 아니다. migration input이다.
+* 현재 구현에서 target architecture를 역추론하지 않는다.
+* 문서에 없는 state, lifecycle, owner, Port, operation, contract/type을 임의로 만들지 않는다.
+* 적용된 Migration은 수정하지 않는다. 필요한 DB 변경은 forward Migration으로 추가한다.
 
 ## Current Work Mode
 
-현재 작업은 일반적인 behavior-preserving refactor가 아니라
-**Canonical design에 기존 구현을 reconciliation하는 migration**이다.
+현재 작업은 일반적인 behavior-preserving refactor가 아니라 **Canonical design에 기존 구현을 reconciliation하는 migration**이다.
 
-잘못된 기존 구조나 behavior는 “기존 코드이므로 보존”하지 않는다.
-반대로 Canonical과 이미 일치하는 구현은 불필요하게 rewrite하지 않는다.
-
-작업 단위는 파일이 아니라 **semantic capability**다.
+* 잘못된 기존 구조나 behavior는 기존 코드라는 이유로 보존하지 않는다.
+* Canonical과 이미 일치하는 구현은 불필요하게 rewrite하지 않는다.
+* 작업 단위는 파일이 아니라 **semantic capability**다.
+* 새 구현을 추가하는 것보다 기존 authority를 canonical authority로 교체하는 것을 우선한다.
 
 ## Work Procedure
 
@@ -29,30 +29,25 @@
 
 ```text
 SPEC
-→ CANONICAL OWNER / OPERATION / PATH / SYMBOL 확인
-→ 기존 semantic implementation / writer / caller / effect / test / DI wiring 검색
-→ KEEP | MOVE | RENAME | SPLIT | MERGE | REWRITE | DELETE | CREATE 판정
+→ Canonical Owner 확인
+→ 기존 implementation / caller / test / DI 검색
+→ KEEP | MOVE | MERGE | REWRITE | DELETE | CREATE 판정
 → canonical implementation으로 cut-over
-→ 모든 production caller 전환
+→ production caller 전환
 → old authority / import / export 제거
-→ canonical test ownership 정리
-→ structural + behavioral regression
+→ 관련 테스트
 ```
 
 규칙:
 
-- 새 production file을 만들기 전에 동일 capability의 기존 구현을 먼저 찾는다.
-- 하나의 capability에는 하나의 production authority만 허용한다.
-- 새 구조 전체를 먼저 구현한 뒤 마지막에 한꺼번에 연결하지 않는다.
-- 가능한 한 capability 하나를 완전히 cut-over한 뒤 다음 capability로 이동한다.
-- God module은 Canonical semantic responsibility 기준으로 SPLIT/MOVE한다.
-- 구조만 틀렸으면 MOVE/RENAME한다. 의미가 틀렸으면 REWRITE한다.
-- 중복 구현은 MERGE/DELETE하여 second authority를 남기지 않는다.
-- “작은 diff”보다 **가장 작은 완결 capability cut-over**를 우선한다.
+* 새 production file을 만들기 전에 동일 capability의 기존 구현을 먼저 찾는다.
+* 하나의 capability에는 하나의 production authority만 둔다.
+* 가능한 한 capability 하나를 완전히 cut-over한 뒤 다음 capability로 이동한다.
+* 기존 구현을 대체하는 새 구현을 만들었다면 불필요한 old path를 남기지 않는다.
+* 중복 구현은 MERGE/DELETE한다.
+* 작은 diff보다 **가장 작은 완결 capability cut-over**를 우선한다.
 
 ## Architecture / Ownership
-
-핵심 불변조건:
 
 ```text
 DIRECTORY TELLS OWNERSHIP
@@ -61,100 +56,103 @@ IMPORT TELLS DEPENDENCY DIRECTION
 ONE CAPABILITY HAS ONE PRODUCTION AUTHORITY
 ```
 
-- Domain: invariant와 lifecycle/domain semantics
-- Policy: deterministic allow/block/approval/safety
-- Application: use case와 transaction orchestration
-- Workflow/LangGraph: State projection, Node/Edge/Interrupt/Resume orchestration
-- Port: 외부 boundary contract
-- Adapter/Connector: concrete integration
-- API: protocol validation/translation
-- Composition Root: construction/DI/lifecycle wiring only
+* Domain: invariant와 lifecycle/domain semantics
+* Policy: deterministic allow/block/approval/safety
+* Application: use case와 transaction orchestration
+* Workflow/LangGraph: State, Node/Edge/Interrupt/Resume orchestration
+* Port: 외부 boundary contract
+* Adapter/Connector: concrete integration
+* API: protocol validation/translation
+* Composition Root: construction/DI/lifecycle wiring only
 
 금지:
 
-- Core → Provider SDK/API direct call
-- Application → concrete Adapter dependency
-- Domain → Application/Adapter
-- FastAPI Route → DB/Adapter concrete
-- Agent → peer Agent direct call
-- Agent/LLM → external Write authority
-- generic junk drawer (`utils.py`, `common.py`, `helpers.py`, broad global `contracts/models/enums`)
-- speculative architecture
-- second live production authority
+* Core → Provider SDK/API direct call
+* Application → concrete Adapter
+* Domain → Application/Adapter
+* FastAPI Route → DB/Adapter concrete
+* Agent → peer Agent direct call
+* Agent/LLM → external Write authority
+* speculative abstraction
+* second live production authority
+* 단순 forwarding만 늘리는 wrapper/adapter chain
+
+## Canonical / Compatibility
+
+Canonical은 기존 구조 위에 추가되는 새 계층이 아니다.
+
+* 같은 의미의 V1/V2/Canonical implementation을 동시에 production authority로 유지하지 않는다.
+* compatibility는 migration 중 필요한 얇은 delegate/re-export만 허용한다.
+* compatibility layer는 business logic을 소유하지 않는다.
+* capability cut-over가 끝나면 old caller/path/import/export와 temporary compatibility를 제거한다.
+* `R1`, `R2`, `R2.1`, `Wave`, `Phase` 같은 구현 단계는 장기 production architecture로 남기지 않는다.
+
+같은 business fact를 단순 Layer 이동 때문에 별도 DTO/type으로 반복 정의하지 않는다. 새 representation은 실제 boundary가 있을 때만 추가한다.
 
 ## State / Workflow / Write Safety
 
-- undocumented state/transition/edge/resume target을 만들지 않는다.
-- Domain Store는 승인·실행·검증 사실의 기준점이다.
-- LangGraph Checkpoint는 workflow resume 위치다.
-- UI/SSE/Trace는 Projection이며 Domain truth가 아니다.
-- external MCP/Provider/LLM I/O 중 SQLite write transaction을 유지하지 않는다.
-- Write는 Canonical Approval → Claim → BeginExecutionAttempt → Connector Write → Verification/Recovery 경계를 따른다.
-- ClaimExecution commit만으로 Write하지 않는다.
-- `BeginExecutionAttempt(applied=true)` commit 전 Connector Write는 0이어야 한다.
-- `UNKNOWN_RESULT`에서 blind resend나 새 Write Attempt를 만들지 않는다.
-- Agent/LLM이 승인, policy, state transition, execution success를 최종 판정하지 않는다.
-
-## Compatibility
-
-Compatibility는 migration 수단일 뿐 최종 구조가 아니다.
-
-- 필요한 경우 얇은 delegate/re-export를 일시적으로 사용할 수 있다.
-- compatibility layer는 business logic이나 독립 authority를 소유할 수 없다.
-- capability cut-over가 끝나면 old caller/path/import/export와 compatibility layer를 제거한다.
-- 최종 Canonical target에는 duplicate production authority와 `_compat`가 없어야 한다.
+* undocumented state/transition/edge/resume target을 만들지 않는다.
+* Domain Store는 승인·실행·검증 사실의 기준점이다.
+* LangGraph Checkpoint는 workflow resume 위치다.
+* UI/SSE/Trace는 Projection이며 Domain truth가 아니다.
+* external MCP/Provider/LLM I/O 중 SQLite write transaction을 유지하지 않는다.
+* Write는 Canonical Approval → Claim → BeginExecutionAttempt → Connector Write → Verification/Recovery 경계를 따른다.
+* `BeginExecutionAttempt(applied=true)` commit 전 Connector Write는 0이어야 한다.
+* `UNKNOWN_RESULT`에서는 blind resend나 새 Write Attempt를 만들지 않는다.
+* Agent/LLM이 approval, policy, state transition, execution success를 최종 판정하지 않는다.
 
 ## Tests / Gates
 
-- 기존 테스트도 Authority가 아니다. Canonical owner contract를 검증해야 한다.
-- 기존 테스트가 Canonical과 충돌하면 preservation 대상인지 obsolete test인지 판정한다.
-- 위험에 비례해 focused → contract/state-transition → safety → integration/component → broader regression → static checks 순으로 검증한다.
-- 가능한 Architecture rule은 structural test로 고정한다.
-- 관련 safety/contract/state test가 깨진 상태에서 완료라고 보고하지 않는다.
-- 기존 baseline 실패와 현재 변경이 만든 실패를 구분한다.
+* 기존 테스트도 Authority가 아니다. Canonical behavior와 invariant를 검증해야 한다.
+* 기존 테스트가 Canonical과 충돌하면 KEEP | REWRITE | DELETE를 판정한다.
+* 테스트는 observable behavior, state transition, safety invariant, external effect를 우선 검증한다.
+* production source 문자열이나 private method 내부 구현을 직접 검사하는 테스트는 피한다.
+* 테스트 파일끼리 private helper를 import하지 않는다. 반복되는 fixture/fake는 `tests/support` 또는 `tests/fakes`로 이동한다.
+* 관련 safety/contract/state test가 깨진 상태에서 완료라고 보고하지 않는다.
 
 필수 구조 Gate 예:
 
 ```text
-Application → concrete Adapter       = 0
-Domain → Application                 = 0
-Core → Provider SDK/direct API       = 0
-FastAPI Route → Adapter/DB concrete  = 0
-Agent → Provider API/SDK             = 0
-Agent → peer Agent direct call       = 0
-external I/O inside SQLite write tx  = 0
-duplicate production authority       = 0
+Application → concrete Adapter        = 0
+Domain → Application                  = 0
+Core → Provider SDK/direct API        = 0
+FastAPI Route → Adapter/DB concrete   = 0
+Agent → Provider API/SDK              = 0
+Agent → peer Agent direct call        = 0
+external I/O inside SQLite write tx   = 0
+duplicate production authority        = 0
 ```
 
 ## Completion
 
-Capability는 다음을 모두 만족해야 완료다.
+Capability는 다음을 만족해야 완료다.
 
-- canonical owner/path/file/symbol 존재
-- intended production caller가 canonical authority만 사용
-- duplicate writer/authority 0
-- old caller/import/export 0
-- temporary compatibility 0 또는 아직 끝나지 않은 명시적 dependency만 존재
-- relevant Canonical tests 통과
-- safety/state/transaction invariant 유지
+* canonical authority 존재
+* production caller가 canonical authority 사용
+* duplicate writer/authority 0
+* 불필요한 old caller/import/export 제거
+* temporary compatibility 제거 또는 명시적 미완료 dependency만 존재
+* 관련 Canonical tests 통과
+* safety/state/transaction invariant 유지
 
 새 구현을 추가한 것만으로 완료가 아니다.
-**기존 authority가 제거되었다는 negative proof까지 필요하다.**
+
+**기존 authority가 제거되었다는 확인까지 필요하다.**
 
 ## Git / Scope
 
-- 사용자가 명시하지 않으면 commit, push, merge, rebase, branch switch, destructive Git operation을 하지 않는다.
-- 관련 없는 cleanup, formatting-only 대형 diff, dependency-wide upgrade를 만들지 않는다.
-- 다른 작업자의 변경을 임의로 되돌리지 않는다.
-- 저장소에서 확인 가능한 내용을 사용자에게 다시 묻지 않는다.
+* 사용자가 명시하지 않으면 commit, push, merge, rebase, branch switch, destructive Git operation을 하지 않는다.
+* 관련 없는 cleanup, formatting-only 대형 diff, dependency-wide upgrade를 만들지 않는다.
+* 다른 작업자의 변경을 임의로 되돌리지 않는다.
+* 저장소에서 확인 가능한 내용을 사용자에게 다시 묻지 않는다.
 
 ## Completion Report
 
 완료 보고는 다음만 간결하게 포함한다.
 
-- 변경한 capability
-- cut-over / 삭제한 legacy authority
-- 테스트·Gate 결과
-- 남은 실제 blocker 또는 아직 미완료인 explicit migration dependency
+* 변경한 capability
+* cut-over / 삭제한 legacy authority
+* 테스트·Gate 결과
+* 남은 실제 blocker 또는 명시적 migration dependency
 
 별도 status/report 문서는 사용자가 요청하지 않으면 만들지 않는다.

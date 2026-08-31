@@ -13,4 +13,4 @@ from google_work_agent.application.agents.planning.build_dependencies import bui
 def build_dependencies_node(state: Mapping[str, object]) -> dict[str, object]:
     projected = build_dependencies_projection.project_build_dependencies_input(state)
     seeds = projected["action_seeds"]
-    return {"dependency_candidates": list(build_dependencies(seeds))}  # type: ignore[arg-type]
+    return {"dependency_candidates": list(build_dependencies(seeds))}

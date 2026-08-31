@@ -8,7 +8,7 @@ import os
 from dataclasses import asdict, replace
 from pathlib import Path
 from threading import RLock
-from typing import cast
+from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from google_work_agent.ports.system.contracts.operational_command_replay import (
@@ -169,34 +169,71 @@ class JsonSettingsAdapter(SettingsPort):
 
 
 def _view_from_payload(payload: dict[str, object]) -> SettingsViewV1:
-    panel = cast(dict[str, object], payload["panel_preferences"])
+    if payload["schema_version"] != 1:
+        raise ValueError("unsupported settings schema_version")
+    panel_value = payload["panel_preferences"]
+    if not isinstance(panel_value, dict):
+        raise ValueError("panel_preferences must be an object")
+    panel = cast(dict[str, object], panel_value)
+    if panel.get("schema_version") != 1:
+        raise ValueError("unsupported panel preferences schema_version")
+    preferred_llm_mode = _required_string(payload, "preferred_llm_mode")
+    if preferred_llm_mode not in {"AUTO", "LOCAL_GPU", "API_LLM"}:
+        raise ValueError("preferred_llm_mode is invalid")
+    theme = _required_string(payload, "theme")
+    if theme not in {"LIGHT", "DARK"}:
+        raise ValueError("theme is invalid")
+    default_tab = _required_string(panel, "right_panel_default_tab")
+    if default_tab not in {"CONVERSATIONS", "RESOURCES"}:
+        raise ValueError("right_panel_default_tab is invalid")
     return SettingsViewV1(
-        schema_version=cast(int, payload["schema_version"]),  # type: ignore[arg-type]
-        timezone=str(payload["timezone"]),
+        schema_version=1,
+        timezone=_required_string(payload, "timezone"),
         default_tasklist_id=_optional_string(payload["default_tasklist_id"]),
         default_calendar_id=_optional_string(payload["default_calendar_id"]),
-        preferred_llm_mode=cast(str, payload["preferred_llm_mode"]),  # type: ignore[arg-type]
-        external_llm_consent=cast(bool, payload["external_llm_consent"]),
-        retention_days=int(cast(int, payload["retention_days"])),
-        theme=cast(str, payload["theme"]),  # type: ignore[arg-type]
+        preferred_llm_mode=cast(Literal["AUTO", "LOCAL_GPU", "API_LLM"], preferred_llm_mode),
+        external_llm_consent=_required_bool(payload, "external_llm_consent"),
+        retention_days=_required_int(payload, "retention_days"),
+        theme=cast(Literal["LIGHT", "DARK"], theme),
         panel_preferences=PanelPreferencesV1(
-            schema_version=cast(int, panel["schema_version"]),  # type: ignore[arg-type]
-            right_panel_default_open=cast(bool, panel["right_panel_default_open"]),
-            right_panel_default_tab=cast(str, panel["right_panel_default_tab"]),  # type: ignore[arg-type]
+            schema_version=1,
+            right_panel_default_open=_required_bool(panel, "right_panel_default_open"),
+            right_panel_default_tab=cast(Literal["CONVERSATIONS", "RESOURCES"], default_tab),
         ),
-        working_day_start_local=str(payload["working_day_start_local"]),
-        working_day_end_local=str(payload["working_day_end_local"]),
-        include_weekends=cast(bool, payload["include_weekends"]),
-        calendar_buffer_minutes=int(cast(int, payload["calendar_buffer_minutes"])),
-        max_run_execution_ms=int(cast(int, payload["max_run_execution_ms"])),
-        max_connector_calls_per_run=int(cast(int, payload["max_connector_calls_per_run"])),
-        max_source_page_calls_per_run=int(cast(int, payload["max_source_page_calls_per_run"])),
-        max_detail_fetches_per_run=int(cast(int, payload["max_detail_fetches_per_run"])),
-        max_context_tokens_per_run=int(cast(int, payload["max_context_tokens_per_run"])),
-        max_retry_attempts_per_run=int(cast(int, payload["max_retry_attempts_per_run"])),
-        circuit_failure_threshold=int(cast(int, payload["circuit_failure_threshold"])),
-        circuit_open_duration_ms=int(cast(int, payload["circuit_open_duration_ms"])),
+        working_day_start_local=_required_string(payload, "working_day_start_local"),
+        working_day_end_local=_required_string(payload, "working_day_end_local"),
+        include_weekends=_required_bool(payload, "include_weekends"),
+        calendar_buffer_minutes=_required_int(payload, "calendar_buffer_minutes"),
+        max_run_execution_ms=_required_int(payload, "max_run_execution_ms"),
+        max_connector_calls_per_run=_required_int(payload, "max_connector_calls_per_run"),
+        max_source_page_calls_per_run=_required_int(payload, "max_source_page_calls_per_run"),
+        max_detail_fetches_per_run=_required_int(payload, "max_detail_fetches_per_run"),
+        max_context_tokens_per_run=_required_int(payload, "max_context_tokens_per_run"),
+        max_retry_attempts_per_run=_required_int(payload, "max_retry_attempts_per_run"),
+        circuit_failure_threshold=_required_int(payload, "circuit_failure_threshold"),
+        circuit_open_duration_ms=_required_int(payload, "circuit_open_duration_ms"),
     )
+
+
+def _required_string(payload: dict[str, object], key: str) -> str:
+    value = payload[key]
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    return value
+
+
+def _required_bool(payload: dict[str, object], key: str) -> bool:
+    value = payload[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean")
+    return value
+
+
+def _required_int(payload: dict[str, object], key: str) -> int:
+    value = payload[key]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{key} must be an integer")
+    return value
 
 
 def _validate_settings(settings: SettingsViewV1) -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, cast
+from typing import Literal, cast, overload
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     AmbiguityV1,
@@ -18,6 +18,16 @@ class RequestUnderstandingValidationError(ValueError):
 
 _CONSTRAINT_KINDS = {"PERSON", "EMAIL", "DATE", "TIME", "RESOURCE", "SCOPE", "USER_REQUIREMENT"}
 _EFFECTS = {"READ", "CREATE", "UPDATE", "SEND", "DELETE"}
+
+
+@overload
+def validate_intent(value: object, *, require_meta: Literal[True]) -> RequestIntentV2: ...
+
+
+@overload
+def validate_intent(
+    value: object, *, require_meta: Literal[False] = False
+) -> RequestIntentCandidateV1: ...
 
 
 def validate_intent(

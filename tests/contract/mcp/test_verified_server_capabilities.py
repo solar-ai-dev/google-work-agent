@@ -28,7 +28,7 @@ build_google_workspace_internal_capabilities = (
 
 
 def test_verified_server_declared_surface_maps_to_handlers() -> None:
-    verified_server._validate_declared_surface()  # noqa: SLF001
+    verified_server._validate_declared_surface()
 
     public_names = frozenset(entry.tool_name for entry in load_signed_tool_registry().entries)
     internal_names = frozenset(
@@ -46,11 +46,11 @@ def test_verified_server_declared_surface_maps_to_handlers() -> None:
 
 
 def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
-    assert callable(workspace_tools._gmail_thread_list_metadata)  # noqa: SLF001
-    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())  # noqa: SLF001
+    assert callable(workspace_tools._gmail_thread_list_metadata)
+    state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
-    with pytest.raises(workspace_tools._WorkspaceToolError) as captured:  # noqa: SLF001
-        verified_server._tool_call(  # noqa: SLF001
+    with pytest.raises(workspace_tools._WorkspaceToolError) as captured:
+        verified_server._tool_call(
             state,
             tool_name="gmail_thread_list_metadata",
             arguments={},

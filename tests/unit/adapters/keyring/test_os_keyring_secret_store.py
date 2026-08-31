@@ -8,7 +8,9 @@ from google_work_agent.adapters.keyring.os_keyring_secret_store import (
 )
 
 
-def test_os_keyring_secret_store_round_trips_bytes_without_exposing_secret(monkeypatch) -> None:
+def test_os_keyring_secret_store_round_trips_bytes_without_exposing_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     values: dict[tuple[str, str], str] = {}
 
     def delete_password(service: str, key: str) -> None:
@@ -21,14 +23,10 @@ def test_os_keyring_secret_store_round_trips_bytes_without_exposing_secret(monke
         delete_password=delete_password,
     )
     monkeypatch.setitem(__import__("sys").modules, "keyring", fake)
-    store = OsKeyringSecretStoreAdapter(
-        service_name="GoogleWorkAgent/development/llm-api-key"
-    )
+    store = OsKeyringSecretStoreAdapter(service_name="GoogleWorkAgent/development/llm-api-key")
 
     store.put("provider", b"secret-value")
-    assert values == {
-        ("GoogleWorkAgent.development.llm-api-key", "provider"): "secret-value"
-    }
+    assert values == {("GoogleWorkAgent.development.llm-api-key", "provider"): "secret-value"}
     assert store.get("provider") == b"secret-value"
     store.delete("provider")
     assert store.get("provider") is None
@@ -52,6 +50,4 @@ def test_keyring_unavailable_has_no_plaintext_fallback(monkeypatch: pytest.Monke
     monkeypatch.setitem(__import__("sys").modules, "keyring", fake)
 
     with pytest.raises(RuntimeError, match="backend is unavailable"):
-        OsKeyringSecretStoreAdapter(
-            service_name="GoogleWorkAgent/development/llm-api-key"
-        )
+        OsKeyringSecretStoreAdapter(service_name="GoogleWorkAgent/development/llm-api-key")

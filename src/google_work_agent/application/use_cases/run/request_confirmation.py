@@ -9,7 +9,8 @@ from typing import Protocol
 
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.domain.action.model import ActionStatusV1
-from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.audit_event.model import AuditEvent
+from google_work_agent.domain.command_receipt.model import CommandReceipt, CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.request_confirmation import (
@@ -185,15 +186,14 @@ class RequestConfirmationHandler:
         return result
 
     @staticmethod
-    def _replay(receipt: object, command: RequestConfirmationCommand) -> RequestConfirmationResult:
-        if receipt.request_hash != command.request_hash:  # type: ignore[attr-defined]
+    def _replay(
+        receipt: CommandReceipt, command: RequestConfirmationCommand
+    ) -> RequestConfirmationResult:
+        if receipt.request_hash != command.request_hash:
             raise ValueError("interrupt_id already identifies a different confirmation request")
-        if (
-            receipt.status is CommandReceiptStatus.RECEIVED  # type: ignore[attr-defined]
-            or receipt.response_json is None  # type: ignore[attr-defined]
-        ):
+        if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
             raise RuntimeError("RECEIVED RequestConfirmation requires transaction recovery")
-        payload = loads(receipt.response_json)  # type: ignore[attr-defined]
+        payload = loads(receipt.response_json)
         payload["resume_target"] = AgentNodeResumeTargetV2(**payload["resume_target"])
         return RequestConfirmationResult(**payload)
 
@@ -235,7 +235,11 @@ def _result(
     )
 
 
-def _audit(command: RequestConfirmationCommand, result: RequestConfirmationResult, now_ms: int):
+def _audit(
+    command: RequestConfirmationCommand,
+    result: RequestConfirmationResult,
+    now_ms: int,
+) -> AuditEvent:
     from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 
     return AuditEventRecord(

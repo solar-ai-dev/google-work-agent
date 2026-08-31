@@ -16,6 +16,7 @@ from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointE
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     WorkflowExecutionAdmissionV1,
+    WorkflowExecutionReasonV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffV1,
 )
@@ -234,11 +235,11 @@ class BackgroundRunExecutorAdapter:
             raise ValueError("checkpoint does not contain applied handoff evidence")
 
 
-def _result(accepted: bool, reason_code: str) -> RunExecutionAcceptedV1:
+def _result(accepted: bool, reason_code: WorkflowExecutionReasonV1) -> RunExecutionAcceptedV1:
     return RunExecutionAcceptedV1(
         schema_version=1,
         accepted=accepted,
-        reason_code=reason_code,  # type: ignore[arg-type]
+        reason_code=reason_code,
     )
 
 

@@ -1,7 +1,5 @@
 """Canonical eight-node Work Analysis production runtime."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -32,54 +30,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorTarget,
 )
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assemble_work_analysis_node import (
-    assemble_work_analysis_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assess_information_gaps_node import (
-    assess_information_gaps_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.assess_operational_risks_node import (
-    assess_operational_risks_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.detect_duplicate_conflict_candidates_node import (
-    detect_duplicate_conflict_candidates_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.extract_work_facts_node import (
-    extract_work_facts_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.resolve_entity_relations_node import (
-    resolve_entity_relations_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.resolve_temporal_dependencies_node import (
-    resolve_temporal_dependencies_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.nodes.validate_relations_node import (
-    validate_relations_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assemble_work_analysis import (
-    route_after_assemble_work_analysis,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assess_information_gaps import (
-    route_after_assess_information_gaps,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_assess_operational_risks import (
-    route_after_assess_operational_risks,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_detect_duplicate_conflict_candidates import (
-    route_after_detect_duplicate_conflict_candidates,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_extract_work_facts import (
-    route_after_extract_work_facts,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_resolve_entity_relations import (
-    route_after_resolve_entity_relations,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_resolve_temporal_dependencies import (
-    route_after_resolve_temporal_dependencies,
-)
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.routing.route_after_validate_relations import (
-    route_after_validate_relations,
-)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
@@ -88,8 +38,8 @@ from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
     resolve_evidence_projection,
 )
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (
-    ClarificationQuestionV1,
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output as request_understanding_contracts,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     EvidenceDraftV1,
@@ -118,6 +68,29 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
     RetrievalRequiredV1,
     RouteReconsiderationRequiredV1,
 )
+
+from .nodes.assemble_work_analysis_node import assemble_work_analysis_node
+from .nodes.assess_information_gaps_node import assess_information_gaps_node
+from .nodes.assess_operational_risks_node import assess_operational_risks_node
+from .nodes.detect_duplicate_conflict_candidates_node import (
+    detect_duplicate_conflict_candidates_node,
+)
+from .nodes.extract_work_facts_node import extract_work_facts_node
+from .nodes.resolve_entity_relations_node import resolve_entity_relations_node
+from .nodes.resolve_temporal_dependencies_node import resolve_temporal_dependencies_node
+from .nodes.validate_relations_node import validate_relations_node
+from .routing.route_after_assemble_work_analysis import route_after_assemble_work_analysis
+from .routing.route_after_assess_information_gaps import route_after_assess_information_gaps
+from .routing.route_after_assess_operational_risks import route_after_assess_operational_risks
+from .routing.route_after_detect_duplicate_conflict_candidates import (
+    route_after_detect_duplicate_conflict_candidates,
+)
+from .routing.route_after_extract_work_facts import route_after_extract_work_facts
+from .routing.route_after_resolve_entity_relations import route_after_resolve_entity_relations
+from .routing.route_after_resolve_temporal_dependencies import (
+    route_after_resolve_temporal_dependencies,
+)
+from .routing.route_after_validate_relations import route_after_validate_relations
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 TransitionRun = Callable[[str, str], None]
@@ -269,7 +242,7 @@ class WorkAnalysisSubgraph:
             cast(Any, working),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["extract_work_facts"],
-            trace_context=self._llm_trace(working, "extract_facts"),
+            requested_mode=request.requested_mode,
         )
         owner_inputs: dict[str, object] = {
             "user_request": working["user_request"],
@@ -314,7 +287,7 @@ class WorkAnalysisSubgraph:
             cast(Any, state),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["resolve_entity_relations"],
-            trace_context=self._llm_trace(state, "resolve_entity_relations"),
+            requested_mode=request_from_state(state).requested_mode,
             confirmation_response=self._confirmation_response(state),
         )
         return cast(
@@ -336,7 +309,7 @@ class WorkAnalysisSubgraph:
             cast(Any, state),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["resolve_temporal_dependencies"],
-            trace_context=self._llm_trace(state, "resolve_temporal_dependencies"),
+            requested_mode=request_from_state(state).requested_mode,
             confirmation_response=self._confirmation_response(state),
         )
         return cast(
@@ -360,7 +333,7 @@ class WorkAnalysisSubgraph:
             cast(Any, state),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["detect_duplicate_conflict_candidates"],
-            trace_context=self._llm_trace(state, "detect_duplicate_conflict_candidates"),
+            requested_mode=request_from_state(state).requested_mode,
             confirmation_response=self._confirmation_response(state),
         )
         return cast(
@@ -395,7 +368,7 @@ class WorkAnalysisSubgraph:
             cast(Any, working),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["assess_information_gaps"],
-            trace_context=self._llm_trace(state, "assess_information_gaps"),
+            requested_mode=request_from_state(state).requested_mode,
         )
         assessment = patch.get("__analysis_information_gap_assessment__")
         if (
@@ -438,7 +411,7 @@ class WorkAnalysisSubgraph:
             cast(Any, state),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._prompt_refs["assess_operational_risks"],
-            trace_context=self._llm_trace(state, "assess_operational_risks"),
+            requested_mode=request_from_state(state).requested_mode,
         )
         assessment = patch.get("__analysis_operational_risk_assessment__")
         if isinstance(assessment, Mapping):
@@ -735,7 +708,7 @@ class WorkAnalysisSubgraph:
         policy_confirmation: dict[str, object] | None = None,
     ) -> WorkAnalysisLocalState:
         request_intent = cast(Mapping[str, object], state.get("request_intent", {}))
-        clarification: ClarificationQuestionV1 = {
+        clarification: request_understanding_contracts.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": origin_target,
             "question": question,

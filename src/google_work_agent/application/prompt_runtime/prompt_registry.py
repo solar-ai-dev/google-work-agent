@@ -436,9 +436,7 @@ def _validate_activation_lifecycle(entry: _PromptManifestEntry) -> None:
         entry.manifest_approved,
     )
     if entry.node_holdout_pass and not entry.node_dev_pass:
-        raise PromptRegistryError(
-            f"{entry.prompt_slot_id} HOLDOUT evidence requires DEV evidence"
-        )
+        raise PromptRegistryError(f"{entry.prompt_slot_id} HOLDOUT evidence requires DEV evidence")
     if entry.safety_gate_pass and not entry.node_holdout_pass:
         raise PromptRegistryError(
             f"{entry.prompt_slot_id} Safety evidence requires HOLDOUT evidence"
@@ -452,13 +450,9 @@ def _validate_activation_lifecycle(entry: _PromptManifestEntry) -> None:
     if status == "DRAFT" and any(evidence):
         raise PromptRegistryError(f"{entry.prompt_slot_id} DRAFT cannot claim release evidence")
     if status == "DEV_VALIDATED" and evidence != (True, False, False, False):
-        raise PromptRegistryError(
-            f"{entry.prompt_slot_id} DEV_VALIDATED evidence is inconsistent"
-        )
+        raise PromptRegistryError(f"{entry.prompt_slot_id} DEV_VALIDATED evidence is inconsistent")
     if status == "HOLDOUT_VALIDATED" and (
-        not entry.node_dev_pass
-        or not entry.node_holdout_pass
-        or entry.manifest_approved
+        not entry.node_dev_pass or not entry.node_holdout_pass or entry.manifest_approved
     ):
         raise PromptRegistryError(
             f"{entry.prompt_slot_id} HOLDOUT_VALIDATED evidence is inconsistent"

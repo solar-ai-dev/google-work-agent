@@ -9,6 +9,7 @@ from fastapi.routing import APIRoute
 
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import DeferredApiContainer
+from google_work_agent.api.container import ApiContainer
 
 ROOT = Path(__file__).resolve().parents[2]
 API = ROOT / "src" / "google_work_agent" / "api"
@@ -65,13 +66,17 @@ _FALLBACK_ROUTES = {
 }
 
 
+def _unreachable_core_builder(**_kwargs: object) -> ApiContainer:
+    raise AssertionError("route census must not initialize the core container")
+
+
 def _routes() -> list[APIRoute]:
     container = DeferredApiContainer(
         host="127.0.0.1",
         port=8899,
         service_instance_id="route-census",
         bootstrap_secret="x" * 32,
-        core_builder=lambda **_kwargs: None,  # never invoked by route census
+        core_builder=_unreachable_core_builder,
     )
     app = create_app(container)  # type: ignore[arg-type]
 
@@ -113,13 +118,13 @@ def test_product_routes_have_no_direct_dict_response_or_untyped_resource_contrac
         assert route.response_model is not None
         assert route.response_model.__name__ == expected
 
-    for path in (API / "routes").glob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    for route_path in (API / "routes").glob("*.py"):
+        tree = ast.parse(route_path.read_text(encoding="utf-8"))
         for node in tree.body:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             if node.returns is not None:
-                assert ast.unparse(node.returns) != "dict[str, object]", path
+                assert ast.unparse(node.returns) != "dict[str, object]", route_path
 
 
 def test_every_route_module_is_registered_and_has_no_concrete_adapter_dependency() -> None:
@@ -169,7 +174,7 @@ def test_production_docs_openapi_and_legacy_product_routes_are_absent() -> None:
             port=8899,
             service_instance_id="route-census",
             bootstrap_secret="x" * 32,
-            core_builder=lambda **_kwargs: None,
+            core_builder=_unreachable_core_builder,
         )  # type: ignore[arg-type]
     )
     assert app.docs_url is None

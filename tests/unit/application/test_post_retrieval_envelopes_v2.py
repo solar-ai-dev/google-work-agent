@@ -8,10 +8,11 @@ from evaluation.compat.post_retrieval_envelopes import (
     validate_work_analysis_return_v2,
 )
 
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
 from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
 
 
-def _meta(name: str):
+def _meta(name: str) -> StateArtifactMetaV1:
     return {"artifact_id": name, "revision": 1, "based_on": []}
 
 
@@ -102,7 +103,9 @@ def test_review_retrieve_more_preserves_review_artifact_and_signal() -> None:
             },
         }
     )
-    assert envelope["typed_result"]["status"] == "RETRIEVE_MORE"
+    typed_result = envelope["typed_result"]
+    assert isinstance(typed_result, dict)
+    assert typed_result["status"] == "RETRIEVE_MORE"
 
 
 def test_review_pass_rejects_control_signal() -> None:

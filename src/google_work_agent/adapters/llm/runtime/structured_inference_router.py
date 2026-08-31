@@ -69,12 +69,13 @@ class StructuredInferenceRuntimeRouter:
     checkpoint: CheckpointPort | None = None
     before_provider_dispatch: Callable[[], None] = lambda: None
     before_runtime_dispatch: Callable[[ActualRuntime], None] = lambda _runtime: None
+    run_context_provider: Callable[[], str | None] = lambda: None
     record_runtime_result: Callable[[ActualRuntime, str | None], None] = (
         lambda _runtime, _error_code: None
     )
-    external_scope_projector: Callable[
-        [str, tuple[str, ...], tuple[str, ...]], ExternalLlmTransferScopeV1
-    ] | None = None
+    external_scope_projector: (
+        Callable[[str, tuple[str, ...], tuple[str, ...]], ExternalLlmTransferScopeV1] | None
+    ) = None
 
     def __post_init__(self) -> None:
         self._api_leaf: StructuredLLMProvider = self.api_provider
@@ -118,7 +119,6 @@ class StructuredInferenceRuntimeRouter:
         prompt_ref: PromptReference,
         input_projection: Mapping[str, object],
         output_schema_ref: OutputSchemaDefinition,
-        external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> StructuredInferenceResultV1:
         settings = self.settings_service()
         requested = RequestedRuntimeMode(requested_mode)
@@ -178,7 +178,12 @@ class StructuredInferenceRuntimeRouter:
                 approved_model=approved_model,
             )
         )
-        trace_context = ObservabilityContext()
+        trace_context = ObservabilityContext(run_id=self.run_context_provider())
+        external_transfer_scope = self._project_external_scope(
+            requested_mode=requested,
+            prompt_input=input_projection,
+            trace_context=trace_context,
+        )
         self._record_selection(
             prompt_ref=prompt_ref,
             trace_context=trace_context,
@@ -251,49 +256,6 @@ class StructuredInferenceRuntimeRouter:
             )
             return _canonical_result(result)
 
-    def invoke_structured(
-        self,
-        *,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        trace_context: ObservabilityContext,
-        semantic_validate: Callable[[object], object] | None = None,
-    ) -> StructuredLLMResult:
-        """Compatibility-shaped call that still delegates to the sole router authority."""
-
-        requested_mode = RequestedRuntimeMode(self.settings_service().requested_runtime_mode)
-        external_scope = self._project_external_scope(
-            requested_mode=requested_mode,
-            prompt_input=prompt_input,
-            trace_context=trace_context,
-        )
-        result = self.infer(
-            requested_mode.value,
-            prompt_ref,
-            prompt_input,
-            output_schema,
-            external_scope,
-        )
-        if semantic_validate is not None:
-            semantic_validate(result.structured_output)
-        return StructuredLLMResult(
-            structured_output=result.structured_output,
-            provider=result.provider,
-            model=result.model,
-            requested_mode=requested_mode,
-            actual_runtime=ActualRuntime(result.actual_runtime),
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            total_tokens=result.input_tokens + result.output_tokens,
-            latency_ms=result.latency_ms,
-            estimated_cost_usd=None,
-            fallback_reason=result.fallback_reason,
-            structured_output_attempts=1,
-            provider_request_id=None,
-            safe_error_code=None,
-        )
-
     def discard_run(self, *, run_id: str) -> None:
         """Run budgets live in checkpointed workflow state, not this router."""
 
@@ -302,8 +264,7 @@ class StructuredInferenceRuntimeRouter:
     def test_connection(self) -> dict[str, object]:
         settings = self.settings_service()
         if (
-            RequestedRuntimeMode(settings.requested_runtime_mode)
-            is RequestedRuntimeMode.API_LLM
+            RequestedRuntimeMode(settings.requested_runtime_mode) is RequestedRuntimeMode.API_LLM
             and not settings.external_llm_consent
         ):
             raise LLMInvocationError(

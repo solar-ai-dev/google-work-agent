@@ -194,16 +194,18 @@ class ConnectorReadProjection:
             request.remaining_budget["pages"] -= 1
             candidates = list(page.items[: plan["max_candidates"]])
             request.remaining_budget["candidates"] -= len(candidates)
-            details: list[ResourceSnapshot] = []
+            gmail_details: list[ResourceSnapshot] = []
             for item in candidates[: plan["detail_limit"]]:
                 if request.remaining_budget["details"] <= 0:
                     break
                 self._require_allowed(request, "gmail_get_thread")
                 thread = self.get_gmail_thread(thread_id=item.resource_id)
                 request.remaining_budget["details"] -= 1
-                details.append(thread)
-                details.extend(self._gmail_thread_messages(request, thread))
-            return NormalizedConnectorRead(tuple(details), next_page_token=page.next_page_token)
+                gmail_details.append(thread)
+                gmail_details.extend(self._gmail_thread_messages(request, thread))
+            return NormalizedConnectorRead(
+                tuple(gmail_details), next_page_token=page.next_page_token
+            )
         if plan["source"] == "TASKS":
             task_list_id = _constraint(plan["constraints"], "task_list_id")
             if task_list_id is None:
@@ -222,13 +224,15 @@ class ConnectorReadProjection:
             request.remaining_budget["pages"] -= 1
             candidates = list(page.items[: plan["max_candidates"]])
             request.remaining_budget["candidates"] -= len(candidates)
-            details: list[ResourceSnapshot] = []
+            task_details: list[ResourceSnapshot] = []
             for item in candidates[: plan["detail_limit"]]:
                 self._require_allowed(request, "tasks_get_task")
-                details.append(self.get_task(task_list_id=task_list_id, task_id=item.resource_id))
-            request.remaining_budget["details"] -= len(details)
+                task_details.append(
+                    self.get_task(task_list_id=task_list_id, task_id=item.resource_id)
+                )
+            request.remaining_budget["details"] -= len(task_details)
             return NormalizedConnectorRead(
-                tuple(details),
+                tuple(task_details),
                 next_page_token=page.next_page_token,
             )
         calendar_id = _constraint(plan["constraints"], "calendar_id")
@@ -248,18 +252,18 @@ class ConnectorReadProjection:
         request.remaining_budget["pages"] -= 1
         candidates = list(page.items[: plan["max_candidates"]])
         request.remaining_budget["candidates"] -= len(candidates)
-        details: list[ResourceSnapshot] = []
+        calendar_details: list[ResourceSnapshot] = []
         for item in candidates[: plan["detail_limit"]]:
             self._require_allowed(request, "calendar_get_event")
-            details.append(
+            calendar_details.append(
                 self.get_calendar_event(calendar_id=calendar_id, event_id=item.resource_id)
             )
-        request.remaining_budget["details"] -= len(details)
+        request.remaining_budget["details"] -= len(calendar_details)
         freebusy, error_code = self._calendar_freebusy(request, calendar_id)
         if freebusy is not None:
-            details.append(freebusy)
+            calendar_details.append(freebusy)
         return NormalizedConnectorRead(
-            tuple(details),
+            tuple(calendar_details),
             error_code=error_code,
             next_page_token=page.next_page_token,
         )

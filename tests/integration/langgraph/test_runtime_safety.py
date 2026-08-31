@@ -75,7 +75,7 @@ def test_compiled_graph_registers_profile_and_shared_nodes(
     )
 
     try:
-        graph = runtime._graph.get_graph()  # noqa: SLF001
+        graph = runtime._graph.get_graph()
         shared = {
             "domain_validation",
             "waiting_approval",
@@ -180,8 +180,8 @@ def test_merge_decision_fails_closed_for_unroutable_supervisor_target(tmp_path: 
         prompt_manifest_path=manifest_path,
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        merged = runtime._merge_decision(  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        merged = runtime._merge_decision(
             state,
             {},
             {
@@ -194,7 +194,9 @@ def test_merge_decision_fails_closed_for_unroutable_supervisor_target(tmp_path: 
         )
         assert merged["__target__"] == "recovery"
         assert merged["__logical_target__"] == "recovery"
-        assert merged["__workflow_control__"]["reason"] == "CONTRACT_VIOLATION"
+        workflow_control = merged["__workflow_control__"]
+        assert workflow_control is not None
+        assert workflow_control["reason"] == "CONTRACT_VIOLATION"
         assert merged["execution_summary"] is None
     finally:
         runtime.close()

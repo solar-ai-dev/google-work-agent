@@ -26,14 +26,17 @@ from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
-from google_work_agent.domain.run.model import RunCommand, RunStatusV1, RunTransitionRejected
+from google_work_agent.domain.run.model import Run, RunCommand, RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.resume_after_reauth import (
     transition_resume_after_reauth,
 )
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
-from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RegisteredResumeTargetRefV2,
+    RunExecutionAcceptedV1,
+)
 from google_work_agent.ports.system.uuid_port import UUIDPort
 
 _ResumeDecision = CommandResult[RunStatusV1, RunCommand] | _PersistedRunDecision
@@ -271,9 +274,9 @@ class ResumeAfterReauthHandler:
         *,
         unit_of_work: UnitOfWork,
         command: _ResumePersistenceCommand,
-        run: object,
+        run: Run,
         resume_status: RunStatusV1,
-        target: object,
+        target: RegisteredResumeTargetRefV2 | None,
         now_ms: int,
     ) -> tuple[_ResumeDecision, bool]:
         fingerprint = calculate_canonical_json_hash(
@@ -288,13 +291,13 @@ class ResumeAfterReauthHandler:
             unit_of_work,
             RequireRecoveryCommand(
                 run_id=command.run_id,
-                expected_version=run.version,  # type: ignore[attr-defined]
+                expected_version=run.version,
                 command_id=f"system:reauth-target-mismatch:{command.command_id}",
                 request_hash=fingerprint,
                 reason="CHECKPOINT_MISMATCH",
                 scope="RUN",
                 recovery_fingerprint=fingerprint,
-                registered_resume_target=target,  # type: ignore[arg-type]
+                registered_resume_target=target,
                 contract_or_checkpoint_fingerprint=fingerprint,
             ),
             now_ms=now_ms,

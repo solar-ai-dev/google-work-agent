@@ -65,9 +65,7 @@ class PublishReadOnlyPlanHandler:
             return self.save(command)
         return self._publish(command)
 
-    def _publish(
-        self, command: PublishReadOnlyPlanCommand
-    ) -> PublishReadOnlyPlanResponse:
+    def _publish(self, command: PublishReadOnlyPlanCommand) -> PublishReadOnlyPlanResponse:
         with self._unit_of_work_factory() as unit_of_work:
             existing_receipt = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing_receipt is not None:

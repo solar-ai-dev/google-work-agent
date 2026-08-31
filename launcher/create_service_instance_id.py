@@ -51,10 +51,7 @@ def create_service_instance_id(
 
     if host != "127.0.0.1" or not 1 <= port <= 65535:
         raise ValueError("service identity requires a valid loopback endpoint")
-    if (
-        not control_endpoint.startswith(r"\\.\pipe\GoogleWorkAgent-")
-        or len(control_endpoint) > 128
-    ):
+    if not control_endpoint.startswith(r"\\.\pipe\GoogleWorkAgent-") or len(control_endpoint) > 128:
         raise ValueError("service identity requires a valid control endpoint")
     identity = ServiceInstanceIdentity(
         service_instance_id=str(uuid.uuid4()),

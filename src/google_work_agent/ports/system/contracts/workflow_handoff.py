@@ -40,6 +40,10 @@ type WorkflowHandoffStatusV1 = Literal[
 type WorkflowSubmitReasonV1 = Literal[
     "ALREADY_RUNNING", "NOT_COMMITTED", "BINDING_MISMATCH", "SHUTTING_DOWN"
 ]
+type WorkflowExecutionReasonV1 = Literal[
+    "ACCEPTED", "ALREADY_RUNNING", "NOT_COMMITTED", "BINDING_MISMATCH", "SHUTTING_DOWN"
+]
+type WorkflowExecutionSubmissionKindV1 = Literal["NORMAL_HANDOFF", "CONSUMED_CONTINUATION_RECOVERY"]
 type WorkflowExecutionReleaseReasonV1 = Literal[
     "ALREADY_RUNNING",
     "NOT_COMMITTED",
@@ -179,7 +183,7 @@ class WorkflowExecutionAdmissionV1:
     admission_id: str
     handoff_id: str
     handoff_run_sequence: int
-    submission_kind: Literal["NORMAL_HANDOFF", "CONSUMED_CONTINUATION_RECOVERY"]
+    submission_kind: WorkflowExecutionSubmissionKindV1
     effective_binding: WorkflowExecutionBindingV1
     expected_run_version: int
 
@@ -231,9 +235,7 @@ class WorkflowExecutionSubmissionV2:
 class RunExecutionAcceptedV1:
     schema_version: Literal[1]
     accepted: bool
-    reason_code: Literal[
-        "ACCEPTED", "ALREADY_RUNNING", "NOT_COMMITTED", "BINDING_MISMATCH", "SHUTTING_DOWN"
-    ]
+    reason_code: WorkflowExecutionReasonV1
 
 
 @dataclass(frozen=True, slots=True)

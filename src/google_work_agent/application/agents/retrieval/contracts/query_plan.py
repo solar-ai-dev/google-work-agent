@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """Canonical Retrieval V2 DTOs and deterministic semantic validation.
 
 This module deliberately owns no provider translation, cache access, or LLM

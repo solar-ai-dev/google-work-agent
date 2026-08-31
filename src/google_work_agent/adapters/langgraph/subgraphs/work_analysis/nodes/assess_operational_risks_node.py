@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.assess_operational_risks_projection import (  # noqa: E501
-    project_assess_operational_risks_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
 from google_work_agent.application.agents.work_analysis.assess_operational_risks import (
     assess_operational_risks,
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
+
+from ..projections.assess_operational_risks_projection import (
+    project_assess_operational_risks_input,
+)
 
 
 def assess_operational_risks_node(
@@ -19,13 +20,13 @@ def assess_operational_risks_node(
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
 ) -> WorkAnalysisStateV2:
     assessment = assess_operational_risks(
         **project_assess_operational_risks_input(state),
         llm_runtime=llm_runtime,
         prompt_ref=prompt_ref,
-        trace_context=trace_context,
+        requested_mode=requested_mode,
     )
     return cast(
         WorkAnalysisStateV2,

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
@@ -637,16 +638,17 @@ def test_reserved_corrective_marker_survives_failed_compiled_checkpoint_and_is_c
     )
     try:
         graph = builder.compile(checkpointer=SqliteSaver(connection))
-        config = {"configurable": {"thread_id": "corrective-thread"}}
+        config: RunnableConfig = {"configurable": {"thread_id": "corrective-thread"}}
+        initial_state = cast(
+            ParentGraphState,
+            {
+                "run_id": "run-1",
+                "__reserved_corrective_plan_id__": "reserved-plan-2",
+            },
+        )
 
         with pytest.raises(RuntimeError, match="injected node failure"):
-            graph.invoke(
-                {
-                    "run_id": "run-1",
-                    "__reserved_corrective_plan_id__": "reserved-plan-2",
-                },
-                config=config,
-            )
+            graph.invoke(initial_state, config=config)
 
         failed_snapshot = graph.get_state(config)
         assert failed_snapshot.values["__reserved_corrective_plan_id__"] == "reserved-plan-2"

@@ -226,9 +226,7 @@ class GoogleWorkspaceCredentialProvider:
         if not raw_environment and keyring is not None:
             raw_environment = OAuthEnvironment.DEVELOPMENT.value
         try:
-            self.oauth_environment = OAuthEnvironment(
-                raw_environment.upper()
-            )
+            self.oauth_environment = OAuthEnvironment(raw_environment.upper())
         except ValueError as error:
             raise RuntimeError("GOOGLE_OAUTH_ENV_INVALID") from error
         self.oauth_settings = GoogleOAuthSettings.load(
@@ -1348,7 +1346,7 @@ class _OAuthCallbackServer:
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802
+            def do_GET(self) -> None:
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
                 state_value = params.get("state", [""])[0]
@@ -1413,7 +1411,7 @@ class _OAuthCallbackServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def log_message(self, format: str, *args: object) -> None:  # noqa: A003
+            def log_message(self, format: str, *args: object) -> None:
                 del format, args
 
         return Handler

@@ -5,7 +5,13 @@ import sqlite3
 from google_work_agent.domain.approval.model import Approval as ApprovalRecord
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 
-APPROVAL_SELECT = "SELECT id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms FROM approvals"  # noqa: E501
+APPROVAL_SELECT = (
+    "SELECT id, action_id, approval_no, action_version, status, approved_by_account_id, "
+    "approved_by_display, arguments_snapshot_json, canonical_arguments_hash, "
+    "source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, "
+    "idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms "
+    "FROM approvals"
+)
 
 
 def approval_record_from_row(r: sqlite3.Row) -> ApprovalRecord:
@@ -69,7 +75,12 @@ class SqliteApprovalRepository:
         ).fetchone()
         approval_no = int(row["next_no"])
         self._connection.execute(
-            "INSERT INTO approvals (id, action_id, approval_no, action_version, status, approved_by_account_id, approved_by_display, arguments_snapshot_json, canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO approvals (id, action_id, approval_no, action_version, status, "
+            "approved_by_account_id, approved_by_display, arguments_snapshot_json, "
+            "canonical_arguments_hash, source_snapshot_json, source_snapshot_hash, "
+            "policy_version, tool_schema_version, idempotency_key, recovery_fingerprint, "
+            "approved_at_ms, expires_at_ms, consumed_at_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
             (
                 record.id,
                 record.action_id,

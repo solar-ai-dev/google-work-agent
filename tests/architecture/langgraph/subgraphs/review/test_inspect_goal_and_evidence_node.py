@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 from __future__ import annotations
 
 import inspect
@@ -9,14 +8,14 @@ from google_work_agent.adapters.langgraph.subgraphs.review.graph import (
     ReviewRuntimeDependencies,
     ReviewSubgraph,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.inspect_goal_and_evidence_node import (
-    inspect_goal_and_evidence_node,
+from google_work_agent.adapters.langgraph.subgraphs.review.nodes import (
+    inspect_goal_and_evidence_node as goal_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.projections.inspect_goal_and_evidence_projection import (
-    project_inspect_goal_and_evidence_input,
+from google_work_agent.adapters.langgraph.subgraphs.review.projections import (
+    inspect_goal_and_evidence_projection as goal_projection,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_inspect_goal_and_evidence import (
-    route_after_inspect_goal_and_evidence,
+from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
+    route_after_inspect_goal_and_evidence as goal_route,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
@@ -32,12 +31,12 @@ def test_goal_node_projection_and_answer_router_are_exact() -> None:
         "tool_route_plan": {"secret": "must not project"},
         "evidence": [],
     }
-    assert set(project_inspect_goal_and_evidence_input(state)) == {
+    assert set(goal_projection.project_inspect_goal_and_evidence_input(state)) == {
         "request_intent",
         "planning_result",
         "evidence",
     }
-    patch = inspect_goal_and_evidence_node(
+    patch = goal_node.inspect_goal_and_evidence_node(
         state,
         invoke=lambda _prompt_id, _input: {
             "schema_version": 1,
@@ -46,7 +45,9 @@ def test_goal_node_projection_and_answer_router_are_exact() -> None:
         },
     )
     assert set(patch) == {"goal_evidence_result"}
-    assert route_after_inspect_goal_and_evidence({**state, **patch}) == ("aggregate_findings")
+    assert goal_route.route_after_inspect_goal_and_evidence({**state, **patch}) == (
+        "aggregate_findings"
+    )
 
 
 def test_non_active_goal_prompt_fails_before_structured_inference() -> None:

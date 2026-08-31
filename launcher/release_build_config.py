@@ -34,9 +34,7 @@ def load_signed_build_config(installation: VerifiedInstallation) -> SignedBuildC
         deployment_profile=cast(
             Literal["API_ONLY", "LOCAL_CAPABLE"], manifest["deployment_profile"]
         ),
-        oauth_env=cast(
-            Literal["DEVELOPMENT", "STAGING", "PRODUCTION"], manifest["oauth_env"]
-        ),
+        oauth_env=cast(Literal["DEVELOPMENT", "STAGING", "PRODUCTION"], manifest["oauth_env"]),
         oauth_client_id=_string(manifest, "oauth_client_id"),
         api_contract_version=_string(manifest, "api_contract_version"),
         mcp_schema_version=_string(manifest, "mcp_schema_version"),

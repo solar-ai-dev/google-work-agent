@@ -61,8 +61,8 @@ class _PrivateTaskGateway(FakeGoogleGateway):
         super().__init__(snapshot)
         self._continuation = continuation
         key = (ResourceType.TASK, "task-billing")
-        task = self._resources[key]  # noqa: SLF001 - provider fixture injection
-        self._resources[key] = replace(  # noqa: SLF001
+        task = self._resources[key]
+        self._resources[key] = replace(
             task,
             payload={
                 **task.payload,
@@ -128,12 +128,12 @@ def test_terminal_cleanup_and_process_restart_never_restore_raw_continuation(
         assert result.outcome is WorkflowOutcome.COMPLETED
         assert cache.bindings
 
-        config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        state = runtime._graph.get_state(config, subgraphs=True)  # noqa: SLF001
+        config = runtime._invocation.config_for_thread("thread-1")
+        state = runtime._graph.get_state(config, subgraphs=True)
         assert private_body not in repr(state.values)
         assert continuation not in repr(state.values)
 
-        llm_runtime = cast(_QueuedLLMRuntime, runtime._llm_runtime)  # noqa: SLF001
+        llm_runtime = cast(_QueuedLLMRuntime, runtime._llm_runtime)
         assert continuation not in repr([call["prompt_input"] for call in llm_runtime.calls])
 
         for binding in cache.bindings:

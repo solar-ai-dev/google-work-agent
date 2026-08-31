@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, TypedDict, cast
+from typing import Any, Final, Protocol, TypedDict, cast
 
 import google_work_agent.application.agents.retrieval.contracts.schema_validation as _schema
 from evaluation.compat.work_analysis_result_v1 import (
@@ -280,13 +281,25 @@ class SolutionPlanningValidationError(ValueError):
     """Raised when solution planning structured output is invalid."""
 
 
+class _StructuredRuntime(Protocol):
+    def invoke_structured(
+        self,
+        *,
+        prompt_ref: PromptReference,
+        prompt_input: Mapping[str, object],
+        output_schema: OutputSchemaDefinition,
+        trace_context: ObservabilityContext,
+        semantic_validate: Callable[[object], object] | None = None,
+    ) -> StructuredLLMResult: ...
+
+
 class SolutionPlanningAgent:
     """Build or revise answer drafts and action-plan drafts without execution or approval."""
 
     def __init__(
         self,
         *,
-        llm_runtime: Any,
+        llm_runtime: _StructuredRuntime,
         answer_only_prompt_ref: PromptReference | None = None,
         draft_plan_prompt_ref: PromptReference | None = None,
         revise_answer_prompt_ref: PromptReference | None = None,

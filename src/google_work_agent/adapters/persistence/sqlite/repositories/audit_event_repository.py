@@ -58,7 +58,9 @@ class SqliteAuditEventRepository:
                 )
             )
         self._connection.execute(
-            "INSERT INTO audit_events (account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO audit_events (account_id, run_id, action_id, actor_type, actor_id, "
+            "actor_display, event_type, outcome, metadata_json, created_at_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
             (
                 event.account_id,
                 event.run_id,
@@ -98,7 +100,10 @@ class SqliteAuditEventRepository:
         action_id = None if cursor is None else cursor.action_id
         cursor_after = None if cursor is None else cursor.after_id
         rows = self._connection.execute(
-            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, event_type, outcome, metadata_json, created_at_ms FROM audit_events WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR action_id=?) AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",  # noqa: E501
+            "SELECT id, account_id, run_id, action_id, actor_type, actor_id, actor_display, "
+            "event_type, outcome, metadata_json, created_at_ms FROM audit_events "
+            "WHERE (? IS NULL OR run_id=?) AND (? IS NULL OR action_id=?) "
+            "AND (? IS NULL OR id>?) ORDER BY id ASC LIMIT ?;",
             (run_id, run_id, action_id, action_id, cursor_after, cursor_after, limit),
         ).fetchall()
         return tuple(self._record(r) for r in rows)

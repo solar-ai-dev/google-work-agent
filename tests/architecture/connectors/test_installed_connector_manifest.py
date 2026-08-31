@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -17,7 +18,7 @@ def test_installed_manifest_has_one_canonical_google_workspace_binding() -> None
     assert entry.tool_projection_path.endswith("tool-descriptor-projection-v1.json")
 
 
-def test_installed_manifest_rejects_duplicate_and_unsafe_paths(tmp_path) -> None:
+def test_installed_manifest_rejects_duplicate_and_unsafe_paths(tmp_path: Path) -> None:
     source = load_installed_connector_manifest.__globals__["_IMPLEMENTATION_MANIFEST"]
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["connectors"][0]["executable_path"] = "../escape.exe"

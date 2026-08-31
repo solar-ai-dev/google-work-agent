@@ -81,8 +81,10 @@ def _result(rounds: int, *, route_revision: int) -> RetrievalResultV1:
         "context_bundle_ref": None,
         "evidence_refs": [],
         "selected_segment_ids": [],
+        "excluded_segment_ids": [],
         "source_resource_refs": [],
         "source_statuses": [],
+        "availability_results": [],
         "missing_information": [],
         "retrieval_rounds": rounds,
     }

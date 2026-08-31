@@ -125,7 +125,7 @@ def test_every_profile_restarts_with_the_same_owner_subgraph_and_version() -> No
             profile,
             "PLANNING",
             "planning.assemble",
-            "graph-v1",  # type: ignore[arg-type]
+            "graph-v1",
         )
 
         restarted = ResumeTargetRegistry(NodeRegistry("graph-v1"), "graph-v1")
@@ -135,7 +135,7 @@ def test_every_profile_restarts_with_the_same_owner_subgraph_and_version() -> No
                 profile,
                 "PLANNING",
                 "planning.assemble",
-                "graph-v1",  # type: ignore[arg-type]
+                "graph-v1",
             )
             == target
         )

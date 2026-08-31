@@ -123,10 +123,8 @@ def test_initial_workflow_binding_port_is_narrower_than_checkpoint_port() -> Non
 def test_google_mcp_dispatch_has_exact_signed_registry_operation_set() -> None:
     registry = load_signed_tool_registry()
 
-    assert set(dispatch_tool._OPERATIONS) == {  # noqa: SLF001
-        entry.tool_id for entry in registry.entries
-    }
-    assert set(dispatch_tool._INTERNAL_OPERATIONS) == {  # noqa: SLF001
+    assert set(dispatch_tool._OPERATIONS) == {entry.tool_id for entry in registry.entries}
+    assert set(dispatch_tool._INTERNAL_OPERATIONS) == {
         "gmail_get_ui_thread_detail",
         "search_by_recovery_fingerprint",
     }

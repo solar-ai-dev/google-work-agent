@@ -1,10 +1,13 @@
+from typing import cast
+
 import pytest
 
 from google_work_agent.application.agents.work_analysis.assess_information_gaps import (
     assess_information_gaps,
 )
+from google_work_agent.ports.llm import PromptReference
 
-from .conftest import TRACE, FakeRuntime, fact, prompt_ref
+from .conftest import FakeRuntime, fact, intent, prompt_ref
 
 
 def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() -> None:
@@ -20,17 +23,20 @@ def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() 
     runtime = FakeRuntime(output)
 
     result = assess_information_gaps(
-        request_intent={},  # type: ignore[arg-type]
-        work_facts=[fact("f1")],  # type: ignore[list-item]
+        request_intent=intent(),
+        work_facts=[fact("f1")],
         evidence=[],
         llm_runtime=runtime,
         prompt_ref=prompt_ref("work_analysis.assess_information_gaps", "assess_information_gaps"),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
 
     assert result == output
-    assert runtime.calls[0]["prompt_ref"].prompt_id == "work_analysis.assess_information_gaps"
+    assert (
+        cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id
+        == "work_analysis.assess_information_gaps"
+    )
 
 
 def test_assess_information_gaps_rejects_unbounded_evidence() -> None:
@@ -44,13 +50,13 @@ def test_assess_information_gaps_rejects_unbounded_evidence() -> None:
     )
     with pytest.raises(ValueError, match="outside current RetrievalResultV1"):
         assess_information_gaps(
-            request_intent={},  # type: ignore[arg-type]
-            work_facts=[fact("f1")],  # type: ignore[list-item]
+            request_intent=intent(),
+            work_facts=[fact("f1")],
             evidence=[],
             llm_runtime=runtime,
             prompt_ref=prompt_ref(
                 "work_analysis.assess_information_gaps", "assess_information_gaps"
             ),
             allowed_evidence_refs={"ev-1"},
-            trace_context=TRACE,
+            requested_mode="AUTO",
         )

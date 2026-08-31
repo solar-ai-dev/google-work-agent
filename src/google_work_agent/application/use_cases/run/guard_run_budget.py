@@ -167,8 +167,9 @@ class GuardRunBudgetHandler:
             return GuardRunBudgetResultV1(1, False, "MAX_EXECUTION_TIME", 0, elapsed_ms)
 
         used_name, limit_name, reason = _DIMENSIONS[query.requested_delta.operation_kind]
-        used = int(budget[used_name])  # type: ignore[literal-required]
-        limit = int(budget[limit_name])  # type: ignore[literal-required]
+        budget_values = cast(dict[str, object], budget)
+        used = int(cast(int, budget_values[used_name]))
+        limit = int(cast(int, budget_values[limit_name]))
         if query.requested_delta.operation_kind == "LLM_CALL":
             limit = min(limit, budget["absolute_llm_call_limit"])
         remaining = max(0, limit - used)

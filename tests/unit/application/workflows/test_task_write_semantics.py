@@ -25,7 +25,7 @@ def test_deadline_only_preserves_deadline_in_notes_without_google_due() -> None:
         "business_deadline": "2026-08-12",
         "notes": "업무 마감: 2026년 8월 12일",
     }
-    assert server._task_write_body(result["payload"], title_required=True) == {  # type: ignore[arg-type]
+    assert server._task_write_body(result["payload"], title_required=True) == {
         "title": "보고서 정리",
         "notes": "업무 마감: 2026년 8월 12일",
     }

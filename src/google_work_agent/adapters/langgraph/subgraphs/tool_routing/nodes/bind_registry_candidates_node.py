@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.bind_registry_candidates_projection import (  # noqa: E501
-    project_bind_registry_candidates_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
@@ -13,6 +10,10 @@ from google_work_agent.application.agents.tool_routing.resolve_policy_preconditi
     resolve_policy_preconditions,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+
+from ..projections.bind_registry_candidates_projection import (
+    project_bind_registry_candidates_input,
+)
 
 
 def bind_registry_candidates_node(

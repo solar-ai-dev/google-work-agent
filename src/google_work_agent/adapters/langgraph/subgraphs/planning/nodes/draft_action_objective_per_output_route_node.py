@@ -22,11 +22,11 @@ def draft_action_objective_per_output_route_node(
     return {
         "action_objective_candidates": list(
             draft_action_objective_per_output_route(
-                projected["output_routes"],  # type: ignore[arg-type]
-                user_request=projected["user_request"],  # type: ignore[arg-type]
-                request_intent=projected["request_intent"],  # type: ignore[arg-type]
-                work_analysis=projected.get("work_analysis"),  # type: ignore[arg-type]
-                evidence=projected["evidence"],  # type: ignore[arg-type]
+                projected["output_routes"],
+                user_request=projected["user_request"],
+                request_intent=projected["request_intent"],
+                work_analysis=projected.get("work_analysis"),
+                evidence=projected["evidence"],
                 invoke=invoke,
             )
         )

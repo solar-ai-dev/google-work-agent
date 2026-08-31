@@ -3,21 +3,38 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import NotRequired, TypedDict
+
+
+class InspectGoalAndEvidenceInputV1(TypedDict):
+    request_intent: dict[str, object]
+    planning_result: dict[str, object]
+    evidence: list[dict[str, object]]
+    work_analysis: NotRequired[dict[str, object]]
+    confirmation_response: NotRequired[dict[str, object]]
 
 
 def project_inspect_goal_and_evidence_input(
     state: Mapping[str, object],
-) -> dict[str, object]:
+) -> InspectGoalAndEvidenceInputV1:
     request_intent = _mapping(state, "request_intent")
     planning_result = _mapping(state, "planning_result")
     evidence = _evidence(state.get("evidence", ()))
-    result: dict[str, object] = {
+    result: InspectGoalAndEvidenceInputV1 = {
         "request_intent": dict(request_intent),
         "planning_result": dict(planning_result),
         "evidence": evidence,
     }
-    _copy_optional_mapping(state, result, "work_analysis")
-    _copy_optional_mapping(state, result, "confirmation_response")
+    work_analysis = state.get("work_analysis")
+    if work_analysis is not None:
+        if not isinstance(work_analysis, Mapping):
+            raise ValueError("work_analysis must be an object")
+        result["work_analysis"] = dict(work_analysis)
+    confirmation = state.get("confirmation_response")
+    if confirmation is not None:
+        if not isinstance(confirmation, Mapping):
+            raise ValueError("confirmation_response must be an object")
+        result["confirmation_response"] = dict(confirmation)
     return result
 
 
@@ -36,15 +53,4 @@ def _evidence(value: object) -> list[dict[str, object]]:
     return [dict(item) for item in value]
 
 
-def _copy_optional_mapping(
-    state: Mapping[str, object], result: dict[str, object], key: str
-) -> None:
-    value = state.get(key)
-    if value is None:
-        return
-    if not isinstance(value, Mapping):
-        raise ValueError(f"{key} must be an object")
-    result[key] = dict(value)
-
-
-__all__ = ["project_inspect_goal_and_evidence_input"]
+__all__ = ["InspectGoalAndEvidenceInputV1", "project_inspect_goal_and_evidence_input"]

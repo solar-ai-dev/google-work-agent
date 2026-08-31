@@ -6,13 +6,15 @@ from google_work_agent.application.agents.planning.draft_action_objective_per_ou
 
 
 def test_objective_prompt_is_route_bounded_and_receives_no_tool_schema() -> None:
-    def invoke(_prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        assert prompt_id == "planning.draft_action_objective_per_output_route"
         assert "tool_schema" not in prompt_input
         assert "work_analysis" not in prompt_input
         route = prompt_input["output_route"]
+        assert isinstance(route, Mapping)
         return {
             "schema_version": 1,
-            "route_id": route["route_id"],  # type: ignore[index]
+            "route_id": route["route_id"],
             "objective": "Create the requested task",
             "target_semantics": "TASK",
             "scope_constraints": ["create only"],

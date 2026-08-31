@@ -1,8 +1,11 @@
+from typing import cast
+
 import pytest
 
 from google_work_agent.application.agents.work_analysis.extract_work_facts import extract_work_facts
+from google_work_agent.ports.llm import PromptReference
 
-from .conftest import TRACE, FakeRuntime, prompt_ref
+from .conftest import FakeRuntime, prompt_ref
 
 
 def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
@@ -24,10 +27,13 @@ def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
         llm_runtime=runtime,
         prompt_ref=prompt_ref("work_analysis.extract_work_facts", "extract_work_facts"),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
     assert result == output["fact_candidates"]
-    assert runtime.calls[0]["prompt_ref"].prompt_id == "work_analysis.extract_work_facts"
+    assert (
+        cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id
+        == "work_analysis.extract_work_facts"
+    )
 
 
 def test_extract_work_facts_rejects_old_or_stale_schema() -> None:
@@ -44,5 +50,5 @@ def test_extract_work_facts_rejects_old_or_stale_schema() -> None:
             llm_runtime=runtime,
             prompt_ref=prompt_ref("work_analysis.extract_work_facts", "extract_work_facts"),
             allowed_evidence_refs={"ev-1"},
-            trace_context=TRACE,
+            requested_mode="AUTO",
         )

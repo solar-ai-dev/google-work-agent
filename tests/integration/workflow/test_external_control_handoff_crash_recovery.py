@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
@@ -25,11 +25,15 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    RunExecutionAcceptedV1,
     RunExecutionRefV1,
+    WorkflowExecutionAdmissionV1,
     WorkflowExecutionSubmissionV2,
     WorkflowHandoffStageV1,
+    WorkflowHandoffV1,
 )
 
 
@@ -37,9 +41,7 @@ class _AcceptedThenCrash:
     def __init__(self) -> None:
         self.submission: WorkflowExecutionSubmissionV2 | None = None
 
-    def submit(self, submission: WorkflowExecutionSubmissionV2):
-        from google_work_agent.ports.system.contracts.workflow_handoff import RunExecutionAcceptedV1
-
+    def submit(self, submission: WorkflowExecutionSubmissionV2) -> RunExecutionAcceptedV1:
         self.submission = submission
         return RunExecutionAcceptedV1(1, True, "ACCEPTED")
 
@@ -88,7 +90,9 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
     graph = _graph(checkpoint)
     target = _target()
 
-    def materialize(admission, _handoff):
+    def materialize(
+        admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
+    ) -> GraphCheckpointEnvelopeV1:
         with checkpoint.execution_scope(
             admission,
             applied_handoff_id=admission.handoff_id,
@@ -104,7 +108,9 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
         assert result is not None
         return result
 
-    def crash_after_descendant(admission, _handoff) -> None:
+    def crash_after_descendant(
+        admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
+    ) -> None:
         initial = checkpoint.load_same_run_checkpoint("r-1", "t-1")
         assert initial is not None
         with factory() as unit_of_work:
@@ -168,7 +174,7 @@ def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_
     assert latest.active_handoff_id == "h-1"
     recovered_owner = Event()
 
-    def recover(admission, _handoff) -> None:
+    def recover(admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1) -> None:
         assert admission.effective_binding.checkpoint_id == latest.checkpoint_id
         assert admission.effective_binding.checkpoint_generation == latest.checkpoint_generation
         recovered_owner.set()
@@ -211,7 +217,7 @@ class _GraphState(TypedDict):
     value: int
 
 
-def _graph(checkpoint):
+def _graph(checkpoint: SqliteCheckpointAdapter) -> Any:
     builder = StateGraph(_GraphState)
     builder.add_node("request_understanding", lambda state: {"value": state["value"] + 1})
     builder.add_node("context_retriever", lambda state: {"value": state["value"] + 1})

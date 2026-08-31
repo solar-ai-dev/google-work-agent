@@ -50,9 +50,7 @@ def _write_signed_installation(root: Path) -> bytes:
         "database_migration_version": "0018",
         "files": files,
     }
-    manifest_bytes = json.dumps(
-        manifest, sort_keys=True, separators=(",", ":")
-    ).encode()
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
     private_key = Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
     (root / "release-manifest.json").write_bytes(manifest_bytes)
     (root / "release-manifest.sig").write_text(
@@ -163,10 +161,14 @@ def test_exact_installer_generated_uninstaller_pair_requires_code_signature(
     (tmp_path / "unins000.dat").write_bytes(b"uninstall-metadata")
     verified_paths: list[Path] = []
 
+    def verify_code_signature(path: Path) -> bool:
+        verified_paths.append(path)
+        return True
+
     installation = verify_installation(
         tmp_path.resolve(),
         trusted_public_key_pem=public_key,
-        code_signature_verifier=lambda path: not verified_paths.append(path),
+        code_signature_verifier=verify_code_signature,
     )
 
     assert tmp_path / "unins000.exe" in installation.code_signature_verified_files

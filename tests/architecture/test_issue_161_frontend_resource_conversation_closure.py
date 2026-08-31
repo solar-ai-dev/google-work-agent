@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend" / "src"
 
@@ -12,11 +11,19 @@ def test_issue_161_exact_owners_and_symbols_exist() -> None:
         "features/resource_browser/resource_sidebar.tsx": "export function ResourceSidebar",
         "features/resource_browser/resource_viewer.tsx": "export function ResourceViewer",
         "features/resource_browser/api/list_resources.ts": "export function listResources",
-        "features/resource_browser/session_page_cache.ts": "export class ResourceBrowserSessionCache",
-        "features/resource_browser/selected_resource_context.ts": "export function buildSelectedResourceContext",
+        "features/resource_browser/session_page_cache.ts": (
+            "export class ResourceBrowserSessionCache"
+        ),
+        "features/resource_browser/selected_resource_context.ts": (
+            "export function buildSelectedResourceContext"
+        ),
         "features/run/request_composer.tsx": "export function RequestComposer",
-        "features/conversation/conversation_history_panel.tsx": "export function ConversationHistoryPanel",
-        "features/conversation/api/get_conversation_history.ts": "export function getConversationHistory",
+        "features/conversation/conversation_history_panel.tsx": (
+            "export function ConversationHistoryPanel"
+        ),
+        "features/conversation/api/get_conversation_history.ts": (
+            "export function getConversationHistory"
+        ),
     }
     for relative_path, symbol in expected.items():
         source = (FRONTEND / relative_path).read_text(encoding="utf-8")
@@ -25,7 +32,9 @@ def test_issue_161_exact_owners_and_symbols_exist() -> None:
 
 def test_issue_161_app_and_controller_use_canonical_owners_only() -> None:
     app = (FRONTEND / "app" / "App.tsx").read_text(encoding="utf-8")
-    conversation = (FRONTEND / "features" / "conversation" / "useConversation.ts").read_text(encoding="utf-8")
+    conversation = (FRONTEND / "features" / "conversation" / "useConversation.ts").read_text(
+        encoding="utf-8"
+    )
     api_index = (FRONTEND / "api" / "index.ts").read_text(encoding="utf-8")
     assert "<ResourceSidebar" in app
     assert "<ResourceViewer" in app
@@ -66,4 +75,6 @@ def test_issue_161_browser_trust_and_storage_negative_proof() -> None:
     assert "@google" not in source
     assert "googleapiclient" not in source
     assert "selected_resource_handles: selectionHandles" in source
-    assert "history:" not in (FRONTEND / "features" / "run" / "request_composer.tsx").read_text(encoding="utf-8")
+    assert "history:" not in (FRONTEND / "features" / "run" / "request_composer.tsx").read_text(
+        encoding="utf-8"
+    )

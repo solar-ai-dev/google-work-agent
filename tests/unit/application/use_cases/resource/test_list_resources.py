@@ -37,6 +37,69 @@ class _Access:
             next_page_token="next-1",
         )
 
+    def list_task_lists_page(self, *, page_token: str | None, page_size: int) -> ResourcePage:
+        del page_token, page_size
+        raise AssertionError("task-list access is outside this test")
+
+    def list_tasks_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage:
+        del (
+            task_list_id,
+            page_token,
+            page_size,
+            show_completed,
+            show_hidden,
+            show_deleted,
+            continuation_scope,
+        )
+        raise AssertionError("task access is outside this test")
+
+    def list_tasks_materialization_page(
+        self,
+        *,
+        task_list_id: str,
+        page_token: str | None,
+        page_size: int,
+        show_completed: bool,
+        show_hidden: bool,
+        show_deleted: bool,
+    ) -> ResourcePage:
+        del task_list_id, page_token, page_size, show_completed, show_hidden, show_deleted
+        raise AssertionError("task materialization is outside this test")
+
+    def list_calendar_events_page(
+        self,
+        *,
+        calendar_id: str,
+        page_token: str | None,
+        page_size: int,
+        time_min: str,
+        time_max: str,
+        single_events: bool,
+        order_by: str,
+        continuation_scope: tuple[str, ...],
+    ) -> ResourcePage:
+        del (
+            calendar_id,
+            page_token,
+            page_size,
+            time_min,
+            time_max,
+            single_events,
+            order_by,
+            continuation_scope,
+        )
+        raise AssertionError("calendar access is outside this test")
+
     def default_task_list_id(self) -> str | None:
         return None
 

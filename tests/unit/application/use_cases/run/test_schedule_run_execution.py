@@ -265,7 +265,9 @@ def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
     )
 
     class _CheckpointPort:
-        def load_same_run_checkpoint(self, run_id: str, thread_id: str):
+        def load_same_run_checkpoint(
+            self, run_id: str, thread_id: str
+        ) -> GraphCheckpointEnvelopeV1 | None:
             assert (run_id, thread_id) == ("r-1", "t-1")
             return checkpoint
 

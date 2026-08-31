@@ -1,12 +1,22 @@
 """Inputs shared by exact graph-profile architecture tests."""
 
+from collections.abc import Callable
+from typing import Any
+
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     MainControlNodeBindings,
 )
+from google_work_agent.adapters.langgraph.main.state import GraphState
 
 
-def profile_build_arguments() -> dict[str, object]:
+def profile_build_arguments() -> tuple[
+    GraphNodeBindings,
+    MainControlNodeBindings,
+    Callable[[GraphState], str],
+    Any,
+    set[str],
+]:
     node = object()
     bindings = GraphNodeBindings(
         request_understanding=object(),
@@ -37,12 +47,12 @@ def profile_build_arguments() -> dict[str, object]:
         terminal_commit=node,
         finalize=node,
     )
-    return {
-        "bindings": bindings,
-        "control_bindings": controls,
-        "route_next_node": lambda _state: "end",
-        "checkpointer": None,
-        "semantic_owners": {
+    return (
+        bindings,
+        controls,
+        lambda _state: "end",
+        None,
+        {
             "REQUEST_UNDERSTANDING",
             "TOOL_ROUTE",
             "RETRIEVAL",
@@ -50,4 +60,4 @@ def profile_build_arguments() -> dict[str, object]:
             "PLANNING",
             "REVIEW",
         },
-    }
+    )

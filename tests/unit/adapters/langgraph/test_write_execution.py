@@ -83,8 +83,12 @@ def test_not_sent_failure_continues_to_preflight_for_independent_action() -> Non
     assert result is not None
     assert result["__target__"] == "preflight"
     assert result["__logical_target__"] == "preflight"
-    assert result["execution_summary"]["routing_outcome"] == "FAILED"
-    assert result["__workflow_control__"]["reason"] == "FAILED_CONTINUE_INDEPENDENT"
+    execution_summary = result["execution_summary"]
+    workflow_control = result["__workflow_control__"]
+    assert execution_summary is not None
+    assert workflow_control is not None
+    assert execution_summary["routing_outcome"] == "FAILED"
+    assert workflow_control["reason"] == "FAILED_CONTINUE_INDEPENDENT"
 
 
 def test_not_sent_failure_suspends_when_no_independent_action_remains() -> None:
@@ -99,5 +103,9 @@ def test_not_sent_failure_suspends_when_no_independent_action_remains() -> None:
     assert result is not None
     assert result["__target__"] == "end"
     assert result["__logical_target__"] == "end"
-    assert result["execution_summary"]["routing_outcome"] == "FAILED"
-    assert result["__workflow_control__"]["reason"] == "FAILED_RETRY_OR_CANCEL_REQUIRED"
+    execution_summary = result["execution_summary"]
+    workflow_control = result["__workflow_control__"]
+    assert execution_summary is not None
+    assert workflow_control is not None
+    assert execution_summary["routing_outcome"] == "FAILED"
+    assert workflow_control["reason"] == "FAILED_RETRY_OR_CANCEL_REQUIRED"

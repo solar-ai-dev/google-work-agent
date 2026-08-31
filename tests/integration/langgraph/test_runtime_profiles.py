@@ -14,7 +14,6 @@ from tests.integration.langgraph.test_runtime import (
     _analysis_output,
     _answer_output,
     _clear_intent,
-    _context_result,
     _evidence_drafts_seg_2,
     _make_runtime,
     _retrieval_result,
@@ -25,12 +24,39 @@ from tests.integration.langgraph.test_runtime import (
     _start_request,
     _start_write_request,
     _sufficiency_output,
-    _validated_analysis_result,
     _write_plan_output,
     pytest,
     supported_graph_profiles,
 )
 from tests.support.checkpoint import sqlite_checkpoint
+
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAnalysisResultV2,
+)
+
+
+def _work_analysis_result(evidence_ref: str) -> WorkAnalysisResultV2:
+    return {
+        "schema_version": 2,
+        "meta": {"artifact_id": "analysis-1", "revision": 1, "based_on": []},
+        "work_facts": [
+            {
+                "fact_id": "fact-1",
+                "kind": "TEXT_CLAIM",
+                "subject": "current work",
+                "value": "validated",
+                "derivation": "EXPLICIT",
+                "evidence_refs": [evidence_ref],
+            }
+        ],
+        "relations": [],
+        "ambiguities": [],
+        "risks": [],
+        "evidence_refs": [evidence_ref],
+        "policy_confirmation_receipt_refs": [],
+        "action_necessity": "NOT_REQUIRED",
+        "action_necessity_reason": None,
+    }
 
 
 def test_graph_profile_registry_exposes_three_supported_profiles() -> None:
@@ -110,7 +136,7 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
     )
 
     try:
-        assert tuple(runtime._native_agent_subgraphs) == (  # noqa: SLF001
+        assert tuple(runtime._native_agent_subgraphs) == (
             "request_understanding",
             "tool_route",
             "context_retriever",
@@ -118,13 +144,13 @@ def test_six_role_runtime_exposes_six_native_agent_subgraphs(
             "planning",
             "review",
         )
-        assert len(runtime._native_agent_subgraphs) == 6  # noqa: SLF001
-        assert runtime._node_handler("request_understanding") is runtime._request_subgraph  # noqa: SLF001
-        assert runtime._node_handler("tool_route") is runtime._tool_route_subgraph  # noqa: SLF001
-        assert runtime._node_handler("context_retriever") is runtime._context_subgraph  # noqa: SLF001
-        assert runtime._node_handler("work_analysis") is runtime._analysis_subgraph  # noqa: SLF001
-        assert runtime._node_handler("planning") is runtime._planning_subgraph  # noqa: SLF001
-        assert runtime._node_handler("review") is runtime._review_subgraph  # noqa: SLF001
+        assert len(runtime._native_agent_subgraphs) == 6
+        assert runtime._node_handler("request_understanding") is runtime._request_subgraph
+        assert runtime._node_handler("tool_route") is runtime._tool_route_subgraph
+        assert runtime._node_handler("context_retriever") is runtime._context_subgraph
+        assert runtime._node_handler("work_analysis") is runtime._analysis_subgraph
+        assert runtime._node_handler("planning") is runtime._planning_subgraph
+        assert runtime._node_handler("review") is runtime._review_subgraph
     finally:
         runtime.close()
 
@@ -143,7 +169,7 @@ def test_retrieval_compiled_edges_use_the_exact_canonical_router_callables(
     )
 
     try:
-        branches = runtime._context_subgraph.builder.branches  # noqa: SLF001
+        branches = runtime._context_subgraph.builder.branches
         assess = branches["assess_sufficiency"]["route_after_assess_sufficiency"]
         finalize = branches["finalize"]["route_after_finalize_retrieval"]
         assert assess.path.func.__module__.endswith("route_after_assess_sufficiency")
@@ -179,12 +205,12 @@ def test_native_profile_runtimes_expose_three_and_single_subgraphs(
     )
 
     try:
-        assert tuple(three._native_agent_subgraphs) == ("stage_one", "stage_two", "stage_three")  # noqa: SLF001
-        assert three._node_handler("stage_one") is three._three_stage_one_subgraph  # noqa: SLF001
-        assert three._node_handler("stage_two") is three._three_stage_two_subgraph  # noqa: SLF001
-        assert three._node_handler("stage_three") is three._three_stage_review_subgraph  # noqa: SLF001
-        assert tuple(single._native_agent_subgraphs) == ("single_workflow",)  # noqa: SLF001
-        assert single._node_handler("single_workflow") is single._single_workflow_subgraph  # noqa: SLF001
+        assert tuple(three._native_agent_subgraphs) == ("stage_one", "stage_two", "stage_three")
+        assert three._node_handler("stage_one") is three._three_stage_one_subgraph
+        assert three._node_handler("stage_two") is three._three_stage_two_subgraph
+        assert three._node_handler("stage_three") is three._three_stage_review_subgraph
+        assert tuple(single._native_agent_subgraphs) == ("single_workflow",)
+        assert single._node_handler("single_workflow") is single._single_workflow_subgraph
     finally:
         three.close()
         single.close()
@@ -207,8 +233,8 @@ def test_request_subgraph_clears_local_state_and_records_trace_counts(
     )
 
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        result = runtime._request_subgraph.invoke(state)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        result = runtime._request_subgraph.invoke(state)
 
         assert "__request_agent_local__" not in result
         assert result["__logical_target__"] == "tool_route"
@@ -237,10 +263,8 @@ def test_tool_route_subgraph_freezes_plan_before_context_retriever(tmp_path: Pat
     )
 
     try:
-        understood = runtime._request_subgraph.invoke(  # noqa: SLF001
-            runtime._initial_state(_start_request())  # noqa: SLF001
-        )
-        routed = runtime._tool_route_subgraph.invoke(understood)  # noqa: SLF001
+        understood = runtime._request_subgraph.invoke(runtime._initial_state(_start_request()))
+        routed = runtime._tool_route_subgraph.invoke(understood)
 
         assert routed["__target__"] == "retrieval_entry"
         assert routed["tool_route_plan"]["schema_version"] == 2
@@ -289,7 +313,7 @@ def test_six_role_full_path_records_six_agent_invocations_and_atomic_llm_calls(
 
     try:
         result = runtime.start(_start_write_request())
-        snapshot_state = runtime._graph.get_state(runtime._config_for_thread("thread-1"))  # noqa: SLF001
+        snapshot_state = runtime._graph.get_state(runtime._config_for_thread("thread-1"))
         values = snapshot_state.values
 
         # ACTION plans stop at WAITING_APPROVAL after a PASS Review, not
@@ -352,7 +376,7 @@ def test_retrieval_rejects_execution_without_a_frozen_tool_route(
     )
 
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
         state["request_intent"] = _clear_intent()
         # Hand-built in the same reference space _context_result() uses
         # (task:task-followup -> seg-2), bypassing the legacy acquisition
@@ -391,7 +415,7 @@ def test_retrieval_rejects_execution_without_a_frozen_tool_route(
             "remaining_budget": {"sources": 3, "pages": 3, "candidates": 60, "details": 30},
         }
         with pytest.raises(ValueError, match="tool_route_plan"):
-            runtime._context_subgraph.invoke(state)  # noqa: SLF001
+            runtime._context_subgraph.invoke(state)
     finally:
         runtime.close()
 
@@ -448,63 +472,59 @@ def test_agent_subgraphs_route_by_logical_target_without_direct_peer_invocation(
 
         return _raise
 
-    original_tool_route_invoke = runtime._tool_route_subgraph.invoke  # noqa: SLF001
-    original_context_invoke = runtime._context_subgraph.invoke  # noqa: SLF001
-    original_analysis_invoke = runtime._analysis_subgraph.invoke  # noqa: SLF001
-    original_planning_invoke = runtime._planning_subgraph.invoke  # noqa: SLF001
+    original_tool_route_invoke = runtime._tool_route_subgraph.invoke
+    original_context_invoke = runtime._context_subgraph.invoke
+    original_analysis_invoke = runtime._analysis_subgraph.invoke
+    original_planning_invoke = runtime._planning_subgraph.invoke
 
     try:
-        runtime._tool_route_subgraph.invoke = _forbid_peer_invoke("tool_route")  # noqa: SLF001
-        request_state = runtime._initial_state(_start_request())  # noqa: SLF001
-        request_result = runtime._request_subgraph.invoke(request_state)  # noqa: SLF001
+        runtime._tool_route_subgraph.invoke = _forbid_peer_invoke("tool_route")
+        request_state = runtime._initial_state(_start_request())
+        request_result = runtime._request_subgraph.invoke(request_state)
         assert request_result["__target__"] == "tool_route"
 
-        runtime._tool_route_subgraph.invoke = original_tool_route_invoke  # noqa: SLF001
-        runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")  # noqa: SLF001
-        tool_route_state = runtime._initial_state(_start_request())  # noqa: SLF001
-        tool_route_state["request_intent"] = _clear_intent()
-        tool_route_state["request_intent"]["meta"] = {
+        runtime._tool_route_subgraph.invoke = original_tool_route_invoke
+        runtime._context_subgraph.invoke = _forbid_peer_invoke("context_retriever")
+        tool_route_state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["meta"] = {
             "artifact_id": "intent-1",
             "revision": 1,
             "based_on": [],
         }
-        routed = runtime._tool_route_subgraph.invoke(tool_route_state)  # noqa: SLF001
+        tool_route_state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(tool_route_state)
         assert routed["__target__"] == "retrieval_entry"
 
-        runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
-        runtime._analysis_subgraph.invoke = _forbid_peer_invoke("work_analysis")  # noqa: SLF001
-        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        runtime._context_subgraph.invoke = original_context_invoke
+        runtime._analysis_subgraph.invoke = _forbid_peer_invoke("work_analysis")
+        context = runtime._context_subgraph.invoke(routed)
         assert context["__target__"] == "work_analysis"
 
-        runtime._analysis_subgraph.invoke = original_analysis_invoke  # noqa: SLF001
-        runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")  # noqa: SLF001
+        runtime._analysis_subgraph.invoke = original_analysis_invoke
+        runtime._planning_subgraph.invoke = _forbid_peer_invoke("planning")
         # The context_retriever stage above already materialized its stable
         # evidence reference into this run's RunScopedEvidenceStore -- no
         # second ``put`` needed (and a conflicting duplicate ``put`` would
         # fail-closed by design).
-        review_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        review_state = runtime._initial_state(_start_request())
         review_state["request_intent"] = _clear_intent()
         review_state["retrieval_result"] = context["retrieval_result"]
         evidence_ref = context["retrieval_result"]["evidence_refs"][0]
-        segment_ref = context["retrieval_result"]["selected_segment_ids"][0]
-        analysis_result = _validated_analysis_result()
-        analysis_result["evidence_refs"] = [evidence_ref]
-        analysis_result["segment_refs"][0]["segment_id"] = segment_ref
-        analysis_result["findings"][0]["evidence_refs"] = [evidence_ref]
-        analysis_result["findings"][0]["segment_refs"] = [segment_ref]
+        analysis_result = _work_analysis_result(evidence_ref)
         answer_draft = _answer_output()
         answer_draft["evidence_refs"] = [evidence_ref]
-        review_state["analysis_result"] = analysis_result
+        review_state["work_analysis_result"] = analysis_result
         review_state["answer_draft"] = answer_draft
-        review_result = runtime._review_subgraph.invoke(review_state)  # noqa: SLF001
+        review_result = runtime._review_subgraph.invoke(review_state)
         assert review_result["__target__"] == "planning_entry"
 
         assert peer_invocations == []
     finally:
-        runtime._tool_route_subgraph.invoke = original_tool_route_invoke  # noqa: SLF001
-        runtime._context_subgraph.invoke = original_context_invoke  # noqa: SLF001
-        runtime._analysis_subgraph.invoke = original_analysis_invoke  # noqa: SLF001
-        runtime._planning_subgraph.invoke = original_planning_invoke  # noqa: SLF001
+        runtime._tool_route_subgraph.invoke = original_tool_route_invoke
+        runtime._context_subgraph.invoke = original_context_invoke
+        runtime._analysis_subgraph.invoke = original_analysis_invoke
+        runtime._planning_subgraph.invoke = original_planning_invoke
         runtime.close()
 
 
@@ -539,17 +559,17 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
     )
 
     try:
-        runtime._evidence_store.put(  # noqa: SLF001
-            run_id="run-1", evidence_drafts=_evidence_drafts_seg_2()
-        )
-        base_state = runtime._initial_state(_start_request())  # noqa: SLF001
+        runtime._evidence_store.put(run_id="run-1", evidence_drafts=_evidence_drafts_seg_2())
+        base_state = runtime._initial_state(_start_request())
         base_state["request_intent"] = _clear_intent()
-        base_state["context_result"] = _context_result()
-        base_state["retrieval_result"] = _retrieval_result()
-        base_state["analysis_result"] = _validated_analysis_result()
+        retrieval_result = _retrieval_result()
+        base_state["retrieval_result"] = retrieval_result
+        base_state["work_analysis_result"] = _work_analysis_result(
+            retrieval_result["evidence_refs"][0]
+        )
         base_state["answer_draft"] = _answer_output()
 
-        revise_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
+        revise_state = runtime._review_subgraph.invoke(dict(base_state))
         assert revise_state["__logical_target__"] == "planning_entry"
         assert revise_state["__target__"] == "planning_entry"
 
@@ -557,7 +577,7 @@ def test_review_subgraph_routes_revise_and_retrieve_more_through_parent(
         # _route_retrieval_required's executability guard fails closed to
         # Tool Route (supervisor.py) rather than re-entering Retrieval with
         # no frozen input route to retry within.
-        retrieve_state = runtime._review_subgraph.invoke(dict(base_state))  # noqa: SLF001
+        retrieve_state = runtime._review_subgraph.invoke(dict(base_state))
         assert retrieve_state["__logical_target__"] == "tool_route"
         assert retrieve_state["__target__"] == "tool_route"
     finally:

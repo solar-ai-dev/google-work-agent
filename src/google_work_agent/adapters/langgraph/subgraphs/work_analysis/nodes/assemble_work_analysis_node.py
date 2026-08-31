@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import cast
 
-from google_work_agent.adapters.langgraph.subgraphs.work_analysis.projections.assemble_work_analysis_projection import (  # noqa: E501
-    project_assemble_work_analysis_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
 from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
     assemble_work_analysis,
 )
 from google_work_agent.application.agents.work_analysis.validate_work_analysis import (
     validate_work_analysis,
+)
+
+from ..projections.assemble_work_analysis_projection import (
+    project_assemble_work_analysis_input,
 )
 
 

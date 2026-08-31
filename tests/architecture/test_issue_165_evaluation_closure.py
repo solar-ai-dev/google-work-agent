@@ -128,11 +128,7 @@ def test_runner_has_no_implicit_credentials_or_direct_provider_boundary() -> Non
         for node in ast.walk(tree)
         if isinstance(node, ast.Import)
         for alias in node.names
-    } | {
-        node.module or ""
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-    }
+    } | {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
     assert not any(
         module.startswith(("google.auth", "googleapiclient", "httpx", "requests"))
         for module in imported_modules
@@ -207,9 +203,10 @@ def test_every_formal_evaluation_symbol_has_one_current_authority() -> None:
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in tree.body:
-                if isinstance(
-                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-                ) and node.name in owners:
+                if (
+                    isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name in owners
+                ):
                     owners[node.name].append(path.relative_to(ROOT).as_posix())
     assert owners == {symbol: [path] for symbol, path in expected.items()}
 

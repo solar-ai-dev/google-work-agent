@@ -10,6 +10,7 @@ from typing import Any, BinaryIO, cast
 
 from fastapi import FastAPI
 
+from google_work_agent.adapters.runtime import SafeModeController
 from google_work_agent.api.composition import (
     DeferredApiContainer,
     ProductionRuntimeConfig,
@@ -60,9 +61,20 @@ def create_app(
                 "production_config, bootstrap_secret, and service_instance_id are required"
             )
 
-        def build_core(**runtime_inputs: object) -> ApiContainer:
+        def build_core(
+            *,
+            host: str,
+            port: int,
+            bootstrap_secret: str,
+            service_instance_id: str,
+            safe_mode_controller: SafeModeController,
+        ) -> ApiContainer:
             return build_production_runtime(
-                **runtime_inputs,  # type: ignore[arg-type]
+                host=host,
+                port=port,
+                bootstrap_secret=bootstrap_secret,
+                service_instance_id=service_instance_id,
+                safe_mode_controller=safe_mode_controller,
                 runtime_root=production_config.runtime_root,
                 working_directory=production_config.working_directory,
                 release_version=production_config.release_version,
@@ -78,9 +90,7 @@ def create_app(
                 mcp_module_name=production_config.mcp_module_name,
                 keyring_store=production_config.keyring_store,
                 verified_release_files=production_config.verified_release_files,
-                code_signature_verified_paths=(
-                    production_config.code_signature_verified_paths
-                ),
+                code_signature_verified_paths=(production_config.code_signature_verified_paths),
             )
 
         container = cast(

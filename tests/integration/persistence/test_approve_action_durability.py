@@ -20,6 +20,7 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports.persistence.audit_event_repository import AuditEventCursor
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     MainControlResumeTargetV2,
     RunExecutionAcceptedV1,
@@ -163,7 +164,7 @@ def _handler(
     return ApproveActionHandler(
         get_approval_ttl_minutes=lambda: 30,
         unit_of_work_factory=cast(Callable[[], UnitOfWork], lambda: uow_type(database_path)),
-        checkpoint_port=_CheckpointFacts(),
+        checkpoint_port=cast(CheckpointPort, _CheckpointFacts()),
         now_ms=lambda: 1000,
         id_generator=DeterministicUUID(
             queued_ids=("approval-1", "handoff-1"), require_queued_ids=True

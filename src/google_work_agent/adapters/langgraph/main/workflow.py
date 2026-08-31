@@ -9,7 +9,7 @@ from hashlib import sha256
 from json import dumps, loads
 from pathlib import Path
 from threading import Lock
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from langgraph.types import interrupt
 
@@ -17,6 +17,12 @@ from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCo
 from google_work_agent.adapters.langgraph.main.application_services import (
     WorkflowApplicationServices,
     WorkflowRuntimeHooks,
+)
+from google_work_agent.adapters.langgraph.main.artifact_freshness import (
+    ArtifactFreshnessMixin,
+)
+from google_work_agent.adapters.langgraph.main.confirmation_controller import (
+    ConfirmationControllerMixin,
 )
 from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
@@ -54,7 +60,14 @@ from google_work_agent.adapters.langgraph.main.nodes.terminal_commit_node import
 )
 from google_work_agent.adapters.langgraph.main.nodes.verification_node import verification_node
 from google_work_agent.adapters.langgraph.main.plan_persistence import (
+    PlanPersistenceMixin,
     _connector_id_for_evidence_handle,
+)
+from google_work_agent.adapters.langgraph.main.response_synthesis import (
+    ResponseSynthesisMixin,
+)
+from google_work_agent.adapters.langgraph.main.resume_checkpoint import (
+    ResumeCheckpointMixin,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
@@ -178,6 +191,7 @@ from google_work_agent.application.use_cases.plan.project_planning_output import
 )
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
+    ReviewDispositionV1,
 )
 from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     PublishWritePlanCommand,
@@ -317,8 +331,18 @@ def _legacy_connector_identity_unavailable() -> str:
     )
 
 
+class _CloseableCheckpoint(Protocol):
+    def close(self) -> None: ...
+
+
 class WorkflowRuntimeCore:
     """LangGraph runtime with selectable Stage 18 graph profiles."""
+
+    if TYPE_CHECKING:
+
+        def _has_persisted_cancel_intent(self, run_id: str) -> bool: ...
+
+        def discard_run_transients(self, run_id: str) -> None: ...
 
     def __init__(
         self,
@@ -717,7 +741,9 @@ class WorkflowRuntimeCore:
         return self._invocation.recover_open_run(request)
 
     def close(self) -> None:
-        self._checkpoint_port.close()
+        """Release the concrete checkpoint lifecycle owned by this runtime."""
+
+        cast(_CloseableCheckpoint, self._checkpoint_port).close()
 
     def _main_control_bindings(self) -> MainControlNodeBindings:
         request_node = self._physical_agent_node("request_understanding")
@@ -1032,7 +1058,7 @@ class WorkflowRuntimeCore:
         return self._graph_composition.build()
 
     def _edge_map(self) -> dict[Hashable, str]:
-        return self._graph_composition.edge_map()
+        return cast(dict[Hashable, str], self._graph_composition.edge_map())
 
     def _initial_state(self, request: WorkflowStartRequest) -> GraphState:
         return initial_graph_state(
@@ -1055,7 +1081,7 @@ class WorkflowRuntimeCore:
         return self._graph_composition.node_handler(name)
 
     def _native_subgraphs_for_profile(self) -> dict[str, Any]:
-        return self._graph_composition.native_subgraphs()
+        return cast(dict[str, Any], self._graph_composition.native_subgraphs())
 
     def _validate_domain_and_project(self, state: Mapping[str, object]) -> GraphState:
         typed_state = cast(GraphState, state)
@@ -1508,7 +1534,7 @@ class WorkflowRuntimeCore:
         self,
         state: GraphState,
         review_status: PlanReviewStatus,
-        review_disposition: str,
+        review_disposition: ReviewDispositionV1,
     ) -> bool:
         plan_id = state.get("__modify_review_plan_id__")
         review_version = state.get("__modify_review_version__")
@@ -1529,11 +1555,11 @@ class WorkflowRuntimeCore:
                 expected_review_version=review_version,
                 review_artifact_id=f"{plan.id}:review:{review_version}",
                 review_version=review_version,
-                disposition=review_disposition,  # type: ignore[arg-type]
+                disposition=review_disposition,
                 based_on_action_versions=action_versions,
             )
         )
-        return result.applied
+        return bool(result.applied)
 
     def _begin_modify_replan(self, state: GraphState) -> bool:
         plan_id = state.get("__modify_review_plan_id__")
@@ -1566,7 +1592,7 @@ class WorkflowRuntimeCore:
                 expected_review_version=review_version,
             )
         )
-        return result.applied
+        return bool(result.applied)
 
     def _route_next_node(self, state: GraphState) -> str:
         run_id = state.get("run_id")
@@ -2183,7 +2209,7 @@ class WorkflowRuntimeCore:
     ) -> ContinueCancelResolutionResultV1:
         """Advance cancellation when no durable workflow handoff exists yet."""
 
-        result = self._continue_cancel_resolution(command)
+        result = cast(ContinueCancelResolutionResultV1, self._continue_cancel_resolution(command))
         if result.outcome != "READY_TO_FINALIZE":
             return result
         run_version = self._current_run_version(command.run_id)
@@ -2229,14 +2255,16 @@ class WorkflowRuntimeCore:
 
     def _settle_pending_cancel_action(self, action_id: str, version: int) -> bool:
         payload = {"action_id": action_id, "expected_version": version}
-        return self._cancel_pending_action(
-            CancelPendingActionCommand(
-                command_id=f"system:cancel-resolution:action:{action_id}:{version}",
-                request_hash=calculate_canonical_json_hash(payload),
-                action_id=action_id,
-                expected_version=version,
-            )
-        ).applied
+        return bool(
+            self._cancel_pending_action(
+                CancelPendingActionCommand(
+                    command_id=f"system:cancel-resolution:action:{action_id}:{version}",
+                    request_hash=calculate_canonical_json_hash(payload),
+                    action_id=action_id,
+                    expected_version=version,
+                )
+            ).applied
+        )
 
     def _reconcile_cancelling_action(self, action_id: str) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
@@ -2257,7 +2285,7 @@ class WorkflowRuntimeCore:
                     safe_error_detail="cancel intent forbids a new legacy READ dispatch",
                 )
             )
-            return failed.applied
+            return bool(failed.applied)
         attempt = self._latest_attempt(action_id)
         if attempt.status is not ExecutionAttemptStatusV1.CLAIMED:
             return False
@@ -2269,18 +2297,20 @@ class WorkflowRuntimeCore:
             "error_code": "CANCEL_REQUESTED",
             "error_detail": "write was not sent because cancellation was requested",
         }
-        return self._abort_claimed_execution(
-            AbortClaimedExecutionCommandV1(
-                command_id=f"system:cancel-resolution:abort:{attempt.id}:{attempt.version}",
-                request_hash=calculate_canonical_json_hash(payload),
-                action_id=action.id,
-                attempt_id=attempt.id,
-                expected_action_version=action.version,
-                expected_attempt_version=attempt.version,
-                error_code="CANCEL_REQUESTED",
-                error_detail="write was not sent because cancellation was requested",
-            )
-        ).applied
+        return bool(
+            self._abort_claimed_execution(
+                AbortClaimedExecutionCommandV1(
+                    command_id=f"system:cancel-resolution:abort:{attempt.id}:{attempt.version}",
+                    request_hash=calculate_canonical_json_hash(payload),
+                    action_id=action.id,
+                    attempt_id=attempt.id,
+                    expected_action_version=action.version,
+                    expected_attempt_version=attempt.version,
+                    error_code="CANCEL_REQUESTED",
+                    error_detail="write was not sent because cancellation was requested",
+                )
+            ).applied
+        )
 
     def _verify_cancelling_action(self, action_id: str) -> bool:
         action, run_id = self._action_and_run_id(action_id)
@@ -2461,24 +2491,7 @@ def _workflow_control(reason: str, **details: object) -> dict[str, object]:
     }
 
 
-from google_work_agent.adapters.langgraph.main.artifact_freshness import (  # noqa: E402
-    ArtifactFreshnessMixin,
-)
-from google_work_agent.adapters.langgraph.main.confirmation_controller import (  # noqa: E402
-    ConfirmationControllerMixin,
-)
-from google_work_agent.adapters.langgraph.main.plan_persistence import (  # noqa: E402
-    PlanPersistenceMixin,
-)
-from google_work_agent.adapters.langgraph.main.response_synthesis import (  # noqa: E402
-    ResponseSynthesisMixin,
-)
-from google_work_agent.adapters.langgraph.main.resume_checkpoint import (  # noqa: E402
-    ResumeCheckpointMixin,
-)
-
-
-class LangGraphWorkflowRuntime(  # type: ignore[misc]
+class LangGraphWorkflowRuntime(
     ResumeCheckpointMixin,
     ArtifactFreshnessMixin,
     ResponseSynthesisMixin,

@@ -20,7 +20,7 @@ from google_work_agent.domain.action.transitions.cancel_pending_action import (
 )
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
-from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.command_receipt.model import CommandReceipt, CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
@@ -181,7 +181,7 @@ class CancelPendingActionHandler:
     def _replay(
         unit_of_work: UnitOfWork,
         command: CancelPendingActionCommand,
-        receipt: object,
+        receipt: CommandReceipt,
     ) -> CancelPendingActionResult:
         action = unit_of_work.actions.get(command.action_id)
         if action is None:

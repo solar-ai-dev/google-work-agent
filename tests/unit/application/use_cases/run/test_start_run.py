@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 from json import loads
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from tests.support.checkpoint import sqlite_checkpoint
@@ -12,6 +11,7 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.start_run import StartRunCommand, StartRunHandler
+from google_work_agent.ports.system.settings_port import PanelPreferencesV1, SettingsViewV1
 
 
 def _database(tmp_path: Path) -> Path:
@@ -80,13 +80,28 @@ def test_start_run_freezes_current_settings_into_durable_run_budget(tmp_path: Pa
         id_factory=iter(("run-1", "message-1", "workflow-1", "handoff-1")).__next__,
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="graph-v1",
-        settings_provider=lambda: SimpleNamespace(
+        settings_provider=lambda: SettingsViewV1(
+            schema_version=1,
+            timezone="UTC",
+            default_tasklist_id=None,
+            default_calendar_id=None,
+            preferred_llm_mode="AUTO",
+            external_llm_consent=False,
+            retention_days=7,
+            theme="LIGHT",
+            panel_preferences=PanelPreferencesV1(1, False, "CONVERSATIONS"),
+            working_day_start_local="09:00",
+            working_day_end_local="18:00",
+            include_weekends=False,
+            calendar_buffer_minutes=0,
             max_run_execution_ms=60_000,
             max_connector_calls_per_run=9,
             max_source_page_calls_per_run=7,
             max_detail_fetches_per_run=11,
             max_context_tokens_per_run=4_000,
             max_retry_attempts_per_run=3,
+            circuit_failure_threshold=3,
+            circuit_open_duration_ms=30_000,
         ),
     )
 

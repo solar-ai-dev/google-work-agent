@@ -19,12 +19,12 @@ def compose_answer_node(
     projected = compose_answer_projection.project_compose_answer_input(state)
     return {
         "answer_draft": compose_answer(
-            user_request=projected["user_request"],  # type: ignore[arg-type]
-            request_intent=projected["request_intent"],  # type: ignore[arg-type]
-            answer_outline=projected["answer_outline"],  # type: ignore[arg-type]
-            work_analysis=projected.get("work_analysis"),  # type: ignore[arg-type]
-            evidence=projected["evidence"],  # type: ignore[arg-type]
+            user_request=projected["user_request"],
+            request_intent=projected["request_intent"],
+            answer_outline=projected["answer_outline"],
+            work_analysis=projected.get("work_analysis"),
+            evidence=projected["evidence"],
             invoke=invoke,
-            confirmation_response=projected.get("confirmation_response"),  # type: ignore[arg-type]
+            confirmation_response=projected.get("confirmation_response"),
         )
     }

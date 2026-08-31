@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.determine_io_resources_projection import (  # noqa: E501
-    project_determine_io_resources_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.determine_io_resources import (
     determine_io_resources,
@@ -16,6 +13,10 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+
+from ..projections.determine_io_resources_projection import (
+    project_determine_io_resources_input,
+)
 
 
 def determine_io_resources_node(

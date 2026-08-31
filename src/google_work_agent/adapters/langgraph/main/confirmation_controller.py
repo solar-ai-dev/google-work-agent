@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from json import dumps
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from langgraph.types import interrupt
 
@@ -30,6 +30,7 @@ from google_work_agent.application.use_cases.run.policy_confirmation_receipt imp
 )
 from google_work_agent.application.use_cases.run.request_confirmation import (
     RequestConfirmationCommand,
+    RequestConfirmationResult,
 )
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -39,6 +40,15 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     SemanticAgentOwnerIdV1,
 )
+
+if TYPE_CHECKING:
+    from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
+    from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+        ResumeTargetRegistry,
+    )
+    from google_work_agent.ports.system.contracts.workflow_execution import (
+        WorkflowStartRequest,
+    )
 
 _OWNER_RESUME_NODE: dict[SemanticAgentOwnerIdV1, str] = {
     "REQUEST_UNDERSTANDING": "request.finalize",
@@ -50,8 +60,32 @@ _OWNER_RESUME_NODE: dict[SemanticAgentOwnerIdV1, str] = {
 }
 
 
+class _ConfirmationControllerSuper(Protocol):
+    def _merge_decision(
+        self,
+        state: GraphState,
+        update: GraphStateUpdateV1,
+        decision: SupervisorDecisionV1,
+    ) -> GraphState: ...
+
+
 class ConfirmationControllerMixin:
     """Request the Domain pause before interrupt and project only validated answers."""
+
+    if TYPE_CHECKING:
+        _graph_profile: GraphProfile
+        _resume_target_registry: ResumeTargetRegistry
+        _request_confirmation_handler: Callable[
+            [RequestConfirmationCommand], RequestConfirmationResult
+        ]
+
+        def _request_from_state(self, state: GraphState) -> WorkflowStartRequest: ...
+
+        def _required_string(self, value: object, field_name: str) -> str: ...
+
+        def _current_run_version(self, run_id: str) -> int: ...
+
+        def _current_run_status(self, run_id: str) -> str: ...
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         llm_runtime = kwargs.get("llm_runtime")
@@ -68,7 +102,9 @@ class ConfirmationControllerMixin:
         update: GraphStateUpdateV1,
         decision: SupervisorDecisionV1,
     ) -> GraphState:
-        merged = super()._merge_decision(state, update, decision)
+        merged = cast(_ConfirmationControllerSuper, super())._merge_decision(
+            state, update, decision
+        )
         return self._clear_consumed_confirmation(state=state, merged=merged)
 
     def _clear_consumed_confirmation(self, *, state: GraphState, merged: GraphState) -> GraphState:

@@ -100,8 +100,8 @@ from google_work_agent.application.agents.planning.outline_answer import (
 from google_work_agent.application.agents.planning.resolve_default_container import (
     RequiredContainerUnresolvedError,
 )
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationQuestionV1,
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     EvidenceDraftV1,
@@ -121,7 +121,6 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, object], Any]
 ConfirmInline = Callable[
@@ -493,7 +492,7 @@ class PlanningSubgraph:
         patch = assemble_node_module.assemble_plan_node(
             cast(Mapping[str, object], state),
             artifact_id_factory=self._id_factory or (lambda: str(uuid4())),
-            based_on=[dict(ref) for ref in self._based_on(state)],
+            based_on=self._based_on(state),
         )
         plan = cast(dict[str, object], patch["final_result"])
         if not self._is_production_integration:
@@ -541,7 +540,7 @@ class PlanningSubgraph:
         reason_codes = cast(list[str], raw_confirmation["reason_codes"])
         options = cast(list[str], raw_confirmation["options"])
         request_intent = cast(Mapping[str, object], state.get("request_intent", {}))
-        clarification: ClarificationQuestionV1 = {
+        clarification: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": origin_target,
             "question": question,
@@ -664,11 +663,11 @@ class PlanningSubgraph:
             output_schema = schemas.get(prompt_id)
             if prompt_ref is None or output_schema is None:
                 raise ValueError(f"unsupported Planning Prompt slot: {prompt_id}")
-            result = llm_runtime.invoke_structured(
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                trace_context=self._llm_trace(state, prompt_id.rpartition(".")[2]),
+            result = llm_runtime.infer(
+                request_from_state(cast(Any, state)).requested_mode,
+                prompt_ref,
+                prompt_input,
+                output_schema,
             )
             if not isinstance(result.structured_output, Mapping):
                 raise ValueError("Planning structured output must be an object")
@@ -756,17 +755,6 @@ class PlanningSubgraph:
                 if ref not in result:
                     result.append(ref)
         return result
-
-    def _llm_trace(self, state: PlanningLocalState, node: str) -> ObservabilityContext:
-        request = request_from_state(cast(Any, state))
-        return ObservabilityContext(
-            request_id=request.correlation.request_id,
-            command_id=request.correlation.command_id,
-            conversation_id=request.conversation_id,
-            run_id=request.run_id,
-            langgraph_thread_id=request.workflow_key,
-            llm_call_id=f"{request.run_id}:planning.{node}",
-        )
 
     def _trace(
         self,

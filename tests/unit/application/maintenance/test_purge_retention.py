@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -10,6 +11,8 @@ from google_work_agent.ports.persistence.retention_repository import (
     RetentionCutoffs,
     RetentionPurgeResult,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.settings_port import SettingsPort
 
 _DAY_MS = 86_400_000
 
@@ -59,8 +62,8 @@ def test_purge_retention_derives_configured_and_fixed_audit_cutoffs() -> None:
     unit_of_work = _UnitOfWork()
     now_ms = 100 * _DAY_MS
     handler = PurgeRetentionHandler(
-        settings=_Settings(7),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: unit_of_work,  # type: ignore[arg-type]
+        settings=cast(SettingsPort, _Settings(7)),
+        unit_of_work_factory=lambda: cast(UnitOfWork, unit_of_work),
     )
 
     result = handler.handle(PurgeRetentionCommand(now_ms=now_ms, batch_limit=25))
@@ -83,8 +86,8 @@ def test_purge_retention_derives_configured_and_fixed_audit_cutoffs() -> None:
 @pytest.mark.parametrize("retention_days", [0, 31])
 def test_purge_retention_rejects_out_of_policy_setting(retention_days: int) -> None:
     handler = PurgeRetentionHandler(
-        settings=_Settings(retention_days),  # type: ignore[arg-type]
-        unit_of_work_factory=lambda: _UnitOfWork(),  # type: ignore[arg-type]
+        settings=cast(SettingsPort, _Settings(retention_days)),
+        unit_of_work_factory=lambda: cast(UnitOfWork, _UnitOfWork()),
     )
 
     with pytest.raises(ValueError, match="retention_days"):

@@ -2,6 +2,7 @@
 
 from importlib import import_module
 from types import SimpleNamespace
+from typing import Self
 
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
     ContinueCancelResolutionCommandV1,
@@ -36,15 +37,19 @@ def test_expired_action_is_settled_before_finalize_cancel() -> None:
             )
         )
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *_args: object) -> None:
             return None
 
+    def settle_pending_action(action_id: str, version: int) -> bool:
+        calls.append((action_id, version))
+        return True
+
     handler = ContinueCancelResolutionHandler(
         unit_of_work_factory=_Uow,  # type: ignore[arg-type]
-        settle_pending_action=lambda action_id, version: calls.append((action_id, version)) or True,
+        settle_pending_action=settle_pending_action,
         reconcile_inflight_action=lambda _action_id: False,
         verify_executed_action=lambda _action_id: False,
         resolve_unknown_action=lambda _action_id: False,

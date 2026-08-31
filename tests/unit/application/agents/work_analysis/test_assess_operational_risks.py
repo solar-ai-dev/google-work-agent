@@ -4,7 +4,7 @@ from google_work_agent.application.agents.work_analysis.assess_operational_risks
     assess_operational_risks,
 )
 
-from .conftest import TRACE, FakeRuntime, fact, prompt_ref
+from .conftest import FakeRuntime, fact, intent, prompt_ref
 
 
 def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
@@ -24,14 +24,14 @@ def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
     runtime = FakeRuntime(output)
 
     result = assess_operational_risks(
-        request_intent={},  # type: ignore[arg-type]
-        work_facts=[fact("f1")],  # type: ignore[list-item]
+        request_intent=intent(),
+        work_facts=[fact("f1")],
         validated_relations=[],
         evidence=[],
         llm_runtime=runtime,
         prompt_ref=prompt_ref("work_analysis.assess_operational_risks", "assess_operational_risks"),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
 
     assert result == output
@@ -55,8 +55,8 @@ def test_assess_operational_risks_rejects_legacy_severity() -> None:
     )
     with pytest.raises(ValueError, match="operational-risk schema"):
         assess_operational_risks(
-            request_intent={},  # type: ignore[arg-type]
-            work_facts=[fact("f1")],  # type: ignore[list-item]
+            request_intent=intent(),
+            work_facts=[fact("f1")],
             validated_relations=[],
             evidence=[],
             llm_runtime=runtime,
@@ -64,5 +64,5 @@ def test_assess_operational_risks_rejects_legacy_severity() -> None:
                 "work_analysis.assess_operational_risks", "assess_operational_risks"
             ),
             allowed_evidence_refs={"ev-1"},
-            trace_context=TRACE,
+            requested_mode="AUTO",
         )

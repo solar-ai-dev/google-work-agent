@@ -2,13 +2,24 @@ from __future__ import annotations
 
 from json import dumps
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
 from tests.support.legacy_write.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
+    RecoverUpdateResult,
 )
 
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedCommand,
+    ResolveAsFailedResult,
+)
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
@@ -16,21 +27,22 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 class _ByIdRepo:
-    def __init__(self, values: dict[str, object]) -> None:
+    def __init__(self, values: dict[str, Any]) -> None:
         self.values = values
 
-    def get_by_id(self, value_id: str) -> object | None:
+    def get_by_id(self, value_id: str) -> Any | None:
         return self.values.get(value_id)
 
-    def get(self, value_id: str) -> object | None:
+    def get(self, value_id: str) -> Any | None:
         return self.values.get(value_id)
 
 
 class _Uow:
-    def __init__(self, *, action: object, attempt: object, approval: object) -> None:
+    def __init__(self, *, action: Any, attempt: Any, approval: Any) -> None:
         self.actions = _ByIdRepo({action.id: action})
         self.execution_attempts = _ByIdRepo({attempt.id: attempt})
         self.approvals = _ByIdRepo({approval.id: approval})
@@ -59,12 +71,26 @@ class _Connector:
         raise AssertionError("UPDATE recovery must never dispatch a write")
 
 
-def _result(status: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _recovered_result() -> RecoverExistingResultResult:
+    return RecoverExistingResultResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED.value,
         action_id="action-1",
-        action_status=status,
+        action_status=ActionStatusV1.EXECUTED.value,
+        action_version=4,
+        next_allowed_commands=(),
+        attempt_id="attempt-1",
+        safe_error_code=None,
+        conflict_detail=None,
+    )
+
+
+def _failed_result() -> ResolveAsFailedResult:
+    return ResolveAsFailedResult(
+        applied=True,
+        result_code=ResultCode.TRANSITION_APPLIED.value,
+        action_id="action-1",
+        action_status=ActionStatusV1.FAILED.value,
         action_version=4,
         next_allowed_commands=(),
         attempt_id="attempt-1",
@@ -80,7 +106,7 @@ def _run_update(
     expected: dict[str, object],
     source: dict[str, object],
     actual: ResourceSnapshot,
-) -> tuple[object, list[object], list[object], _Connector]:
+) -> tuple[RecoverUpdateResult, list[object], list[object], _Connector]:
     action = SimpleNamespace(
         id="action-1",
         plan_id="plan-1",
@@ -105,15 +131,20 @@ def _run_update(
     connector = _Connector(actual)
     recovered: list[object] = []
     failed: list[object] = []
+
+    def recover(command: RecoverExistingResultCommand) -> RecoverExistingResultResult:
+        recovered.append(command)
+        return _recovered_result()
+
+    def fail(command: ResolveAsFailedCommand) -> ResolveAsFailedResult:
+        failed.append(command)
+        return _failed_result()
+
     result = RecoverUpdateHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
-        connector_execution=connector,  # type: ignore[arg-type]
-        recover_existing_result=(
-            lambda command: recovered.append(command) or _result(ActionStatusV1.EXECUTED.value)
-        ),
-        resolve_as_failed=(
-            lambda command: failed.append(command) or _result(ActionStatusV1.FAILED.value)
-        ),
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
+        connector_execution=cast(LegacyWriteResultMaterializer, connector),
+        recover_existing_result=recover,
+        resolve_as_failed=fail,
     )(
         RecoverUpdateCommand(
             "recover-update",

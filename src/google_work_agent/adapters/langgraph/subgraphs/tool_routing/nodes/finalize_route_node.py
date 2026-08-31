@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.finalize_route_projection import (  # noqa: E501
-    project_finalize_route_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+
+from ..projections.finalize_route_projection import (
+    project_finalize_route_input,
+)
 
 
 def finalize_route_node(

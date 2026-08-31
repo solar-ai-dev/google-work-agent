@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
@@ -11,21 +11,52 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 from google_work_agent.domain.run.model import RunStatusV1
+from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowInvocationResult,
     WorkflowOutcome,
     WorkflowResumeRequest,
 )
-from google_work_agent.ports.system.contracts.workflow_handoff import AgentNodeResumeTargetV2
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    AgentNodeResumeTargetV2,
+    CompiledAgentSubgraphIdV1,
+    SemanticAgentOwnerIdV1,
+)
 
 if TYPE_CHECKING:
+    from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
+        GraphRouteTranslator,
+    )
+    from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
+        ResumeTargetRegistry,
+    )
     from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+
+
+class _ResumeCheckpointSuper(Protocol):
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult: ...
 
 
 class ResumeCheckpointMixin:
     """Expose persisted resume targets and continue only Handler-decided resumes."""
 
     _checkpoint_port: CheckpointPort
+
+    if TYPE_CHECKING:
+        _graph: Any
+        _topology: tuple[str, ...]
+        _route_translator: GraphRouteTranslator
+        _resume_target_registry: ResumeTargetRegistry
+
+        def _config_for_thread(self, workflow_key: str) -> dict[str, object]: ...
+
+        def _is_profile_compatible(self, state: GraphState) -> bool: ...
+
+        def _current_run_status(self, run_id: str) -> str: ...
+
+        def _result_from_thread(
+            self, *, workflow_key: str, run_id: str
+        ) -> WorkflowInvocationResult: ...
 
     def resolve_resume_authority(
         self, *, run_id: str, workflow_key: str, resume_kind: str
@@ -72,7 +103,7 @@ class ResumeCheckpointMixin:
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         if request.resume_kind == "REAUTH_COMPLETED":
             return self._resume_after_reauth_transition(request)
-        return super().resume(request)
+        return cast(_ResumeCheckpointSuper, super()).resume(request)
 
     def _resume_after_reauth_transition(
         self, request: WorkflowResumeRequest
@@ -189,7 +220,7 @@ class ResumeCheckpointMixin:
             if not isinstance(raw_target, Mapping):
                 return None
             try:
-                target = AgentNodeResumeTargetV2(**dict(raw_target))  # type: ignore[arg-type]
+                target = _agent_resume_target(raw_target)
                 self._resume_target_registry.validate(target)
             except (TypeError, ValueError):
                 return None
@@ -217,6 +248,33 @@ class ResumeCheckpointMixin:
                 "policy_confirmation": value.get("policy_confirmation"),
             }
         return None
+
+
+def _agent_resume_target(value: Mapping[object, object]) -> AgentNodeResumeTargetV2:
+    return AgentNodeResumeTargetV2(
+        kind=cast(Literal["AGENT_NODE"], _required_target_string(value, "kind")),
+        semantic_owner_id=cast(
+            SemanticAgentOwnerIdV1,
+            _required_target_string(value, "semantic_owner_id"),
+        ),
+        compiled_subgraph_id=cast(
+            CompiledAgentSubgraphIdV1,
+            _required_target_string(value, "compiled_subgraph_id"),
+        ),
+        node_id=_required_target_string(value, "node_id"),
+        graph_profile=cast(
+            GraphProfileIdV1,
+            _required_target_string(value, "graph_profile"),
+        ),
+        graph_version=_required_target_string(value, "graph_version"),
+    )
+
+
+def _required_target_string(value: Mapping[object, object], field: str) -> str:
+    item = value.get(field)
+    if not isinstance(item, str) or not item:
+        raise ValueError(f"resume target {field} is invalid")
+    return item
 
 
 def _pending_interrupt_values(snapshot: object) -> list[Mapping[str, object]]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -215,7 +215,7 @@ class _FailingAuditUow(SqliteUnitOfWork):
 class _FailingPostCommitTraceUow(SqliteUnitOfWork):
     def __enter__(self) -> SqliteUnitOfWork:
         entered = super().__enter__()
-        entered.traces._repository = _FailingAppend()  # type: ignore[attr-defined]
+        cast(Any, entered.traces)._repository = _FailingAppend()
         return entered
 
 

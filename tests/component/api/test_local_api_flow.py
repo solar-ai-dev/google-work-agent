@@ -35,6 +35,7 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
 )
@@ -44,6 +45,15 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedHandler,
+)
+from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
+    LookupUnknownResultHandler,
+)
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
 )
@@ -52,6 +62,12 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
 )
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
+from google_work_agent.ports.connector.connector_read_port import (
+    ConnectorReadResultV1,
+    JsonValue,
+)
+from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -78,6 +94,16 @@ class _AllowGuard:
     ) -> AccessDecision:
         del request_context, endpoint_policy
         return AccessDecision(allowed=True)
+
+
+class _UnexpectedConnectorRead:
+    def execute_read(
+        self,
+        binding: ValidatedConnectorToolBindingV1,
+        tool_arguments: dict[str, JsonValue],
+    ) -> ConnectorReadResultV1:
+        del binding, tool_arguments
+        raise AssertionError("recovery connector read is outside this component scenario")
 
 
 def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path: Path) -> None:
@@ -116,6 +142,13 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
     )
+
+    def materialize_recovery_snapshot(
+        tool_name: str, arguments: dict[str, object], resource_id: str
+    ) -> ResourceSnapshot:
+        del tool_name, arguments, resource_id
+        raise AssertionError("recovery snapshot is outside this component scenario")
+
     production_runtime = _build_workflow_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
@@ -124,16 +157,26 @@ def test_local_api_flow_creates_conversation_starts_run_and_replays_sse(tmp_path
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
         resume_target_registry=resume_target_registry,
-        lookup_unknown_result=lambda command: None,
-        recover_existing_result=lambda command: None,
-        resolve_as_failed=lambda command: None,
+        lookup_unknown_result=LookupUnknownResultHandler(
+            connector_read=_UnexpectedConnectorRead(),
+            tool_registry=load_signed_tool_registry(),
+            unit_of_work_factory=unit_of_work_factory,
+        ),
+        recover_existing_result=RecoverExistingResultHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        resolve_as_failed=ResolveAsFailedHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
         require_recovery=_build_require_recovery(
             unit_of_work_factory=unit_of_work_factory,
             checkpoint=checkpoint,
             now_ms=clock.now_ms,
             resume_target_registry=resume_target_registry,
         ),
-        materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
+        materialize_recovery_snapshot=materialize_recovery_snapshot,
         now_ms=clock.now_ms,
     )
     bind_host = "127.0.0.1"

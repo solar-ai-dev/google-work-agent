@@ -28,8 +28,8 @@ def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.M
     monkeypatch.setattr(verified_server, "dispatch_tool", forbidden_handler)
     state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
-    with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
-        verified_server._tool_call(  # noqa: SLF001
+    with pytest.raises(verified_server._VerifiedToolContractError) as captured:
+        verified_server._tool_call(
             state,
             tool_name="gmail_get_thread",
             arguments={},
@@ -54,8 +54,8 @@ def test_read_output_contract_failure_is_uncertain_read_only(
     monkeypatch.setattr(verified_server, "dispatch_tool", malformed_read)
     state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
-    with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
-        verified_server._tool_call(  # noqa: SLF001
+    with pytest.raises(verified_server._VerifiedToolContractError) as captured:
+        verified_server._tool_call(
             state,
             tool_name="gmail_get_thread",
             arguments={"thread_id": "thread-1"},
@@ -82,8 +82,8 @@ def test_write_output_contract_failure_is_sent_response_lost(
     monkeypatch.setattr(verified_server, "dispatch_tool", malformed_write)
     state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
-    with pytest.raises(verified_server._VerifiedToolContractError) as captured:  # noqa: SLF001
-        verified_server._tool_call(  # noqa: SLF001
+    with pytest.raises(verified_server._VerifiedToolContractError) as captured:
+        verified_server._tool_call(
             state,
             tool_name="tasks_create_task",
             arguments={
@@ -100,8 +100,6 @@ def test_write_output_contract_failure_is_sent_response_lost(
 
 def test_internal_read_output_failure_never_claims_write_mutation() -> None:
     assert (
-        verified_server._output_contract_failure_certainty(  # noqa: SLF001
-            "gmail_get_attachment"
-        )
+        verified_server._output_contract_failure_certainty("gmail_get_attachment")
         is DeliveryCertainty.MAY_HAVE_BEEN_SENT
     )

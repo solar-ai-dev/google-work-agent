@@ -41,6 +41,7 @@ from google_work_agent.ports.persistence.execution_attempt_repository import act
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    RunExecutionAcceptedV1,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
@@ -164,7 +165,11 @@ def _service(database_path: Path, clock: FakeClockPort) -> RejectActionHandler:
             node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
             graph_version=RESUME_CONTRACT_VERSION,
         ),
-        schedule_run_execution=lambda command: None,
+        schedule_run_execution=lambda command: RunExecutionAcceptedV1(
+            schema_version=1,
+            accepted=True,
+            reason_code="ACCEPTED",
+        ),
     )
 
 

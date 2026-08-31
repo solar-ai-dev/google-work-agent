@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from threading import Event
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -13,6 +14,8 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     RunExecutionRefV1,
@@ -142,7 +145,7 @@ def _admission(admission_id: str, run_id: str) -> WorkflowExecutionAdmissionV1:
 
 def _adapter(
     tmp_path: Path,
-    execute,
+    execute: Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
     *,
     stale_on_checkpoint_store: bool = False,
     fail_materialize_once: bool = False,
@@ -204,7 +207,9 @@ def _adapter(
 
     materialize_failed = False
 
-    def materialize(value: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1):
+    def materialize(
+        value: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
+    ) -> GraphCheckpointEnvelopeV1:
         nonlocal materialize_failed
         if fail_materialize_once and not materialize_failed:
             materialize_failed = True
@@ -231,10 +236,12 @@ def _adapter(
         return result
 
     class _CheckpointPort:
-        def load_same_run_checkpoint(self, run_id: str, thread_id: str):
+        def load_same_run_checkpoint(
+            self, run_id: str, thread_id: str
+        ) -> GraphCheckpointEnvelopeV1 | None:
             return checkpoint.load_same_run_checkpoint(run_id, thread_id)
 
-        def store_same_run_checkpoint(self, value) -> None:
+        def store_same_run_checkpoint(self, value: GraphCheckpointEnvelopeV1) -> None:
             checkpoint.store_same_run_checkpoint(value)
 
         def flush(self) -> None:
@@ -246,7 +253,7 @@ def _adapter(
     return (
         BackgroundRunExecutorAdapter(
             unit_of_work_factory=factory,
-            checkpoint_port=_CheckpointPort(),
+            checkpoint_port=cast(CheckpointPort, _CheckpointPort()),
             materialize_admission_checkpoint=materialize,
             invoke_semantic_owner=execute,
             release_active_lineage=lambda run_id, thread_id, handoff_id, run_sequence: (

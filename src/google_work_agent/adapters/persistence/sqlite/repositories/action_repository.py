@@ -11,7 +11,12 @@ from google_work_agent.domain.action.model import (
 
 
 class SqliteActionRepository:
-    _SELECT = "SELECT id, plan_id, connector_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms FROM actions"  # noqa: E501
+    _SELECT = (
+        "SELECT id, plan_id, connector_id, position, tool_name, effect_type, "
+        "approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, "
+        "status, arguments_json, arguments_hash, expected_json, risk_json, version, "
+        "created_at_ms, updated_at_ms FROM actions"
+    )
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
@@ -50,7 +55,11 @@ class SqliteActionRepository:
         if not action.connector_id:
             raise ValueError("action persistence requires connector_id")
         self._connection.execute(
-            "INSERT INTO actions (id, plan_id, position, tool_name, effect_type, approval_requirement, verification_policy, recovery_policy, target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms, connector_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO actions (id, plan_id, position, tool_name, effect_type, "
+            "approval_requirement, verification_policy, recovery_policy, "
+            "target_resource_ref_id, status, arguments_json, arguments_hash, expected_json, "
+            "risk_json, version, created_at_ms, updated_at_ms, connector_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
             (
                 action.id,
                 action.plan_id,

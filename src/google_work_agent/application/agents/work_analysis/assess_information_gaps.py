@@ -17,7 +17,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 _DISPOSITIONS = (
     "COMPLETE",
@@ -96,7 +96,7 @@ def assess_information_gaps(
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     confirmation_response: dict[str, object] | None = None,
 ) -> InformationGapAssessmentV1:
     """Identify only missing information and its legal workflow disposition."""
@@ -136,12 +136,11 @@ def assess_information_gaps(
             raise ValueError("NEEDS_CONFIRMATION requires question and reason_codes")
         return value
 
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA,
-        trace_context=trace_context,
-        semantic_validate=validate,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        prompt_input,
+        ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA,
     )
     validated = cast(Mapping[str, object], validate(result.structured_output))
     return cast(InformationGapAssessmentV1, dict(validated))

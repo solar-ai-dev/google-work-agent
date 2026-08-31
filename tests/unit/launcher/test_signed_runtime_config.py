@@ -83,9 +83,7 @@ def test_local_capable_projects_only_release_verified_model_allowlist(
             {
                 "schema_version": 1,
                 "minimum_ollama_version": "0.6.0",
-                "approved_models": [
-                    {"model_id": "qwen2.5:7b", "model_hash": "a" * 63 + "b"}
-                ],
+                "approved_models": [{"model_id": "qwen2.5:7b", "model_hash": "a" * 63 + "b"}],
             },
             sort_keys=True,
         ),
@@ -155,6 +153,7 @@ def test_signed_deferred_app_serves_only_release_indexed_frontend_assets(
         service_instance_id="instance-1",
     )
     site = config.verified_frontend_site()
+
     def route_paths(router: object) -> list[str]:
         paths: list[str] = []
         for route in router.routes:  # type: ignore[attr-defined]

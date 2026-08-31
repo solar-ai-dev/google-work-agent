@@ -4,7 +4,7 @@ from google_work_agent.application.agents.work_analysis.resolve_entity_relations
     resolve_entity_relations,
 )
 
-from .conftest import TRACE, FakeRuntime, fact, prompt_ref
+from .conftest import FakeRuntime, fact, prompt_ref
 
 
 def test_entity_relation_is_candidate_only() -> None:
@@ -25,7 +25,7 @@ def test_entity_relation_is_candidate_only() -> None:
         llm_runtime=FakeRuntime(output),
         prompt_ref=prompt_ref("work_analysis.resolve_entity_relations", "resolve_entity_relations"),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
     assert result == output["relation_candidates"]
 
@@ -51,5 +51,5 @@ def test_entity_relation_rejects_guarded_kind() -> None:
                 "work_analysis.resolve_entity_relations", "resolve_entity_relations"
             ),
             allowed_evidence_refs={"ev-1"},
-            trace_context=TRACE,
+            requested_mode="AUTO",
         )

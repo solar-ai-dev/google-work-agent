@@ -203,7 +203,7 @@ def _bounded_payload(resource_type: str, payload: Mapping[str, object]) -> dict[
         ),
     }
     if resource_type == ResourceType.CALENDAR_FREEBUSY.value:
-        result = {
+        result: dict[str, object] = {
             key: value
             for key in ("time_min", "time_max")
             if (value := payload.get(key)) is None or isinstance(value, str)

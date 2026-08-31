@@ -16,7 +16,7 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 from ..projections.assess_sufficiency_projection import (
     project_assess_sufficiency_input,
@@ -29,7 +29,7 @@ def assess_sufficiency_node(
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     tool_route_plan: ToolRoutePlanV2 | None,
     acquisition_result: AcquisitionResultV1,
     evidence_drafts: list[EvidenceDraftV1],
@@ -41,7 +41,7 @@ def assess_sufficiency_node(
         "sufficiency": assess_sufficiency(
             llm_runtime=llm_runtime,
             prompt_ref=prompt_ref,
-            trace_context=trace_context,
+            requested_mode=requested_mode,
             request_intent=projection["request_intent"],
             tool_route_plan=tool_route_plan,
             acquisition_result=acquisition_result,

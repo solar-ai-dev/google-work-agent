@@ -1,9 +1,13 @@
 from collections.abc import Mapping
+from typing import cast
 
 import pytest
 
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     compose_arguments_per_output_route,
+)
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    PlanningSemanticInvoker,
 )
 from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
     planning_tool_argument_schema,
@@ -49,11 +53,11 @@ def test_argument_prompt_receives_only_selected_bound_tool_schema() -> None:
         }
 
     result = compose_arguments_per_output_route(
-        [ROUTE],  # type: ignore[list-item]
+        [ROUTE],
         objectives=[OBJECTIVE],  # type: ignore[list-item]
         bound_tool_schemas=[bound],
         evidence=[{"evidence_ref": "e1"}],
-        invoke=invoke,
+        invoke=cast(PlanningSemanticInvoker, invoke),
     )
     assert result[0]["arguments"]["task_list_id"] == "list-1"
 
@@ -66,7 +70,7 @@ def test_argument_candidate_cannot_override_bound_container() -> None:
     )
     with pytest.raises(PlanningArgumentBindingError, match="immutable"):
         compose_arguments_per_output_route(
-            [ROUTE],  # type: ignore[list-item]
+            [ROUTE],
             objectives=[OBJECTIVE],  # type: ignore[list-item]
             bound_tool_schemas=[bound],
             evidence=[{"evidence_ref": "e1"}],

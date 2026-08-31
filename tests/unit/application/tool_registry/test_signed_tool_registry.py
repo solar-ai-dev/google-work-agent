@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -29,7 +30,7 @@ def test_signed_registry_binds_effect_and_entry_hash() -> None:
         registry.bind_required("google_workspace", "gmail_send", "READ")
 
 
-def test_signed_registry_loader_rejects_manifest_drift(tmp_path) -> None:
+def test_signed_registry_loader_rejects_manifest_drift(tmp_path: Path) -> None:
     source = load_signed_tool_registry.__globals__["_IMPLEMENTATION_MANIFEST"]
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["unexpected"] = True

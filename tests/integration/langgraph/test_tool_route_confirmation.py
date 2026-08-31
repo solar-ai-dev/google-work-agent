@@ -71,6 +71,7 @@ from tests.support.checkpoint import sqlite_checkpoint
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
 )
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
@@ -156,9 +157,9 @@ class _ToolRouteQueuedLLMRuntime:
         if atomic_review is not None:
             return atomic_review
         if prompt_id == "planning.outline_answer":
-            prompt_input = cast(Mapping[str, object], kwargs["prompt_input"])
-            request_intent = cast(Mapping[str, object], prompt_input["request_intent"])
-            evidence = cast(list[Mapping[str, object]], prompt_input.get("evidence", []))
+            outline_input = cast(Mapping[str, object], kwargs["prompt_input"])
+            request_intent = cast(Mapping[str, object], outline_input["request_intent"])
+            evidence = cast(list[Mapping[str, object]], outline_input.get("evidence", []))
             evidence_refs = [
                 cast(str, item.get("evidence_id", item.get("evidence_ref")))
                 for item in evidence
@@ -310,7 +311,7 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[object, WorkflowInvocationResult | None]:
+) -> tuple[ConfirmRunResult, WorkflowInvocationResult | None]:
     return resume_confirmation_with_handoff(
         runtime,
         database_path,
@@ -323,8 +324,8 @@ def _nested_tool_route_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested tool_route subgraph --
     asserting on this is what actually distinguishes "same nested checkpoint
     resume" from a full subgraph restart producing the same final answer."""
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert snapshot.next == ("tool_route",)
     assert len(snapshot.tasks) == 1
     outer_task = snapshot.tasks[0]
@@ -805,9 +806,7 @@ def test_tool_route_scope_expansion_pauses_inside_own_nested_task(tmp_path: Path
         assert outer_task.state.next == ("finalize_route",)
 
         # No output route was ever frozen -- the plan does not exist yet.
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         assert state["tool_route_plan"] is None
         assert state["policy_confirmation_receipts"] == []
 
@@ -943,8 +942,8 @@ def test_tool_route_scope_expansion_approved_materializes_reads_with_receipt(
         ]
         assert semantic_calls == []
 
-        state = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = resumed_runtime._graph.get_state(
+            resumed_runtime._invocation.config_for_thread("thread-1")
         ).values
         receipts = state["policy_confirmation_receipts"]
         assert len(receipts) == 1
@@ -1051,8 +1050,8 @@ def test_tool_route_scope_expansion_declined_blocks_without_materializing_reads(
         assert result.outcome is WorkflowOutcome.COMPLETED
         assert result.payload["finalize_intent"]["intent"] == "BLOCKED"
 
-        state = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = resumed_runtime._graph.get_state(
+            resumed_runtime._invocation.config_for_thread("thread-1")
         ).values
         receipts = state["policy_confirmation_receipts"]
         assert len(receipts) == 1
@@ -1134,9 +1133,7 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
         "affected_route_ids": ["TASK:CREATE"],
         "affected_resource_refs": ["TASK", "TASK_LIST"],
     }
-    runtime._graph.update_state(  # noqa: SLF001
-        nested_config, {"policy_confirmation_receipts": [forged_receipt]}
-    )
+    runtime._graph.update_state(nested_config, {"policy_confirmation_receipts": [forged_receipt]})
     runtime.close()
 
     # Same budget arithmetic as the APPROVED test above.
@@ -1178,8 +1175,8 @@ def test_tool_route_scope_expansion_forged_receipt_stays_inert(
         assert result.outcome is WorkflowOutcome.ACCEPTED
         assert result.payload["run_status"] == "WAITING_APPROVAL"
 
-        state = resumed_runtime._graph.get_state(  # noqa: SLF001
-            resumed_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = resumed_runtime._graph.get_state(
+            resumed_runtime._invocation.config_for_thread("thread-1")
         ).values
         receipts = state["policy_confirmation_receipts"]
         # The forged receipt survives untouched (never validated as
@@ -1307,8 +1304,8 @@ def test_tool_route_ambiguity_then_scope_expansion_rounds_both_stay_nested(
         assert result is not None
         assert result.outcome is WorkflowOutcome.ACCEPTED
         assert result.payload["run_status"] == "WAITING_APPROVAL"
-        state = round3_runtime._graph.get_state(  # noqa: SLF001
-            round3_runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
+        state = round3_runtime._graph.get_state(
+            round3_runtime._invocation.config_for_thread("thread-1")
         ).values
         assert len(state["policy_confirmation_receipts"]) == 1
         assert state["tool_route_plan"] is not None

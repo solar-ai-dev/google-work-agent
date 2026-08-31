@@ -1,8 +1,10 @@
 """Recovery option projection uses the Domain-owned closed matrix."""
 
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from importlib import import_module
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -10,6 +12,7 @@ from google_work_agent.application.use_cases.recovery.project_recovery_options i
     ProjectRecoveryOptionsHandler,
     ProjectRecoveryOptionsQueryV1,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 def test_canonical_application_owner_is_importable() -> None:
@@ -41,7 +44,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
     }
 
     @contextmanager
-    def factory():
+    def factory() -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
             command_receipts=SimpleNamespace(has_durable_cancel_intent=lambda _run_id: False),
@@ -49,7 +52,9 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
             actions=SimpleNamespace(get=lambda _action_id: None, list_for_plan=lambda _plan_id: ()),
         )
 
-    result = ProjectRecoveryOptionsHandler(factory)(ProjectRecoveryOptionsQueryV1("run-1"))
+    result = ProjectRecoveryOptionsHandler(cast(Callable[[], UnitOfWork], factory))(
+        ProjectRecoveryOptionsQueryV1("run-1")
+    )
 
     assert result.allowed_resolution_kinds == expected
     assert result.target == (
@@ -65,7 +70,7 @@ def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
     executed = SimpleNamespace(id="action-1", status="EXECUTED")
 
     @contextmanager
-    def factory():
+    def factory() -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(
             recovery_contexts=SimpleNamespace(load_current_context=lambda _run_id: context),
             command_receipts=SimpleNamespace(has_durable_cancel_intent=lambda _run_id: True),
@@ -75,6 +80,8 @@ def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
             ),
         )
 
-    result = ProjectRecoveryOptionsHandler(factory)(ProjectRecoveryOptionsQueryV1("run-1"))
+    result = ProjectRecoveryOptionsHandler(cast(Callable[[], UnitOfWork], factory))(
+        ProjectRecoveryOptionsQueryV1("run-1")
+    )
 
     assert result.allowed_resolution_kinds == ("RECHECK",)

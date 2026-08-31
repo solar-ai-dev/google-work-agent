@@ -93,9 +93,8 @@ def verify_installation(
     verified_files = _verify_files(root, payload["files"])
     installer_generated_files = _reject_unlisted_installed_files(root, payload["files"])
     code_signature_verified_files = _verify_code_signatures(
-        verified_files + tuple(
-            path for path in installer_generated_files if path.suffix.lower() == ".exe"
-        ),
+        verified_files
+        + tuple(path for path in installer_generated_files if path.suffix.lower() == ".exe"),
         build_channel=str(payload["build_channel"]),
         verifier=code_signature_verifier,
     )
@@ -231,9 +230,7 @@ def _resolve_manifest_child(root: Path, relative: str) -> Path:
     return candidate
 
 
-def _reject_unlisted_installed_files(
-    root: Path, raw_files: object
-) -> tuple[Path, ...]:
+def _reject_unlisted_installed_files(root: Path, raw_files: object) -> tuple[Path, ...]:
     if not isinstance(raw_files, list):
         raise InstallationVerificationError("MANIFEST_INVALID")
     expected = {
@@ -282,9 +279,13 @@ def _verify_code_signatures(
 def _verify_windows_authenticode(path: Path) -> bool:
     if sys.platform != "win32":
         return False
-    powershell = Path(
-        os.environ.get("SYSTEMROOT", r"C:\Windows")
-    ) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    powershell = (
+        Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
+    )
     if not powershell.is_file():
         return False
     script = (

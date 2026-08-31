@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from json import dumps
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, call
 
 import pytest
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.modify_action import (
     ModifyActionCommand,
     ModifyActionHandler,
@@ -52,7 +54,7 @@ def _uow() -> MagicMock:
     return unit_of_work
 
 
-def _handoff_dependencies(unit_of_work: MagicMock):
+def _handoff_dependencies(unit_of_work: MagicMock) -> dict[str, Any]:
     binding = SimpleNamespace(
         langgraph_thread_id="thread-1",
         graph_profile="SIX_ROLE_BASELINE",
@@ -119,10 +121,13 @@ def test_modify_persists_revocation_review_receipt_and_audit() -> None:
         gateway=MagicMock(),
         **_handoff_dependencies(unit_of_work),
     )
-    handler._registry = SimpleNamespace(
-        get_required=lambda _connector_id, _tool_name: SimpleNamespace(
-            modify_patchable_fields={"subject"}
-        )
+    handler._registry = cast(
+        SignedToolRegistry,
+        SimpleNamespace(
+            get_required=lambda _connector_id, _tool_name: SimpleNamespace(
+                modify_patchable_fields={"subject"}
+            )
+        ),
     )
 
     result = handler(
@@ -178,10 +183,13 @@ def _assert_terminal_modify_regression(
         gateway=MagicMock(),
         **_handoff_dependencies(unit_of_work),
     )
-    handler._registry = SimpleNamespace(
-        get_required=lambda _connector_id, _tool_name: SimpleNamespace(
-            modify_patchable_fields={"subject"}
-        )
+    handler._registry = cast(
+        SignedToolRegistry,
+        SimpleNamespace(
+            get_required=lambda _connector_id, _tool_name: SimpleNamespace(
+                modify_patchable_fields={"subject"}
+            )
+        ),
     )
 
     result = handler(
@@ -435,7 +443,7 @@ def test_refresh_expired_action_reuses_fresh_source_and_updates_target_ref() -> 
         captured_at_ms=1,
     )
     unit_of_work.resource_refs.get.return_value = resource
-    source_snapshot = {
+    source_snapshot: dict[str, object] = {
         "resource_type": "task",
         "resource_id": "task-1",
         "parent_id": "list-1",

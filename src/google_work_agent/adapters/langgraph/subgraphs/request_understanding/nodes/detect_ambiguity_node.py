@@ -4,9 +4,6 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     consume_llm_call_budget,
     ensure_llm_call_budget,
 )
-from google_work_agent.adapters.langgraph.subgraphs.request_understanding.projections.detect_ambiguity_projection import (  # noqa: E501
-    project_detect_ambiguity_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingStateV2,
 )
@@ -15,6 +12,10 @@ from google_work_agent.application.agents.request_understanding.detect_ambiguity
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+
+from ..projections.detect_ambiguity_projection import (
+    project_detect_ambiguity_input,
+)
 
 
 def detect_ambiguity_node(

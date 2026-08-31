@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from json import JSONDecodeError, loads
-from typing import Literal
+from typing import Literal, cast
 
 from google_work_agent.application.use_cases.execution_attempt.persistence_projection import (
     latest_attempt_for_action,
@@ -35,7 +35,7 @@ def project_latest_delivery_certainty(
         return None
     certainty = metadata.get("delivery_certainty")
     if certainty in {"NOT_SENT", "MAY_HAVE_BEEN_SENT", "SENT_RESPONSE_LOST"}:
-        return certainty
+        return cast(DeliveryCertaintyV1, certainty)
     return None
 
 

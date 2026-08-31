@@ -6,7 +6,6 @@ typed parent boundary.
 """
 # Runtime type names below are retained for LangGraph's inherited TypedDict
 # get_type_hints resolution, even when they are not referenced textually here.
-# ruff: noqa: F401
 
 from __future__ import annotations
 
@@ -26,11 +25,11 @@ from google_work_agent.application.agents.planning.contracts.planning_result imp
     AnswerDraftV1,
     PlanningResultV2,
 )
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
-)
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    RequestUnderstandingOutputV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
@@ -72,6 +71,16 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
     RouteReconsiderationRequiredV1,
     SubgraphReturnV2,
     WorkflowSignalV1,
+)
+
+_TYPE_HINT_NAMESPACE = (
+    request_understanding_output.RequestUnderstandingOutputV1,
+    ContextRetrievalResultV1,
+    EvidenceSelectionResultV2,
+    SourcePlanningOutputV1,
+    SufficiencyResultV2,
+    RetrievalRequiredV1,
+    RouteReconsiderationRequiredV1,
 )
 
 
@@ -214,7 +223,7 @@ class VerificationSummaryV1(TypedDict):
 class ParentGraphState(TypedDict):
     """State projected from a native subgraph back to the parent graph."""
 
-    schema_version: int
+    schema_version: Literal[2]
     run_id: str
     conversation_id: str
     thread_id: str
@@ -251,7 +260,6 @@ class ParentGraphState(TypedDict):
 class MultiAgentGraphStateV2(ParentGraphState, total=False):
     """Canonical Main State plus bounded migration-only control projections."""
 
-    schema_version: Required[Literal[2]]  # type: ignore[misc]
     langgraph_thread_id: Required[str]
     graph_profile: Required[Literal["SINGLE_BASELINE", "THREE_STAGE", "SIX_ROLE_BASELINE"]]
     graph_version: Required[str]
@@ -438,8 +446,11 @@ def request_from_run_input_state(state: Mapping[str, object]) -> WorkflowStartRe
         resource_type = raw_ref.get("resource_type")
         resource_id = raw_ref.get("resource_id")
         parent_resource_id = raw_ref.get("parent_resource_id")
-        required_values = (source, resource_type, resource_id)
-        if not all(isinstance(value, str) and value for value in required_values):
+        if not isinstance(source, str) or not source:
+            raise ValueError(f"run_input.selected_resource_refs[{index}] is incomplete")
+        if not isinstance(resource_type, str) or not resource_type:
+            raise ValueError(f"run_input.selected_resource_refs[{index}] is incomplete")
+        if not isinstance(resource_id, str) or not resource_id:
             raise ValueError(f"run_input.selected_resource_refs[{index}] is incomplete")
         if parent_resource_id is not None and not isinstance(parent_resource_id, str):
             raise TypeError(

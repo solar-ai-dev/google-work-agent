@@ -14,7 +14,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 _TEMPORAL_KINDS = ("DEPENDS_ON", "DUE_AT", "RELATED_TO")
 TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -61,7 +61,7 @@ def resolve_temporal_dependencies(
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     allowed_evidence_refs: set[str],
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     confirmation_response: dict[str, object] | None = None,
 ) -> list[WorkRelationCandidateV1]:
     """Produce temporal/order/dependency candidates without calendar arithmetic."""
@@ -97,12 +97,11 @@ def resolve_temporal_dependencies(
             seen.add(relation_id)
         return value
 
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA,
-        trace_context=trace_context,
-        semantic_validate=validate,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        prompt_input,
+        TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA,
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [

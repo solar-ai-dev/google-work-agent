@@ -8,7 +8,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.finalize_cancel import transition_finalize_cancel
 
 
-def test_finalize_cancel_applies_canonical_transition():
+def test_finalize_cancel_applies_canonical_transition() -> None:
     assert (
         transition_finalize_cancel(
             RunStatusV1.CANCEL_REQUESTED,
@@ -23,7 +23,7 @@ def test_finalize_cancel_applies_canonical_transition():
     )
 
 
-def test_finalize_cancel_rejects_active_approval():
+def test_finalize_cancel_rejects_active_approval() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_finalize_cancel(
             RunStatusV1.CANCEL_REQUESTED,
@@ -36,7 +36,7 @@ def test_finalize_cancel_rejects_active_approval():
         )
 
 
-def test_finalize_cancel_allows_pre_plan_cancellation():
+def test_finalize_cancel_allows_pre_plan_cancellation() -> None:
     assert (
         transition_finalize_cancel(
             RunStatusV1.CANCEL_REQUESTED,

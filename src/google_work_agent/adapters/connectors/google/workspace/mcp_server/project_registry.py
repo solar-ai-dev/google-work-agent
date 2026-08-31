@@ -639,7 +639,7 @@ def _descriptor(payload: dict[str, object]) -> MCPToolDescriptorV1:
         raise ValueError("invalid projected tool identity")
     _validate_hash(str(payload.get("registry_entry_hash", "")), "registry_entry_hash")
     return MCPToolDescriptorV1(
-        schema_version=cast(int, payload["schema_version"]),
+        schema_version=1,
         connector_id=str(payload["connector_id"]),
         tool_id=str(payload["tool_id"]),
         input_schema_ref=str(payload["input_schema_ref"]),

@@ -86,6 +86,10 @@ def test_reserved_command_reconciles_before_any_retry(tmp_path: Path) -> None:
             execute=lambda operation_ref: (_ for _ in ()).throw(RuntimeError("simulated crash")),
         )
 
+    def must_not_execute(operation_ref: str) -> tuple[str, object]:
+        execute_calls.append(operation_ref)
+        return "unexpected", {"accepted": False}
+
     recovered = execute_operational_command(
         replay_port=replay,
         command_id="command-1",
@@ -94,10 +98,7 @@ def test_reserved_command_reconciles_before_any_retry(tmp_path: Path) -> None:
         reconcile=lambda operation_ref: OperationalReconcileResultV1(
             "COMPLETED", "result-recovered", {"accepted": True}
         ),
-        execute=lambda operation_ref: (
-            execute_calls.append(operation_ref) or "unexpected",
-            {"accepted": False},
-        ),
+        execute=must_not_execute,
     )
 
     assert recovered.replayed is True

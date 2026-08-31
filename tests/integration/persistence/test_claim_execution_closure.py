@@ -9,14 +9,14 @@ from types import SimpleNamespace
 import pytest
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.repositories import (
+    execution_attempt_repository,
+)
 from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repository import (
     SqliteAuditEventRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_repository import (
     SqliteCommandReceiptRepository,
-)
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SqliteExecutionAttemptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
@@ -153,11 +153,16 @@ def test_valid_claim_is_one_atomic_commit_and_replay_is_single_use(
         claimed_action = unit_of_work.actions.get(f"action-{suffix}")
     assert claimed_action is not None
     signed_payloads: list[dict[str, object]] = []
+
+    def sign_claim(payload: dict[str, object]) -> str:
+        signed_payloads.append(payload)
+        return "signature"
+
     context = BuildClaimContextHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(write_database),
         now_ms=clock.now_ms,
         id_factory=lambda: f"nonce-{suffix}",
-        sign_claim_context=lambda payload: signed_payloads.append(payload) or "signature",
+        sign_claim_context=sign_claim,
     )(
         BuildClaimContextQueryV1(
             schema_version=1,
@@ -298,7 +303,7 @@ def test_active_attempt_guard_fails_before_mutation(
     suffix = "c2-active-attempt"
     _approve(write_database=write_database, clock=clock, suffix=suffix)
     monkeypatch.setattr(
-        SqliteExecutionAttemptRepository,
+        execution_attempt_repository.SqliteExecutionAttemptRepository,
         "get_active_for_approval",
         lambda self, approval_id: SimpleNamespace(status=ExecutionAttemptStatusV1.CLAIMED),
     )

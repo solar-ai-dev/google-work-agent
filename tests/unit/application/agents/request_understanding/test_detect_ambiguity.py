@@ -2,43 +2,42 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 import pytest
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestGoalCandidateV1,
+)
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
     _validate_ambiguity,
     detect_ambiguity,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
-from google_work_agent.ports.llm import (
-    ActualRuntime,
-    OutputSchemaDefinition,
-    PromptReference,
-    RequestedRuntimeMode,
-    StructuredLLMResult,
-)
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 
 @dataclass
 class FakeLLMRuntime:
     calls: list[dict[str, object]] = field(default_factory=list)
 
-    def invoke_structured(
+    def infer(
         self,
-        *,
+        requested_mode: RequestedModeV1,
         prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        output_schema: OutputSchemaDefinition,
-        trace_context: ObservabilityContext,
-        semantic_validate=None,
-    ) -> StructuredLLMResult:
-        self.calls.append({"prompt_ref": prompt_ref, "prompt_input": dict(prompt_input)})
-        return StructuredLLMResult(
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        del requested_mode, output_schema_ref
+        self.calls.append({"prompt_ref": prompt_ref, "prompt_input": dict(input_projection)})
+        return StructuredInferenceResultV1(
+            schema_version=1,
             structured_output={
                 "requires_confirmation": True,
                 "reason_codes": ["MISSING_RECIPIENT"],
@@ -46,17 +45,11 @@ class FakeLLMRuntime:
             },
             provider="fake",
             model="fake",
-            requested_mode=RequestedRuntimeMode.AUTO,
-            actual_runtime=ActualRuntime.API_LLM,
+            actual_runtime="API_LLM",
             input_tokens=1,
             output_tokens=1,
-            total_tokens=2,
             latency_ms=1,
-            estimated_cost_usd=None,
             fallback_reason=None,
-            structured_output_attempts=1,
-            provider_request_id="provider-request-1",
-            safe_error_code=None,
         )
 
 
@@ -70,12 +63,12 @@ def test_detect_ambiguity__canonical_call__owns_independent_ambiguity() -> None:
         requested_mode="AUTO",
         request_text="일정을 잡아줘",
         selected_resource_ids=(),
-        run_budget=build_default_run_budget(),
+        run_budget=cast(dict[str, Any], build_default_run_budget()),
         correlation=WorkflowCorrelationContext(
             request_id="request-1", command_id="command-1", api_contract_version="v1"
         ),
     )
-    candidate = {
+    candidate: RequestGoalCandidateV1 = {
         "goal": "일정 만들기",
         "completion_conditions": ["일정을 만든다"],
         "constraints": [],

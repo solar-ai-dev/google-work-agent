@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Protocol, cast
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESPONSE_SYNTHESIS_TARGET,
@@ -29,6 +29,15 @@ _REVIEW_TARGETS = frozenset(
 )
 _RETRIEVAL_SUCCESS_REASONS = frozenset({"SUFFICIENT", "PARTIAL", "NO_FETCH_NEEDED"})
 _TOOL_ROUTE_SUCCESS_REASONS = frozenset({"ROUTE_READY", "NO_TOOL_NEEDED"})
+
+
+class _ResponseSynthesisSuper(Protocol):
+    def _merge_decision(
+        self,
+        state: GraphState,
+        update: GraphStateUpdateV1,
+        decision: SupervisorDecisionV1,
+    ) -> GraphState: ...
 
 
 def canonicalize_answer_only_decision(
@@ -180,7 +189,9 @@ class ResponseSynthesisMixin:
     ) -> GraphState:
         canonical_decision = canonicalize_optional_stage_decision(state, decision)
         canonical_decision = canonicalize_answer_only_decision(canonical_decision)
-        return super()._merge_decision(state, update, canonical_decision)
+        return cast(_ResponseSynthesisSuper, super())._merge_decision(
+            state, update, canonical_decision
+        )
 
 
 __all__ = [

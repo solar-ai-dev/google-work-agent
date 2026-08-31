@@ -1,19 +1,14 @@
 """Shared Write integration fixtures and compatibility exports."""
 
-# ruff: noqa: F401
-
 import sqlite3
 import time
 from collections.abc import Mapping
 from json import loads
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
-from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
-    McpConnectorWriteAdapter,
-)
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
@@ -45,10 +40,12 @@ from google_work_agent.application.use_cases.execution_attempt.mark_unknown_resu
 from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
     RecoverExistingResultCommand,
     RecoverExistingResultHandler,
+    RecoverExistingResultResult,
 )
 from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
     ResolveAsFailedCommand,
     ResolveAsFailedHandler,
+    ResolveAsFailedResult,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     ClaimWriteActionCommand,
@@ -58,7 +55,6 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
 )
 from google_work_agent.application.use_cases.execution_attempt.write_recovery_contracts import (
     MarkWriteActionUnknownResultCommand,
-    PrepareWriteRetryCommand,
     RecoverUnknownCreateActionCommand,
     RecoverUnknownDeleteActionCommand,
     RecoverUnknownSendActionCommand,
@@ -78,6 +74,7 @@ from google_work_agent.application.use_cases.run.finalize_cancel import Finalize
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotHandler,
     GetRunSnapshotQuery,
+    GetRunSnapshotResult,
 )
 from google_work_agent.application.use_cases.run.require_reauth import (
     RequireReauthCommand as RequireWriteReauthCommand,
@@ -119,7 +116,6 @@ from tests.support.legacy_write.write_claim import ClaimWriteActionService
 from tests.support.legacy_write.write_execution import ExecuteWriteActionService
 from tests.support.legacy_write.write_recovery import (
     MarkWriteActionUnknownResultService,
-    PrepareWriteRetryService,
     RecoverUnknownCreateActionService,
     RecoverUnknownDeleteActionService,
     RecoverUnknownSendActionService,
@@ -131,17 +127,43 @@ from tests.support.legacy_write.write_result_persistence import (
 from tests.support.legacy_write.write_verification import VerifyWriteActionService
 from tests.support.legacy_write_approval import ApproveWriteActionService
 
+__all__ = [
+    "CalendarWorkHours",
+    "FinalizeCancelHandler",
+    "FinalizeRunCancellationCommand",
+    "GoogleWorkspaceErrorCode",
+    "InvariantViolationError",
+    "PolicyViolationError",
+    "RecoverUnknownCreateActionCommand",
+    "RecoverUnknownCreateActionService",
+    "RecoverUnknownDeleteActionCommand",
+    "RecoverUnknownDeleteActionService",
+    "RecoverUnknownSendActionCommand",
+    "RecoverUnknownSendActionService",
+    "RecoverUnknownUpdateActionCommand",
+    "RecoverUnknownUpdateActionService",
+    "RequestRunCancellationCommand",
+    "RequestRunCancellationService",
+    "RequireReauthHandler",
+    "RequireWriteReauthCommand",
+    "ResultCode",
+    "RunCommand",
+    "RunStatusV1",
+    "classify_write_delivery",
+    "is_reauth_required_error",
+]
+
 
 def build_claim_preflight(
     *,
-    unit_of_work_factory,
-    gateway,
-    now_ms=None,
-    work_hours_provider=None,
-    expire_approval=None,
-    refresh_expired_action=None,
-    block_run=None,
-):
+    unit_of_work_factory: Any,
+    gateway: Any,
+    now_ms: Any = None,
+    work_hours_provider: Any = None,
+    expire_approval: Any = None,
+    refresh_expired_action: Any = None,
+    block_run: Any = None,
+) -> Any:
     handler = ClaimExecutionHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms or (lambda: time.time_ns() // 1_000_000),
@@ -163,7 +185,7 @@ class SnapshotReader:
         del connection_factory, kwargs
         self._database_path = database_path
 
-    def get_run_snapshot(self, run_id: str):  # type: ignore[no-untyped-def]
+    def get_run_snapshot(self, run_id: str) -> GetRunSnapshotResult | None:
         return GetRunSnapshotHandler(
             unit_of_work_factory=sqlite_unit_of_work_factory(self._database_path)
         )(GetRunSnapshotQuery(run_id))
@@ -1193,6 +1215,7 @@ def test_unknown_result_settlement_preserves_delivery_certainty_across_restart(
     )
     assert unknown.applied is True
 
+    result: RecoverExistingResultResult | ResolveAsFailedResult
     if settlement == "recover":
         result = RecoverExistingResultHandler(
             unit_of_work_factory=sqlite_unit_of_work_factory(write_database),

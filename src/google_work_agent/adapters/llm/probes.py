@@ -40,9 +40,7 @@ class LoopbackOllamaProbe(OllamaRuntimeProbe):
         if approved_model.digest is not None:
             actual_digest = result.metadata.get("model_digest")
             normalized_actual = (
-                str(actual_digest).removeprefix("sha256:")
-                if actual_digest is not None
-                else None
+                str(actual_digest).removeprefix("sha256:") if actual_digest is not None else None
             )
             if normalized_actual != approved_model.digest:
                 return ProbeResult(
@@ -56,9 +54,8 @@ class LoopbackOllamaProbe(OllamaRuntimeProbe):
             if (
                 actual_version is None
                 or minimum_version is None
-                or _pad_version(actual_version, minimum_version) < _pad_version(
-                    minimum_version, actual_version
-                )
+                or _pad_version(actual_version, minimum_version)
+                < _pad_version(minimum_version, actual_version)
             ):
                 return ProbeResult(
                     availability=AvailabilityState.DEGRADED,

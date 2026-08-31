@@ -101,6 +101,8 @@ def _get_json(url: str, *, opener: Callable[..., Any], timeout: float) -> dict[s
 
 
 def _all_checks_ready(checks: object) -> bool:
-    return bool(checks) and isinstance(checks, list) and all(
-        isinstance(check, dict) and check.get("state") == "READY" for check in checks
+    return (
+        bool(checks)
+        and isinstance(checks, list)
+        and all(isinstance(check, dict) and check.get("state") == "READY" for check in checks)
     )

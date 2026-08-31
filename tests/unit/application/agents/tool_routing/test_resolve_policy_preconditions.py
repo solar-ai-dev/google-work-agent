@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    ConstraintV1,
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
     SemanticRouteCandidate,
 )
@@ -9,8 +13,8 @@ from google_work_agent.application.agents.tool_routing.resolve_policy_preconditi
 from google_work_agent.domain.action.model import EffectType
 
 
-def _intent(*, forbidden_sources: list[str] | None = None):
-    constraints = []
+def _intent(*, forbidden_sources: list[str] | None = None) -> RequestIntentV2:
+    constraints: list[ConstraintV1] = []
     if forbidden_sources is not None:
         constraints.append(
             {"kind": "SCOPE", "field": "forbidden_sources", "value": forbidden_sources}

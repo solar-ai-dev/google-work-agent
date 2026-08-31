@@ -1,10 +1,22 @@
 """Exact input projection for deterministic plan assembly and validation."""
 
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import TypedDict, cast
+
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionDependencyCandidateV1,
+    PlanningActionSeedV1,
+)
 
 
-def project_assemble_plan_input(state: Mapping[str, object]) -> dict[str, object]:
+class AssemblePlanInputV1(TypedDict):
+    output_routes: list[dict[str, object]]
+    action_seeds: list[PlanningActionSeedV1]
+    dependency_candidates: list[ActionDependencyCandidateV1]
+    evidence_refs: list[str]
+
+
+def project_assemble_plan_input(state: Mapping[str, object]) -> AssemblePlanInputV1:
     output_plan = state.get("output_plan")
     seeds = state.get("__planning_action_seeds__")
     dependencies = state.get("dependency_candidates")
@@ -18,8 +30,8 @@ def project_assemble_plan_input(state: Mapping[str, object]) -> dict[str, object
         raise ValueError("evidence_refs must be strings")
     return {
         "output_routes": routes,
-        "action_seeds": seed_items,
-        "dependency_candidates": dependency_items,
+        "action_seeds": cast(list[PlanningActionSeedV1], seed_items),
+        "dependency_candidates": cast(list[ActionDependencyCandidateV1], dependency_items),
         "evidence_refs": list(refs),
     }
 
@@ -32,4 +44,4 @@ def _objects(value: object, name: str) -> list[dict[str, object]]:
     return [dict(cast(Mapping[str, object], item)) for item in value]
 
 
-__all__ = ["project_assemble_plan_input"]
+__all__ = ["AssemblePlanInputV1", "project_assemble_plan_input"]

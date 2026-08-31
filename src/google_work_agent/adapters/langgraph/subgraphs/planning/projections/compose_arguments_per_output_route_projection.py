@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import NotRequired, TypedDict, cast
+
+
+class ComposeArgumentsInputV1(TypedDict):
+    output_routes: list[dict[str, object]]
+    objectives: list[dict[str, object]]
+    evidence: list[dict[str, object]]
+    work_analysis: NotRequired[dict[str, object]]
+    confirmation_response: NotRequired[dict[str, object]]
 
 
 def project_compose_arguments_per_output_route_input(
     state: Mapping[str, object],
-) -> dict[str, object]:
+) -> ComposeArgumentsInputV1:
     output_plan = state.get("output_plan")
     objectives = state.get("action_objective_candidates")
     if not isinstance(output_plan, Mapping):
@@ -18,13 +26,14 @@ def project_compose_arguments_per_output_route_input(
     evidence = state.get("evidence", ())
     if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
         raise ValueError("evidence must be a sequence")
-    result: dict[str, object] = {
+    evidence_items = [dict(item) for item in evidence if isinstance(item, Mapping)]
+    if len(evidence_items) != len(evidence):
+        raise ValueError("evidence items must be objects")
+    result: ComposeArgumentsInputV1 = {
         "output_routes": routes,
         "objectives": objective_items,
-        "evidence": [dict(item) for item in evidence if isinstance(item, Mapping)],
+        "evidence": evidence_items,
     }
-    if len(cast(list[object], result["evidence"])) != len(evidence):
-        raise ValueError("evidence items must be objects")
     work_analysis = state.get("work_analysis")
     confirmation = state.get("confirmation_response")
     if work_analysis is not None:
@@ -46,4 +55,4 @@ def _objects(value: object, name: str) -> list[dict[str, object]]:
     return [dict(cast(Mapping[str, object], item)) for item in value]
 
 
-__all__ = ["project_compose_arguments_per_output_route_input"]
+__all__ = ["ComposeArgumentsInputV1", "project_compose_arguments_per_output_route_input"]

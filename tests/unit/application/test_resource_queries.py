@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import TypedDict, Unpack, cast
 
 import pytest
 
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess as _ConnectorResourceAccess,
 )
@@ -30,33 +35,62 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 )
 
 
+class _ListResourceKwargs(TypedDict, total=False):
+    query: str
+    page_token: str | None
+    page_size: int
+    include_thread_metadata: bool
+    task_list_id: str | None
+    status_scope: str
+    calendar_id: str | None
+    time_min: str | None
+    time_max: str | None
+
+
 class ConnectorResourceAccess(_ConnectorResourceAccess):
     """Test-only convenience surface that calls the exact canonical handlers."""
+
+    def __init__(
+        self,
+        *,
+        gateway: object,
+        default_calendar_id_provider: Callable[[], str | None] | None = None,
+        default_tasklist_id_provider: Callable[[], str | None] | None = None,
+        timezone_provider: Callable[[], str] | None = None,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        super().__init__(
+            gateway=cast(ConnectorReadProjection, gateway),
+            default_calendar_id_provider=default_calendar_id_provider,
+            default_tasklist_id_provider=default_tasklist_id_provider,
+            timezone_provider=timezone_provider,
+            now=now,
+        )
 
     def get_gmail_thread_detail(self, *, resource_id: str) -> GmailResourceDetail:
         return GetResourceDetailHandler(self)(
             GetResourceDetailQuery(source="gmail", resource_id=resource_id)
         ).resource
 
-    def list_gmail_threads(self, **kwargs: object) -> ResourceListPage:
+    def list_gmail_threads(self, **kwargs: Unpack[_ListResourceKwargs]) -> ResourceListPage:
         return ListResourcesHandler(self)(
             ListResourcesQuery(
                 source="gmail", session_digest="a" * 64, account_id="account-1", **kwargs
-            )  # type: ignore[arg-type]
+            )
         ).page
 
-    def list_tasks(self, **kwargs: object) -> ResourceListPage:
+    def list_tasks(self, **kwargs: Unpack[_ListResourceKwargs]) -> ResourceListPage:
         return ListResourcesHandler(self)(
             ListResourcesQuery(
                 source="tasks", session_digest="a" * 64, account_id="account-1", **kwargs
-            )  # type: ignore[arg-type]
+            )
         ).page
 
-    def list_calendar_resources(self, **kwargs: object) -> ResourceListPage:
+    def list_calendar_resources(self, **kwargs: Unpack[_ListResourceKwargs]) -> ResourceListPage:
         return ListResourcesHandler(self)(
             ListResourcesQuery(
                 source="calendar", session_digest="a" * 64, account_id="account-1", **kwargs
-            )  # type: ignore[arg-type]
+            )
         ).page
 
     def count_gmail_threads(self, *, query: str = "") -> ResourceCount:
@@ -538,7 +572,7 @@ def test_exact_counts_traverse_all_pages_with_source_scopes() -> None:
 
     gateway = Gateway()
     service = ConnectorResourceAccess(
-        gateway=gateway,  # type: ignore[arg-type]
+        gateway=gateway,
         default_tasklist_id_provider=lambda: "task-list-default",
         now=lambda: datetime(2026, 8, 10, 0, 0, tzinfo=UTC),
     )
@@ -604,7 +638,7 @@ def test_gmail_count_traverses_all_provider_pages() -> None:
             return ResourcePage(items=(snapshot,) * 37, next_page_token=None)
 
     gateway = Gateway()
-    service = ConnectorResourceAccess(gateway=gateway)  # type: ignore[arg-type]
+    service = ConnectorResourceAccess(gateway=gateway)
 
     assert service.count_gmail_threads(query="from:kim@example.com").total_count == 237
     assert gateway.calls == [
@@ -638,7 +672,7 @@ def test_count_does_not_return_partial_total_when_a_later_page_fails() -> None:
                 return ResourcePage(items=(snapshot,), next_page_token="next")
             raise RuntimeError("provider unavailable")
 
-    service = ConnectorResourceAccess(gateway=Gateway())  # type: ignore[arg-type]
+    service = ConnectorResourceAccess(gateway=Gateway())
 
     with pytest.raises(RuntimeError, match="provider unavailable"):
         service.count_gmail_threads()

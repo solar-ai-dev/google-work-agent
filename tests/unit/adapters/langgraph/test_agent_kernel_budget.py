@@ -12,6 +12,8 @@ call can happen.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from google_work_agent.adapters.langgraph.agent_kernel import (
@@ -53,7 +55,7 @@ def _state(*, llm_calls_used: int, profile: str = BudgetProfile.NORMAL.value) ->
 
 
 @pytest.fixture(autouse=True)
-def _isolate_provider_dispatch_budget():
+def _isolate_provider_dispatch_budget() -> Iterator[None]:
     with provider_dispatch_execution_scope():
         yield
 

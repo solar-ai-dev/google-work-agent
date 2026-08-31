@@ -1,7 +1,7 @@
 import sqlite3
 
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SqliteExecutionAttemptRepository,
+from google_work_agent.adapters.persistence.sqlite.repositories import (
+    execution_attempt_repository,
 )
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt,
@@ -91,7 +91,7 @@ def test_execution_attempt_repository_exact_active_and_cas_surface() -> None:
             started_at_ms INTEGER, finished_at_ms INTEGER
         )"""
     )
-    repository = SqliteExecutionAttemptRepository(connection)
+    repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
     repository.insert_claimed(
         ExecutionAttempt(
             id="attempt-1",
@@ -126,7 +126,7 @@ def test_execution_attempt_repository_exact_active_and_cas_surface() -> None:
 
 def test_reconciliation_candidates_use_exact_current_continuation_predicates() -> None:
     connection = _reconciliation_connection()
-    repository = SqliteExecutionAttemptRepository(connection)
+    repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
 
     _seed_failed_attempt(
         connection,
@@ -167,7 +167,7 @@ def test_reconciliation_candidates_use_exact_current_continuation_predicates() -
 
 def test_reconciliation_candidates_use_exact_phase_markers() -> None:
     connection = _reconciliation_connection()
-    repository = SqliteExecutionAttemptRepository(connection)
+    repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
     phases = (
         ("pre-begin", "CLAIMED", "EXECUTING"),
         ("orphan", "EXECUTING", "EXECUTING"),
@@ -224,7 +224,7 @@ def test_reconciliation_candidates_use_exact_phase_markers() -> None:
 
 def test_reconciliation_candidates_exclude_stale_parent_authority_and_are_sql_bounded() -> None:
     connection = _reconciliation_connection()
-    repository = SqliteExecutionAttemptRepository(connection)
+    repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
 
     _seed_failed_attempt(
         connection,

@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.sqlite.repositories import (
+    execution_attempt_repository,
+)
 from google_work_agent.adapters.persistence.sqlite.repositories.action_repository import (
     SqliteActionRepository,
 )
@@ -27,9 +30,6 @@ from google_work_agent.adapters.persistence.sqlite.repositories.conversation_rep
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.evidence_repository import (
     SqliteEvidenceRepository,
-)
-from google_work_agent.adapters.persistence.sqlite.repositories.execution_attempt_repository import (  # noqa: E501
-    SqliteExecutionAttemptRepository,
 )
 from google_work_agent.adapters.persistence.sqlite.repositories.message_repository import (
     SqliteMessageRepository,
@@ -173,7 +173,9 @@ class FaultInjectingSqliteUnitOfWork:
         self.resource_refs = SqliteResourceRefRepository(sqlite_connection)
         self.evidence = SqliteEvidenceRepository(sqlite_connection)
         self.approvals = SqliteApprovalRepository(sqlite_connection)
-        self.execution_attempts = SqliteExecutionAttemptRepository(sqlite_connection)
+        self.execution_attempts = execution_attempt_repository.SqliteExecutionAttemptRepository(
+            sqlite_connection
+        )
         self.verifications = SqliteVerificationRepository(sqlite_connection)
         self.audits = SqliteAuditEventRepository(sqlite_connection)
         self.traces = SqliteTraceEventRepository(sqlite_connection)

@@ -49,6 +49,7 @@ from google_work_agent.domain.action.model import (
 )
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus
+from google_work_agent.domain.resource_ref.model import ResourceRef
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.approval_repository import active_approval_tuple
@@ -480,8 +481,8 @@ def _messages_for_run(
     return tuple(sorted(matches[:limit], key=lambda item: (item.created_at_ms, item.id)))
 
 
-def _selected_resource_ref(value: object) -> SelectedResourceRef:
-    durable_type = value.resource_type  # type: ignore[attr-defined]
+def _selected_resource_ref(value: ResourceRef) -> SelectedResourceRef:
+    durable_type = value.resource_type
     source, projected_type = {
         "gmail_thread": ("GMAIL", "THREAD"),
         "gmail_message": ("GMAIL", "MESSAGE"),
@@ -496,8 +497,8 @@ def _selected_resource_ref(value: object) -> SelectedResourceRef:
     return SelectedResourceRef(
         source=source,
         resource_type=projected_type,
-        resource_id=value.resource_id,  # type: ignore[attr-defined]
-        parent_resource_id=value.parent_resource_id,  # type: ignore[attr-defined]
+        resource_id=value.resource_id,
+        parent_resource_id=value.parent_resource_id,
     )
 
 

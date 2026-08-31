@@ -90,4 +90,4 @@ def _database(tmp_path: Path) -> Path:
 def _values(path: Path, table: str, columns: str) -> list[tuple[str, str]]:
     with connect_sqlite(path) as connection:
         rows = connection.execute(f"SELECT {columns} FROM {table} ORDER BY 1;").fetchall()
-    return [tuple(str(value) for value in row) for row in rows]
+    return [(str(row[0]), str(row[1])) for row in rows]

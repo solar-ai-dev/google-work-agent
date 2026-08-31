@@ -45,7 +45,7 @@ def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> N
         },
     }
 
-    receipt = handler._policy_receipt(  # noqa: SLF001 - exact owner contract test
+    receipt = handler._policy_receipt(
         authority,
         {
             "schema_version": 1,

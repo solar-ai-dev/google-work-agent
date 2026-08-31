@@ -1,7 +1,9 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
+from typing import cast
 
 from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.fakes import DeterministicUUID
@@ -14,12 +16,14 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.application.use_cases.run.continue_cancel_resolution import (
+    ContinueCancelResolutionCommandV1,
     ContinueCancelResolutionResultV1,
 )
 from google_work_agent.application.use_cases.run.request_cancel import (
     RequestCancelCommand,
     RequestCancelHandler,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RunExecutionAcceptedV1,
     RunExecutionRefV1,
@@ -42,13 +46,17 @@ def test_bootstrap_cancel_supersedes_unadmitted_start_then_uses_graphless_resolu
         unit_of_work.workflow_handoffs.stage_pending(_start_handoff())
         unit_of_work.commit()
     continued: list[str] = []
+
+    def continue_cancel(
+        command: ContinueCancelResolutionCommandV1,
+    ) -> ContinueCancelResolutionResultV1:
+        continued.append(command.run_id)
+        return ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
+
     handler = _handler(
         factory,
         path,
-        continue_cancel=lambda command: (
-            continued.append(command.run_id)
-            or ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
-        ),
+        continue_cancel=continue_cancel,
     )
 
     result = handler(RequestCancelCommand("r-1", 0, "cmd-cancel", "a" * 64))
@@ -93,13 +101,17 @@ def test_bootstrap_cancel_preserves_admitted_start_and_waits_for_its_cancel_gate
         )
         unit_of_work.commit()
     continued: list[str] = []
+
+    def continue_cancel(
+        command: ContinueCancelResolutionCommandV1,
+    ) -> ContinueCancelResolutionResultV1:
+        continued.append(command.run_id)
+        return ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
+
     handler = _handler(
         factory,
         path,
-        continue_cancel=lambda command: (
-            continued.append(command.run_id)
-            or ContinueCancelResolutionResultV1(1, "FINALIZED", "CANCELLED")
-        ),
+        continue_cancel=continue_cancel,
     )
 
     handler(RequestCancelCommand("r-1", 0, "cmd-cancel", "b" * 64))
@@ -112,16 +124,21 @@ def test_bootstrap_cancel_preserves_admitted_start_and_waits_for_its_cancel_gate
 
 
 def _handler(
-    factory: object, database_path: Path, *, continue_cancel: object
+    factory: Callable[[], object],
+    database_path: Path,
+    *,
+    continue_cancel: Callable[
+        [ContinueCancelResolutionCommandV1], ContinueCancelResolutionResultV1
+    ],
 ) -> RequestCancelHandler:
     return RequestCancelHandler(
-        unit_of_work_factory=factory,  # type: ignore[arg-type]
+        unit_of_work_factory=cast(Callable[[], UnitOfWork], factory),
         now_ms=lambda: 10,
         checkpoint_port=sqlite_checkpoint(database_path),
         id_generator=DeterministicUUID(prefix="handoff"),
         resume_target_registry=ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
         schedule_run_execution=lambda _command: RunExecutionAcceptedV1(1, True, "ACCEPTED"),
-        continue_cancel_resolution=continue_cancel,  # type: ignore[arg-type]
+        continue_cancel_resolution=continue_cancel,
     )
 
 

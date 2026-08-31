@@ -97,11 +97,9 @@ def _isolate_provider_dispatch_budget() -> Iterator[None]:
 
 def _subgraph(agent: Any = None) -> RequestUnderstandingSubgraph:
     subgraph = object.__new__(RequestUnderstandingSubgraph)
-    subgraph._llm_runtime = (  # noqa: SLF001
-        agent if agent is not None else cast(Any, _NeverCalledAgent())
-    )
-    subgraph._identify_goal_prompt_ref = PROMPT_REF  # noqa: SLF001
-    subgraph._graph_profile = GraphProfile.SIX_ROLE_BASELINE  # noqa: SLF001
+    subgraph._llm_runtime = agent if agent is not None else cast(Any, _NeverCalledAgent())
+    subgraph._identify_goal_prompt_ref = PROMPT_REF
+    subgraph._graph_profile = GraphProfile.SIX_ROLE_BASELINE
     return subgraph
 
 
@@ -146,7 +144,7 @@ def test_exhausted_budget_blocks_the_call_before_the_agent_is_ever_invoked() -> 
     state = _state(llm_calls_used=NORMAL_MAX_LLM_CALLS)
 
     with pytest.raises(LLMInvocationError) as excinfo:
-        subgraph._identify_goal_node(cast(Any, state))  # noqa: SLF001
+        subgraph._identify_goal_node(cast(Any, state))
 
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
@@ -159,7 +157,7 @@ def test_a_schema_repair_attempt_consumes_two_llm_calls_not_one() -> None:
     subgraph = _subgraph(agent)
     state = _state(llm_calls_used=3)
 
-    result = subgraph._identify_goal_node(cast(Any, state))  # noqa: SLF001
+    result = subgraph._identify_goal_node(cast(Any, state))
 
     assert agent.calls == 1
     assert cast(dict[str, Any], result["retry_budget"])["llm_calls_used"] == 5

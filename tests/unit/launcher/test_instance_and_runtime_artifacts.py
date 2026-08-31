@@ -15,6 +15,7 @@ from launcher.prepare_data_directory import prepare_data_directory
 def test_single_instance_is_atomic_and_live_owner_is_reused(tmp_path: Path) -> None:
     def process_identity(process_id: int) -> str:
         return f"token-{process_id}"
+
     first = acquire_single_instance(
         tmp_path,
         user_identity="S-1-5-21-test",

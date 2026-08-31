@@ -67,41 +67,8 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.normalize_se
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.plan_query_node import (
     plan_query_node,
 )
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.rag_retrieve_rerank_node import (  # noqa: E501
-    rag_retrieve_rerank_node,
-)
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.select_evidence_node import (
     select_evidence_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections.execute_read_projection import (  # noqa: E501
-    find_detail_resource,
-    project_acquisition_result,
-    project_connector_call,
-    sanitize_acquisition_result,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_assess_sufficiency import (  # noqa: E501
-    route_after_assess_sufficiency,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_build_query import (  # noqa: E501
-    route_after_build_query,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_execute_read import (  # noqa: E501
-    route_after_execute_read,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_finalize_retrieval import (  # noqa: E501
-    route_after_finalize_retrieval,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_normalize_segments import (  # noqa: E501
-    route_after_normalize_segments,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_plan_query import (  # noqa: E501
-    route_after_plan_query,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_rag_retrieve_rerank import (  # noqa: E501
-    route_after_rag_retrieve_rerank,
-)
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing.route_after_select_evidence import (  # noqa: E501
-    route_after_select_evidence,
 )
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
     ContextRetrievalInputState,
@@ -111,12 +78,12 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
     StateArtifactRefV1,
-)
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationQuestionV1,
 )
 from google_work_agent.application.agents.retrieval.build_query import (
     RouteConstraintPolicy,
@@ -180,6 +147,40 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
     RetrievalRequiredV1,
 )
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
+
+from .nodes.rag_retrieve_rerank_node import (
+    rag_retrieve_rerank_node,
+)
+from .projections.execute_read_projection import (
+    find_detail_resource,
+    project_acquisition_result,
+    project_connector_call,
+    sanitize_acquisition_result,
+)
+from .routing.route_after_assess_sufficiency import (
+    route_after_assess_sufficiency,
+)
+from .routing.route_after_build_query import (
+    route_after_build_query,
+)
+from .routing.route_after_execute_read import (
+    route_after_execute_read,
+)
+from .routing.route_after_finalize_retrieval import (
+    route_after_finalize_retrieval,
+)
+from .routing.route_after_normalize_segments import (
+    route_after_normalize_segments,
+)
+from .routing.route_after_plan_query import (
+    route_after_plan_query,
+)
+from .routing.route_after_rag_retrieve_rerank import (
+    route_after_rag_retrieve_rerank,
+)
+from .routing.route_after_select_evidence import (
+    route_after_select_evidence,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
@@ -509,7 +510,7 @@ class RetrievalSubgraph:
             llm_runtime=self._llm_runtime,
             prompt_ref=self._select_prompt_ref,
             revision_prompt_ref=self._select_prompt_ref,
-            trace_context=_retrieval_trace_context(state, "retrieval.select_evidence"),
+            requested_mode=request.requested_mode,
             segments=cast(list[Any], segments),
             retry_budget=cast(RunBudgetV2, state["retry_budget"]),
         )
@@ -699,7 +700,7 @@ class RetrievalSubgraph:
             ),
             llm_runtime=self._llm_runtime,
             prompt_ref=self._sufficiency_prompt_ref,
-            trace_context=_retrieval_trace_context(state, "retrieval.assess_sufficiency"),
+            requested_mode=request_from_state(state).requested_mode,
             tool_route_plan=state.get("tool_route_plan"),
             acquisition_result=_require_state_value(
                 state["acquisition_result"], "acquisition_result"
@@ -895,9 +896,7 @@ class RetrievalSubgraph:
                             "revision_prompt_ref": self._plan_query_prompt_ref,
                             "output_schema": RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
                             "prompt_input": prompt_input,
-                            "trace_context": _retrieval_trace_context(
-                                state, "retrieval.plan_query"
-                            ),
+                            "requested_mode": request_from_state(state).requested_mode,
                             "frozen_routes": frozen_routes,
                             "route_policies": route_policies,
                             "retry_budget": cast(RunBudgetV2, state["retry_budget"]),
@@ -1266,7 +1265,7 @@ class RetrievalSubgraph:
             if issue is None or not issue["reason_codes"]
             else issue["reason_codes"][0]
         )
-        question: ClarificationQuestionV1 = {
+        question: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": "retrieval.assess_sufficiency",
             "question": f"Please clarify the retrieval requirement: {slot}",

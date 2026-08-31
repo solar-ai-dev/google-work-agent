@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from email.message import Message
 from io import BytesIO
+from typing import cast
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -43,13 +45,18 @@ class _HTTPResponse:
         return self._body
 
 
+def _request_body(request: Request) -> dict[str, object]:
+    assert isinstance(request.data, bytes)
+    return cast(dict[str, object], json.loads(request.data.decode("utf-8")))
+
+
 def test_probe_uses_get_for_version_and_tags(monkeypatch: pytest.MonkeyPatch) -> None:
     requests: list[Request] = []
     responses = [
         json.dumps({"version": "0.32.6"}).encode("utf-8"),
-        json.dumps(
-            {"models": [{"name": "qwen2.5:3b", "digest": "sha256:" + "a" * 64}]}
-        ).encode("utf-8"),
+        json.dumps({"models": [{"name": "qwen2.5:3b", "digest": "sha256:" + "a" * 64}]}).encode(
+            "utf-8"
+        ),
     ]
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -95,7 +102,11 @@ def test_probe_reports_unavailable_on_real_http_error(monkeypatch: pytest.Monkey
     def raise_405(request: Request, *, timeout: int) -> _HTTPResponse:
         del request, timeout
         raise HTTPError(
-            "http://127.0.0.1:11434/api/version", 405, "method not allowed", None, BytesIO(b"")
+            "http://127.0.0.1:11434/api/version",
+            405,
+            "method not allowed",
+            Message(),
+            BytesIO(b""),
         )
 
     monkeypatch.setattr("google_work_agent.adapters.llm.ollama.transport.urlopen", raise_405)
@@ -143,7 +154,7 @@ def test_invoke_structured_still_posts_to_generate(monkeypatch: pytest.MonkeyPat
     assert len(captured) == 1
     assert captured[0].get_method() == "POST"
     assert captured[0].full_url == "http://127.0.0.1:11434/api/generate"
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["system"] == "You are a test assistant."
 
 
@@ -188,7 +199,7 @@ def test_invoke_structured_omits_options_when_sampling_is_unset(
         instruction_text="You are a test assistant.",
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert "options" not in sent_body
 
 
@@ -215,7 +226,7 @@ def test_invoke_structured_sends_fixed_temperature_when_set(
         sampling_temperature=0.0,
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["options"] == {"temperature": 0.0}
 
 
@@ -241,7 +252,7 @@ def test_invoke_structured_sends_fixed_seed_when_set(monkeypatch: pytest.MonkeyP
         sampling_seed=7,
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
 
 
@@ -272,7 +283,7 @@ def test_provider_forwards_runtime_policy_sampling_fields_to_transport(
         api_key=None,
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
 
 
@@ -305,7 +316,7 @@ def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
         api_key=None,
     )
 
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert "options" not in sent_body
 
 
@@ -369,5 +380,5 @@ def test_provider_assembles_instruction_text_only_as_a_local_call_boundary(
     )
 
     assert assembly_calls == [("a.b", {"request": "current run"})]
-    sent_body = json.loads(captured[0].data.decode("utf-8"))
+    sent_body = _request_body(captured[0])
     assert sent_body["system"] == "Resolved instructions for a.b"

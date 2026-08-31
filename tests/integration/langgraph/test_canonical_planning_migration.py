@@ -177,8 +177,10 @@ def _retrieval_result() -> RetrievalResultV1:
         "context_bundle_ref": None,
         "evidence_refs": ["evidence-seg-2"],
         "selected_segment_ids": ["seg-2"],
+        "excluded_segment_ids": [],
         "source_resource_refs": ["task:task-followup"],
         "source_statuses": [],
+        "availability_results": [],
         "missing_information": [],
         "retrieval_rounds": 1,
     }
@@ -270,7 +272,7 @@ def _planning_state(
     plan_review: dict[str, object] | None = None,
     analysis_result: WorkAnalysisResultV1 | None = None,
 ) -> dict[str, object]:
-    state = runtime._initial_state(_start_request())  # noqa: SLF001
+    state = cast(dict[str, object], runtime._initial_state(_start_request()))
     state["request_intent"] = _intent()
     state["tool_route_plan"] = tool_route_plan
     state["retrieval_result"] = _retrieval_result()
@@ -281,8 +283,8 @@ def _planning_state(
     state["answer_draft"] = None
     state["plan_draft"] = cast("ActionPlanDraftV1 | None", plan_draft)
     state["plan_review"] = cast("PlanReviewResultV1 | None", plan_review)
-    runtime._evidence_store.put(run_id=state["run_id"], evidence_drafts=_evidence_drafts())  # noqa: SLF001
-    return cast(dict[str, object], state)
+    runtime._evidence_store.put(run_id=state["run_id"], evidence_drafts=_evidence_drafts())
+    return state
 
 
 def _compose_calls(llm_runtime: _QueuedLLMRuntime) -> list[dict[str, object]]:
@@ -324,7 +326,7 @@ def test_single_action_route_uses_canonical_writer_exactly_once(tmp_path: Path) 
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+        result = runtime._planning_subgraph.invoke(state)
         compose_calls = _compose_calls(llm_runtime)
         assert len(compose_calls) == 1
         assert set(cast(dict[str, object], compose_calls[0]["prompt_input"])) == {
@@ -374,7 +376,7 @@ def test_multiple_action_routes_each_get_their_own_writer_call(tmp_path: Path) -
             tool_route_plan=_tool_route_plan(*routes),
             analysis_result=_analysis_result_with_calendar_event_target(),
         )
-        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+        result = runtime._planning_subgraph.invoke(state)
 
         compose_calls = _compose_calls(llm_runtime)
         assert len(compose_calls) == 2
@@ -422,7 +424,7 @@ def test_llm_candidate_cannot_change_tool_or_effect_identity(tmp_path: Path) -> 
     try:
         route = _task_route()
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(route))
-        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+        result = runtime._planning_subgraph.invoke(state)
 
         # ToolArgumentCandidateV1 has no tool_name/effect field at all --
         # the writer physically cannot express a different Tool/effect, and
@@ -462,7 +464,7 @@ def test_candidate_violating_bound_schema_fails_closed(tmp_path: Path) -> None:
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
         with pytest.raises((PlanningArgumentBindingError, LLMInvocationError, ValueError)):
-            runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+            runtime._planning_subgraph.invoke(state)
     finally:
         runtime.close()
 
@@ -495,7 +497,7 @@ def test_action_id_and_expected_are_deterministically_assembled(tmp_path: Path) 
     )
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
-        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+        result = runtime._planning_subgraph.invoke(state)
 
         action = result["planning_result"]["actions"][0]
         # T5: action_id is one of this run's own id_factory outputs -- never
@@ -531,7 +533,7 @@ def test_candidate_evidence_outside_allowed_set_fails_closed(tmp_path: Path) -> 
     try:
         state = _planning_state(runtime, tool_route_plan=_tool_route_plan(_task_route()))
         with pytest.raises((PlanningArgumentBindingError, LLMInvocationError, ValueError)):
-            runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+            runtime._planning_subgraph.invoke(state)
     finally:
         runtime.close()
 
@@ -643,7 +645,7 @@ def test_legacy_review_revision_input_does_not_restore_broad_planning_authority(
             plan_review=cast(dict[str, object], plan_review),
             analysis_result=_analysis_result_with_calendar_event_target(),
         )
-        result = runtime._planning_subgraph.invoke(state)  # noqa: SLF001
+        result = runtime._planning_subgraph.invoke(state)
 
         compose_calls = _compose_calls(llm_runtime)
         assert len(compose_calls) == 2

@@ -366,9 +366,7 @@ class WriteExecutionStructuralDriver:
                     approval_id=claim.approval_id,
                     execution_attempt_id=attempt_id,
                     tool_name=claimed_input.tool_name,
-                    approval_arguments_hash=calculate_canonical_json_hash(
-                        claimed_input.arguments
-                    ),
+                    approval_arguments_hash=calculate_canonical_json_hash(claimed_input.arguments),
                     final_tool_arguments=prepared.arguments,
                     service_instance_id=self._service_instance_id,
                     mcp_process_instance_id=self._mcp_process_instance_id(),
@@ -597,9 +595,7 @@ class WriteExecutionStructuralDriver:
         except GoogleWorkspaceGatewayError as error:
             if not self._is_auth_error(error):
                 raise
-            self._ensure_unknown_recovery(
-                request, persisted.query.recovery_fingerprint
-            )
+            self._ensure_unknown_recovery(request, persisted.query.recovery_fingerprint)
             if allow_reauth:
                 self._require_reauth(request=request, error=error, kind="recover_unknown_reauth")
             return WriteActionResponse(
@@ -676,9 +672,7 @@ class WriteExecutionStructuralDriver:
                     lookup=lookup,
                 )
             return self._as_write_response(failed)
-        recovery = self._ensure_unknown_recovery(
-            request, persisted.query.recovery_fingerprint
-        )
+        recovery = self._ensure_unknown_recovery(request, persisted.query.recovery_fingerprint)
         if recovery is not None and not recovery.applied:
             return WriteActionResponse(
                 applied=False,

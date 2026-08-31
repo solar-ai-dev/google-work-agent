@@ -1,6 +1,7 @@
 import base64
 import json
 from pathlib import Path
+from typing import cast
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import (
@@ -57,6 +58,9 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
 )
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess,
 )
@@ -98,10 +102,16 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
 )
-from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.connector.oauth_credential_port import (
+    ConnectionMetadataV1,
+    OAuthCredentialPort,
+)
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RunExecutionAcceptedV1,
+    RunExecutionRefV1,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
+    WorkflowHandoffV1,
 )
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import (
@@ -209,19 +219,25 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         node_registry=NodeRegistry(graph_version=RESUME_CONTRACT_VERSION),
         graph_version=RESUME_CONTRACT_VERSION,
     )
+    connector_read = GoogleGatewayConnectorReadPort(gateway)
+    tool_registry = load_signed_tool_registry()
     resource_access = OpaqueConnectorResourceAccess(
         ConnectorResourceAccess(
-            gateway=gateway,
+            gateway=ConnectorReadProjection(connector_read, tool_registry),
             default_calendar_id_provider=lambda: "calendar-primary",
         )
     )
-    connector_read = GoogleGatewayConnectorReadPort(gateway)
-    tool_registry = load_signed_tool_registry()
     container_continuations = LocalResourceContinuationStore(now_ms=clock.now_ms)
+
+    def schedule_run_execution(_command: object) -> RunExecutionAcceptedV1:
+        return RunExecutionAcceptedV1(1, True, "ACCEPTED")
+
     container = ApiContainer(
         unit_of_work_factory=unit_of_work_factory,
         current_account_id_provider=lambda: "account-1",
-        get_connection_status_handler=GetConnectionStatusHandler(_ConnectedCredentials()),
+        get_connection_status_handler=GetConnectionStatusHandler(
+            cast(OAuthCredentialPort, _ConnectedCredentials())
+        ),
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -250,7 +266,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
         ),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
-        schedule_run_execution=lambda _command: None,
+        schedule_run_execution=schedule_run_execution,
         resume_target_registry=resume_target_registry,
         checkpoint_port=checkpoint,
         approve_action_handler=lambda command: command,
@@ -261,7 +277,7 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
             now_ms=clock.now_ms,
             id_generator=id_generator,
             resume_target_registry=resume_target_registry,
-            schedule_run_execution=lambda _command: None,
+            schedule_run_execution=schedule_run_execution,
             project_run_event=ProjectRunEventHandler(publisher),
         ),
         prepare_write_retry_handler=lambda command: command,
@@ -701,14 +717,33 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
 
         binding = checkpoint.load_workflow_binding(run_id)
         assert binding is not None
+        admission = WorkflowExecutionAdmissionV1(
+            1,
+            "ui-projection-admission",
+            "ui-projection-handoff",
+            1,
+            "NORMAL_HANDOFF",
+            WorkflowExecutionBindingV1(
+                1,
+                "START",
+                run_id,
+                binding.langgraph_thread_id,
+                binding.graph_profile,
+                binding.graph_version,
+                binding.requested_mode,
+                None,
+                0,
+                None,
+            ),
+            0,
+        )
         materialize(
-            WorkflowExecutionAdmissionV1(
-                1,
-                "ui-projection-admission",
-                "ui-projection-handoff",
-                1,
-                "NORMAL_HANDOFF",
-                WorkflowExecutionBindingV1(
+            admission,
+            WorkflowHandoffV1(
+                schema_version=1,
+                handoff_id=admission.handoff_id,
+                trigger_command_id="ui-projection-command",
+                execution=RunExecutionRefV1(
                     1,
                     "START",
                     run_id,
@@ -717,12 +752,20 @@ def test_ui_projection_routes_expose_identity_resources_and_run_context(tmp_path
                     binding.graph_version,
                     binding.requested_mode,
                     None,
-                    0,
-                    None,
                 ),
-                0,
+                checkpoint_id=None,
+                checkpoint_generation=0,
+                run_sequence=0,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+                status="DISPATCHED",
+                last_submit_reason=None,
+                execution_admission=admission,
+                applied_checkpoint_id=None,
+                applied_checkpoint_generation=None,
+                version=0,
             ),
-            None,
         )
 
         with connect_sqlite(database_path) as connection:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any, Literal, cast
 
@@ -64,22 +65,50 @@ from tests.support.checkpoint import sqlite_checkpoint
 from google_work_agent.adapters.langgraph.checkpoint_control import (
     LangGraphCheckpointControlAdapter,
 )
+from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
 from google_work_agent.application.use_cases.claim.claim_execution import (
     ClaimExecutionCommand,
 )
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.application.use_cases.run.resume_after_reauth import (
     ResumeAfterReauthCommand,
     ResumeAfterReauthHandler,
+    ResumeAfterReauthResult,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
-from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports.llm import (
+    LLMErrorCode,
+    LLMInvocationError,
+    OutputSchemaDefinition,
+    PromptReference,
+)
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    WorkflowExecutionAdmissionV1,
+    WorkflowHandoffV1,
+)
 
 
 class _BudgetExhaustedLLMRuntime:
+    def infer(
+        self,
+        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        del requested_mode, prompt_ref, input_projection, output_schema_ref
+        raise LLMInvocationError(
+            LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
+            "PROFILE_LLM_LIMIT_EXHAUSTED",
+        )
+
     def invoke_structured(self, **_kwargs: object) -> object:
         raise LLMInvocationError(
             LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED,
@@ -206,8 +235,8 @@ def test_langgraph_runtime_interrupts_for_confirmation_and_resumes_same_thread(
 
     # Q4/E: the paused checkpoint's own task hierarchy proves WHERE the
     # interrupt actually lives -- not just that the thread_id is unchanged.
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    paused_snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    paused_snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert paused_snapshot.next == ("request_understanding",)
     assert len(paused_snapshot.tasks) == 1
     outer_task = paused_snapshot.tasks[0]
@@ -333,8 +362,8 @@ def _nested_request_understanding_task(runtime: LangGraphWorkflowRuntime) -> Any
     subgraph -- asserting on this (rather than only on the final result) is
     what actually distinguishes "same nested checkpoint resume" from a full
     subgraph restart that happens to produce the same final answer."""
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert snapshot.next == ("request_understanding",)
     assert len(snapshot.tasks) == 1
     outer_task = snapshot.tasks[0]
@@ -349,7 +378,10 @@ def _resume_through_application(
     resume_payload: dict[str, object],
     resume_kind: str,
     command_id: str,
-) -> tuple[object, object | None]:
+) -> tuple[
+    ConfirmRunResult | ResumeAfterReauthResult,
+    WorkflowInvocationResult | None,
+]:
     if resume_kind == "CONFIRMATION":
         return resume_confirmation_with_handoff(
             runtime,
@@ -361,18 +393,20 @@ def _resume_through_application(
         run = unit_of_work.runs.get("run-1")
         assert run is not None
         expected_run_version = run.version
-    runtime_results: list[object] = []
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    runtime_results: list[WorkflowInvocationResult] = []
+    checkpoint = cast(SqliteCheckpointAdapter, runtime._checkpoint_port)
 
-    def invoke(admission: object, handoff: object) -> None:
-        binding = admission.effective_binding  # type: ignore[attr-defined]
+    def invoke(admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1) -> None:
+        binding = admission.effective_binding
         latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
         assert latest is not None
+        resume_target = binding.resume_target
+        assert resume_target is not None
         with checkpoint.execution_scope(
             admission,
-            applied_handoff_id=handoff.handoff_id,  # type: ignore[attr-defined]
+            applied_handoff_id=handoff.handoff_id,
             owner_scope=latest.owner_scope,
-            resume_target=binding.resume_target,
+            resume_target=resume_target,
         ):
             invocation_payload = dict(resume_payload)
             if resume_kind == "REAUTH_COMPLETED":
@@ -412,7 +446,7 @@ def _resume_through_application(
         )
         handler = ResumeAfterReauthHandler(
             unit_of_work_factory=sqlite_unit_of_work_factory(database_path),
-            checkpoint_port=runtime._checkpoint_port,  # noqa: SLF001
+            checkpoint_port=runtime._checkpoint_port,
             now_ms=FakeClockPort(2000).now_ms,
             resolve_resume_authority=lambda **kwargs: runtime.resolve_resume_authority(
                 run_id=str(kwargs["run_id"]),
@@ -420,7 +454,7 @@ def _resume_through_application(
                 resume_kind=str(kwargs["resume_kind"]),
             ),
             id_generator=DeterministicUUID(prefix=f"handoff-{command_id}"),
-            resume_target_registry=runtime._resume_target_registry,  # noqa: SLF001
+            resume_target_registry=runtime._resume_target_registry,
             schedule_run_execution=schedule,
         )
         application_result = handler(
@@ -441,9 +475,11 @@ def _resume_through_application(
         executor.close()
 
 
-def _materialize_resume_target(runtime: LangGraphWorkflowRuntime, admission: object) -> object:
-    binding = admission.effective_binding  # type: ignore[attr-defined]
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+def _materialize_resume_target(
+    runtime: LangGraphWorkflowRuntime, admission: WorkflowExecutionAdmissionV1
+) -> GraphCheckpointEnvelopeV1:
+    binding = admission.effective_binding
+    checkpoint = cast(SqliteCheckpointAdapter, runtime._checkpoint_port)
     latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
     assert latest is not None
     target = binding.resume_target
@@ -522,7 +558,7 @@ def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_b
         resume_kind="CONFIRMATION",
         command_id="command-2",
     )
-    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert application_result.applied is True
     assert second is not None
     # A second real pause, NOT an error and NOT the run silently completing.
     assert second.outcome is WorkflowOutcome.ACCEPTED
@@ -589,7 +625,7 @@ def test_langgraph_runtime_promotes_consecutive_confirmation_to_revision_heavy_b
         resume_kind="CONFIRMATION",
         command_id="command-3",
     )
-    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert application_result.applied is True
     assert resolved is not None
     assert resolved.outcome is WorkflowOutcome.COMPLETED
     assert (
@@ -788,7 +824,7 @@ def test_langgraph_runtime_restart_verifies_executed_action_without_replaying_wr
         raise RuntimeError("simulated process crash after StoreSuccess commit")
 
     monkeypatch.setattr(
-        runtime._write_execution_phase,  # noqa: SLF001
+        runtime._write_execution_phase,
         "_verify_effect",
         crash_before_verification,
     )
@@ -956,7 +992,7 @@ def test_verification_auth_expired_reauths_and_resumes_to_verified_without_repla
         resume_kind="REAUTH_COMPLETED",
         command_id="reauth-resume-command",
     )
-    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert application_result.applied is True
     assert resumed is not None
     assert resumed.outcome is WorkflowOutcome.COMPLETED
 
@@ -1087,7 +1123,7 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
         resume_kind="REAUTH_COMPLETED",
         command_id="reauth-resume-recovery-reauth-command",
     )
-    assert application_result.applied is True  # type: ignore[attr-defined]
+    assert application_result.applied is True
     assert resumed is None
     resumed = runtime.recover_open_run(
         WorkflowRecoveryRequest(
@@ -1114,18 +1150,22 @@ def test_recovery_unknown_auth_expired_reauths_and_resumes_without_replaying_wri
         ).fetchone()[0]
     finally:
         connection.close()
-    continuation_results: list[object] = []
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    continuation_results: list[WorkflowInvocationResult] = []
+    checkpoint = cast(SqliteCheckpointAdapter, runtime._checkpoint_port)
 
-    def invoke_continuation(admission: object, handoff: object) -> None:
-        binding = admission.effective_binding  # type: ignore[attr-defined]
+    def invoke_continuation(
+        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
+    ) -> None:
+        binding = admission.effective_binding
         latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
         assert latest is not None
+        resume_target = binding.resume_target
+        assert resume_target is not None
         with checkpoint.execution_scope(
             admission,
-            applied_handoff_id=handoff.handoff_id,  # type: ignore[attr-defined]
+            applied_handoff_id=handoff.handoff_id,
             owner_scope=latest.owner_scope,
-            resume_target=binding.resume_target,
+            resume_target=resume_target,
         ):
             continuation_results.append(
                 runtime.resume(
@@ -1234,8 +1274,8 @@ def test_langgraph_runtime_restart_reconciles_a_claim_stalled_before_dispatch(
     # Claim commits (Action -> EXECUTING, Attempt -> CLAIMED), then the
     # process is simulated to crash before BeginExecutionAttempt. The durable
     # fact therefore proves provider dispatch was zero.
-    runtime._preflight_write(action_id=action_id)  # noqa: SLF001
-    claim = runtime._claim_execution(  # noqa: SLF001
+    runtime._preflight_write(action_id=action_id)
+    claim = runtime._claim_execution(
         ClaimExecutionCommand(
             command_id="claim-before-stall",
             request_hash="1" * 64,

@@ -12,7 +12,10 @@ from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionStructuralDriver,
 )
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
-from google_work_agent.application.use_cases.claim.claim_execution import ClaimExecutionResult
+from google_work_agent.application.use_cases.claim.claim_execution import (
+    ClaimExecutionCommand,
+    ClaimExecutionResult,
+)
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionResultV1,
 )
@@ -285,7 +288,9 @@ def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
     ).execute(_request())
 
     assert result.disposition is WriteExecutionDisposition.VERIFIED
-    assert claim_call.invocations[0][0][0].source_snapshot == source_snapshot
+    claim_command = claim_call.invocations[0][0][0]
+    assert isinstance(claim_command, ClaimExecutionCommand)
+    assert claim_command.source_snapshot == source_snapshot
 
 
 def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:

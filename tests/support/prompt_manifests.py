@@ -159,9 +159,9 @@ def write_manifest_with_legacy_profile_slots(
                 }
             )
             activated.add(str(prompt_id))
-    missing_active = sorted(active - activated)
-    if missing_active:
-        raise ValueError(f"prompt slots not found in canonical manifest: {missing_active}")
+    unresolved_active = sorted(active - activated)
+    if unresolved_active:
+        raise ValueError(f"prompt slots not found in canonical manifest: {unresolved_active}")
 
     added: set[str] = set()
     for entry in legacy_entries:

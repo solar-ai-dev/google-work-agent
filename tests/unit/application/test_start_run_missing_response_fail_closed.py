@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from tests.unit.application.test_start_run_receipt_recovery import (
     _command,
     _received,
@@ -26,8 +30,8 @@ def test_completed_receipt_without_response_and_without_aggregate_is_not_reappli
 
     with pytest.raises(RuntimeError, match="missing replay response"):
         StartRunHandler(
-            unit_of_work_factory=lambda: uow,
-            checkpoint_port=uow.workflow_bindings,
+            unit_of_work_factory=cast(Callable[[], UnitOfWork], lambda: uow),
+            checkpoint_port=cast(CheckpointPort, uow.workflow_bindings),
             now_ms=lambda: 20,
             id_factory=lambda: "unused",
             graph_profile="SIX_ROLE_BASELINE",

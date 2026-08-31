@@ -133,7 +133,7 @@ class ReconcileInflightExecutionsHandler:
                 "error_code": "PROCESS_RESTART_BEFORE_BEGIN",
                 "error_detail": error_detail,
             }
-            result = self._abort_claimed_execution(
+            abort_result = self._abort_claimed_execution(
                 AbortClaimedExecutionCommandV1(
                     command_id=f"system:execution-attempt-reconcile:{attempt.id}:abort",
                     request_hash=calculate_canonical_json_hash(payload),
@@ -145,7 +145,7 @@ class ReconcileInflightExecutionsHandler:
                     error_detail=error_detail,
                 )
             )
-            return int(result.applied)
+            return int(abort_result.applied)
         if candidate.kind == "POST_BEGIN_ORPHAN":
             with self._unit_of_work_factory() as unit_of_work:
                 action = unit_of_work.actions.get(candidate.action_id)
@@ -153,7 +153,7 @@ class ReconcileInflightExecutionsHandler:
             if action is None or attempt is None:
                 return 0
             command_id = f"system:execution-attempt-reconcile:{candidate.execution_attempt_id}"
-            result = self._mark_unknown_result(
+            unknown_result = self._mark_unknown_result(
                 MarkUnknownResultCommand(
                     command_id=command_id,
                     request_hash=calculate_canonical_json_hash(
@@ -168,7 +168,7 @@ class ReconcileInflightExecutionsHandler:
                     error_detail="process ended after BeginExecutionAttempt commit",
                 )
             )
-            return int(result.applied)
+            return int(unknown_result.applied)
         if candidate.kind == "UNKNOWN_RESULT_UNRESOLVED":
             return int(self._reconcile_unknown_result(candidate))
         if candidate.kind == "EXECUTED_AWAITING_VERIFICATION":

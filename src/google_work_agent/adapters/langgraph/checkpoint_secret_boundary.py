@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver, get_checkpoint_metadata
 
@@ -48,7 +48,10 @@ class SecretBoundaryCheckpointer(BaseCheckpointSaver[Any]):
         before: Any = None,
         limit: int | None = None,
     ) -> Iterator[Any]:
-        return self._delegate.list(config, filter=filter, before=before, limit=limit)
+        return cast(
+            Iterator[Any],
+            self._delegate.list(config, filter=filter, before=before, limit=limit),
+        )
 
     def put(
         self,

@@ -18,8 +18,17 @@ from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.use_cases.runtime_status.get_runtime_status import (
     GetRuntimeStatusHandler,
 )
-from google_work_agent.ports.connector.oauth_credential_port import ConnectionMetadataV1
+from google_work_agent.ports.connector.oauth_credential_port import (
+    AccessContextHandle,
+    AuthorizationStartV1,
+    ConnectionMetadataV1,
+    OAuthEnvironment,
+    RevokeResultV1,
+)
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    OperationalReconcileResultV1,
+)
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import (
     ReadinessCheckResult,
@@ -37,8 +46,40 @@ class _CoordinatorStub:
 
 
 class _OAuthStatusStub:
+    def start_authorization(
+        self,
+        connector_id: str,
+        environment: OAuthEnvironment,
+        requested_scopes: tuple[str, ...],
+        operation_ref: str,
+    ) -> AuthorizationStartV1:
+        del connector_id, environment, requested_scopes, operation_ref
+        raise AssertionError("authorization is outside this runtime-status test")
+
+    def reconcile_authorization_start(
+        self, connector_id: str, operation_ref: str
+    ) -> OperationalReconcileResultV1:
+        del connector_id, operation_ref
+        raise AssertionError("authorization reconciliation is outside this test")
+
+    def refresh_access(self, connector_id: str, account_id: str) -> AccessContextHandle:
+        del connector_id, account_id
+        raise AssertionError("credential refresh is outside this runtime-status test")
+
     def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
         return ConnectionMetadataV1(1, connector_id, None, None, "DISCONNECTED", (), ())
+
+    def revoke_connection(
+        self, connector_id: str, account_id: str, operation_ref: str
+    ) -> RevokeResultV1:
+        del connector_id, account_id, operation_ref
+        raise AssertionError("revocation is outside this runtime-status test")
+
+    def reconcile_revoke_connection(
+        self, connector_id: str, account_id: str, operation_ref: str
+    ) -> OperationalReconcileResultV1:
+        del connector_id, account_id, operation_ref
+        raise AssertionError("revocation reconciliation is outside this test")
 
 
 class _LlmStatusStub:

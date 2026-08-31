@@ -214,7 +214,7 @@ def test_native_profiles_record_answer_path_invocation_counts(
     )
     try:
         three_result = three.start(_start_request())
-        three_state = three._graph.get_state(three._config_for_thread("thread-1"))  # noqa: SLF001
+        three_state = three._graph.get_state(three._config_for_thread("thread-1"))
         assert three_result.outcome is WorkflowOutcome.COMPLETED
         assert three_state.values["trace_context"]["agent_invocation_count"] == 5
         assert three_state.values["trace_context"]["llm_call_count"] == 13
@@ -234,7 +234,7 @@ def test_native_profiles_record_answer_path_invocation_counts(
     )
     try:
         single_result = single.start(_start_request())
-        single_state = single._graph.get_state(single._config_for_thread("thread-1"))  # noqa: SLF001
+        single_state = single._graph.get_state(single._config_for_thread("thread-1"))
         assert single_result.outcome is WorkflowOutcome.COMPLETED
         assert single_state.values["trace_context"]["agent_invocation_count"] == 5
         assert single_state.values["trace_context"]["llm_call_count"] == 13

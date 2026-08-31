@@ -1,14 +1,15 @@
-# ruff: noqa: E501
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.aggregate_review_findings_node import (
-    aggregate_review_findings_node,
+from typing import cast
+
+from google_work_agent.adapters.langgraph.subgraphs.review.nodes import (
+    aggregate_review_findings_node as aggregate_node_module,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.projections.aggregate_review_findings_projection import (
-    project_aggregate_review_findings_input,
+from google_work_agent.adapters.langgraph.subgraphs.review.projections import (
+    aggregate_review_findings_projection as aggregate_projection_module,
 )
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_aggregate_review_findings import (
-    route_after_aggregate_review_findings,
+from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
+    route_after_aggregate_review_findings as aggregate_route_module,
 )
 
 
@@ -25,8 +26,11 @@ def test_aggregate_node_owns_aggregation_and_validation_without_pseudo_node() ->
         },
         "unrelated": "excluded",
     }
-    assert "unrelated" not in project_aggregate_review_findings_input(state)
-    patch = aggregate_review_findings_node(state)
-    assert patch["review_result"]["status"] == "PASS"
+    assert "unrelated" not in aggregate_projection_module.project_aggregate_review_findings_input(
+        state
+    )
+    patch = aggregate_node_module.aggregate_review_findings_node(state)
+    review_result = cast(dict[str, object], patch["review_result"])
+    assert review_result["status"] == "PASS"
     assert patch["workflow_signal"] is None
-    assert route_after_aggregate_review_findings(patch) == "end"
+    assert aggregate_route_module.route_after_aggregate_review_findings(patch) == "end"

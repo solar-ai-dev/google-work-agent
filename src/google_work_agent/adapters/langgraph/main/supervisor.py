@@ -27,12 +27,11 @@ from google_work_agent.application.agents.planning.contracts.planning_result imp
     ActionPlanDraftV1,
     AnswerDraftV1,
 )
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output,
+)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
-)
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (  # noqa: E501
-    ClarificationQuestionV1,
-    RequestUnderstandingOutputV1,
 )
 from google_work_agent.application.agents.retrieval.assess_sufficiency import (
     InsufficientDataContext,
@@ -89,7 +88,7 @@ JsonObject = dict[str, object]
 
 def _source_planning_clarification(
     output: SourcePlanningOutputV1, request_intent: RequestIntentV2
-) -> ClarificationQuestionV1:
+) -> request_understanding_output.ClarificationQuestionV1:
     raw = output.get("clarification")
     if not isinstance(raw, Mapping):
         raise ValueError("source-planning clarification is required")
@@ -171,7 +170,10 @@ def route_supervisor(
     if current_phase is WorkflowPhase.REQUEST_ANALYSIS:
         return _route_request_understanding(
             state=state,
-            output=cast(RequestUnderstandingOutputV1, _require_mapping(result, "result")),
+            output=cast(
+                request_understanding_output.RequestUnderstandingOutputV1,
+                _require_mapping(result, "result"),
+            ),
         )
     if current_phase is WorkflowPhase.TOOL_ROUTING:
         return _route_tool_routing(
@@ -297,7 +299,7 @@ def _route_reconsideration(
 def _route_request_understanding(
     *,
     state: MultiAgentGraphState,
-    output: RequestUnderstandingOutputV1,
+    output: request_understanding_output.RequestUnderstandingOutputV1,
 ) -> SupervisorDecisionV1:
     result = RequestUnderstandingResult(output["result"])
     request_intent = output.get("request_intent")
@@ -368,7 +370,7 @@ def _route_tool_routing(
             reason_code=disposition.value,
         )
     if disposition is ToolRouteDisposition.NEEDS_CONFIRMATION:
-        question: ClarificationQuestionV1 = {
+        question: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": "tool_route.finalize",
             "question": "작업 대상 또는 작업 종류를 더 구체적으로 알려주세요.",
@@ -790,7 +792,7 @@ def _route_plan_review(
         )
     if status is ReviewResult.CONFIRM:
         confirmation = cast(ReviewConfirmV2, result)["confirmation"]
-        question: ClarificationQuestionV1 = {
+        question: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": "review.aggregate_findings",
             "question": confirmation["question"],
@@ -1008,7 +1010,7 @@ def _base_state_update(
 
 def _confirmation_state_update(
     *,
-    question: ClarificationQuestionV1,
+    question: request_understanding_output.ClarificationQuestionV1,
     **extra: object,
 ) -> JsonObject:
     update: JsonObject = {
@@ -1112,7 +1114,9 @@ def _planning_state_update(
     return update
 
 
-def _request_invalid_reason_code(output: RequestUnderstandingOutputV1) -> str:
+def _request_invalid_reason_code(
+    output: request_understanding_output.RequestUnderstandingOutputV1,
+) -> str:
     # RequestIntentV2 has no unsupported_scope field: Request Understanding
     # no longer judges product-capability support (Q2-X). INVALID is now
     # reserved for malformed/unusable classify output, so the only reason

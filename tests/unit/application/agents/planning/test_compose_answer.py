@@ -25,7 +25,9 @@ def test_compose_uses_approved_outline_and_emits_v2_candidate() -> None:
 
     assert result["schema_version"] == 2
     assert captured["prompt_id"] == "planning.compose_answer"
-    assert set(captured["prompt_input"]) == {
+    prompt_input = captured["prompt_input"]
+    assert isinstance(prompt_input, dict)
+    assert set(prompt_input) == {
         "user_request",
         "request_intent",
         "answer_outline",

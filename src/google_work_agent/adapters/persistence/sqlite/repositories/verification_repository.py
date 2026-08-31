@@ -12,7 +12,9 @@ class SqliteVerificationRepository:
 
     def insert(self, record: VerificationRecord) -> None:
         self._connection.execute(
-            "INSERT INTO verifications (id, execution_attempt_id, verification_no, status, normalizer_version, expected_json, actual_json, diff_json, verified_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO verifications (id, execution_attempt_id, verification_no, status, "
+            "normalizer_version, expected_json, actual_json, diff_json, verified_at_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
             (
                 record.id,
                 record.execution_attempt_id,
@@ -28,7 +30,9 @@ class SqliteVerificationRepository:
 
     def get_latest_for_attempt(self, execution_attempt_id: str) -> VerificationRecord | None:
         row = self._connection.execute(
-            "SELECT id, execution_attempt_id, verification_no, status, normalizer_version, expected_json, actual_json, diff_json, verified_at_ms FROM verifications WHERE execution_attempt_id = ? ORDER BY verification_no DESC LIMIT 1;",  # noqa: E501
+            "SELECT id, execution_attempt_id, verification_no, status, normalizer_version, "
+            "expected_json, actual_json, diff_json, verified_at_ms FROM verifications "
+            "WHERE execution_attempt_id = ? ORDER BY verification_no DESC LIMIT 1;",
             (execution_attempt_id,),
         ).fetchone()
         return None if row is None else self._record(row)

@@ -4,13 +4,13 @@ from google_work_agent.domain.run.transitions.request_confirmation import (
 )
 
 
-def test_request_confirmation_applies_canonical_transition():
+def test_request_confirmation_applies_canonical_transition() -> None:
     assert (
         transition_request_confirmation(RunStatusV1.ANALYZING) is RunStatusV1.WAITING_CONFIRMATION
     )
 
 
-def test_request_confirmation_rejects_unrelated_status():
+def test_request_confirmation_rejects_unrelated_status() -> None:
     try:
         transition_request_confirmation(RunStatusV1.FAILED)
     except RunTransitionRejected:

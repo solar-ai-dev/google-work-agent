@@ -24,7 +24,9 @@ def test_outline_uses_distinct_prompt_and_minimum_projection() -> None:
 
     assert result == {"sections": ["Conclusion", "Uncertainty"], "evidence_refs": ["e1"]}
     assert captured["prompt_id"] == "planning.outline_answer"
-    assert set(captured["prompt_input"]) == {
+    prompt_input = captured["prompt_input"]
+    assert isinstance(prompt_input, dict)
+    assert set(prompt_input) == {
         "user_request",
         "request_intent",
         "work_analysis",

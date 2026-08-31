@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import cast
+
 from google_work_agent.application.agents.review.aggregate_review_findings import (
     aggregate_review_findings,
+)
+from google_work_agent.application.agents.review.contracts.review_findings import (
+    ReviewSemanticInvoker,
 )
 from google_work_agent.application.agents.review.inspect_action_scope_and_route import (
     inspect_action_scope_and_route,
@@ -35,7 +41,7 @@ def test_review_operation_inventory_is_6_of_6() -> None:
 def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
     prompt_calls: list[str] = []
 
-    def invoke(prompt_id: str, _input: dict[str, object]) -> dict[str, object]:
+    def invoke(prompt_id: str, _input: Mapping[str, object]) -> Mapping[str, object]:
         prompt_calls.append(prompt_id)
         if prompt_id == "review.recheck_affected_dimensions":
             return {
@@ -64,7 +70,7 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
         tool_route_plan={},
         planning_result={},
         evidence=[],
-        invoke=invoke,
+        invoke=cast(ReviewSemanticInvoker, invoke),
     )
 
     assert prompt_calls == [
@@ -77,6 +83,13 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
 
 
 def test_three_review_inspection_authorities_remain_independent() -> None:
-    assert inspect_goal_and_evidence is not inspect_action_scope_and_route
-    assert inspect_goal_and_evidence is not inspect_constraints_and_policy_summary
-    assert inspect_action_scope_and_route is not inspect_constraints_and_policy_summary
+    assert (
+        len(
+            {
+                id(inspect_goal_and_evidence),
+                id(inspect_action_scope_and_route),
+                id(inspect_constraints_and_policy_summary),
+            }
+        )
+        == 3
+    )

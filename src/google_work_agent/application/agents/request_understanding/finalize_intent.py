@@ -26,4 +26,4 @@ def finalize_intent(
             "meta": {"artifact_id": artifact_id, "revision": 1, "based_on": []},
         },
         require_meta=True,
-    )  # type: ignore[return-value]
+    )

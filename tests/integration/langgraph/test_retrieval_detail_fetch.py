@@ -66,10 +66,11 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
         default_tasklist_id="task-list-default",
     )
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _clear_intent()
-        state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _clear_intent()
+        request_intent["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
         input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
         task_routes = [route for route in input_routes if route["resource_type"] == "TASK"]
         assert len(task_routes) == 1
@@ -79,7 +80,7 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
         # fetched them, so the DETAIL_FETCH queue entry is appended after
         # Tool Route froze the real route_id, matching the FREEBUSY test's
         # pattern for the same reason.
-        llm_runtime._queued.extend(  # noqa: SLF001
+        llm_runtime._queued.extend(
             [
                 _llm_result(_selection_output()),
                 _llm_result(_sufficiency_output("NEEDS_MORE_DATA")),
@@ -91,7 +92,7 @@ def test_detail_fetch_followup_round_reaches_retrieval_result_without_leakage(
             ]
         )
 
-        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(routed)
 
         assert context["__target__"] == "work_analysis"
         retrieval_result = context["retrieval_result"]

@@ -1,16 +1,24 @@
 from types import SimpleNamespace
+from typing import Any, Literal, cast
 from unittest.mock import Mock
 
 import pytest
 
-from google_work_agent.application.use_cases.execution_attempt.reconcile_inflight_executions import (  # noqa: E501
-    ReconcileInflightExecutionsCommand,
-    ReconcileInflightExecutionsHandler,
+from google_work_agent.application.use_cases.execution_attempt import (
+    reconcile_inflight_executions,
 )
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.persistence.execution_attempt_repository import (
     ExecutionReconciliationCandidateV1,
+)
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+ReconcileInflightExecutionsCommand = (
+    reconcile_inflight_executions.ReconcileInflightExecutionsCommand
+)
+ReconcileInflightExecutionsHandler = (
+    reconcile_inflight_executions.ReconcileInflightExecutionsHandler
 )
 
 
@@ -25,8 +33,16 @@ class _UnitOfWork:
         return None
 
 
-def _candidate(kind: str) -> ExecutionReconciliationCandidateV1:
-    return ExecutionReconciliationCandidateV1(  # type: ignore[arg-type]
+def _candidate(
+    kind: Literal[
+        "PRE_BEGIN_ORPHAN",
+        "POST_BEGIN_ORPHAN",
+        "UNKNOWN_RESULT_UNRESOLVED",
+        "EXECUTED_AWAITING_VERIFICATION",
+        "FAILED_AWAITING_CONTINUATION",
+    ],
+) -> ExecutionReconciliationCandidateV1:
+    return ExecutionReconciliationCandidateV1(
         schema_version=1,
         kind=kind,
         execution_attempt_id="attempt-1",
@@ -39,8 +55,10 @@ def test_batch_uses_bounded_repository_contract_and_reports_progress() -> None:
     candidates = (_candidate("UNKNOWN_RESULT_UNRESOLVED"),) * 2
     attempts = SimpleNamespace(list_reconciliation_candidates=Mock(return_value=candidates))
     handler = object.__new__(ReconcileInflightExecutionsHandler)
-    handler._unit_of_work_factory = lambda: _UnitOfWork(execution_attempts=attempts)
-    handler._reconcile = Mock(side_effect=(1, 0))  # type: ignore[method-assign]
+    handler._unit_of_work_factory = lambda: cast(
+        UnitOfWork, _UnitOfWork(execution_attempts=attempts)
+    )
+    cast(Any, handler)._reconcile = Mock(side_effect=(1, 0))
 
     result = handler(ReconcileInflightExecutionsCommand(schema_version=1, limit=2))
 
@@ -55,9 +73,12 @@ def test_post_begin_orphan_marks_unknown_without_resending_write() -> None:
     attempt = SimpleNamespace(id="attempt-1", version=4)
     mark_unknown = Mock(return_value=SimpleNamespace(applied=True))
     handler = object.__new__(ReconcileInflightExecutionsHandler)
-    handler._unit_of_work_factory = lambda: _UnitOfWork(
-        actions=SimpleNamespace(get=Mock(return_value=action)),
-        execution_attempts=SimpleNamespace(get=Mock(return_value=attempt)),
+    handler._unit_of_work_factory = lambda: cast(
+        UnitOfWork,
+        _UnitOfWork(
+            actions=SimpleNamespace(get=Mock(return_value=action)),
+            execution_attempts=SimpleNamespace(get=Mock(return_value=attempt)),
+        ),
     )
     handler._mark_unknown_result = mark_unknown
 
@@ -75,9 +96,12 @@ def test_pre_begin_orphan_aborts_claim_without_resending_write() -> None:
     attempt = SimpleNamespace(id="attempt-1", version=0)
     abort = Mock(return_value=SimpleNamespace(applied=True))
     handler = object.__new__(ReconcileInflightExecutionsHandler)
-    handler._unit_of_work_factory = lambda: _UnitOfWork(
-        actions=SimpleNamespace(get=Mock(return_value=action)),
-        execution_attempts=SimpleNamespace(get=Mock(return_value=attempt)),
+    handler._unit_of_work_factory = lambda: cast(
+        UnitOfWork,
+        _UnitOfWork(
+            actions=SimpleNamespace(get=Mock(return_value=action)),
+            execution_attempts=SimpleNamespace(get=Mock(return_value=attempt)),
+        ),
     )
     handler._abort_claimed_execution = abort
 
@@ -97,19 +121,23 @@ def test_failed_continuation_uses_current_plan_and_current_run_guard() -> None:
     actions = SimpleNamespace(
         list_for_plan=Mock(return_value=(SimpleNamespace(status="APPROVED"),))
     )
-    handler._unit_of_work_factory = lambda: _UnitOfWork(
-        runs=SimpleNamespace(get=Mock(return_value=run)),
-        plans=SimpleNamespace(get_current=Mock(return_value=current_plan)),
-        actions=actions,
+    handler._unit_of_work_factory = lambda: cast(
+        UnitOfWork,
+        _UnitOfWork(
+            runs=SimpleNamespace(get=Mock(return_value=run)),
+            plans=SimpleNamespace(get_current=Mock(return_value=current_plan)),
+            actions=actions,
+        ),
     )
-    handler._stage_continuation = Mock(return_value=True)  # type: ignore[method-assign]
+    stage_continuation = Mock(return_value=True)
+    cast(Any, handler)._stage_continuation = stage_continuation
 
     candidate = _candidate("FAILED_AWAITING_CONTINUATION")
     assert handler._reconcile(candidate) == 1
-    handler._stage_continuation.assert_called_once_with(candidate, "PREFLIGHT", ":post-failed")
+    stage_continuation.assert_called_once_with(candidate, "PREFLIGHT", ":post-failed")
 
     run.status = RunStatusV1.CANCELLED
     actions.list_for_plan.return_value = ()
-    handler._stage_continuation.reset_mock()
+    stage_continuation.reset_mock()
     assert handler._reconcile(candidate) == 0
-    handler._stage_continuation.assert_not_called()
+    stage_continuation.assert_not_called()

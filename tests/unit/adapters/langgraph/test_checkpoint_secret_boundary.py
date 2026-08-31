@@ -6,7 +6,8 @@ from secrets import token_urlsafe
 from typing import Any, TypedDict
 
 import pytest
-from langgraph.checkpoint.base import empty_checkpoint
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import CheckpointMetadata, empty_checkpoint
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
@@ -280,23 +281,21 @@ def test_compiled_graph_checkpoint_secret_state_fails_closed_without_raw_db_byte
     access_token = _secret("compiled-access")
     refresh_token = _secret("compiled-refresh")
     authorization = f"Bearer {_secret('compiled-auth')}"
-    config = {"configurable": {"thread_id": "compiled-secret"}}
+    config: RunnableConfig = {"configurable": {"thread_id": "compiled-secret"}}
+    state: _SecretCompiledGraphState = {
+        "count": 0,
+        "provider": {
+            "headers": {"Authorization": authorization},
+            "oauth": {
+                "access_token": access_token,
+                "refreshToken": refresh_token,
+            },
+        },
+    }
 
     try:
         with pytest.raises(SanitizationError):
-            graph.invoke(
-                {
-                    "count": 0,
-                    "provider": {
-                        "headers": {"Authorization": authorization},
-                        "oauth": {
-                            "access_token": access_token,
-                            "refreshToken": refresh_token,
-                        },
-                    },
-                },
-                config,
-            )
+            graph.invoke(state, config)
     finally:
         connection.close()
 
@@ -316,9 +315,9 @@ def test_compiled_graph_checkpoint_secret_state_fails_closed_without_raw_db_byte
 
 def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
     connection, checkpointer = _checkpointer()
-    config = {"configurable": {"thread_id": "sync-only", "checkpoint_ns": ""}}
+    config: RunnableConfig = {"configurable": {"thread_id": "sync-only", "checkpoint_ns": ""}}
     checkpoint = empty_checkpoint()
-    metadata = {"source": "input", "step": -1, "parents": {}}
+    metadata: CheckpointMetadata = {"source": "input", "step": -1, "parents": {}}
 
     async def consume_alist() -> None:
         async for _item in checkpointer.alist(config):

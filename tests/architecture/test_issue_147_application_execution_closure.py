@@ -49,9 +49,9 @@ def test_issue_147_exact_owners_tests_symbols_and_callers_exist() -> None:
 
 
 def test_issue_147_has_one_write_dispatch_chain_and_no_broad_facade() -> None:
-    execution_phase = (
-        SOURCE / "adapters/langgraph/write_execution_driver.py"
-    ).read_text(encoding="utf-8")
+    execution_phase = (SOURCE / "adapters/langgraph/write_execution_driver.py").read_text(
+        encoding="utf-8"
+    )
     begin = execution_phase.index("begun = self._begin_execution_attempt(")
     dispatch = execution_phase.index("dispatch_result = self._connector_execution.dispatch_write(")
     classify = execution_phase.index("decision = self._classify_dispatch_result(")

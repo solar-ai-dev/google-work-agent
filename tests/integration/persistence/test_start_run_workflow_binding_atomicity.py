@@ -4,6 +4,7 @@ import itertools
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -65,7 +66,7 @@ def test_commit_failure_leaves_no_partial_start_run_participant(tmp_path: Path) 
     database_path = _database(tmp_path)
 
     def factory() -> UnitOfWork:
-        return _CommitFailingUnitOfWork(database_path)
+        return cast(UnitOfWork, _CommitFailingUnitOfWork(database_path))
 
     handler = StartRunHandler(
         unit_of_work_factory=factory,

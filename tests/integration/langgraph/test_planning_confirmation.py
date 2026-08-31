@@ -53,7 +53,9 @@ from tests.support.canonical_workflow_runtime import (
 )
 from tests.support.checkpoint import sqlite_checkpoint
 
+from google_work_agent.application.use_cases.run.confirm_run import ConfirmRunResult
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.ports.system.contracts.workflow_execution import WorkflowInvocationResult
 
 
 def _answer_output(
@@ -127,7 +129,7 @@ def _queue_more(llm_runtime: _QueuedLLMRuntime, payloads: list[object]) -> None:
     ``resolve_evidence_projection`` depends on the run-memory-only
     ``RunScopedEvidenceStore`` (D1, out of C5's scope), same constraint
     already documented for Work Analysis in C4."""
-    llm_runtime._queued.extend(_llm_result(item) for item in payloads)  # noqa: SLF001
+    llm_runtime._queued.extend(_llm_result(item) for item in payloads)
 
 
 def _resume_confirmation(
@@ -136,7 +138,7 @@ def _resume_confirmation(
     database_path: Path,
     resume_payload: dict[str, object],
     command_id: str,
-) -> tuple[object, object | None]:
+) -> tuple[ConfirmRunResult, WorkflowInvocationResult | None]:
     return resume_confirmation_with_handoff(
         runtime,
         database_path,
@@ -149,8 +151,8 @@ def _nested_planning_task(runtime: LangGraphWorkflowRuntime) -> Any:
     """The paused checkpoint's own task for the nested planning subgraph --
     asserting on this is what actually distinguishes "same nested checkpoint
     resume" from a full subgraph restart."""
-    thread_config = runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)  # noqa: SLF001
+    thread_config = runtime._invocation.config_for_thread("thread-1")
+    snapshot = runtime._graph.get_state(thread_config, subgraphs=True)
     assert snapshot.next == ("planning",)
     assert len(snapshot.tasks) == 1
     outer_task = snapshot.tasks[0]
@@ -355,9 +357,7 @@ def test_planning_answer_resume_does_not_re_execute_upstream(tmp_path: Path) -> 
         )
 
         # T5: only the two exact runtime-node identities are recorded.
-        state = runtime._graph.get_state(  # noqa: SLF001
-            runtime._invocation.config_for_thread("thread-1")  # noqa: SLF001
-        ).values
+        state = runtime._graph.get_state(runtime._invocation.config_for_thread("thread-1")).values
         node_log = state["trace_context"]["agent_node_log"]
         planning_entries = [entry for entry in node_log if entry["agent_subgraph_id"] == "planning"]
         assert {entry["node_name"] for entry in planning_entries} == {

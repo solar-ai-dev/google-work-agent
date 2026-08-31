@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -21,6 +22,7 @@ from google_work_agent.application.use_cases.resource_ref.persist_resource_ref i
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 def _seed_plan(database_path: Path) -> None:
@@ -215,4 +217,4 @@ def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path
         SqliteUnitOfWork(database_path) as unit_of_work,
         pytest.raises(LookupError, match="connector/resource type is not registered"),
     ):
-        persist_registered_resource_ref(unit_of_work, resource_ref)
+        persist_registered_resource_ref(cast(UnitOfWork, unit_of_work), resource_ref)

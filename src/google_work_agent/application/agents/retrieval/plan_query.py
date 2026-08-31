@@ -35,7 +35,7 @@ from google_work_agent.ports.llm import (
     PromptReference,
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 
 def plan_query(
@@ -45,7 +45,7 @@ def plan_query(
     revision_prompt_ref: PromptReference,
     output_schema: OutputSchemaDefinition,
     prompt_input: dict[str, object],
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     frozen_routes: Sequence[InputToolRouteV1],
     route_policies: Mapping[str, RouteConstraintPolicy],
     retry_budget: RunBudgetV2,
@@ -57,11 +57,11 @@ def plan_query(
     supported_kinds: dict[str, frozenset[RetrievalConstraintKindV1]] = {
         route_id: policy.supported_kinds for route_id, policy in route_policies.items()
     }
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=output_schema,
-        trace_context=trace_context,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        prompt_input,
+        output_schema,
     )
     try:
         return (
@@ -81,7 +81,7 @@ def plan_query(
             revision_prompt_ref=revision_prompt_ref,
             output_schema=output_schema,
             prompt_input=prompt_input,
-            trace_context=trace_context,
+            requested_mode=requested_mode,
             frozen_routes=frozen_routes,
             supported_kinds=supported_kinds,
             validated_resource_refs=validated_resource_refs,
@@ -99,7 +99,7 @@ def _revise_plan_once(
     revision_prompt_ref: PromptReference,
     output_schema: OutputSchemaDefinition,
     prompt_input: dict[str, object],
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     frozen_routes: Sequence[InputToolRouteV1],
     supported_kinds: Mapping[str, frozenset[RetrievalConstraintKindV1]],
     validated_resource_refs: Mapping[str, Collection[str]] | None,
@@ -119,9 +119,10 @@ def _revise_plan_once(
         raise RetrievalV2ValidationError(
             "retrieval query plan revision denied: same failure signature already used"
         )
-    revision = llm_runtime.invoke_structured(
-        prompt_ref=revision_prompt_ref,
-        prompt_input={
+    revision = llm_runtime.infer(
+        requested_mode,
+        revision_prompt_ref,
+        {
             "base_projection": dict(prompt_input),
             "candidate_output": previous_output,
             "failure_record": build_failure_record_v1(
@@ -138,8 +139,7 @@ def _revise_plan_once(
                 failure_context_ids=[failure_detail],
             ),
         },
-        output_schema=output_schema,
-        trace_context=trace_context,
+        output_schema,
     )
     return (
         validate_retrieval_query_plan_v2(

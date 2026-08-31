@@ -192,10 +192,17 @@ def current_provider_dispatch_budget() -> RunBudgetV2 | None:
     return _CURRENT_RUN_BUDGET.get()
 
 
+def current_provider_dispatch_run_id() -> str | None:
+    """Return the Run identity bound to the current workflow execution."""
+
+    return _CURRENT_RUN_ID.get()
+
+
 __all__ = [
     "account_provider_dispatch",
     "bind_provider_dispatch_budget",
     "current_provider_dispatch_budget",
+    "current_provider_dispatch_run_id",
     "legacy_post_call_projection",
     "merge_provider_dispatch_usage",
     "provider_dispatch_budget_scope",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import cast
 
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionStructuralDriver,
 )
@@ -9,12 +11,13 @@ from google_work_agent.adapters.langgraph.write_recovery import WriteRecoveryCoo
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
 )
+from google_work_agent.application.use_cases.run.begin_verification import BeginVerificationResult
 from google_work_agent.application.use_cases.run.run_terminal import RunTransitionResponse
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
-from google_work_agent.domain.results import CommandResult, ResultCode
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 
 
@@ -109,8 +112,8 @@ def _coordinator(
     *,
     phase: _Phase,
     action: ActionRecord,
-    begin_verification,
-    completion,
+    begin_verification: Callable[[str], BeginVerificationResult | None],
+    completion: Callable[[str, str], bool],
 ) -> WriteRecoveryCoordinator:
     return WriteRecoveryCoordinator(
         latest_unknown_action=(
@@ -134,7 +137,7 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
     )
     completion_calls = 0
 
-    def completion(_plan_id: str, _run_id: str):
+    def completion(_plan_id: str, _run_id: str) -> bool:
         nonlocal completion_calls
         completion_calls += 1
         raise AssertionError("completion must not run after recovery applied=false")
@@ -146,9 +149,9 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
         completion=completion,
     )
 
-    result = coordinator.recover_unknown(cast(dict, {"run_id": "run-1"}))
+    result = coordinator.recover_unknown(cast(GraphState, {"run_id": "run-1"}))
 
-    assert cast(dict, result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
+    assert cast(dict[str, object], result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
     assert result["__target__"] == "end"
     assert phase.recover_calls == 1
     assert completion_calls == 0
@@ -159,12 +162,12 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
     phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0
 
-    def completion(_plan_id: str, _run_id: str):
+    def completion(_plan_id: str, _run_id: str) -> bool:
         nonlocal completion_calls
         completion_calls += 1
         raise AssertionError("completion must not run")
 
-    begin_conflict = CommandResult(
+    begin_conflict: BeginVerificationResult = BeginVerificationResult(
         applied=False,
         result_code=ResultCode.STATE_CONFLICT,
         current_status=RunStatusV1.RECOVERY_REQUIRED,
@@ -179,9 +182,9 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
         completion=completion,
     )
 
-    result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
+    result = coordinator.recover_executed(cast(GraphState, {"run_id": "run-1"}), "run-1")
 
-    assert cast(dict, result["__workflow_control__"])["source"] == "BEGIN_VERIFICATION"
+    assert cast(dict[str, object], result["__workflow_control__"])["source"] == "BEGIN_VERIFICATION"
     assert phase.verify_calls == 0
     assert completion_calls == 0
 
@@ -191,7 +194,7 @@ def test_verification_applied_false_stops_completion_and_additional_verification
     phase = _Phase(verify_response=_action_response(applied=False, status=ActionStatusV1.EXECUTED))
     completion_calls = 0
 
-    def completion(_plan_id: str, _run_id: str):
+    def completion(_plan_id: str, _run_id: str) -> bool:
         nonlocal completion_calls
         completion_calls += 1
         raise AssertionError("completion must not run")
@@ -203,9 +206,9 @@ def test_verification_applied_false_stops_completion_and_additional_verification
         completion=completion,
     )
 
-    result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
+    result = coordinator.recover_executed(cast(GraphState, {"run_id": "run-1"}), "run-1")
 
-    assert cast(dict, result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
+    assert cast(dict[str, object], result["__workflow_control__"])["reason"] == "DOMAIN_RECONCILE"
     assert phase.verify_calls == 1
     assert completion_calls == 0
 
@@ -227,10 +230,9 @@ def test_completion_not_ready_is_not_reported_restart_reconciled() -> None:
         completion=completion,
     )
 
-    result = coordinator.recover_executed(cast(dict, {"run_id": "run-1"}), "run-1")
+    result = coordinator.recover_executed(cast(GraphState, {"run_id": "run-1"}), "run-1")
 
-    summary = cast(dict, result["__workflow_control__"])
+    summary = cast(dict[str, object], result["__workflow_control__"])
     assert summary["reason"] == "RECOVERY_NOT_COMPLETABLE"
-    assert summary["reason"] != "RESTART_RECONCILED"
     assert phase.verify_calls == 1
     assert completion_calls == 1

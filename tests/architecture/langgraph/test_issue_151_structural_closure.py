@@ -66,7 +66,7 @@ def test_all_issue_owned_ledger_symbols_exist_at_the_exact_paths() -> None:
 
 
 def test_main_graph_state_and_registries_each_have_one_production_authority() -> None:
-    definitions = {
+    definitions: dict[str, list[str]] = {
         symbol: [] for symbol in ("MultiAgentGraphStateV2", "NodeRegistry", "ResumeTargetRegistry")
     }
     for path in SRC.rglob("*.py"):

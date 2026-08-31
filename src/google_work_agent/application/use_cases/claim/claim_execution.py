@@ -189,17 +189,13 @@ class ClaimExecutionHandler:
             current_action = unit_of_work.actions.get(claim.action_id)
         if approval is None or current_action is None:
             raise LookupError("stale approval authority disappeared")
-        entry = self._registry.get_required(
-            current_action.connector_id, current_action.tool_name
-        )
+        entry = self._registry.get_required(current_action.connector_id, current_action.tool_name)
         current_source_snapshot = (
             source_snapshot
             if claim.conflict_detail == "approval source snapshot is stale"
             else cast(dict[str, object], loads(approval.source_snapshot_json))
         )
-        current_source_snapshot_hash = calculate_canonical_json_hash(
-            current_source_snapshot
-        )
+        current_source_snapshot_hash = calculate_canonical_json_hash(current_source_snapshot)
         expire_request = {
             "approval_id": claim.approval_id,
             "expected_action_version": claim.current_version,

@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 from ..projections.select_evidence_projection import (
     project_select_evidence_input,
@@ -25,7 +25,7 @@ def select_evidence_node(
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     revision_prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     segments: list[SourceSegment],
     retry_budget: RunBudgetV2,
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
@@ -35,7 +35,7 @@ def select_evidence_node(
         llm_runtime=llm_runtime,
         prompt_ref=prompt_ref,
         revision_prompt_ref=revision_prompt_ref,
-        trace_context=trace_context,
+        requested_mode=requested_mode,
         segments=segments,
         retry_budget=retry_budget,
         context_budget=context_budget,

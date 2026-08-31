@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,
 )
@@ -6,7 +8,7 @@ from google_work_agent.ports.system.contracts.operational_command_replay import 
 )
 
 
-def test_operational_command_replay_is_deterministic_and_conflict_safe(tmp_path) -> None:
+def test_operational_command_replay_is_deterministic_and_conflict_safe(tmp_path: Path) -> None:
     adapter = FilesystemOperationalCommandReplayAdapter(tmp_path)
     context = OperationalCommandContextV1("command-1", "SETTINGS_UPDATE", "a" * 64)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
+from typing import cast
 
 from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
@@ -26,8 +27,8 @@ from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
+from google_work_agent.domain.run.model import Run, RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.model import RunCreate as RunCreateRecord
-from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.start_run import transition_start_run
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
 from google_work_agent.ports.persistence.audit_event_repository import (
@@ -47,6 +48,7 @@ from google_work_agent.ports.system.contracts.workflow_binding import (
 )
 from google_work_agent.ports.system.contracts.workflow_execution import SelectedResourceRef
 from google_work_agent.ports.system.contracts.workflow_handoff import (
+    RequestedModeV1,
     RunExecutionRefV1,
     WorkflowHandoffStageV1,
 )
@@ -146,7 +148,7 @@ class StartRunHandler:
         unit_of_work: UnitOfWork,
         command: StartRunCommand,
     ) -> StartRunResult:
-        self._validate_new_run_input(command)
+        requested_mode = self._validate_new_run_input(command)
         now_ms = self._now_ms()
         run_budget = self._build_run_budget(now_ms=now_ms)
         run_id = self._id_factory()
@@ -197,7 +199,7 @@ class StartRunHandler:
                         langgraph_thread_id=workflow_key,
                         graph_profile=self._graph_profile,
                         graph_version=self._graph_version,
-                        requested_mode=command.requested_mode,  # type: ignore[arg-type]
+                        requested_mode=requested_mode,
                         created_at_ms=now_ms,
                     )
                 )
@@ -248,7 +250,7 @@ class StartRunHandler:
                     langgraph_thread_id=workflow_key,
                     graph_profile=self._graph_profile,
                     graph_version=self._graph_version,
-                    requested_mode=command.requested_mode,  # type: ignore[arg-type]
+                    requested_mode=requested_mode,
                     resume_target=None,
                 ),
                 checkpoint_id=None,
@@ -391,7 +393,7 @@ class StartRunHandler:
         return tuple(selected)
 
     @staticmethod
-    def _validate_new_run_input(command: StartRunCommand) -> None:
+    def _validate_new_run_input(command: StartRunCommand) -> RequestedModeV1:
         request_bytes = command.request_text.encode("utf-8")
         if not request_bytes or len(request_bytes) > 65536:
             raise ValueError("request_text must contain 1..65536 UTF-8 bytes")
@@ -405,6 +407,7 @@ class StartRunHandler:
             raise ValueError("RESOURCE_SELECTED requires resolved resource selections")
         if len(command.resolved_resource_selections) > 20:
             raise ValueError("RESOURCE_SELECTED accepts at most 20 resource selections")
+        return cast(RequestedModeV1, command.requested_mode)
 
     def _resolve_existing_receipt(
         self,
@@ -565,23 +568,23 @@ class StartRunHandler:
         ):
             raise RuntimeError("StartRun receipt recovery found an incomplete WorkflowBinding")
         audit_started = 0
-        for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
-            if event.event_type != "RUN_STARTED":
+        for audit_event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
+            if audit_event.event_type != "RUN_STARTED":
                 continue
             audit_started += 1
-            self._validate_run_started_audit(event=event, command=command)
+            self._validate_run_started_audit(event=audit_event, command=command)
         if audit_started > 1:
             raise RuntimeError(
                 "StartRun receipt recovery found duplicate RUN_STARTED Audit evidence"
             )
 
         trace_created = 0
-        for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
-            if event.event_type != "RUN_CREATED":
+        for trace_event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
+            if trace_event.event_type != "RUN_CREATED":
                 continue
             trace_created += 1
             self._validate_run_created_trace(
-                event=event, command=command, workflow_key=workflow_key
+                event=trace_event, command=command, workflow_key=workflow_key
             )
         if trace_created > 1:
             raise RuntimeError(
@@ -596,22 +599,22 @@ class StartRunHandler:
         run_id: str | None,
     ) -> None:
         if run_id is not None:
-            for event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
-                payload = self._event_payload(event.metadata_json, evidence_kind="Audit")
-                if event.event_type == "COMMAND_RECEIVED":
+            for audit_event in self._list_all_audits(unit_of_work=unit_of_work, run_id=run_id):
+                payload = self._event_payload(audit_event.metadata_json, evidence_kind="Audit")
+                if audit_event.event_type == "COMMAND_RECEIVED":
                     self._validate_command_received_event(
                         payload=payload,
                         command=command,
                         evidence_kind="Audit",
                     )
                     continue
-                if event.event_type == "RUN_STARTED":
-                    self._validate_run_started_audit(event=event, command=command)
+                if audit_event.event_type == "RUN_STARTED":
+                    self._validate_run_started_audit(event=audit_event, command=command)
                     raise RuntimeError(
                         "StartRun receipt recovery found prior RUN_STARTED Audit evidence "
                         "without aggregate"
                     )
-                if event.event_type == "COMMAND_APPLIED":
+                if audit_event.event_type == "COMMAND_APPLIED":
                     self._validate_command_event(
                         payload=payload,
                         command=command,
@@ -626,24 +629,24 @@ class StartRunHandler:
                     "StartRun receipt recovery found contradictory durable Audit evidence"
                 )
 
-            for event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
-                payload = self._event_payload(event.payload_json, evidence_kind="Trace")
-                if event.event_type == "COMMAND_RECEIVED":
+            for trace_event in self._list_all_traces(unit_of_work=unit_of_work, run_id=run_id):
+                payload = self._event_payload(trace_event.payload_json, evidence_kind="Trace")
+                if trace_event.event_type == "COMMAND_RECEIVED":
                     self._validate_command_received_event(
                         payload=payload,
                         command=command,
                         evidence_kind="Trace",
                     )
                     continue
-                if event.event_type == "RUN_CREATED":
+                if trace_event.event_type == "RUN_CREATED":
                     self._validate_run_created_trace(
-                        event=event, command=command, workflow_key=None
+                        event=trace_event, command=command, workflow_key=None
                     )
                     raise RuntimeError(
                         "StartRun receipt recovery found prior RUN_CREATED Trace evidence "
                         "without aggregate"
                     )
-                if event.event_type == "COMMAND_APPLIED":
+                if trace_event.event_type == "COMMAND_APPLIED":
                     self._validate_command_event(
                         payload=payload,
                         command=command,
@@ -802,10 +805,10 @@ class StartRunHandler:
     def _event_field(payload: dict[str, object], field_name: str) -> object | None:
         attributes = payload.get("attributes")
         if isinstance(attributes, dict) and field_name in attributes:
-            return attributes[field_name]
+            return cast(dict[str, object], attributes)[field_name]
         correlation = payload.get("correlation")
         if isinstance(correlation, dict) and field_name in correlation:
-            return correlation[field_name]
+            return cast(dict[str, object], correlation)[field_name]
         return payload.get(field_name)
 
     @staticmethod
@@ -815,7 +818,7 @@ class StartRunHandler:
         conversation_id: str,
         user_message_id: str,
         workflow_key: str,
-        current_open: object,
+        current_open: Run | None,
     ) -> StartRunResult:
         if current_open is None:
             run_status = RunStatusV1.CREATED.value

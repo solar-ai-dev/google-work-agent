@@ -190,9 +190,7 @@ class OllamaHTTPClient(OllamaTransport):
                 "version": version.get("version"),
                 "model_present": True if model_id else None,
                 "model_digest": (
-                    matching_model.get("digest")
-                    if isinstance(matching_model, dict)
-                    else None
+                    matching_model.get("digest") if isinstance(matching_model, dict) else None
                 ),
             },
         )

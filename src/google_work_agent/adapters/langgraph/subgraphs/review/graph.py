@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """Canonical Review owner-local LangGraph composition and production integration."""
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     MultiAgentGraphState,
     MultiAgentGraphStateV2,
     WorkflowPhase,
+    request_from_state,
 )
 from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
@@ -34,42 +34,6 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
 from google_work_agent.adapters.langgraph.profiles import GraphProfile
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.aggregate_review_findings_node import (
-    aggregate_review_findings_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.inspect_action_scope_and_route_node import (
-    inspect_action_scope_and_route_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.inspect_constraints_and_policy_summary_node import (
-    inspect_constraints_and_policy_summary_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.inspect_goal_and_evidence_node import (
-    inspect_goal_and_evidence_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.nodes.recheck_affected_dimensions_node import (
-    recheck_affected_dimensions_node,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.projections.project_review_signals_projection import (
-    project_review_workflow_signal_v2,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_aggregate_review_findings import (
-    route_after_aggregate_review_findings,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_entry import (
-    route_after_entry,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_inspect_action_scope_and_route import (
-    route_after_inspect_action_scope_and_route,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_inspect_constraints_and_policy_summary import (
-    route_after_inspect_constraints_and_policy_summary,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_inspect_goal_and_evidence import (
-    route_after_inspect_goal_and_evidence,
-)
-from google_work_agent.adapters.langgraph.subgraphs.review.routing.route_after_recheck_affected_dimensions import (
-    route_after_recheck_affected_dimensions,
 )
 from google_work_agent.adapters.langgraph.subgraphs.review.state import (
     ReviewInputState,
@@ -82,8 +46,8 @@ from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
 from google_work_agent.application.agents.planning.contracts.answer_draft import (
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.agents.request_understanding.contracts.request_understanding_output import (
-    ClarificationQuestionV1,
+from google_work_agent.application.agents.request_understanding.contracts import (
+    request_understanding_output as request_understanding_contracts,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -108,12 +72,51 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference, StructuredLLMResult
-from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
+from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_port import (
+    StructuredInferencePort,
+    StructuredInferenceResultV1,
+)
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+
+from .nodes.aggregate_review_findings_node import (
+    aggregate_review_findings_node,
+)
+from .nodes.inspect_action_scope_and_route_node import (
+    inspect_action_scope_and_route_node,
+)
+from .nodes.inspect_constraints_and_policy_summary_node import (
+    inspect_constraints_and_policy_summary_node,
+)
+from .nodes.inspect_goal_and_evidence_node import (
+    inspect_goal_and_evidence_node,
+)
+from .nodes.recheck_affected_dimensions_node import (
+    recheck_affected_dimensions_node,
+)
+from .projections.project_review_signals_projection import (
+    project_review_workflow_signal_v2,
+)
+from .routing.route_after_aggregate_review_findings import (
+    route_after_aggregate_review_findings,
+)
+from .routing.route_after_entry import (
+    route_after_entry,
+)
+from .routing.route_after_inspect_action_scope_and_route import (
+    route_after_inspect_action_scope_and_route,
+)
+from .routing.route_after_inspect_constraints_and_policy_summary import (
+    route_after_inspect_constraints_and_policy_summary,
+)
+from .routing.route_after_inspect_goal_and_evidence import (
+    route_after_inspect_goal_and_evidence,
+)
+from .routing.route_after_recheck_affected_dimensions import (
+    route_after_recheck_affected_dimensions,
+)
 
 MergeDecision = Callable[[Any, GraphStateUpdateV1, SupervisorDecisionV1], Any]
 ConfirmInline = Callable[
@@ -347,13 +350,13 @@ class ReviewSubgraph:
         node_name: str,
         operation: Callable[[ReviewSemanticInvoker], Mapping[str, object]],
     ) -> ReviewState:
-        results: list[StructuredLLMResult] = []
+        results: list[StructuredInferenceResultV1] = []
         if self._is_production_integration:
             ensure_llm_call_budget(cast(Any, original))
         patch = operation(self.semantic_invoker(working, on_result=results.append))
         result = cast(ReviewState, {**working, **patch})
         if self._is_production_integration:
-            consumed = sum(item.structured_output_attempts for item in results)
+            consumed = len(results)
             result["retry_budget"] = consume_llm_call_budget(
                 cast(Any, original), provider_calls_consumed=consumed
             )
@@ -371,9 +374,7 @@ class ReviewSubgraph:
                     1 if node_name in {"inspect_goal_and_evidence", "recheck"} else 0
                 ),
                 llm_call_increment=consumed,
-                repair_increment=sum(
-                    max(0, item.structured_output_attempts - 1) for item in results
-                ),
+                repair_increment=0,
             )
         return result
 
@@ -495,7 +496,9 @@ class ReviewSubgraph:
         )
 
     @staticmethod
-    def _clarification(result: PlanReviewResultV2) -> ClarificationQuestionV1:
+    def _clarification(
+        result: PlanReviewResultV2,
+    ) -> request_understanding_contracts.ClarificationQuestionV1:
         if result["status"] != "CONFIRM":
             raise ValueError("Review clarification requires CONFIRM")
         confirmation = result["confirmation"]
@@ -569,7 +572,7 @@ class ReviewSubgraph:
         self,
         state: Mapping[str, object],
         *,
-        on_result: Callable[[StructuredLLMResult], None] | None = None,
+        on_result: Callable[[StructuredInferenceResultV1], None] | None = None,
     ) -> ReviewSemanticInvoker:
         if self._dependencies is not None:
             return self._dependencies.invoke
@@ -578,9 +581,15 @@ class ReviewSubgraph:
 
         def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
             schemas: dict[str, OutputSchemaDefinition] = {
-                "review.inspect_goal_and_evidence": REVIEW_INSPECT_GOAL_AND_EVIDENCE_OUTPUT_SCHEMA,
-                "review.inspect_action_scope_and_route": REVIEW_INSPECT_ACTION_SCOPE_AND_ROUTE_OUTPUT_SCHEMA,
-                "review.inspect_constraints_and_policy_summary": REVIEW_INSPECT_CONSTRAINTS_AND_POLICY_SUMMARY_OUTPUT_SCHEMA,
+                "review.inspect_goal_and_evidence": (
+                    REVIEW_INSPECT_GOAL_AND_EVIDENCE_OUTPUT_SCHEMA
+                ),
+                "review.inspect_action_scope_and_route": (
+                    REVIEW_INSPECT_ACTION_SCOPE_AND_ROUTE_OUTPUT_SCHEMA
+                ),
+                "review.inspect_constraints_and_policy_summary": (
+                    REVIEW_INSPECT_CONSTRAINTS_AND_POLICY_SUMMARY_OUTPUT_SCHEMA
+                ),
             }
             output_schema = schemas.get(prompt_id)
             if prompt_id == "review.recheck_affected_dimensions":
@@ -599,11 +608,11 @@ class ReviewSubgraph:
             llm_runtime = self._llm_runtime
             if llm_runtime is None:
                 raise RuntimeError("Review semantic runtime dependency is required")
-            result = llm_runtime.invoke_structured(
-                prompt_ref=prompt_ref,
-                prompt_input=prompt_input,
-                output_schema=output_schema,
-                trace_context=_trace_context(state, prompt_id),
+            result = llm_runtime.infer(
+                request_from_state(cast(Any, state)).requested_mode,
+                prompt_ref,
+                prompt_input,
+                output_schema,
             )
             if on_result is not None:
                 on_result(result)
@@ -612,18 +621,6 @@ class ReviewSubgraph:
             return result.structured_output
 
         return invoke
-
-
-def _trace_context(state: Mapping[str, object], prompt_id: str) -> ObservabilityContext:
-    run_id = str(state.get("run_id", "review"))
-    return ObservabilityContext(
-        request_id=str(state.get("request_id", run_id)),
-        command_id=str(state.get("command_id", run_id)),
-        conversation_id=str(state.get("conversation_id", run_id)),
-        run_id=run_id,
-        langgraph_thread_id=str(state.get("workflow_key", run_id)),
-        llm_call_id=f"{run_id}:{prompt_id}",
-    )
 
 
 __all__ = ["ReviewRuntimeDependencies", "ReviewSubgraph"]

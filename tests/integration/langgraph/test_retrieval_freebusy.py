@@ -87,10 +87,11 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
     )
 
     try:
-        state = runtime._initial_state(_start_request())  # noqa: SLF001
-        state["request_intent"] = _action_intent(resource="CALENDAR", effect="READ")
-        state["request_intent"]["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
-        routed = runtime._tool_route_subgraph.invoke(state)  # noqa: SLF001
+        state = runtime._initial_state(_start_request())
+        request_intent = _action_intent(resource="CALENDAR", effect="READ")
+        request_intent["meta"] = {"artifact_id": "intent-1", "revision": 1, "based_on": []}
+        state["request_intent"] = request_intent
+        routed = runtime._tool_route_subgraph.invoke(state)
         input_routes = routed["tool_route_plan"]["input_plan"]["input_routes"]
         assert input_routes
         assert {route["resource_type"] for route in input_routes} <= {
@@ -108,7 +109,7 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
         # The FREEBUSY route_ids are only known once Tool Route actually
         # froze the routes, so the queue is populated after that call rather
         # than at runtime construction time.
-        llm_runtime._queued.extend(  # noqa: SLF001
+        llm_runtime._queued.extend(
             [
                 _llm_result(_selection_output()),
                 _llm_result(_sufficiency_output("NEEDS_MORE_DATA")),
@@ -118,7 +119,7 @@ def test_freebusy_followup_round_executes_without_uncaught_exception(
             ]
         )
 
-        context = runtime._context_subgraph.invoke(routed)  # noqa: SLF001
+        context = runtime._context_subgraph.invoke(routed)
 
         assert context["__target__"] == "work_analysis"
         assert context["retrieval_result"] is not None

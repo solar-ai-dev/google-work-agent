@@ -3,25 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from evaluation.compat.post_retrieval_envelopes import PlanningResultV2
 from evaluation.compat.supervise_post_retrieval import (
     RevisionBudgetBlockBoundaryRequired,
+    RevisionBudgetBlockContextV1,
     route_planning_return_v2,
     route_review_return_v2,
     route_work_analysis_return_v2,
 )
 
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
+from google_work_agent.application.use_cases.run.block_run import BlockRunCommand
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     approve_semantic_revision,
     build_default_run_budget,
     build_semantic_failure_signature_v1,
 )
+from google_work_agent.ports.system.contracts.workflow_signal import SubgraphReturnV2
 
 
-def _meta(name: str):
+def _meta(name: str) -> StateArtifactMetaV1:
     return {"artifact_id": name, "revision": 1, "based_on": []}
 
 
-def _plan():
+def _plan() -> PlanningResultV2:
     return {
         "schema_version": 2,
         "meta": _meta("plan-1"),
@@ -39,7 +44,7 @@ def _plan():
     }
 
 
-def _revise_return():
+def _revise_return() -> SubgraphReturnV2[object]:
     return {
         "disposition": "REVISE",
         "typed_result": {
@@ -61,7 +66,7 @@ def _revise_return():
     }
 
 
-def _block_context():
+def _block_context() -> RevisionBudgetBlockContextV1:
     return {
         "command_id": "command-1",
         "request_hash": "hash-1",
@@ -77,11 +82,12 @@ class _BlockResponse:
 
 
 class _BlockRun:
-    def __init__(self, *, applied: bool):
+    def __init__(self, *, applied: bool) -> None:
         self.applied = applied
-        self.commands = []
+        self.commands: list[BlockRunCommand] = []
 
-    def __call__(self, command):
+    def __call__(self, command: object) -> _BlockResponse:
+        assert isinstance(command, BlockRunCommand)
         self.commands.append(command)
         return _BlockResponse(applied=self.applied)
 

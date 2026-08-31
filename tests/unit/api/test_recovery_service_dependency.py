@@ -8,7 +8,7 @@ from starlette.requests import Request
 from google_work_agent.api.dependencies.runs import get_run_route_dependencies
 
 
-def _request_with_run_composition() -> tuple[Request, object]:
+def _request_with_run_composition() -> tuple[Request, SimpleNamespace]:
     app = FastAPI()
 
     def unit_of_work_factory() -> None:

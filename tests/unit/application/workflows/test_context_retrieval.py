@@ -35,7 +35,9 @@ from google_work_agent.ports.llm import (
     RequestedRuntimeMode,
     StructuredLLMResult,
 )
+from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 SELECT_PROMPT_REF = PromptReference(
     prompt_bundle_version="test",
@@ -69,6 +71,36 @@ SUFFICIENCY_PROMPT_REF = PromptReference(
 class FakeLLMRuntime:
     queued: deque[StructuredLLMResult | Exception] = field(default_factory=deque)
     calls: list[dict[str, object]] = field(default_factory=list)
+
+    def infer(
+        self,
+        requested_mode: RequestedModeV1,
+        prompt_ref: PromptReference,
+        input_projection: Mapping[str, object],
+        output_schema_ref: OutputSchemaDefinition,
+    ) -> StructuredInferenceResultV1:
+        self.calls.append(
+            {
+                "requested_mode": requested_mode,
+                "prompt_ref": prompt_ref,
+                "prompt_input": dict(input_projection),
+                "output_schema": output_schema_ref,
+            }
+        )
+        result = self.queued.popleft()
+        if isinstance(result, Exception):
+            raise result
+        return StructuredInferenceResultV1(
+            schema_version=1,
+            structured_output=cast(dict[str, object], result.structured_output),
+            provider=result.provider,
+            model=result.model,
+            actual_runtime=cast(Literal["LOCAL_GPU", "API_LLM"], result.actual_runtime.value),
+            input_tokens=result.input_tokens or 0,
+            output_tokens=result.output_tokens or 0,
+            latency_ms=result.latency_ms,
+            fallback_reason=result.fallback_reason,
+        )
 
     def invoke_structured(
         self,

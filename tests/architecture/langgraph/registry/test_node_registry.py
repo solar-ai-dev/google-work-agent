@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from google_work_agent.adapters.langgraph.profiles.profile_registry import (
@@ -10,6 +12,7 @@ from google_work_agent.adapters.langgraph.registry.node_registry import (
     RUNTIME_NODE_OWNERS,
     NodeRegistry,
 )
+from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 
 
 def test_node_registry_is_the_exact_canonical_35_node_manifest() -> None:
@@ -116,9 +119,9 @@ def test_node_registry_rejects_stale_unknown_and_wrong_owner_bindings() -> None:
     assert not registry.contains("graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.unknown")
     assert not registry.contains(
         "graph-v1",
-        "UNKNOWN",
+        cast(GraphProfileIdV1, "UNKNOWN"),
         "PLANNING",
-        "planning.assemble",  # type: ignore[arg-type]
+        "planning.assemble",
     )
 
 

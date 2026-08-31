@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
+
+from pydantic import JsonValue
 
 from evaluation.contracts.canonical_case import CanonicalCaseV7, EndStateGoldV1
 from evaluation.contracts.product_episode_projection import (
@@ -32,6 +34,11 @@ COMPAT_PARAPHRASE_PATH = (
 
 class CurrentDatasetMigrationError(ValueError):
     """Raised when preserved input cannot be explicitly mapped to current data."""
+
+
+type _DatasetSplit = Literal["CORE", "HOLDOUT", "STRESS"]
+type _CompletionMode = Literal["COMPLETE", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]
+type _TerminalExpectation = Literal["COMPLETED", "BLOCKED", "FAILED", "CANCELLED"]
 
 
 def materialize_current_dataset(
@@ -89,7 +96,7 @@ def _migrate_case(source: dict[str, object]) -> CanonicalCaseV7:
         case_id=_string(source, "case_id"),
         scenario_family_id=_string(source, "scenario_family_id"),
         fixture_relation_family=_string(source, "fixture_relation_family"),
-        split=cast(str, _string(source, "split")),
+        split=_dataset_split(source, "split"),
         dataset_version=_string(source, "dataset_version"),
         category=_string(source, "category"),
         language=_string(source, "language"),
@@ -101,29 +108,42 @@ def _migrate_case(source: dict[str, object]) -> CanonicalCaseV7:
         expected_completion_criteria=_string_list(business.get("completion_conditions", [])),
         requested_outcome=_string(business, "requested_result"),
         selected_resource_handles=required_resources if entry_mode == "RESOURCE_SELECTED" else [],
-        required_input_routes=[row for row in input_routes if row.get("required") is True],
-        optional_input_routes=[row for row in input_routes if row.get("required") is not True],
-        forbidden_input_routes=[
-            {"resource_type": value}
-            for value in _string_list(business.get("forbidden_resource_types", []))
-        ],
-        required_output_routes=output_routes,
+        required_input_routes=cast(
+            list[JsonValue], [row for row in input_routes if row.get("required") is True]
+        ),
+        optional_input_routes=cast(
+            list[JsonValue], [row for row in input_routes if row.get("required") is not True]
+        ),
+        forbidden_input_routes=cast(
+            list[JsonValue],
+            [
+                {"resource_type": value}
+                for value in _string_list(business.get("forbidden_resource_types", []))
+            ],
+        ),
+        required_output_routes=cast(list[JsonValue], output_routes),
         forbidden_output_routes=[],
         required_resource_ids=required_resources,
         hard_negative_resource_ids=_string_list(business.get("hard_negative_resource_ids", [])),
         required_evidence_ids=_string_list(business.get("required_evidence_ids", [])),
         user_evidence=_json_list(business.get("user_evidence", []), "user_evidence"),
         derived_evidence=_json_list(business.get("derived_evidence", []), "derived_evidence"),
-        expected_input_route_plan=input_plan,
-        expected_output_plan=output_plan,
-        expected_retrieval_trajectory=retrieval.get("expected_read_trajectory", []),
-        expected_tool_trajectory=workflow.get("expected_e2e_tool_trajectory", []),
-        policy_result=safety,
+        expected_input_route_plan=cast(JsonValue, input_plan),
+        expected_output_plan=cast(JsonValue, output_plan),
+        expected_retrieval_trajectory=cast(
+            JsonValue, retrieval.get("expected_read_trajectory", [])
+        ),
+        expected_tool_trajectory=cast(
+            JsonValue, workflow.get("expected_e2e_tool_trajectory", [])
+        ),
+        policy_result=cast(JsonValue, safety),
         allowed_actions=_json_list(planning.get("actions", []), "planning.actions"),
         forbidden_actions=_json_list(safety.get("forbidden_actions", []), "forbidden_actions"),
-        approval_expectation=safety.get("approval_expectation"),
-        verification_expectation=_mapping(safety, "verification_expectation"),
-        run_outcome_expectation=workflow.get("run_outcome_expectation"),
+        approval_expectation=cast(JsonValue, safety.get("approval_expectation")),
+        verification_expectation=cast(
+            dict[str, JsonValue], _mapping(safety, "verification_expectation")
+        ),
+        run_outcome_expectation=cast(JsonValue, workflow.get("run_outcome_expectation")),
         expected_planning_result_type=_string(planning, "result_type"),
         expected_interactions=_json_list(source.get("interaction_gold", []), "interaction_gold"),
         expected_semantic_milestones=_json_list(
@@ -139,7 +159,7 @@ def _migrate_case(source: dict[str, object]) -> CanonicalCaseV7:
             "planning": _bool(planning, "applicable"),
             "review": _bool(review, "applicable"),
         },
-        human_rubric=source.get("human_rubric"),
+        human_rubric=cast(JsonValue, source.get("human_rubric")),
         end_state_gold=_migrate_end_state(_mapping(source, "end_state_gold")),
     )
 
@@ -152,7 +172,7 @@ def _migrate_episode(source: dict[str, object]) -> ProductEpisodeE2EProjectionV1
         schema_version=1,
         case_id=_string(source, "episode_variant_id"),
         fixture_snapshot_id=_string(product_input, "fixture_snapshot_id"),
-        product_input=product_input,
+        product_input=cast(JsonValue, product_input),
         evaluator_input=ProductEpisodeEvaluatorInputV1(
             schema_version=1,
             decision_script=_json_list(
@@ -169,8 +189,8 @@ def _migrate_end_state(source: dict[str, object]) -> EndStateGoldV1:
     status = _string(terminal, "run_status")
     completion_mode = _string(source, "completion_mode")
     if status == "CANCELLED":
-        current_completion = "CANCELLED"
-        current_terminal = "CANCELLED"
+        current_completion: _CompletionMode = "CANCELLED"
+        current_terminal: _TerminalExpectation = "CANCELLED"
     elif status == "FAILED":
         current_completion = "FAILED"
         current_terminal = "FAILED"
@@ -183,7 +203,7 @@ def _migrate_end_state(source: dict[str, object]) -> EndStateGoldV1:
     return EndStateGoldV1(
         schema_version=1,
         initial_fixture_snapshot_id=_string(source, "initial_fixture_snapshot_id"),
-        completion_mode=cast(str, current_completion),
+        completion_mode=current_completion,
         expected_mutations=_json_list(source.get("expected_mutations", []), "expected_mutations"),
         indeterminate_mutations=_json_list(
             source.get("indeterminate_mutations", []), "indeterminate_mutations"
@@ -191,7 +211,7 @@ def _migrate_end_state(source: dict[str, object]) -> EndStateGoldV1:
         forbidden_mutations=_json_list(
             source.get("forbidden_mutations", []), "forbidden_mutations"
         ),
-        terminal_expectation=cast(str, current_terminal),
+        terminal_expectation=current_terminal,
     )
 
 
@@ -414,6 +434,13 @@ def _string(value: Mapping[str, object], field: str) -> str:
     return candidate
 
 
+def _dataset_split(value: Mapping[str, object], field: str) -> _DatasetSplit:
+    candidate = _string(value, field)
+    if candidate not in {"CORE", "HOLDOUT", "STRESS"}:
+        raise CurrentDatasetMigrationError(f"{field} is not a supported dataset split")
+    return cast(_DatasetSplit, candidate)
+
+
 def _bool(value: Mapping[str, object], field: str) -> bool:
     candidate = value.get(field)
     if not isinstance(candidate, bool):
@@ -427,10 +454,10 @@ def _string_list(value: object) -> list[str]:
     return cast(list[str], value)
 
 
-def _json_list(value: object, field: str) -> list[object]:
+def _json_list(value: object, field: str) -> list[JsonValue]:
     if not isinstance(value, list):
         raise CurrentDatasetMigrationError(f"{field} must be an array")
-    return value
+    return cast(list[JsonValue], value)
 
 
 def _object_list(value: object, field: str) -> list[dict[str, object]]:

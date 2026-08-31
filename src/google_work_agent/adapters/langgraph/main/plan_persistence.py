@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from json import dumps
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
@@ -66,6 +66,9 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
 )
+
+if TYPE_CHECKING:
+    from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
 def replace_llm_expected_with_deterministic_projection(
@@ -270,6 +273,29 @@ def _current_retrieval_locator(
 class PlanPersistenceMixin:
     """Canonical runtime with deterministic Expected and explicit connector persistence."""
 
+    if TYPE_CHECKING:
+        _id_factory: Callable[[], str]
+        _now_ms: Callable[[], int]
+        _evidence_store: Any
+        _unit_of_work_factory: Callable[[], UnitOfWork]
+        _save_write_plan: Callable[[SaveWritePlanCommand], Any]
+        _publish_write_plan: Callable[[PublishWritePlanCommand], Any]
+        _save_read_plan: Callable[[SaveReadOnlyPlanCommand], Any]
+        _publish_read_plan: Callable[[PublishReadOnlyPlanCommand], Any]
+        _record_review_result: Callable[[RecordReviewResultCommandV1], Any]
+
+        def _current_run_version(self, run_id: str) -> int: ...
+
+        def _required_string(self, value: object, field_name: str) -> str: ...
+
+        def _plans_for_run(self, run_id: str) -> tuple[Any, ...]: ...
+
+        def _calendar_plan_risk(
+            self, *, state: GraphState, action: Mapping[str, object]
+        ) -> dict[str, object]: ...
+
+        def _request_hash(self, payload: dict[str, object]) -> str: ...
+
     def __init__(
         self,
         *args: Any,
@@ -289,7 +315,12 @@ class PlanPersistenceMixin:
         if kwargs.get("connector_execution") is None:
             raise TypeError("connector_execution is required")
 
-        super().__init__(*args, default_calendar_id_provider=default_calendar_id_provider, **kwargs)
+        next_initializer = cast(Callable[..., None], super().__init__)
+        next_initializer(
+            *args,
+            default_calendar_id_provider=default_calendar_id_provider,
+            **kwargs,
+        )
 
     def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
         plan_draft = replace_llm_expected_with_deterministic_projection(plan_draft)
@@ -513,10 +544,13 @@ class PlanPersistenceMixin:
         review = _require_state_value(state.get("plan_review"), "plan_review")
         if review["status"] != "PASS":
             raise ValueError("only a PASS Review may open a persisted Plan approval gate")
+        artifact_id = review["meta"]["artifact_id"]
         revision = review["meta"]["revision"]
-        if revision < 1:
+        if not isinstance(artifact_id, str) or not artifact_id:
+            raise ValueError("persisted Review artifact_id is required")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
             raise ValueError("persisted Review revision must be positive")
-        return review["meta"]["artifact_id"], revision
+        return artifact_id, revision
 
     def _persist_initial_review_pass(
         self,

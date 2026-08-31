@@ -27,6 +27,6 @@ def test_assembly_consumes_previously_derived_dependencies() -> None:
         action_seeds=seeds,  # type: ignore[arg-type]
         dependency_candidates=[
             {"action_id": "a2", "depends_on_action_id": "a1", "reason": "SAME_RESOURCE_ORDER"}
-        ],  # type: ignore[list-item]
+        ],
     )
     assert plan["actions"][1]["depends_on_action_ids"] == ["a1"]

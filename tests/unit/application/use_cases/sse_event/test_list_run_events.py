@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.sse_event.list_run_events import (
 from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
 
 
-def _handler(tmp_path: Path):
+def _handler(tmp_path: Path) -> tuple[ListRunEventsHandler, InMemorySseEventBuffer]:
     database_path = tmp_path / "events.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)

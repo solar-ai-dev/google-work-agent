@@ -3,9 +3,6 @@ from __future__ import annotations
 from typing import cast
 
 from google_work_agent.adapters.langgraph.main.state import request_from_state
-from google_work_agent.adapters.langgraph.subgraphs.tool_routing.projections.select_tool_if_needed_projection import (  # noqa: E501
-    project_select_tool_if_needed_input,
-)
 from google_work_agent.adapters.langgraph.subgraphs.tool_routing.state import ToolRouteStateV1
 from google_work_agent.application.agents.tool_routing.contracts.route_binding_candidate import (
     BoundOutputRouteCandidateV1,
@@ -23,6 +20,10 @@ from google_work_agent.ports.llm import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
+)
+
+from ..projections.select_tool_if_needed_projection import (
+    project_select_tool_if_needed_input,
 )
 
 

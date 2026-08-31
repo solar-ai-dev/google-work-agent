@@ -15,8 +15,8 @@ registered production Planning route.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import cast
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
@@ -49,9 +49,46 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowResumeRequest,
 )
 
+if TYPE_CHECKING:
+    from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+
+class _ArtifactFreshnessSuper(Protocol):
+    def _merge_decision(
+        self,
+        state: GraphState,
+        update: GraphStateUpdateV1,
+        decision: SupervisorDecisionV1,
+    ) -> GraphState: ...
+
+    def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult: ...
+
+    def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult: ...
+
+    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str: ...
+
 
 class ArtifactFreshnessMixin:
     """Release runtime with canonical freshness and write safety seams."""
+
+    if TYPE_CHECKING:
+        _graph: Any
+        _route_translator: Any
+        _unit_of_work_factory: Callable[[], UnitOfWork]
+
+        def _list_actions(self, plan_id: str) -> tuple[Any, ...]: ...
+
+        _evidence_store: Any
+        _read_result_cache: Any
+        _llm_runtime: Any
+
+        def _config_for_thread(self, workflow_key: str) -> dict[str, Any]: ...
+
+        def _result_from_thread(
+            self, *, workflow_key: str, run_id: str
+        ) -> WorkflowInvocationResult: ...
+
+        def _is_profile_compatible(self, state: GraphState) -> bool: ...
 
     def _merge_decision(
         self,
@@ -59,15 +96,15 @@ class ArtifactFreshnessMixin:
         update: GraphStateUpdateV1,
         decision: SupervisorDecisionV1,
     ) -> GraphState:
-        merged = super()._merge_decision(state, update, decision)
+        merged = cast(_ArtifactFreshnessSuper, super())._merge_decision(state, update, decision)
         if _is_route_reconsideration_to_tool_route(merged):
-            return {**merged, "retrieval_result": None}
+            merged["retrieval_result"] = None
         return merged
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         """Resume registered application continuations or ordinary workflow pauses."""
         if request.resume_kind != "RECOVERY_CORRECTIVE_PLAN":
-            return super().resume(request)
+            return cast(_ArtifactFreshnessSuper, super()).resume(request)
         return self._resume_corrective_plan_safely(request)
 
     def recover_open_run(
@@ -105,7 +142,7 @@ class ArtifactFreshnessMixin:
                         correlation=request.correlation,
                     )
                 )
-        return super().recover_open_run(request)
+        return cast(_ArtifactFreshnessSuper, super()).recover_open_run(request)
 
     def _resume_corrective_plan_safely(
         self,
@@ -236,13 +273,13 @@ class ArtifactFreshnessMixin:
                 run_id=request.run_id,
             )
 
-        translation = self._route_translator.translate(SupervisorTarget.PLANNING.value)
+        translation = self._route_translator.translate(SupervisorTarget.SOLUTION_PLANNING.value)
         self._graph.update_state(
             config,
             {
                 "__replan_from_plan_id__": None,
                 "__reserved_corrective_plan_id__": plan.id,
-                "__logical_target__": SupervisorTarget.PLANNING.value,
+                "__logical_target__": SupervisorTarget.SOLUTION_PLANNING.value,
                 "__target__": translation.node,
                 "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
                 "plan_draft": None,
@@ -264,7 +301,7 @@ class ArtifactFreshnessMixin:
         """Persist ordinary replans normally, or continue one reserved corrective revision."""
         reserved_plan_id = state.get("__reserved_corrective_plan_id__")
         if not isinstance(reserved_plan_id, str) or not reserved_plan_id:
-            return super()._persist_write_plan(state, plan_draft)
+            return cast(_ArtifactFreshnessSuper, super())._persist_write_plan(state, plan_draft)
 
         with self._unit_of_work_factory() as unit_of_work:
             reserved_plan = load_plan_record(unit_of_work.plans, reserved_plan_id)

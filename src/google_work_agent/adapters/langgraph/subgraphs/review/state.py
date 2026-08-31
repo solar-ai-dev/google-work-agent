@@ -2,7 +2,6 @@
 
 # GraphState carries deferred annotations; LangGraph resolves them in this
 # module's namespace for the inherited Review TypedDict.
-# ruff: noqa: F401
 
 from __future__ import annotations
 
@@ -59,6 +58,21 @@ from google_work_agent.ports.system.contracts.confirmation import (
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 from google_work_agent.ports.system.contracts.workflow_signal import (
+    SubgraphReturnV2,
+    WorkflowSignalV1,
+)
+
+_TYPE_HINT_NAMESPACE = (
+    TerminalCommitIntentV1,
+    RunInputV1,
+    AcquisitionResultV1,
+    SourceFetchPlanV1,
+    ScopeExpansionRequiredV1,
+    RunBudgetV2,
+    PolicyConfirmationReceiptV1,
+    FinalizeIntentV1,
+    UserInterruptV1,
+    WorkflowStartRequest,
     SubgraphReturnV2,
     WorkflowSignalV1,
 )

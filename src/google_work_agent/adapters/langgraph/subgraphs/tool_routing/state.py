@@ -1,7 +1,6 @@
 """Canonical Tool Routing owner-local state and parent patch."""
 
 # LangGraph resolves inherited TypedDict annotations in this module namespace.
-# ruff: noqa: F401
 
 from __future__ import annotations
 

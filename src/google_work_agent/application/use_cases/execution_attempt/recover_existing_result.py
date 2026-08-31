@@ -26,6 +26,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
 from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
     resource_ref_from_snapshot,
 )
+from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.recover_existing_result import (
@@ -229,17 +230,17 @@ class RecoverExistingResultHandler:
         self,
         unit_of_work: UnitOfWork,
         command: RecoverExistingResultCommand,
-        action: object,
+        action: ActionRecord,
         attempt_id: str,
         now_ms: int,
         detail: str,
     ) -> RecoverExistingResultResult:
         response = write_action_version_conflict_response(
-            action=action,  # type: ignore[arg-type]
+            action=action,
             attempt_id=attempt_id,
             conflict_detail=detail,
         )
-        finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)  # type: ignore[attr-defined]
+        finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
         unit_of_work.commit()
         return _to_result(response)
 

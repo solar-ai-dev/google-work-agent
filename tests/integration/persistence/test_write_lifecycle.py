@@ -1,10 +1,6 @@
 """Write plan, claim, verification, and transaction tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
-
-from json import loads as _loads
 
 from google_work_agent.application.use_cases.action.write_approval_contracts import (
     DEFAULT_APPROVAL_TTL_MS,
@@ -1451,8 +1447,10 @@ def test_claim_hash_mismatch_emits_exactly_one_rejection_audit_event(
         "command_type": "ClaimWriteAction",
         "result_code": ResultCode.DUPLICATE_COMMAND.value,
     }
-    assert envelope["correlation"]["run_id"] is None
-    assert envelope["correlation"]["action_id"] == command.action_id
+    correlation = envelope["correlation"]
+    assert isinstance(correlation, dict)
+    assert correlation["run_id"] is None
+    assert correlation["action_id"] == command.action_id
     raw = str(envelope)
     assert "nonce" not in raw
     assert "claim_token" not in raw.lower()

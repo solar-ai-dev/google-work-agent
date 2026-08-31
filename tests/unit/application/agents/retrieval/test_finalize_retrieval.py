@@ -57,7 +57,12 @@ def test_finalize_retrieval_preserves_full_contract_and_revision_lineage() -> No
         sufficiency_result=_sufficiency_output("SUFFICIENT"),
         current_round_no=2,
         availability_results=[
-            {"start": "2026-08-31T09:00:00+09:00", "end": "2026-08-31T10:00:00+09:00"}
+            {
+                "start": "2026-08-31T09:00:00+09:00",
+                "end": "2026-08-31T10:00:00+09:00",
+                "timezone": "Asia/Seoul",
+                "derived_from_resource_refs": [],
+            }
         ],
         exclusion_obligation_segment_ids=["segment-user"],
         prior_result=prior,

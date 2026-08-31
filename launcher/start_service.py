@@ -108,9 +108,7 @@ def start_service(
     ]
     log_path = data_directory.logs_dir / "service.stderr.log"
     creation_flags = (
-        subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-        if os.name == "nt"
-        else 0
+        subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     )
     port_reservation.release()
     try:

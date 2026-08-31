@@ -16,6 +16,7 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
     ProjectRunEventHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -121,7 +122,7 @@ class WorkflowOutcomeProjector:
         *,
         run_id: str,
         expected_version: int,
-        reason: str,
+        reason: RecoveryReasonV1,
     ) -> None:
         target = self._recovery_target(run_id) if reason == "CHECKPOINT_MISMATCH" else None
         payload = {
@@ -135,7 +136,7 @@ class WorkflowOutcomeProjector:
                 expected_version=expected_version,
                 command_id=self._id_factory(),
                 request_hash=calculate_canonical_json_hash(payload),
-                reason=reason,  # type: ignore[arg-type]
+                reason=reason,
                 scope="RUN",
                 recovery_fingerprint=calculate_canonical_json_hash(payload),
                 registered_resume_target=target,

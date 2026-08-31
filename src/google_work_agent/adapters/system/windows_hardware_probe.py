@@ -84,15 +84,17 @@ def _physical_memory_bytes() -> int:
     if os.name == "nt":
         status = _MemoryStatusEx()
         status.dwLength = ctypes.sizeof(status)
-        windows_api = getattr(ctypes, "windll")  # noqa: B009 - absent from non-Windows stubs
+        windows_api = vars(ctypes).get("windll")
+        if windows_api is None:
+            raise RuntimeError("HARDWARE_RAM_PROBE_UNAVAILABLE")
         if not windows_api.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             raise RuntimeError("HARDWARE_RAM_PROBE_UNAVAILABLE")
         total = int(status.ullTotalPhys)
     else:
-        sysconf = cast(
-            Callable[[str], int],
-            getattr(os, "sysconf"),  # noqa: B009 - absent from Windows stubs
-        )
+        sysconf_value = vars(os).get("sysconf")
+        if not callable(sysconf_value):
+            raise RuntimeError("HARDWARE_RAM_PROBE_UNAVAILABLE")
+        sysconf = cast(Callable[[str], int], sysconf_value)
         total = int(sysconf("SC_PAGE_SIZE")) * int(sysconf("SC_PHYS_PAGES"))
     if total <= 0:
         raise RuntimeError("HARDWARE_RAM_PROBE_UNAVAILABLE")
@@ -108,7 +110,7 @@ def _probe_gpu(timeout_seconds: float) -> tuple[str | None, int | None]:
     )
     creation_flags = cast(int, getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed executable and command
+        completed = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
             capture_output=True,
             check=True,

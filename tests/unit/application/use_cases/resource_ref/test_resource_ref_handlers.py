@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
+from typing import cast
 
+from google_work_agent.application.use_cases.resource.connector_read_projection import (
+    ConnectorReadProjection,
+)
 from google_work_agent.application.use_cases.resource.connector_resource_access import (
     ConnectorResourceAccess,
 )
@@ -526,7 +530,7 @@ def _token_factory(values: Iterator[str]) -> Callable[[], str]:
 
 def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> None:
     gateway = _PagingGateway()
-    raw = ConnectorResourceAccess(gateway=gateway)
+    raw = ConnectorResourceAccess(gateway=cast(ConnectorReadProjection, gateway))
     opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(
@@ -564,7 +568,7 @@ def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> No
 def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_handle() -> None:
     gateway = _PagingTasksGateway()
     raw = ConnectorResourceAccess(
-        gateway=gateway,
+        gateway=cast(ConnectorReadProjection, gateway),
         default_tasklist_id_provider=lambda: "task-list-1",
     )
     opaque = OpaqueConnectorResourceAccess(
@@ -603,7 +607,7 @@ def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_ha
 def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
     gateway = _PagingTasksGateway()
     raw = ConnectorResourceAccess(
-        gateway=gateway,
+        gateway=cast(ConnectorReadProjection, gateway),
         default_tasklist_id_provider=lambda: "task-list-1",
     )
     opaque = OpaqueConnectorResourceAccess(
@@ -649,7 +653,7 @@ def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
 
 def test_canonical_count_handler_never_allocates_api_continuation_handles() -> None:
     gateway = _PagingGateway()
-    raw = ConnectorResourceAccess(gateway=gateway)
+    raw = ConnectorResourceAccess(gateway=cast(ConnectorReadProjection, gateway))
     opaque = OpaqueConnectorResourceAccess(
         raw,
         continuation_store=LocalResourceContinuationStore(

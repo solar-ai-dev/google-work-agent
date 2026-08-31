@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +11,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.domain.results import ResultCode
 
 
-def test_reserve_replay_and_immutable_result(tmp_path) -> None:
+def test_reserve_replay_and_immutable_result(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "receipts.db")
     apply_migrations(connection, now_ms=lambda: 1)
     repository = SqliteCommandReceiptRepository(connection)

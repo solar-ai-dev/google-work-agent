@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from google_work_agent.application.agents.review.inspect_constraints_and_policy_summary import (
@@ -17,12 +19,17 @@ def test_inspect_constraints_uses_only_bounded_supplied_policy_summary() -> None
     calls: list[dict[str, object]] = []
     policy_summary = {"tool_policies": [{"tool_id": "calendar.create_event"}]}
 
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        assert prompt_id == DIMENSION
+        calls.append(dict(prompt_input))
+        return _result()
+
     result = inspect_constraints_and_policy_summary(
         request_intent={"constraints": [{"field": "time", "value": "09:00"}]},
         planning_result={"schema_version": 2, "actions": []},
         policy_summary=policy_summary,
         evidence=[],
-        invoke=lambda _prompt_id, prompt_input: calls.append(prompt_input) or _result(),
+        invoke=invoke,
     )
 
     assert result == _result()

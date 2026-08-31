@@ -12,7 +12,9 @@ class SqliteEvidenceRepository:
 
     def insert_bounded(self, record: EvidenceRecord, *, action_ids: tuple[str, ...] = ()) -> None:
         self._connection.execute(
-            "INSERT INTO evidence (id, run_id, origin_type, resource_ref_id, message_id, kind, excerpt, locator_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",  # noqa: E501
+            "INSERT INTO evidence (id, run_id, origin_type, resource_ref_id, message_id, "
+            "kind, excerpt, locator_json, created_at_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
             (
                 record.id,
                 record.run_id,
@@ -43,7 +45,10 @@ class SqliteEvidenceRepository:
 
     def list_for_action(self, action_id: str) -> tuple[EvidenceRecord, ...]:
         rows = self._connection.execute(
-            "SELECT e.id, e.run_id, e.origin_type, e.resource_ref_id, e.message_id, e.kind, e.excerpt, e.locator_json, e.created_at_ms FROM evidence AS e JOIN action_evidence AS ae ON ae.evidence_id = e.id WHERE ae.action_id = ? ORDER BY e.created_at_ms ASC, e.id ASC;",  # noqa: E501
+            "SELECT e.id, e.run_id, e.origin_type, e.resource_ref_id, e.message_id, "
+            "e.kind, e.excerpt, e.locator_json, e.created_at_ms FROM evidence AS e "
+            "JOIN action_evidence AS ae ON ae.evidence_id = e.id "
+            "WHERE ae.action_id = ? ORDER BY e.created_at_ms ASC, e.id ASC;",
             (action_id,),
         ).fetchall()
         return tuple(self._record(r) for r in rows)

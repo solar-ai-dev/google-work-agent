@@ -1,8 +1,8 @@
-from google_work_agent.application.agents.work_analysis.detect_duplicate_conflict_candidates import (  # noqa: E501
+from google_work_agent.application.agents.work_analysis import (
     detect_duplicate_conflict_candidates,
 )
 
-from .conftest import TRACE, FakeRuntime, fact, prompt_ref
+from .conftest import FakeRuntime, fact, prompt_ref
 
 
 def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
@@ -17,7 +17,7 @@ def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
             }
         ]
     }
-    result = detect_duplicate_conflict_candidates(
+    result = detect_duplicate_conflict_candidates.detect_duplicate_conflict_candidates(
         work_facts=[fact("f1"), fact("f2")],
         entity_relations=[],
         evidence=[],
@@ -28,7 +28,7 @@ def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
             "detect_duplicate_conflict_candidates",
         ),
         allowed_evidence_refs={"ev-1"},
-        trace_context=TRACE,
+        requested_mode="AUTO",
     )
     assert result == output["relation_candidates"]
     assert "validated_relations" not in output

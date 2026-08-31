@@ -120,9 +120,7 @@ def test_startup_and_shutdown_callbacks_preserve_required_order() -> None:
 def test_installed_core_dependencies_initialize_before_ready_in_canonical_order() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     runtime = source[
-        source.index("def build_production_runtime(") : source.index(
-            "\ndef _build_llm_runtime("
-        )
+        source.index("def build_production_runtime(") : source.index("\ndef _build_llm_runtime(")
     ]
     migration = runtime.index("apply_migrations(")
     checkpoint = runtime.index("checkpoint = SqliteCheckpointAdapter(")

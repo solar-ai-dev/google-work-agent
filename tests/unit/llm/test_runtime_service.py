@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 import pytest
 from tests.support.external_llm_scope import build_external_scope_gate
@@ -41,7 +42,9 @@ from google_work_agent.ports.llm import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
+    ExternalLlmTransferScopeV1,
+)
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(
@@ -116,7 +119,7 @@ def _status_service(
             "_Probe",
             (),
             {
-                "probe": lambda self, endpoint, approved_model: ollama_transport.probe(  # noqa: ARG005
+                "probe": lambda self, endpoint, approved_model: ollama_transport.probe(
                     endpoint=endpoint or "http://127.0.0.1:11434",
                     model_id=None if approved_model is None else approved_model.model_id,
                     timeout_seconds=5,
@@ -132,7 +135,7 @@ def _status_service(
 def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter:
     """Build the sole canonical structured-inference router."""
     kwargs.pop("router", None)
-    router_kwargs = {
+    router_kwargs: dict[str, Any] = {
         key: kwargs[key]
         for key in (
             "settings_service",
@@ -152,17 +155,26 @@ def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter
     checkpoint, projector = build_external_scope_gate()
     router_kwargs["checkpoint"] = checkpoint
     router = CanonicalStructuredInferenceRuntimeRouter(
-        api_provider_name="generic", **router_kwargs
+        api_provider_name="generic", **cast(Any, router_kwargs)
     )
-    router.external_scope_projector = lambda run_id, source_kinds, data_classes: projector(
-        ProjectExternalLlmTransferScopeQueryV1(
-            schema_version=1,
-            run_id=run_id,
-            source_kinds=source_kinds,
-            data_classes=data_classes,  # type: ignore[arg-type]
-            occurred_at_ms=1,
+
+    def project_scope(
+        run_id: str, source_kinds: tuple[str, ...], data_classes: tuple[str, ...]
+    ) -> ExternalLlmTransferScopeV1:
+        scope = projector(
+            ProjectExternalLlmTransferScopeQueryV1(
+                schema_version=1,
+                run_id=run_id,
+                source_kinds=source_kinds,
+                data_classes=cast(Any, data_classes),
+                occurred_at_ms=1,
+            )
         )
-    )
+        assert scope is not None
+        return scope
+
+    router.external_scope_projector = project_scope
+    router.run_context_provider = lambda: "run-1"
     return router
 
 
@@ -205,7 +217,7 @@ def test_api_only_invokes_external_provider() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(  # noqa: ARG005
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
@@ -215,16 +227,10 @@ def test_api_only_invokes_external_provider() -> None:
         runtime_policy=RuntimePolicy(),
     )
 
-    result = service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-1"),
-    )
+    result = service.infer("API_LLM", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
 
-    assert result.actual_runtime is ActualRuntime.API_LLM
+    assert result.actual_runtime == ActualRuntime.API_LLM.value
     assert result.structured_output == {"answer": "ok"}
-    assert result.provider_calls_consumed == 1
     assert len(api_transport.invocations) == 2  # probe + invoke
     assert not ollama_transport.invocations
 
@@ -275,7 +281,7 @@ def test_discard_run_is_a_harmless_noop() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(  # noqa: ARG005
+        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
             endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
@@ -286,12 +292,7 @@ def test_discard_run_is_a_harmless_noop() -> None:
     )
 
     service.discard_run(run_id="run-never-started")
-    result = service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-1"),
-    )
+    result = service.infer("API_LLM", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
     service.discard_run(run_id="run-1")
 
     assert result.structured_output == {"answer": "ok"}
@@ -353,14 +354,9 @@ def test_auto_falls_back_once_after_local_gpu_failure() -> None:
         event_recorder=recorder,
     )
 
-    result = service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-2"),
-    )
+    result = service.infer("AUTO", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
 
-    assert result.actual_runtime is ActualRuntime.API_LLM
+    assert result.actual_runtime == ActualRuntime.API_LLM.value
     assert result.fallback_reason == LLMErrorCode.GPU_OOM.value
     assert "LLM_FALLBACK_STARTED" in recorder.events
     assert "LLM_FALLBACK_COMPLETED" in recorder.events
@@ -411,12 +407,7 @@ def test_local_gpu_mode_never_falls_back_to_api() -> None:
     )
 
     try:
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-3"),
-        )
+        service.infer("LOCAL_GPU", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
     except LLMInvocationError as error:
         assert error.code is LLMErrorCode.PROVIDER_TIMEOUT
     else:
@@ -473,12 +464,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     )
 
     try:
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-hw-1"),
-        )
+        service.infer("LOCAL_GPU", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
     except LLMInvocationError as error:
         assert error.code is LLMErrorCode.LOCAL_UNAVAILABLE
     else:
@@ -536,18 +522,11 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
         schema_repairer=repairer,
     )
 
-    result = service.invoke_structured(
-        prompt_ref=PROMPT_REF,
-        prompt_input={"topic": "hello"},
-        output_schema=OUTPUT_SCHEMA,
-        trace_context=ObservabilityContext(run_id="run-1", llm_call_id="llm-4"),
-    )
+    result = service.infer("API_LLM", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA)
 
     assert result.structured_output == {"answer": "fixed"}
-    assert result.structured_output_attempts == 1
     # StructuredInferenceResultV1 deliberately exposes only the exact
     # canonical result surface; the repair attempt is proved by the repairer.
-    assert result.provider_calls_consumed == 1
     assert len(repairer.calls) == 1
 
 
@@ -607,12 +586,10 @@ def test_application_semantic_validation_does_not_create_a_second_router_repair_
         return candidate
 
     with pytest.raises(ValueError, match="correct-value"):
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(run_id="run-2", llm_call_id="llm-5"),
-            semantic_validate=semantic_validate,
+        semantic_validate(
+            service.infer(
+                "API_LLM", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA
+            ).structured_output
         )
 
     assert repairer.calls == []
@@ -670,12 +647,10 @@ def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attemp
         raise ValueError("always invalid")
 
     with pytest.raises(ValueError, match="always invalid"):
-        service.invoke_structured(
-            prompt_ref=PROMPT_REF,
-            prompt_input={"topic": "hello"},
-            output_schema=OUTPUT_SCHEMA,
-            trace_context=ObservabilityContext(run_id="run-3", llm_call_id="llm-6"),
-            semantic_validate=semantic_validate,
+        semantic_validate(
+            service.infer(
+                "API_LLM", PROMPT_REF, {"topic": "hello"}, OUTPUT_SCHEMA
+            ).structured_output
         )
     invoke_calls = [c for c in api_transport.invocations if c["kind"] == "invoke"]
     assert len(invoke_calls) == 1

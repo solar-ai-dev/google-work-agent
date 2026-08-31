@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from itertools import count
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -20,6 +21,7 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
 from google_work_agent.application.use_cases.sse_event.project_run_event import (
     ProjectRunEventHandler,
 )
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowResumeRequest,
@@ -27,6 +29,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    CompiledAgentSubgraphIdV1,
     MainControlResumeTargetV2,
     WorkflowExecutionAdmissionV1,
     WorkflowHandoffV1,
@@ -46,7 +49,11 @@ def build_test_admission_callbacks(
     event_publisher: Any,
     now_ms: Any,
     checkpoint: SqliteCheckpointAdapter | None = None,
-):
+) -> tuple[
+    SqliteCheckpointAdapter,
+    Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], GraphCheckpointEnvelopeV1],
+    Callable[[WorkflowExecutionAdmissionV1, WorkflowHandoffV1], None],
+]:
     checkpoint = checkpoint or SqliteCheckpointAdapter(checkpoint_path, now_ms=now_ms)
     checkpoint_control = LangGraphCheckpointControlAdapter(
         checkpoint_port=checkpoint,
@@ -59,7 +66,7 @@ def build_test_admission_callbacks(
     graph = graph_builder.compile(checkpointer=checkpoint)
     outcome_ids = count(1)
 
-    def recovery_target(run_id: str):  # type: ignore[no-untyped-def]
+    def recovery_target(run_id: str) -> MainControlResumeTargetV2 | None:
         binding = checkpoint.load_workflow_binding(run_id)
         if binding is None:
             return None
@@ -84,20 +91,26 @@ def build_test_admission_callbacks(
 
     def target(admission: WorkflowExecutionAdmissionV1) -> AgentNodeResumeTargetV2:
         profile = admission.effective_binding.graph_profile
-        return AgentNodeResumeTargetV2(
-            "AGENT_NODE",
-            "REQUEST_UNDERSTANDING",
+        compiled_subgraph_id = cast(
+            CompiledAgentSubgraphIdV1,
             {
                 "SINGLE_BASELINE": "UNIFIED_AGENT",
                 "THREE_STAGE": "STAGE_REQUEST_ROUTE_RETRIEVAL",
                 "SIX_ROLE_BASELINE": "SIX_REQUEST_UNDERSTANDING",
             }[profile],
+        )
+        return AgentNodeResumeTargetV2(
+            "AGENT_NODE",
+            "REQUEST_UNDERSTANDING",
+            compiled_subgraph_id,
             "request.identify_goal",
             profile,
             admission.effective_binding.graph_version,
         )
 
-    def materialize(admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1):
+    def materialize(
+        admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
+    ) -> GraphCheckpointEnvelopeV1:
         binding = admission.effective_binding
         if binding.execution_kind == "START":
             with checkpoint.execution_scope(
@@ -164,7 +177,7 @@ def build_test_admission_callbacks(
             selected_resources=context.selected_resources,
         )
 
-    def invoke(admission: WorkflowExecutionAdmissionV1, _handoff: object) -> None:
+    def invoke(admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1) -> None:
         binding = admission.effective_binding
         context = get_execution_context(GetExecutionContextQuery(binding.run_id))
         assert context is not None

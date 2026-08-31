@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from hashlib import sha256
-from typing import Any
+from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
     RESUME_CONTRACT_VERSION,
@@ -22,9 +22,11 @@ from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
     ScheduleRunExecutionHandler,
 )
+from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_binding import WorkflowBindingV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
+    WorkflowInvocationResult,
     WorkflowResumeRequest,
 )
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -38,10 +40,10 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 
 def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
     """Run a test START through the persisted handoff/admission boundary."""
-    factory = runtime._unit_of_work_factory  # noqa: SLF001
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
-    profile = runtime._graph_profile.value  # noqa: SLF001
-    registry = runtime._resume_target_registry  # noqa: SLF001
+    factory = runtime._unit_of_work_factory
+    checkpoint = runtime._checkpoint_port
+    profile = runtime._graph_profile.value
+    registry = runtime._resume_target_registry
     target = registry.issue_agent_node(
         profile,
         "REQUEST_UNDERSTANDING",
@@ -91,7 +93,9 @@ def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
     results: list[Any] = []
     errors: list[BaseException] = []
 
-    def materialize(admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1):
+    def materialize(
+        admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1
+    ) -> GraphCheckpointEnvelopeV1:
         with checkpoint.execution_scope(
             admission,
             applied_handoff_id=admission.handoff_id,
@@ -101,7 +105,7 @@ def start_with_admission(runtime: Any, database_path: Any, request: Any) -> Any:
             runtime.prepare_start(request)
         result = checkpoint.load_same_run_checkpoint(request.run_id, request.workflow_key)
         assert result is not None
-        return result
+        return cast(GraphCheckpointEnvelopeV1, result)
 
     def invoke(admission: WorkflowExecutionAdmissionV1, _handoff: WorkflowHandoffV1) -> None:
         try:
@@ -139,12 +143,12 @@ def resume_confirmation_with_handoff(
     *,
     resume_payload: Mapping[str, object],
     command_id: str,
-) -> tuple[ConfirmRunResult, Any | None]:
+) -> tuple[ConfirmRunResult, WorkflowInvocationResult | None]:
     """Run confirmation through ConfirmRun -> RESUME handoff -> admission worker."""
     del database_path
-    factory = runtime._unit_of_work_factory  # noqa: SLF001
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
-    registry = runtime._resume_target_registry  # noqa: SLF001
+    factory = runtime._unit_of_work_factory
+    checkpoint = runtime._checkpoint_port
+    registry = runtime._resume_target_registry
     authority = runtime.resolve_pending_confirmation("run-1")
     if authority is None:
         raise AssertionError("test runtime has no pending confirmation")
@@ -153,7 +157,7 @@ def resume_confirmation_with_handoff(
         assert run is not None
         expected_version = run.version
 
-    runtime_results: list[Any] = []
+    runtime_results: list[WorkflowInvocationResult] = []
     errors: list[BaseException] = []
 
     def invoke(admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1) -> None:
@@ -213,7 +217,7 @@ def resume_confirmation_with_handoff(
         )
         resume_handler = ResumeConfirmationHandler(
             unit_of_work_factory=factory,
-            checkpoint_port=runtime._checkpoint_port,  # noqa: SLF001
+            checkpoint_port=runtime._checkpoint_port,
             now_ms=lambda: 2_000,
             id_factory=lambda: f"test-handoff-{command_id}",
             resume_target_registry=registry,
@@ -249,7 +253,7 @@ def resume_confirmation_with_handoff(
 
 def _materialize_resume_control(runtime: Any, admission: Any, handoff: Any) -> Any:
     del handoff
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    checkpoint = runtime._checkpoint_port
     binding = admission.effective_binding
     latest = checkpoint.load_same_run_checkpoint(binding.run_id, binding.langgraph_thread_id)
     assert latest is not None
@@ -257,9 +261,9 @@ def _materialize_resume_control(runtime: Any, admission: Any, handoff: Any) -> A
 
 
 def _executor(runtime: Any, *, materialize: Any, invoke: Any) -> BackgroundRunExecutorAdapter:
-    checkpoint = runtime._checkpoint_port  # noqa: SLF001
+    checkpoint = runtime._checkpoint_port
     return BackgroundRunExecutorAdapter(
-        unit_of_work_factory=runtime._unit_of_work_factory,  # noqa: SLF001
+        unit_of_work_factory=runtime._unit_of_work_factory,
         checkpoint_port=checkpoint,
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,

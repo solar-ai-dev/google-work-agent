@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 
 class PlanQueryInput(TypedDict):
@@ -19,7 +19,7 @@ class PlanQueryInput(TypedDict):
     revision_prompt_ref: PromptReference
     output_schema: OutputSchemaDefinition
     prompt_input: dict[str, object]
-    trace_context: ObservabilityContext
+    requested_mode: RequestedModeV1
     frozen_routes: Sequence[InputToolRouteV1]
     route_policies: Mapping[str, RouteConstraintPolicy]
     retry_budget: RunBudgetV2

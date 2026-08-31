@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import cast
 
 from google_work_agent.application.tool_registry.contracts import SignedToolRegistryEntryV1
+from google_work_agent.application.tool_registry.contracts.signed_tool_registry_entry import (
+    RecoveryStrategy,
+    RetryClass,
+    ToolEffect,
+    VerificationStrategy,
+)
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 
 _IMPLEMENTATION_MANIFEST = Path(__file__).with_name("tool_registry_manifest.json")
@@ -81,18 +87,42 @@ def _entry_from_payload(payload: dict[str, object]) -> SignedToolRegistryEntryV1
     ):
         raise ValueError("required_scopes must be a list of strings")
     return SignedToolRegistryEntryV1(
-        schema_version=cast(int, payload["schema_version"]),  # type: ignore[arg-type]
+        schema_version=1,
         connector_id=str(payload["connector_id"]),
         resource_type=str(payload["resource_type"]),
         tool_id=str(payload["tool_id"]),
-        effect=cast(str, payload["effect"]),  # type: ignore[arg-type]
+        effect=_tool_effect(payload["effect"]),
         required_scopes=tuple(cast(list[str], required_scopes)),
         input_schema_ref=str(payload["input_schema_ref"]),
         output_schema_ref=str(payload["output_schema_ref"]),
-        retry_class=cast(str, payload["retry_class"]),  # type: ignore[arg-type]
-        verification_strategy=cast(str, payload["verification_strategy"]),  # type: ignore[arg-type]
-        recovery_strategy=cast(str, payload["recovery_strategy"]),  # type: ignore[arg-type]
+        retry_class=_retry_class(payload["retry_class"]),
+        verification_strategy=_verification_strategy(payload["verification_strategy"]),
+        recovery_strategy=_recovery_strategy(payload["recovery_strategy"]),
     )
+
+
+def _tool_effect(value: object) -> ToolEffect:
+    if value not in {"READ", "CREATE", "UPDATE", "SEND", "DELETE"}:
+        raise ValueError("unsupported tool effect")
+    return cast(ToolEffect, value)
+
+
+def _retry_class(value: object) -> RetryClass:
+    if value not in {"READ_BOUNDED", "WRITE_NO_AUTO_RETRY"}:
+        raise ValueError("unsupported retry_class")
+    return cast(RetryClass, value)
+
+
+def _verification_strategy(value: object) -> VerificationStrategy:
+    if value not in {"NONE", "GET_COMPARE", "GET_ABSENT", "SENT_LOOKUP"}:
+        raise ValueError("unsupported verification_strategy")
+    return cast(VerificationStrategy, value)
+
+
+def _recovery_strategy(value: object) -> RecoveryStrategy:
+    if value not in {"NONE", "GET_TARGET", "RESOURCE_SEARCH", "MESSAGE_SEARCH"}:
+        raise ValueError("unsupported recovery_strategy")
+    return cast(RecoveryStrategy, value)
 
 
 def _require_exact_fields(

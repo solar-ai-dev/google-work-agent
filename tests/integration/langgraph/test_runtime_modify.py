@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 
 from tests.integration.langgraph.test_runtime import (
@@ -49,10 +50,10 @@ def _current_review_version(database_path: Path, plan_id: str) -> int:
     return bundle.plan.review_version
 
 
-def _run_persisted_review(runtime: object, prepared: dict[str, object]) -> dict[str, object]:
-    entry = runtime._main_control_bindings().review_entry  # type: ignore[attr-defined]  # noqa: SLF001
+def _run_persisted_review(runtime: object, prepared: Mapping[str, object]) -> dict[str, object]:
+    entry = runtime._main_control_bindings().review_entry  # type: ignore[attr-defined]
     first = entry(prepared)
-    reviewed = runtime._review_subgraph.invoke({**prepared, **first})  # type: ignore[attr-defined]  # noqa: SLF001
+    reviewed = runtime._review_subgraph.invoke({**prepared, **first})  # type: ignore[attr-defined]
     return cast(dict[str, object], {**reviewed, **entry(reviewed)})
 
 
@@ -375,10 +376,8 @@ def test_modify_review_branches_use_existing_supervisor_routes(
         )
         assert modified["applied"] is True
         review_version = _current_review_version(database_path, plan_id)
-        snapshot = runtime._graph.get_state(  # noqa: SLF001
-            runtime._config_for_thread("thread-1")  # noqa: SLF001
-        )
-        prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
+        snapshot = runtime._graph.get_state(runtime._config_for_thread("thread-1"))
+        prepared = runtime._prepare_modify_review_state(
             snapshot.values,
             plan_id=plan_id,
             review_version=review_version,
@@ -477,10 +476,8 @@ def test_modify_review_route_reconsideration_persists_exact_disposition(tmp_path
         )
         assert modified["applied"] is True
         review_version = _current_review_version(database_path, plan_id)
-        snapshot = runtime._graph.get_state(  # noqa: SLF001
-            runtime._config_for_thread("thread-1")  # noqa: SLF001
-        )
-        prepared = runtime._prepare_modify_review_state(  # noqa: SLF001
+        snapshot = runtime._graph.get_state(runtime._config_for_thread("thread-1"))
+        prepared = runtime._prepare_modify_review_state(
             snapshot.values,
             plan_id=plan_id,
             review_version=review_version,
@@ -780,10 +777,8 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         )
         assert first_modified["applied"] is True
         first_review_version = _current_review_version(database_path, plan_id)
-        snapshot = runtime._graph.get_state(  # noqa: SLF001
-            runtime._config_for_thread("thread-1")  # noqa: SLF001
-        )
-        first_generation = runtime._prepare_modify_review_state(  # noqa: SLF001
+        snapshot = runtime._graph.get_state(runtime._config_for_thread("thread-1"))
+        first_generation = runtime._prepare_modify_review_state(
             snapshot.values,
             plan_id=plan_id,
             review_version=first_review_version,
@@ -801,7 +796,7 @@ def test_modify_during_review_discards_the_stale_llm_result(tmp_path: Path) -> N
         assert second_modified["applied"] is True
         second_review_version = _current_review_version(database_path, plan_id)
         stale_review = _run_persisted_review(runtime, first_generation)
-        domain_validation = runtime._main_control_bindings().domain_validation  # noqa: SLF001
+        domain_validation = runtime._main_control_bindings().domain_validation
         stale_domain_result = domain_validation(stale_review)
 
         assert stale_domain_result["__target__"] == "end"

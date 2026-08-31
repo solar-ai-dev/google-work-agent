@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from google_work_agent.adapters.system.sqlite_checkpoint import (
@@ -71,7 +72,7 @@ def test_retrieval_head_is_checkpoint_owned_and_survives_restart(tmp_path: Path)
     builder.add_edge(START, "retrieval")
     builder.add_edge("retrieval", END)
     graph = builder.compile(checkpointer=checkpoint)
-    config = {"configurable": {"thread_id": "thread-1"}}
+    config: RunnableConfig = {"configurable": {"thread_id": "thread-1"}}
 
     with checkpoint.execution_scope(
         _admission(),

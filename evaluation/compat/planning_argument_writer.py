@@ -9,7 +9,7 @@ by :mod:`planning_arguments` and revalidated after the call.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from evaluation.compat.plan_review_result_v1 import (
     ReviewIssueV1,
@@ -68,13 +68,17 @@ TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA: Final = OutputSchemaDefinition(
 _ALLOWED_REVISION_SCOPE: Final = ("$.arguments", "$.evidence_refs")
 
 
+class _StructuredRuntime(Protocol):
+    def invoke_structured(self, **kwargs: Any) -> StructuredLLMResult: ...
+
+
 class PlanningArgumentWriter:
     """Invoke Planning argument Prompt variants for exactly one frozen route."""
 
     def __init__(
         self,
         *,
-        llm_runtime: Any,
+        llm_runtime: _StructuredRuntime,
         prompt_ref: PromptReference | None = None,
         revise_prompt_ref: PromptReference | None = None,
         manifest_path: Path | None = None,

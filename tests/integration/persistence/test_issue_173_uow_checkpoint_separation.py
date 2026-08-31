@@ -1,4 +1,7 @@
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
@@ -31,7 +34,7 @@ def _migrated_database(path: Path) -> None:
 
 
 def test_write_and_read_uow_entry_execute_no_checkpoint_setup_sql(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database_path = tmp_path / "uow.db"
     _migrated_database(database_path)
@@ -41,7 +44,7 @@ def test_write_and_read_uow_entry_execute_no_checkpoint_setup_sql(
 
     real_connect = uow_module.connect_sqlite
 
-    def traced_connect(path: Path):
+    def traced_connect(path: Path) -> sqlite3.Connection:
         connection = real_connect(path)
         connection.set_trace_callback(traces.append)
         return connection

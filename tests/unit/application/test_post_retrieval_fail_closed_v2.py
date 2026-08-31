@@ -6,16 +6,18 @@ from evaluation.compat.supervise_post_retrieval import (
     route_work_analysis_return_v2,
 )
 
+from google_work_agent.application.agents.planning.contracts.answer_draft import AnswerDraftV2
+from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
 )
 
 
-def _meta(name: str) -> dict[str, object]:
+def _meta(name: str) -> StateArtifactMetaV1:
     return {"artifact_id": name, "revision": 1, "based_on": []}
 
 
-def _answer() -> dict[str, object]:
+def _answer() -> AnswerDraftV2:
     return {
         "schema_version": 2,
         "meta": _meta("answer-1"),

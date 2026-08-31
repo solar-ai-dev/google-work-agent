@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.domain.approval.model import ApprovalStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.command_receipt.model import CommandReceipt, CommandReceiptStatus
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -168,10 +168,10 @@ class RecordReviewResultHandler:
 
     @staticmethod
     def _replay(
-        receipt: object, command: RecordReviewResultCommandV1
+        receipt: CommandReceipt, command: RecordReviewResultCommandV1
     ) -> RecordReviewResultResultV1:
         request_hash = _request_hash(command)
-        if receipt.request_hash != request_hash:  # type: ignore[attr-defined]
+        if receipt.request_hash != request_hash:
             return RecordReviewResultResultV1(
                 applied=False,
                 result_code=ResultCode.DUPLICATE_COMMAND.value,
@@ -179,9 +179,9 @@ class RecordReviewResultHandler:
                 recorded_review_version=None,
                 conflict_detail="command_id already exists with a different request",
             )
-        if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:  # type: ignore[attr-defined]
+        if receipt.status is CommandReceiptStatus.RECEIVED or receipt.response_json is None:
             raise RuntimeError("RECEIVED receipt requires transaction recovery before replay")
-        return RecordReviewResultResultV1(**loads(receipt.response_json))  # type: ignore[attr-defined]
+        return RecordReviewResultResultV1(**loads(receipt.response_json))
 
     @staticmethod
     def _finish(

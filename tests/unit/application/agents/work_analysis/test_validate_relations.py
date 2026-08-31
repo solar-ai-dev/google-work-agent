@@ -1,18 +1,27 @@
+from typing import cast
+
 import pytest
 
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
+    CurrentSourceRelationV1,
+    WorkRelationCandidateV1,
+)
 from google_work_agent.application.agents.work_analysis.validate_relations import validate_relations
 
 from .conftest import fact
 
 
-def _candidate(kind: str = "DUPLICATES") -> dict[str, object]:
-    return {
-        "relation_id": "r1",
-        "kind": kind,
-        "source_fact_id": "f1",
-        "target_fact_id": "f2",
-        "evidence_refs": ["ev-1"],
-    }
+def _candidate(kind: str = "DUPLICATES") -> WorkRelationCandidateV1:
+    return cast(
+        WorkRelationCandidateV1,
+        {
+            "relation_id": "r1",
+            "kind": kind,
+            "source_fact_id": "f1",
+            "target_fact_id": "f2",
+            "evidence_refs": ["ev-1"],
+        },
+    )
 
 
 def test_guarded_candidate_without_current_source_truth_is_not_final() -> None:
@@ -30,7 +39,13 @@ def test_guarded_candidate_without_current_source_truth_is_not_final() -> None:
 
 def test_current_source_truth_promotes_exact_guarded_relation() -> None:
     candidate = _candidate()
-    current_source_truth = {**candidate, "relation_id": "source-relation-7"}
+    current_source_truth: CurrentSourceRelationV1 = {
+        "relation_id": "source-relation-7",
+        "kind": "DUPLICATES",
+        "source_fact_id": "f1",
+        "target_fact_id": "f2",
+        "evidence_refs": ["ev-1"],
+    }
     result = validate_relations(
         work_facts=[fact("f1"), fact("f2")],
         entity_relation_candidates=[],

@@ -2,6 +2,9 @@ from copy import deepcopy
 
 import pytest
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     bind_registry_candidates,
 )
@@ -34,7 +37,7 @@ def test_validate_route__mismatched_output_tool__fails_closed() -> None:
         tool_catalog=catalog,
         id_factory=lambda: next(ids),
     )
-    intent = {
+    intent: RequestIntentV2 = {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
         "goal": "goal",
@@ -45,7 +48,7 @@ def test_validate_route__mismatched_output_tool__fails_closed() -> None:
         "analysis_requirement": "REQUIRED",
         "ambiguity": {"requires_confirmation": False, "reason_codes": [], "missing_fields": []},
     }
-    selected_tools = {
+    selected_tools: dict[tuple[str, str], str] = {
         (item.resource_type, item.effect): item.eligible_tool_ids[0]
         for item in binding.output_candidates
     }

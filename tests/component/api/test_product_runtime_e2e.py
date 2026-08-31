@@ -25,6 +25,7 @@ from tests.integration.langgraph.test_runtime import (
 )
 from tests.support.fakes import DeterministicUUID, FakeClockPort, FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
+from tests.support.google_gateway_connector_ports import GoogleGatewayConnectorReadPort
 from tests.support.legacy_write.write_actions import (
     PrepareWriteRetryService,
     RequestRunCancellationService,
@@ -72,6 +73,7 @@ from google_work_agent.application.agents.planning.contracts.planning_result imp
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
+from google_work_agent.application.tool_registry import load_signed_tool_registry
 from google_work_agent.application.use_cases.action.approve_action import ApproveActionHandler
 from google_work_agent.application.use_cases.conversation.create_conversation import (
     CreateConversationHandler,
@@ -81,6 +83,15 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 from google_work_agent.application.use_cases.conversation.list_conversations import (
     ListConversationsHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultHandler,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedHandler,
+)
+from google_work_agent.application.use_cases.recovery.lookup_unknown_result import (
+    LookupUnknownResultHandler,
 )
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
     IssueSelectionHandle,
@@ -94,6 +105,7 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
 )
 from google_work_agent.application.use_cases.run.start_run import StartRunHandler
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsHandler
+from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 from google_work_agent.ports.system.api_access_port import (
     AccessDecision,
     ApiRequestContext,
@@ -447,6 +459,12 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         checkpoint=checkpoint,
     )
 
+    def materialize_recovery_snapshot(
+        tool_name: str, arguments: dict[str, object], resource_id: str
+    ) -> ResourceSnapshot:
+        del tool_name, arguments, resource_id
+        raise AssertionError("recovery snapshot is outside this component scenario")
+
     production_runtime = _build_workflow_runtime(
         unit_of_work_factory=unit_of_work_factory,
         id_factory=id_generator.next_id,
@@ -455,16 +473,26 @@ def test_product_api_approval_resumes_langgraph_and_verifies_one_google_write(
         materialize_admission_checkpoint=materialize,
         invoke_semantic_owner=invoke,
         resume_target_registry=resume_target_registry,
-        lookup_unknown_result=lambda command: None,
-        recover_existing_result=lambda command: None,
-        resolve_as_failed=lambda command: None,
+        lookup_unknown_result=LookupUnknownResultHandler(
+            connector_read=GoogleGatewayConnectorReadPort(gateway),
+            tool_registry=load_signed_tool_registry(),
+            unit_of_work_factory=unit_of_work_factory,
+        ),
+        recover_existing_result=RecoverExistingResultHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
+        resolve_as_failed=ResolveAsFailedHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
+        ),
         require_recovery=_build_require_recovery(
             unit_of_work_factory=unit_of_work_factory,
             checkpoint=checkpoint,
             now_ms=clock.now_ms,
             resume_target_registry=resume_target_registry,
         ),
-        materialize_recovery_snapshot=lambda tool_name, arguments, resource_id: None,
+        materialize_recovery_snapshot=materialize_recovery_snapshot,
         now_ms=clock.now_ms,
         reconciliation_interval_seconds=0.2,
     )

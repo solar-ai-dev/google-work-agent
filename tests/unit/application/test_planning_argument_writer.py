@@ -146,7 +146,7 @@ def _evidence() -> list[dict[str, object]]:
 
 def test_writer_receives_exactly_one_frozen_output_route() -> None:
     runtime = _Runtime()
-    writer = PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt())  # type: ignore[arg-type]
+    writer = PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt())
     route = {
         "route_id": "route-task-create",
         "resource_type": "TASK",
@@ -193,7 +193,7 @@ def test_writer_receives_exactly_one_frozen_output_route() -> None:
 
 def test_writer_projects_only_bounded_evidence_fields() -> None:
     runtime = _Runtime()
-    writer = PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt())  # type: ignore[arg-type]
+    writer = PlanningArgumentWriter(llm_runtime=runtime, prompt_ref=_prompt())
     route = {
         "route_id": "route-task-create",
         "resource_type": "TASK",

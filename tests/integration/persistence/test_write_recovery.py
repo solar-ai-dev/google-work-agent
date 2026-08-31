@@ -1,7 +1,5 @@
 """UNKNOWN_RESULT and recovery integration tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
 from json import loads as _loads

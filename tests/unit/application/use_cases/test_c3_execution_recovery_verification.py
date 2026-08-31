@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from json import dumps
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
+from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
 from tests.support.legacy_write.execute_action import (
     ExecuteActionCommand,
     ExecuteActionHandler,
@@ -23,6 +26,7 @@ from tests.support.legacy_write.recover_send import (
 from tests.support.legacy_write.recover_update import (
     RecoverUpdateCommand,
     RecoverUpdateHandler,
+    RecoverUpdateResult,
 )
 from tests.support.legacy_write.verify_action import (
     VerifyActionCommand,
@@ -33,8 +37,13 @@ from google_work_agent.application.use_cases.claim.write_execution_integrity imp
     CLAIM_TOKEN_VERSION,
     issue_claim_token,
 )
-from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
-    WriteActionResponse,
+from google_work_agent.application.use_cases.execution_attempt.recover_existing_result import (
+    RecoverExistingResultCommand,
+    RecoverExistingResultResult,
+)
+from google_work_agent.application.use_cases.execution_attempt.resolve_as_failed import (
+    ResolveAsFailedCommand,
+    ResolveAsFailedResult,
 )
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     calculate_verification_subset_diff,
@@ -51,23 +60,24 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceSnapshot,
     ResourceType,
 )
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 _SIGNING_SECRET = "c3-signing-secret"
 _SERVICE_INSTANCE_ID = "svc-c3"
 
 
 class _ByIdRepo:
-    def __init__(self, values: dict[str, object], *, plan_bundles: bool = False) -> None:
+    def __init__(self, values: dict[str, Any], *, plan_bundles: bool = False) -> None:
         self.values = values
         self.plan_bundles = plan_bundles
 
-    def get_by_id(self, value_id: str) -> object | None:
+    def get_by_id(self, value_id: str) -> Any | None:
         return self.values.get(value_id)
 
-    def get(self, value_id: str) -> object | None:
+    def get(self, value_id: str) -> Any | None:
         return self.values.get(value_id)
 
-    def load_bundle(self, value_id: str) -> object | None:
+    def load_bundle(self, value_id: str) -> Any | None:
         value = self.values.get(value_id)
         if value is None or not self.plan_bundles:
             return value
@@ -75,13 +85,13 @@ class _ByIdRepo:
             plan=value, actions=(), dependencies=(), evidence=(), action_evidence=()
         )
 
-    def get_active_for_approval(self, value_id: str) -> object | None:
+    def get_active_for_approval(self, value_id: str) -> Any | None:
         return self.values.get(value_id)
 
-    def list_by_run(self, run_id: str) -> list[object]:
+    def list_by_run(self, run_id: str) -> list[Any]:
         return [item for item in self.values.values() if getattr(item, "run_id", None) == run_id]
 
-    def get_current(self, run_id: str) -> object | None:
+    def get_current(self, run_id: str) -> Any | None:
         return next(
             (item for item in self.values.values() if getattr(item, "run_id", None) == run_id),
             None,
@@ -89,7 +99,7 @@ class _ByIdRepo:
 
     def update_if_version_and_status(
         self, value_id: str, *args: object, **kwargs: object
-    ) -> object | None:
+    ) -> Any | None:
         item = self.values.get(value_id)
         if item is None:
             return None
@@ -145,7 +155,7 @@ class _VerificationRepo:
 
 class _Actions(_ByIdRepo):
     def __init__(
-        self, values: dict[str, object], verification_status: ActionStatusV1 | None = None
+        self, values: dict[str, Any], verification_status: ActionStatusV1 | None = None
     ) -> None:
         super().__init__(values)
         self.verification_status = verification_status
@@ -170,7 +180,7 @@ class _Actions(_ByIdRepo):
 
 
 class _Runs(_ByIdRepo):
-    def __init__(self, values: dict[str, object]) -> None:
+    def __init__(self, values: dict[str, Any]) -> None:
         super().__init__(values)
         self.recovery_required = 0
 
@@ -179,7 +189,7 @@ class _Runs(_ByIdRepo):
 
     def update_if_version_and_status(
         self, value_id: str, *args: object, **kwargs: object
-    ) -> object | None:
+    ) -> Any | None:
         updated = super().update_if_version_and_status(value_id, *args, **kwargs)
         if updated is not None and RunStatusV1(updated.status) is RunStatusV1.RECOVERY_REQUIRED:
             self.recovery_required += 1
@@ -190,11 +200,11 @@ class _Uow:
     def __init__(
         self,
         *,
-        action: object,
-        attempt: object,
-        approval: object | None = None,
-        plan: object | None = None,
-        run: object | None = None,
+        action: Any,
+        attempt: Any,
+        approval: Any | None = None,
+        plan: Any | None = None,
+        run: Any | None = None,
         verification_status: ActionStatusV1 | None = None,
     ) -> None:
         self.actions = _Actions({action.id: action}, verification_status)
@@ -352,8 +362,8 @@ def _execute_handler(
     uow: _Uow, connector: _ExecutionConnector, now_ms: int = 2_000
 ) -> ExecuteActionHandler:
     return ExecuteActionHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
-        connector_execution=connector,  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
+        connector_execution=cast(LegacyWriteResultMaterializer, connector),
         now_ms=lambda: now_ms,
         signing_secret=_SIGNING_SECRET,
         service_instance_id=_SERVICE_INSTANCE_ID,
@@ -413,6 +423,7 @@ def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> No
 
     bound_uow, bound_token, connector4 = _execution_fixture()
     action = bound_uow.actions.get("action-1")
+    assert action is not None
     action.tool_name = "tasks_update_task"
     with pytest.raises(PermissionError, match="binding mismatch"):
         _execute_handler(bound_uow, connector4)(ExecuteActionCommand("action-1", bound_token))
@@ -422,9 +433,9 @@ def test_execute_action_rejects_cancel_binding_nonclaimed_and_used_nonce() -> No
 def _recovery_uow(
     *,
     tool_name: str,
-    expected: dict[str, object] | None = None,
-    source: dict[str, object] | None = None,
-    arguments: dict[str, object] | None = None,
+    expected: Mapping[str, object] | None = None,
+    source: Mapping[str, object] | None = None,
+    arguments: Mapping[str, object] | None = None,
 ) -> _Uow:
     action = SimpleNamespace(
         id="action-1",
@@ -448,9 +459,21 @@ def _recovery_uow(
     return _Uow(action=action, attempt=attempt, approval=approval)
 
 
-def _applied_response(status: str = ActionStatusV1.EXECUTED.value) -> WriteActionResponse:
-    return WriteActionResponse(
+def _applied_recovery(status: str = ActionStatusV1.EXECUTED.value) -> RecoverExistingResultResult:
+    return RecoverExistingResultResult(
         True, ResultCode.TRANSITION_APPLIED.value, "action-1", status, 4, (), attempt_id="attempt-1"
+    )
+
+
+def _failed_recovery() -> ResolveAsFailedResult:
+    return ResolveAsFailedResult(
+        True,
+        ResultCode.TRANSITION_APPLIED.value,
+        "action-1",
+        ActionStatusV1.FAILED.value,
+        4,
+        (),
+        attempt_id="attempt-1",
     )
 
 
@@ -463,11 +486,11 @@ def test_create_send_and_delete_recovery_never_blind_write() -> None:
         connector = _RecoveryConnector(
             candidates=[_task_snapshot(title="a"), _task_snapshot(title="b", resource_id="task-2")]
         )
-        result = handler_type(
-            unit_of_work_factory=lambda uow=uow: uow,  # type: ignore[arg-type]
-            connector_execution=connector,  # type: ignore[arg-type]
-            recover_existing_result=lambda _command: _applied_response(),
-        )(command_type("cmd", "hash", "action-1", "attempt-1", 3, 1))
+        result = cast(Any, handler_type)(
+            unit_of_work_factory=lambda uow=uow: cast(UnitOfWork, uow),
+            connector_execution=cast(LegacyWriteResultMaterializer, connector),
+            recover_existing_result=lambda _command: _applied_recovery(),
+        )(cast(Any, command_type)("cmd", "hash", "action-1", "attempt-1", 3, 1))
         assert result.result_code == ResultCode.RECOVERY_REQUIRED.value
         assert connector.write_calls == 0
 
@@ -476,18 +499,18 @@ def test_create_send_and_delete_recovery_never_blind_write() -> None:
     )
     present_connector = _RecoveryConnector(snapshot=_task_snapshot(title="present"))
     present = RecoverDeleteHandler(
-        unit_of_work_factory=lambda: delete_uow,  # type: ignore[arg-type]
-        connector_execution=present_connector,  # type: ignore[arg-type]
-        recover_existing_result=lambda _command: _applied_response(),
+        unit_of_work_factory=lambda: cast(UnitOfWork, delete_uow),
+        connector_execution=cast(LegacyWriteResultMaterializer, present_connector),
+        recover_existing_result=lambda _command: _applied_recovery(),
     )(RecoverDeleteCommand("cmd-p", "hash", "action-1", "attempt-1", 3, 1))
     assert present.result_code == ResultCode.RECOVERY_REQUIRED.value
     assert present_connector.write_calls == 0
 
     absent_connector = _RecoveryConnector(absent=True)
     absent = RecoverDeleteHandler(
-        unit_of_work_factory=lambda: delete_uow,  # type: ignore[arg-type]
-        connector_execution=absent_connector,  # type: ignore[arg-type]
-        recover_existing_result=lambda _command: _applied_response(),
+        unit_of_work_factory=lambda: cast(UnitOfWork, delete_uow),
+        connector_execution=cast(LegacyWriteResultMaterializer, absent_connector),
+        recover_existing_result=lambda _command: _applied_recovery(),
     )(RecoverDeleteCommand("cmd-a", "hash", "action-1", "attempt-1", 3, 1))
     assert absent.applied is True
     assert absent_connector.write_calls == 0
@@ -500,19 +523,25 @@ def test_update_recovery_uses_canonical_subset_projection_for_all_three_states()
     recovered: list[object] = []
     failed: list[object] = []
 
-    def run(snapshot: ResourceSnapshot, command_id: str) -> object:
+    def recover(command: RecoverExistingResultCommand) -> RecoverExistingResultResult:
+        recovered.append(command)
+        return _applied_recovery()
+
+    def fail(command: ResolveAsFailedCommand) -> ResolveAsFailedResult:
+        failed.append(command)
+        return _failed_recovery()
+
+    def run(snapshot: ResourceSnapshot, command_id: str) -> RecoverUpdateResult:
         uow = _recovery_uow(
             tool_name="tasks_update_task", expected=expected, source=source, arguments=arguments
         )
         return RecoverUpdateHandler(
-            unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
-            connector_execution=_RecoveryConnector(snapshot=snapshot),  # type: ignore[arg-type]
-            recover_existing_result=lambda command: (
-                recovered.append(command) or _applied_response()
+            unit_of_work_factory=lambda: cast(UnitOfWork, uow),
+            connector_execution=cast(
+                LegacyWriteResultMaterializer, _RecoveryConnector(snapshot=snapshot)
             ),
-            resolve_as_failed=lambda command: (
-                failed.append(command) or _applied_response(ActionStatusV1.FAILED.value)
-            ),
+            recover_existing_result=recover,
+            resolve_as_failed=fail,
         )(RecoverUpdateCommand(command_id, "hash", "action-1", "attempt-1", 3, 1))
 
     expected_result = run(
@@ -575,7 +604,8 @@ def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None
         tool_name="tasks_update_task",
         actual={"payload": {"title": "C3", "due": "2026-08-22T00:00:00Z"}},
     )
-    assert normalized["payload"]["due"] == "2026-08-22"  # type: ignore[index]
+    normalized_payload = cast(dict[str, object], normalized["payload"])
+    assert normalized_payload["due"] == "2026-08-22"
     assert calculate_verification_subset_diff({"payload": {"title": "C3"}}, normalized) == []
 
     valid_uow = _verification_uow()
@@ -583,9 +613,9 @@ def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None
         snapshot=_task_snapshot(title="C3", extra={"notes": "extra"})
     )
     valid = VerifyActionHandler(
-        unit_of_work_factory=lambda: valid_uow,  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, valid_uow),
         now_ms=lambda: 10_000,
-        connector_execution=valid_connector,  # type: ignore[arg-type]
+        connector_execution=cast(LegacyWriteResultMaterializer, valid_connector),
     )(VerifyActionCommand("verify-ok", "hash", "action-1", "attempt-1", 1, "verification-1"))
     assert valid.applied is True
     assert valid.action_status == ActionStatusV1.VERIFIED.value
@@ -595,9 +625,12 @@ def test_verification_normalization_valid_chain_and_mismatch_semantics() -> None
         expected_title="expected", verification_status=ActionStatusV1.MISMATCH
     )
     mismatch = VerifyActionHandler(
-        unit_of_work_factory=lambda: mismatch_uow,  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, mismatch_uow),
         now_ms=lambda: 10_000,
-        connector_execution=_VerificationConnector(snapshot=_task_snapshot(title="actual")),  # type: ignore[arg-type]
+        connector_execution=cast(
+            LegacyWriteResultMaterializer,
+            _VerificationConnector(snapshot=_task_snapshot(title="actual")),
+        ),
     )(VerifyActionCommand("verify-m", "hash", "action-1", "attempt-1", 1, "verification-2"))
     assert mismatch.action_status == ActionStatusV1.MISMATCH.value
     assert mismatch_uow.runs.recovery_required == 1
@@ -607,9 +640,9 @@ def test_verification_foreign_succeeded_attempt_fails_closed_before_read() -> No
     uow = _verification_uow(approval_action_id="foreign-action")
     connector = _VerificationConnector(snapshot=_task_snapshot(title="C3"))
     result = VerifyActionHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
         now_ms=lambda: 10_000,
-        connector_execution=connector,  # type: ignore[arg-type]
+        connector_execution=cast(LegacyWriteResultMaterializer, connector),
     )(VerifyActionCommand("verify-foreign", "hash", "action-1", "attempt-1", 1, "verification-f"))
     assert result.applied is False
     assert result.result_code == ResultCode.STATE_CONFLICT.value
@@ -621,9 +654,9 @@ def test_verification_unknown_result_fails_closed_before_read() -> None:
     uow = _verification_uow(attempt_status=ExecutionAttemptStatusV1.UNKNOWN_RESULT)
     connector = _VerificationConnector(snapshot=_task_snapshot(title="C3"))
     result = VerifyActionHandler(
-        unit_of_work_factory=lambda: uow,  # type: ignore[arg-type]
+        unit_of_work_factory=lambda: cast(UnitOfWork, uow),
         now_ms=lambda: 10_000,
-        connector_execution=connector,  # type: ignore[arg-type]
+        connector_execution=cast(LegacyWriteResultMaterializer, connector),
     )(VerifyActionCommand("verify-unknown", "hash", "action-1", "attempt-1", 1, "verification-u"))
     assert result.applied is False
     assert result.result_code == ResultCode.STATE_CONFLICT.value

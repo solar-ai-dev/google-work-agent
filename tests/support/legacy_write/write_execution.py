@@ -8,6 +8,7 @@ from json import dumps, loads
 
 from tests.support.legacy_write.contracts import LegacyWriteResultMaterializer
 
+from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
 from google_work_agent.application.use_cases.action.write_action_arguments import (
     coerce_int as _coerce_int,
 )
@@ -130,8 +131,8 @@ def _legacy_claim_context(
         tool_name=str(payload["tool_name"]),
         approval_arguments_hash=str(payload["approval_arguments_hash"]),
         execution_arguments_hash=execution_arguments_hash,
-        issued_at_ms=int(payload["issued_at_ms"]),
-        expires_at_ms=int(payload["expires_at_ms"]),
+        issued_at_ms=coerce_int(payload["issued_at_ms"]),
+        expires_at_ms=coerce_int(payload["expires_at_ms"]),
         nonce=str(payload["nonce"]),
         signature="test-legacy-signature",
     )

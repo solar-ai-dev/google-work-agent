@@ -34,7 +34,7 @@ from google_work_agent.ports.llm import (
     PromptReference,
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="evidence-selection-v2",
@@ -77,7 +77,7 @@ def select_evidence(
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
     revision_prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     request_intent: RequestIntentV2,
     rag_candidates: list[RagCandidateV1],
     segments: list[SourceSegment],
@@ -93,11 +93,11 @@ def select_evidence(
     ]
     projection = _ranked_segments_projection(eligible_candidates, segments)
     candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input={"request_intent": request_intent, "ranked_segments": projection},
-        output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
-        trace_context=trace_context,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        {"request_intent": request_intent, "ranked_segments": projection},
+        EVIDENCE_SELECTION_OUTPUT_SCHEMA,
     )
     try:
         return (
@@ -119,9 +119,10 @@ def select_evidence(
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
             return _empty_selection(obligations), decision["run_budget"]
-        revision = llm_runtime.invoke_structured(
-            prompt_ref=revision_prompt_ref,
-            prompt_input={
+        revision = llm_runtime.infer(
+            requested_mode,
+            revision_prompt_ref,
+            {
                 "base_projection": {
                     "request_intent": request_intent,
                     "ranked_segments": projection,
@@ -141,8 +142,7 @@ def select_evidence(
                     failure_context_ids=[str(error)],
                 ),
             },
-            output_schema=EVIDENCE_SELECTION_OUTPUT_SCHEMA,
-            trace_context=trace_context,
+            EVIDENCE_SELECTION_OUTPUT_SCHEMA,
         )
         try:
             return (

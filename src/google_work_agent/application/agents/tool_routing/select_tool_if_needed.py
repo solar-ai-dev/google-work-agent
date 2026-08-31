@@ -31,7 +31,6 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
 TOOL_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
@@ -83,11 +82,11 @@ def select_tool_if_needed(
     if confirmation_response is not None:
         base_projection["confirmation_response"] = dict(confirmation_response)
     with provider_dispatch_budget_scope(retry_budget):
-        result = llm_runtime.invoke_structured(
-            prompt_ref=resolved_prompt_ref,
-            prompt_input=base_projection,
-            output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
-            trace_context=_trace(request, "route.select_tool"),
+        result = llm_runtime.infer(
+            request.requested_mode,
+            resolved_prompt_ref,
+            base_projection,
+            TOOL_SELECTION_OUTPUT_SCHEMA,
         )
         selected = _validated_selection(
             result.structured_output, eligible_tool_ids=eligible_tool_ids
@@ -103,9 +102,10 @@ def select_tool_if_needed(
             raise ToolRouteValidationError(
                 "tool selection revision denied: same failure signature already used"
             )
-        revised = llm_runtime.invoke_structured(
-            prompt_ref=resolved_prompt_ref,
-            prompt_input={
+        revised = llm_runtime.infer(
+            request.requested_mode,
+            resolved_prompt_ref,
+            {
                 "base_projection": dict(base_projection),
                 "candidate_output": result.structured_output,
                 "failure_record": build_failure_record_v1(
@@ -118,8 +118,7 @@ def select_tool_if_needed(
                     failure_context_ids=["selected_tool_id is not a Registry-eligible candidate"],
                 ),
             },
-            output_schema=TOOL_SELECTION_OUTPUT_SCHEMA,
-            trace_context=_trace(request, "route.select_tool.semantic_revision"),
+            TOOL_SELECTION_OUTPUT_SCHEMA,
         )
         selected = _validated_selection(
             revised.structured_output, eligible_tool_ids=eligible_tool_ids
@@ -138,14 +137,3 @@ def _validated_selection(value: object, *, eligible_tool_ids: tuple[str, ...]) -
         return None
     selected = value.get("selected_tool_id")
     return selected if isinstance(selected, str) and selected in eligible_tool_ids else None
-
-
-def _trace(request: WorkflowStartRequest, node_id: str) -> ObservabilityContext:
-    return ObservabilityContext(
-        request_id=request.correlation.request_id,
-        command_id=request.correlation.command_id,
-        conversation_id=request.conversation_id,
-        run_id=request.run_id,
-        langgraph_thread_id=request.workflow_key,
-        llm_call_id=f"{request.run_id}:{node_id}",
-    )

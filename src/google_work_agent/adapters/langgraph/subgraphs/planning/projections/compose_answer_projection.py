@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import NotRequired, TypedDict, cast
+
+from google_work_agent.application.agents.planning.contracts.planning_semantics import (
+    AnswerOutlineV1,
+)
 
 
-def project_compose_answer_input(state: Mapping[str, object]) -> dict[str, object]:
+class ComposeAnswerInputV1(TypedDict):
+    user_request: str
+    request_intent: dict[str, object]
+    answer_outline: AnswerOutlineV1
+    evidence: list[dict[str, object]]
+    work_analysis: NotRequired[dict[str, object]]
+    confirmation_response: NotRequired[dict[str, object]]
+
+
+def project_compose_answer_input(state: Mapping[str, object]) -> ComposeAnswerInputV1:
     user_request = state.get("user_request")
     request_intent = state.get("request_intent")
     answer_outline = state.get("answer_outline")
@@ -26,10 +40,10 @@ def project_compose_answer_input(state: Mapping[str, object]) -> dict[str, objec
         raise ValueError("work_analysis must be an object")
     if confirmation_response is not None and not isinstance(confirmation_response, Mapping):
         raise ValueError("confirmation_response must be an object")
-    result: dict[str, object] = {
+    result: ComposeAnswerInputV1 = {
         "user_request": user_request,
         "request_intent": dict(request_intent),
-        "answer_outline": dict(answer_outline),
+        "answer_outline": cast(AnswerOutlineV1, dict(answer_outline)),
         "evidence": [dict(item) for item in evidence],
     }
     if work_analysis is not None:
@@ -39,4 +53,4 @@ def project_compose_answer_input(state: Mapping[str, object]) -> dict[str, objec
     return result
 
 
-__all__ = ["project_compose_answer_input"]
+__all__ = ["ComposeAnswerInputV1", "project_compose_answer_input"]

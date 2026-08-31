@@ -60,7 +60,7 @@ def test_control_nodes_have_no_direct_semantic_or_external_authority() -> None:
 
 def test_cancel_intent_has_one_receipt_backed_runtime_seam() -> None:
     runtime_root = ROOT / "src/google_work_agent/adapters/langgraph/main"
-    definitions = []
+    definitions: list[tuple[str, str]] = []
     for path in runtime_root.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         definitions.extend(

@@ -56,7 +56,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     assert (staging_dir / f"{descriptor.staged_attachment_id}.bin").is_file()
     readiness = cast(LocalServiceReadinessAggregator, container.readiness_aggregator)
     base_transport = readiness.transport.client
-    assert base_transport._config.extra_environment == {  # noqa: SLF001
+    assert base_transport._config.extra_environment == {
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
         "GOOGLE_OAUTH_ENV": "DEVELOPMENT",
         "GOOGLE_OAUTH_CLIENT_ID": "test-client-id",

@@ -42,14 +42,14 @@ from google_work_agent.ports.llm.structured_inference_port import StructuredInfe
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
 )
-from google_work_agent.ports.system.contracts.observability import ObservabilityContext
+from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 
 def assess_sufficiency(
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,
-    trace_context: ObservabilityContext,
+    requested_mode: RequestedModeV1,
     request_intent: RequestIntentV2,
     tool_route_plan: ToolRoutePlanV2 | None,
     acquisition_result: AcquisitionResultV1,
@@ -69,12 +69,11 @@ def assess_sufficiency(
     }
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
-    result = llm_runtime.invoke_structured(
-        prompt_ref=prompt_ref,
-        prompt_input=prompt_input,
-        output_schema=SUFFICIENCY_OUTPUT_SCHEMA,
-        trace_context=trace_context,
-        semantic_validate=validate_sufficiency_result_v2,
+    result = llm_runtime.infer(
+        requested_mode,
+        prompt_ref,
+        prompt_input,
+        SUFFICIENCY_OUTPUT_SCHEMA,
     )
     validated = validate_sufficiency_result_v2(result.structured_output)
     return enforce_sufficiency_guard(

@@ -192,8 +192,7 @@ def test_runtime_control_route_surface_is_exact_and_has_no_legacy_alternative() 
             if not isinstance(node, ast.Assign):
                 continue
             if not any(
-                isinstance(target, ast.Name) and target.id == "router"
-                for target in node.targets
+                isinstance(target, ast.Name) and target.id == "router" for target in node.targets
             ):
                 continue
             if isinstance(node.value, ast.Call):
@@ -219,8 +218,9 @@ def test_runtime_control_route_surface_is_exact_and_has_no_legacy_alternative() 
     assert actual == RUNTIME_CONTROL_ROUTES
 
 
-def test_runtime_control_mutations_use_payload_command_identity_and_no_legacy_test_authority(
-) -> None:
+def test_runtime_control_mutations_use_payload_command_identity_and_no_legacy_test_authority() -> (
+    None
+):
     route_source = "\n".join(
         (ROUTES / name).read_text(encoding="utf-8")
         for name in {item[0] for item in RUNTIME_CONTROL_BINDINGS}

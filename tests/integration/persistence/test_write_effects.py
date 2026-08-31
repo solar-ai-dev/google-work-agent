@@ -1,7 +1,5 @@
 """Provider effect and preflight integration tests."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
 from tests.integration.persistence.test_write_actions import (

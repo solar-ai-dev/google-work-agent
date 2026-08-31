@@ -61,9 +61,7 @@ class ModelManifestV1:
             "approved_models",
         }:
             raise ValueError("ModelManifestV1 fields mismatch")
-        if decoded["schema_version"] != 1 or not isinstance(
-            decoded["minimum_ollama_version"], str
-        ):
+        if decoded["schema_version"] != 1 or not isinstance(decoded["minimum_ollama_version"], str):
             raise ValueError("ModelManifestV1 field type mismatch")
         raw_models = decoded["approved_models"]
         if not isinstance(raw_models, list):

@@ -207,13 +207,9 @@ def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols(
     assert "StructuredLLMProvider," in prompt_guard
     assert "ToolCallingLLMProvider," in prompt_guard
     assert "LLMEventRecorder," in adapter_router
-    assert not any((
-        Path("src")
-        / "google_work_agent"
-        / "application"
-        / "use_cases"
-        / "llm"
-    ).rglob("*.py"))
+    assert not any(
+        (Path("src") / "google_work_agent" / "application" / "use_cases" / "llm").rglob("*.py")
+    )
 
 
 @pytest.mark.parametrize(
@@ -333,13 +329,9 @@ def test_structured_inference_router_is_the_only_runtime_selection_authority() -
     assert "ActualRuntime.API_LLM" in router_source
     assert "def _invoke_provider(" in router_source
     assert "def _should_fallback(" in router_source
-    assert not any((
-        Path("src")
-        / "google_work_agent"
-        / "application"
-        / "use_cases"
-        / "llm"
-    ).rglob("*.py"))
+    assert not any(
+        (Path("src") / "google_work_agent" / "application" / "use_cases" / "llm").rglob("*.py")
+    )
     assert "DeterministicLLMRuntimeRouter" not in launcher
     assert "DeterministicLLMRuntimeRouter" not in llm_exports
     assert not (Path("src") / "google_work_agent" / "adapters/llm/router.py").exists()

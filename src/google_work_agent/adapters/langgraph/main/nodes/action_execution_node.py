@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from typing import cast
+
+from google_work_agent.adapters.langgraph.main.state import GraphState
 
 
 def action_execution_node(
-    state: Mapping[str, object],
+    state: GraphState,
     *,
-    execute_claimed_action: Callable[[Mapping[str, object]], Mapping[str, object]],
-) -> dict[str, object]:
+    execute_claimed_action: Callable[[GraphState], GraphState],
+) -> GraphState:
     """Execute one already-claimed action without creating a resume authority."""
 
     returned = dict(execute_claimed_action(state))
-    return {key: value for key, value in returned.items() if state.get(key) != value}
+    return cast(
+        GraphState,
+        {key: value for key, value in returned.items() if state.get(key) != value},
+    )
 
 
 __all__ = ["action_execution_node"]
