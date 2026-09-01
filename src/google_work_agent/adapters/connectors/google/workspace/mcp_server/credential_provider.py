@@ -180,6 +180,7 @@ class _OAuthReauthenticationRequired(RuntimeError):
 class _UserInfoIdentityResolution:
     email: str | None
     http_status: int | None
+    account_id: str | None = None
 
 
 class _WorkspaceToolError(RuntimeError):
@@ -206,6 +207,7 @@ class GoogleWorkspaceCredentialProvider:
         # can only be validated and consumed by one in-flight request.
         self.used_nonces: set[str] = set()
         self.connection_state = CredentialState.NOT_CONNECTED
+        self.account_id: str | None = None
         self.account_email: str | None = None
         self.display_name: str | None = None
         # Access tokens are intentionally process-memory-only.
@@ -242,6 +244,7 @@ class GoogleWorkspaceCredentialProvider:
         return {
             "connected": connected,
             "credential_state": self.connection_state.value,
+            "account_id": self.account_id,
             "account_email": self.account_email,
             "display_name": self.display_name,
             "granted_scopes": list(REQUIRED_SCOPES) if connected else [],
@@ -258,17 +261,18 @@ class GoogleWorkspaceCredentialProvider:
             self.access_token is not None
             and _now_ms() < self.access_token_expires_at_ms
             and self.account_email is not None
+            and self.account_id is not None
         ):
             return
         with self._refresh_lock:
             if self.access_token is not None and _now_ms() < self.access_token_expires_at_ms:
-                if self.account_email is None:
+                if self.account_email is None or self.account_id is None:
                     resolution = _resolve_account_identity_from_userinfo(self.access_token)
-                    self.account_email = (
-                        self._recover_identity_after_userinfo_401()
-                        if resolution.http_status == 401
-                        else resolution.email
-                    )
+                    if resolution.http_status == 401:
+                        self.account_email = self._recover_identity_after_userinfo_401()
+                    else:
+                        self.account_email = resolution.email
+                        self.account_id = resolution.account_id
                 return
             refresh_bytes = self.keyring.get(GOOGLE_REFRESH_TOKEN_ACCOUNT)
             refresh_token = None if refresh_bytes is None else refresh_bytes.decode("utf-8")
@@ -288,13 +292,15 @@ class GoogleWorkspaceCredentialProvider:
                 # process-memory-only, so a restarted MCP process re-derives
                 # the account email here instead of requiring reconnect.
                 self.account_email = refreshed_email
-            elif self.account_email is None:
+            if self.account_email is None or self.account_id is None:
                 # A refresh response commonly omits id_token. The originally
                 # granted openid/userinfo.email scope still permits resolving
                 # the verified identity from this newly refreshed access token.
                 # Failure here must not downgrade an otherwise usable OAuth
                 # credential used by the Workspace read tools.
-                self.account_email = _resolve_account_identity_from_userinfo(access_token).email
+                resolution = _resolve_account_identity_from_userinfo(access_token)
+                self.account_email = resolution.email or self.account_email
+                self.account_id = resolution.account_id
             if rotated_refresh_token is not None:
                 self.keyring.put(
                     GOOGLE_REFRESH_TOKEN_ACCOUNT, rotated_refresh_token.encode("utf-8")
@@ -323,13 +329,14 @@ class GoogleWorkspaceCredentialProvider:
             self.keyring.put(GOOGLE_REFRESH_TOKEN_ACCOUNT, rotated_refresh_token.encode("utf-8"))
         self.connection_state = CredentialState.CONNECTED
         if refreshed_email is not None:
-            return refreshed_email
+            self.account_email = refreshed_email
         retry = _resolve_account_identity_from_userinfo(access_token)
         if retry.http_status == 401:
             self.connection_state = CredentialState.REAUTH_REQUIRED
             self.access_token = None
             self.access_token_expires_at_ms = 0
-        return retry.email
+        self.account_id = retry.account_id
+        return retry.email or refreshed_email
 
 
 def _gmail_thread_list_metadata(
@@ -991,6 +998,7 @@ def _control_call(
         deleted = refresh_token is not None
         state.keyring.delete(GOOGLE_REFRESH_TOKEN_ACCOUNT)
         state.connection_state = CredentialState.NOT_CONNECTED
+        state.account_id = None
         state.access_token = None
         state.access_token_expires_at_ms = 0
         state.account_email = None
@@ -1198,6 +1206,7 @@ def _resolve_account_identity_from_userinfo(access_token: str) -> _UserInfoIdent
     return _UserInfoIdentityResolution(
         email=email,
         http_status=getattr(response, "status", 200),
+        account_id=(str(payload["sub"]) if email is not None else None),
     )
 
 

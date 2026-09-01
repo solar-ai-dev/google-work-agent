@@ -259,11 +259,16 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
     monkeypatch.setattr(
         server,
         "_resolve_account_identity_from_userinfo",
-        lambda _access_token: pytest.fail("verified refresh id_token must skip UserInfo"),
+        lambda _access_token: server._UserInfoIdentityResolution(
+            email="user@example.com",
+            http_status=200,
+            account_id="google-subject",
+        ),
     )
     state.ensure_access_token()
 
     assert state.account_email == "user@example.com"
+    assert state.account_id == "google-subject"
 
 
 def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
@@ -282,6 +287,7 @@ def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
         lambda access_token: server._UserInfoIdentityResolution(
             email="user@example.com" if access_token == "access-value" else None,
             http_status=200,
+            account_id="google-subject" if access_token == "access-value" else None,
         ),
     )
 
@@ -289,12 +295,14 @@ def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
 
     assert state.connection_state is CredentialState.CONNECTED
     assert state.account_email == "user@example.com"
+    assert state.account_id == "google-subject"
 
 
 def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
+    state.account_id = "google-subject"
     state.account_email = "user@example.com"
     state.access_token = "access-value"
     state.access_token_expires_at_ms = server._now_ms() + 10_000
@@ -443,7 +451,15 @@ def test_userinfo_401_refresh_id_token_email_skips_retry(
     def resolve(_access_token: str) -> server._UserInfoIdentityResolution:
         nonlocal userinfo_calls
         userinfo_calls += 1
-        return server._UserInfoIdentityResolution(email=None, http_status=401)
+        return (
+            server._UserInfoIdentityResolution(email=None, http_status=401)
+            if userinfo_calls == 1
+            else server._UserInfoIdentityResolution(
+                email="user@example.com",
+                http_status=200,
+                account_id="google-subject",
+            )
+        )
 
     monkeypatch.setattr(
         server,
@@ -454,8 +470,9 @@ def test_userinfo_401_refresh_id_token_email_skips_retry(
 
     state.ensure_access_token()
 
-    assert userinfo_calls == 1
+    assert userinfo_calls == 2
     assert state.account_email == "user@example.com"
+    assert state.account_id == "google-subject"
 
 
 def test_userinfo_401_refresh_failure_requires_reauthentication(
@@ -501,6 +518,15 @@ def test_userinfo_401_retry_401_does_not_refresh_again(
         return server._UserInfoIdentityResolution(email=None, http_status=401)
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(
+            email="user@example.com",
+            http_status=200,
+            account_id="google-subject",
+        ),
+    )
     monkeypatch.setattr(server, "_resolve_account_identity_from_userinfo", resolve)
 
     state.ensure_access_token()
@@ -555,9 +581,9 @@ def test_userinfo_requires_sub_and_verified_email(
 
     monkeypatch.setattr(server, "urlopen", userinfo)
 
-    assert (
-        server._resolve_account_identity_from_userinfo("access-value").email == "user@example.com"
-    )
+    identity = server._resolve_account_identity_from_userinfo("access-value")
+    assert identity.email == "user@example.com"
+    assert identity.account_id == "google-subject"
     assert captured is not None
     assert captured.full_url == server.GOOGLE_USERINFO_ENDPOINT
     assert captured.get_method() == "GET"
@@ -701,6 +727,15 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
+    monkeypatch.setattr(
+        server,
+        "_resolve_account_identity_from_userinfo",
+        lambda _access_token: server._UserInfoIdentityResolution(
+            email="user@example.com",
+            http_status=200,
+            account_id="google-subject",
+        ),
+    )
 
     def worker() -> None:
         entered.wait()

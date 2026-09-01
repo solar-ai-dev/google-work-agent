@@ -150,7 +150,7 @@ class McpOAuthCredentialAdapter:
         return OAuthConnectionMetadata(
             schema_version=1,
             connector_id=connector_id,
-            account_id=None,
+            account_id=_optional_string(payload.get("account_id")),
             display_email=_optional_string(payload.get("account_email")),
             connection_status=status,
             granted_scopes=tuple(
