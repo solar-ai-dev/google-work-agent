@@ -13,6 +13,9 @@ for import_root in (REPO_ROOT, SRC_ROOT):
     if str(import_root) not in sys.path:
         sys.path.insert(0, str(import_root))
 
+from launcher.verify_installation import (  # noqa: E402
+    EMBEDDED_RELEASE_PUBLIC_KEY_PEM,
+)
 from release.assemble_application_bundle import (  # noqa: E402
     ApplicationBundleInputs,
     assemble_application_bundle,
@@ -80,7 +83,6 @@ def main() -> int:
     parser.add_argument("--policy-version", required=True)
     parser.add_argument("--database-migration-version", required=True)
     parser.add_argument("--manifest-private-key", type=Path, required=True)
-    parser.add_argument("--embedded-release-public-key", type=Path, required=True)
     parser.add_argument("--timestamp-url")
     parser.add_argument("--signtool", type=Path)
     parser.add_argument("--certificate-selector", action="append", default=[])
@@ -129,7 +131,7 @@ def main() -> int:
         arguments.manifest_private_key.resolve(),
         None if password is None else password.encode("utf-8"),
     )
-    embedded_public_key = arguments.embedded_release_public_key.read_bytes()
+    embedded_public_key = EMBEDDED_RELEASE_PUBLIC_KEY_PEM
     distributed = arguments.build_channel in {"STAGING", "PRODUCTION"}
     if distributed and (arguments.signtool is None or not arguments.timestamp_url):
         raise ValueError("distributed release requires signtool and timestamp URL")

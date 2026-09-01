@@ -54,3 +54,10 @@ def test_legacy_release_authority_and_product_runtime_imports_are_absent() -> No
         assert "from release" not in content
         assert "import installer" not in content
         assert "from installer" not in content
+
+
+def test_release_cli_uses_only_the_launcher_embedded_manifest_trust_root() -> None:
+    source = (REPO_ROOT / "scripts/build_release.py").read_text(encoding="utf-8")
+
+    assert "EMBEDDED_RELEASE_PUBLIC_KEY_PEM" in source
+    assert "--embedded-release-public-key" not in source

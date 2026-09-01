@@ -36,9 +36,15 @@ _FILE_FIELDS = {"file_path", "file_size", "sha256"}
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _INSTALLER_GENERATED_FILES = {"unins000.dat", "unins000.exe"}
 
-# #168 owns release key materialization. Until that build step injects the public
-# key, installed startup fails closed; tests use a deterministic signed fixture.
-EMBEDDED_RELEASE_PUBLIC_KEY_PEM: bytes | None = None
+# Canonical production trust root. The matching private key is release-operator
+# owned and must never be stored in the repository or distributed application.
+EMBEDDED_RELEASE_PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEACI9ODzz4QkGyhUSdKFFeVRWvlq9tT5h6segP6i07dog=
+-----END PUBLIC KEY-----
+"""
+EMBEDDED_RELEASE_PUBLIC_KEY_SHA256 = (
+    "a38089529f535f281192edaad5d528fa87f031c6ab2756dadac9bf7ba0a0b300"
+)
 
 
 class InstallationVerificationError(RuntimeError):

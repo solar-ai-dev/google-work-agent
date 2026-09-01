@@ -6,10 +6,16 @@ import json
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key as generate_rsa_key
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_public_key
 from launcher.release_build_config import load_signed_build_config
 from launcher.verify_installation import (
+    EMBEDDED_RELEASE_PUBLIC_KEY_PEM,
+    EMBEDDED_RELEASE_PUBLIC_KEY_SHA256,
     InstallationVerificationError,
     verify_installation,
 )
@@ -58,6 +64,17 @@ def _write_signed_installation(root: Path) -> bytes:
         encoding="ascii",
     )
     return private_key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+
+
+def _test_private_key() -> Ed25519PrivateKey:
+    return Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
+
+
+def _write_signature(root: Path, content: bytes) -> None:
+    (root / "release-manifest.sig").write_text(
+        base64.b64encode(_test_private_key().sign(content)).decode("ascii"),
+        encoding="ascii",
+    )
 
 
 def test_signed_manifest_chain_projects_only_authenticated_build_fields(tmp_path: Path) -> None:
@@ -109,15 +126,114 @@ def test_manifest_unknown_field_and_relative_install_root_fail_closed(tmp_path: 
         verify_installation(Path("relative-install"), trusted_public_key_pem=public_key)
 
 
-def test_missing_embedded_release_key_never_falls_back_to_unsigned_startup(
+def test_explicitly_missing_release_key_never_falls_back_to_unsigned_startup(
     tmp_path: Path,
 ) -> None:
     _write_signed_installation(tmp_path)
 
     with pytest.raises(InstallationVerificationError) as error:
-        verify_installation(tmp_path.resolve())
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=None)
 
     assert error.value.safe_code == "RELEASE_PUBLIC_KEY_UNAVAILABLE"
+
+
+def test_production_release_public_key_is_embedded_and_fingerprinted() -> None:
+    assert isinstance(load_pem_public_key(EMBEDDED_RELEASE_PUBLIC_KEY_PEM), Ed25519PublicKey)
+    assert hashlib.sha256(EMBEDDED_RELEASE_PUBLIC_KEY_PEM).hexdigest() == (
+        EMBEDDED_RELEASE_PUBLIC_KEY_SHA256
+    )
+
+
+def test_manifest_one_byte_mutation_fails_signature_verification(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    manifest_path = tmp_path / "release-manifest.json"
+    content = bytearray(manifest_path.read_bytes())
+    content[0] ^= 1
+    manifest_path.write_bytes(content)
+
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+
+def test_signature_one_byte_mutation_fails_closed(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    signature_path = tmp_path / "release-manifest.sig"
+    signature = bytearray(base64.b64decode(signature_path.read_text(encoding="ascii")))
+    signature[0] ^= 1
+    signature_path.write_text(base64.b64encode(signature).decode("ascii"), encoding="ascii")
+
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+
+def test_wrong_public_key_fails_closed(tmp_path: Path) -> None:
+    _write_signed_installation(tmp_path)
+    wrong_public_key = Ed25519PrivateKey.generate().public_key().public_bytes(
+        Encoding.PEM,
+        PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=wrong_public_key)
+
+
+def test_unsupported_public_key_algorithm_fails_closed(tmp_path: Path) -> None:
+    _write_signed_installation(tmp_path)
+    rsa_public_key = (
+        generate_rsa_key(public_exponent=65537, key_size=2048)
+        .public_key()
+        .public_bytes(
+            Encoding.PEM,
+            PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=rsa_public_key)
+
+
+def test_missing_or_malformed_signature_fails_closed(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    signature_path = tmp_path / "release-manifest.sig"
+    signature_path.unlink()
+    with pytest.raises(InstallationVerificationError, match="MANIFEST_MISSING"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+    signature_path.write_text("not-base64", encoding="ascii")
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+
+def test_signed_digest_mismatch_fails_closed(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    manifest_path = tmp_path / "release-manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["files"][0]["sha256"] = "0" * 64
+    content = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    manifest_path.write_bytes(content)
+    _write_signature(tmp_path, content)
+
+    with pytest.raises(InstallationVerificationError, match="INSTALLATION_FILE_TAMPERED"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+
+def test_signed_malformed_manifest_fails_closed(tmp_path: Path) -> None:
+    public_key = _write_signed_installation(tmp_path)
+    content = b"{malformed"
+    (tmp_path / "release-manifest.json").write_bytes(content)
+    _write_signature(tmp_path, content)
+
+    with pytest.raises(InstallationVerificationError, match="MANIFEST_INVALID"):
+        verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
+
+
+def test_test_only_key_cannot_authenticate_against_production_trust_root(
+    tmp_path: Path,
+) -> None:
+    _write_signed_installation(tmp_path)
+
+    with pytest.raises(InstallationVerificationError, match="SIGNATURE_INVALID"):
+        verify_installation(tmp_path.resolve())
 
 
 def test_unlisted_runtime_override_fails_before_code_execution(tmp_path: Path) -> None:
