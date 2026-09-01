@@ -9,6 +9,7 @@ export type SubmitNewRunInput = {
   selectionHandles: string[];
   conversationCommandId: string;
   runCommandId: string;
+  requestedMode: "AUTO" | "LOCAL_GPU" | "API_LLM";
   createConversation: (payload: { command_id: string; title: string | null }) => Promise<ConversationItem>;
 };
 
@@ -30,7 +31,7 @@ export async function submitNewRun(input: SubmitNewRunInput): Promise<SubmitNewR
     request_text: requestText,
     entry_mode: selectionHandles.length > 0 ? "RESOURCE_SELECTED" : "AGENT_SEARCH",
     selected_resource_handles: selectionHandles,
-    requested_mode: "AUTO",
+    requested_mode: input.requestedMode,
   });
   return { conversationId, runId: run.run_id, conversationCreated: conversation !== null };
 }
@@ -50,6 +51,7 @@ type RequestComposerControllerOptions = {
   commandIdFor: (operation: string) => string;
   completeCommand: (operation: string) => void;
   createConversation: SubmitNewRunInput["createConversation"];
+  requestedMode: SubmitNewRunInput["requestedMode"];
 };
 
 export function useRequestComposerController(options: RequestComposerControllerOptions) {
@@ -86,6 +88,7 @@ export function useRequestComposerController(options: RequestComposerControllerO
         selectionHandles: normalizedHandles,
         conversationCommandId: options.commandIdFor(conversationOperation),
         runCommandId: options.commandIdFor(runOperation),
+        requestedMode: options.requestedMode,
         createConversation: options.createConversation,
       });
       conversationId = result.conversationId;

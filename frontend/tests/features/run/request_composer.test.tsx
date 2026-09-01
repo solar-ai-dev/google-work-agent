@@ -16,13 +16,14 @@ test("submitNewRun creates a conversation and sends only normalized opaque selec
     selectionHandles: [" opaque ", "opaque"],
     conversationCommandId: "conversation-command",
     runCommandId: "run-command",
+    requestedMode: "API_LLM",
     createConversation,
   });
   const conversationBody = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
   const runBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body));
   expect(conversationBody.command_id).toBe("conversation-command");
   expect(runBody.command_id).toBe("run-command");
-  expect(runBody).toMatchObject({ request_text: "summarize", entry_mode: "RESOURCE_SELECTED", selected_resource_handles: ["opaque"], requested_mode: "AUTO" });
+  expect(runBody).toMatchObject({ request_text: "summarize", entry_mode: "RESOURCE_SELECTED", selected_resource_handles: ["opaque"], requested_mode: "API_LLM" });
   expect(runBody).not.toHaveProperty("history");
 });
 

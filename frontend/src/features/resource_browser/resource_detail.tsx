@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
+import type {
+  CalendarResourceDetailResponse,
+  GmailResourceDetailResponse,
+  ResourceItem,
+  TaskResourceDetailResponse,
+} from "../../api/contract";
 import { AttachmentList } from "../attachment";
 
 const CLAMP_LINES = 3;
@@ -120,10 +125,28 @@ export type GmailDetailState = {
   error: string | null;
 };
 
+export type TaskDetailState = {
+  resourceId: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  detail: TaskResourceDetailResponse | null;
+  error: string | null;
+};
+
+export type CalendarDetailState = {
+  resourceId: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  detail: CalendarResourceDetailResponse | null;
+  error: string | null;
+};
+
 export type ResourceDetailProps = {
   focusItem: ResourceItem | null;
   gmailDetail: GmailDetailState;
+  taskDetail: TaskDetailState;
+  calendarDetail: CalendarDetailState;
   onRetryGmailDetail: () => void;
+  onRetryTaskDetail: () => void;
+  onRetryCalendarDetail: () => void;
   onDownloadGmailAttachment: (messageId: string, attachmentId: string) => void;
   onDrillInto: () => void;
   presentResource: (item: ResourceItem) => {
@@ -140,7 +163,11 @@ export type ResourceDetailProps = {
 export function ResourceDetail({
   focusItem,
   gmailDetail,
+  taskDetail,
+  calendarDetail,
   onRetryGmailDetail,
+  onRetryTaskDetail,
+  onRetryCalendarDetail,
   onDownloadGmailAttachment,
   onDrillInto,
   presentResource,
@@ -206,6 +233,10 @@ export function ResourceDetail({
             isExpanded={isExpanded}
             onToggleExpanded={() => setIsExpanded((current) => !current)}
           />
+        ) : focusItem.resource_type === "task" ? (
+          <TaskDetailViewer state={taskDetail} onRetry={onRetryTaskDetail} />
+        ) : focusItem.resource_type === "calendar_event" ? (
+          <CalendarDetailViewer state={calendarDetail} onRetry={onRetryCalendarDetail} />
         ) : (
           <>
             <h2>{presentResource(focusItem).title ?? "제목 없음"}</h2>
@@ -235,6 +266,76 @@ export function ResourceDetail({
       )}
     </section>
   );
+}
+
+function TaskDetailViewer({ state, onRetry }: { state: TaskDetailState; onRetry: () => void }): JSX.Element {
+  if (state.status === "loading") return <div className="viewer-state" role="status">태스크 상세를 불러오는 중입니다.</div>;
+  if (state.status === "error") return <DetailError message={state.error ?? "태스크 상세를 불러오지 못했습니다."} onRetry={onRetry} />;
+  if (state.status !== "ready" || !state.detail) return <div className="viewer-state">태스크를 선택해 주세요.</div>;
+  const detail = state.detail;
+  return (
+    <article>
+      <h2>{detail.title || "제목 없음"}</h2>
+      <dl className="metadata-list">
+        <DetailEntry label="상태" value={detail.task_status === "completed" ? "완료" : "미완료"} />
+        <DetailEntry label="예정일" value={formatTaskDetailDate(detail.scheduled_date)} />
+        <DetailEntry label="완료 시각" value={formatResourceDetailDate(detail.completed_at)} />
+        <DetailEntry label="노트" value={detail.notes} />
+      </dl>
+    </article>
+  );
+}
+
+function CalendarDetailViewer({ state, onRetry }: { state: CalendarDetailState; onRetry: () => void }): JSX.Element {
+  if (state.status === "loading") return <div className="viewer-state" role="status">일정 상세를 불러오는 중입니다.</div>;
+  if (state.status === "error") return <DetailError message={state.error ?? "일정 상세를 불러오지 못했습니다."} onRetry={onRetry} />;
+  if (state.status !== "ready" || !state.detail) return <div className="viewer-state">일정을 선택해 주세요.</div>;
+  const detail = state.detail;
+  return (
+    <article>
+      <h2>{detail.title || "제목 없음"}</h2>
+      <dl className="metadata-list">
+        <DetailEntry label="시작 시간" value={formatResourceDetailDate(detail.start)} />
+        <DetailEntry label="종료 시간" value={formatResourceDetailDate(detail.end)} />
+        <DetailEntry label="시간대" value={detail.timezone} />
+        <DetailEntry label="참석자" value={detail.attendees.length ? detail.attendees.join(", ") : null} />
+        <DetailEntry label="장소" value={detail.location} />
+        <DetailEntry label="설명" value={detail.description} />
+      </dl>
+    </article>
+  );
+}
+
+function DetailEntry({ label, value }: { label: string; value: string | null }): JSX.Element | null {
+  if (!value) return null;
+  return <div><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function DetailError({ message, onRetry }: { message: string; onRetry: () => void }): JSX.Element {
+  return <div className="viewer-state" role="alert"><p>{message}</p><button className="button-secondary" type="button" onClick={onRetry}>다시 시도</button></div>;
+}
+
+function formatTaskDetailDate(value: string | null): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatResourceDetailDate(value);
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${date.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })} (${date.toLocaleDateString("ko-KR", { weekday: "short" })})`;
+}
+
+function formatResourceDetailDate(value: string | null): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatTaskDetailDate(value);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function GmailDetailViewer({

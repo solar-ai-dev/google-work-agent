@@ -103,6 +103,37 @@ export type ApprovalSnapshot = {
   expires_at_ms: number;
 };
 
+export type ContextPreviewItem = {
+  segment_id: string;
+  role: "SUPPORTS" | "CONTRADICTS" | "CONTEXT";
+  source: "gmail" | "tasks" | "calendar";
+  resource_type: string;
+  resource_id: string;
+  display_label: string;
+  excerpt: string | null;
+};
+
+export type ContextPreview = {
+  schema_version: 1;
+  run_id: string;
+  retrieval_revision: number;
+  items: ContextPreviewItem[];
+  gmail_count: number;
+  tasks_count: number;
+  calendar_count: number;
+  adjustment_allowed: boolean;
+  allowed_adjustments: ("EXCLUDE_EVIDENCE" | "RETRIEVE_MORE")[];
+};
+
+export type ExternalLlmTransferScope = {
+  schema_version: 1;
+  run_id: string;
+  scope_revision: number;
+  scope_hash: string;
+  source_kinds: string[];
+  data_classes: ("USER_REQUEST" | "RESOURCE_METADATA" | "EVIDENCE_EXCERPT" | "PLAN_CONTEXT")[];
+};
+
 export type PendingInterrupt = {
   schema_version: 1;
   interrupt_id: string;
@@ -140,6 +171,7 @@ export type RunSnapshot = {
     created_at_ms: number;
   } | null;
   actions: RunAction[];
+  context_preview: ContextPreview | null;
   approvals: ApprovalSnapshot[];
   execution_status: {
     action_count: number;
@@ -168,6 +200,7 @@ export type RunSnapshot = {
       resume_kind?: "SAFE_CHECKPOINT_RESUME" | null;
     }[];
   } | null;
+  external_llm_transfer_scope: ExternalLlmTransferScope | null;
   terminal_result_kind: "SUCCESS" | "PARTIAL" | "BLOCKED" | "FAILED" | "CANCELLED" | "NONE";
   projection_version: number;
 };
@@ -333,6 +366,43 @@ export type GmailResourceDetailResponse = {
   body: string;
   attachments: GmailAttachmentMetadata[];
   canonical_url: string;
+};
+
+export type TaskResourceDetailResponse = {
+  schema_version: 1;
+  resource_id: string;
+  title: string;
+  task_status: "incomplete" | "completed";
+  scheduled_date: string | null;
+  completed_at: string | null;
+  tasklist_id: string;
+  notes: string | null;
+};
+
+export type CalendarResourceDetailResponse = {
+  schema_version: 1;
+  resource_id: string;
+  title: string;
+  start: string;
+  end: string;
+  timezone: string;
+  calendar_id: string;
+  attendees: string[];
+  location: string | null;
+  description: string | null;
+};
+
+export type TaskListContainer = {
+  schema_version: 1;
+  tasklist_id: string;
+  title: string;
+};
+
+export type CalendarContainer = {
+  schema_version: 1;
+  calendar_id: string;
+  title: string;
+  primary: boolean;
 };
 
 export type EventEnvelope = {

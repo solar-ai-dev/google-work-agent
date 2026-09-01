@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiClientError } from "../../api/client";
-import type { GmailResourceDetailResponse, ResourceItem } from "../../api/contract";
+import type {
+  CalendarResourceDetailResponse,
+  GmailResourceDetailResponse,
+  ResourceItem,
+  TaskResourceDetailResponse,
+} from "../../api/contract";
 import { downloadAttachment } from "../attachment";
-import { getGmailResourceDetail } from "./api/get_resource_detail";
+import {
+  getCalendarResourceDetail,
+  getGmailResourceDetail,
+  getTaskResourceDetail,
+} from "./api/get_resource_detail";
 import { ResourceDetail } from "./resource_detail";
 import type { ResourceBrowserProjection } from "./resource_sidebar";
 import { presentResource } from "./resource_sidebar";
@@ -14,10 +23,26 @@ type GmailDetailState = {
   error: string | null;
 };
 
+type TaskDetailState = {
+  resourceId: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  detail: TaskResourceDetailResponse | null;
+  error: string | null;
+};
+
+type CalendarDetailState = {
+  resourceId: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  detail: CalendarResourceDetailResponse | null;
+  error: string | null;
+};
+
 type Props = { projection: ResourceBrowserProjection };
 
 export function ResourceViewer({ projection }: Props): JSX.Element {
   const [gmailDetail, setGmailDetail] = useState<GmailDetailState>({ resourceId: null, status: "idle", detail: null, error: null });
+  const [taskDetail, setTaskDetail] = useState<TaskDetailState>({ resourceId: null, status: "idle", detail: null, error: null });
+  const [calendarDetail, setCalendarDetail] = useState<CalendarDetailState>({ resourceId: null, status: "idle", detail: null, error: null });
   const loadGmailDetail = useCallback(async (resourceId: string): Promise<void> => {
     setGmailDetail({ resourceId, status: "loading", detail: null, error: null });
     try {
@@ -27,12 +52,34 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
       setGmailDetail((current) => current.resourceId === resourceId ? { resourceId, status: "error", detail: null, error: error instanceof ApiClientError ? error.message : "메일 내용을 불러오지 못했습니다." } : current);
     }
   }, []);
+  const loadTaskDetail = useCallback(async (item: ResourceItem): Promise<void> => {
+    setTaskDetail({ resourceId: item.resource_id, status: "loading", detail: null, error: null });
+    try {
+      const detail = await getTaskResourceDetail(item.resource_id, item.selection_handle);
+      setTaskDetail((current) => current.resourceId === item.resource_id ? { resourceId: item.resource_id, status: "ready", detail, error: null } : current);
+    } catch (error) {
+      setTaskDetail((current) => current.resourceId === item.resource_id ? { resourceId: item.resource_id, status: "error", detail: null, error: error instanceof ApiClientError ? error.message : "태스크 상세를 불러오지 못했습니다." } : current);
+    }
+  }, []);
+  const loadCalendarDetail = useCallback(async (item: ResourceItem): Promise<void> => {
+    setCalendarDetail({ resourceId: item.resource_id, status: "loading", detail: null, error: null });
+    try {
+      const detail = await getCalendarResourceDetail(item.resource_id, item.selection_handle);
+      setCalendarDetail((current) => current.resourceId === item.resource_id ? { resourceId: item.resource_id, status: "ready", detail, error: null } : current);
+    } catch (error) {
+      setCalendarDetail((current) => current.resourceId === item.resource_id ? { resourceId: item.resource_id, status: "error", detail: null, error: error instanceof ApiClientError ? error.message : "일정 상세를 불러오지 못했습니다." } : current);
+    }
+  }, []);
 
   useEffect(() => {
     const item = projection.focusedItem;
+    setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
+    setTaskDetail({ resourceId: null, status: "idle", detail: null, error: null });
+    setCalendarDetail({ resourceId: null, status: "idle", detail: null, error: null });
     if (item?.resource_type === "gmail_thread") void loadGmailDetail(item.resource_id);
-    else setGmailDetail({ resourceId: null, status: "idle", detail: null, error: null });
-  }, [loadGmailDetail, projection.focusedItem]);
+    else if (item?.resource_type === "task") void loadTaskDetail(item);
+    else if (item?.resource_type === "calendar_event") void loadCalendarDetail(item);
+  }, [loadCalendarDetail, loadGmailDetail, loadTaskDetail, projection.focusedItem]);
 
   return (
     <>
@@ -40,7 +87,11 @@ export function ResourceViewer({ projection }: Props): JSX.Element {
       <ResourceDetail
         focusItem={projection.focusedItem}
         gmailDetail={gmailDetail}
+        taskDetail={taskDetail}
+        calendarDetail={calendarDetail}
         onRetryGmailDetail={() => { if (projection.focusedItem) void loadGmailDetail(projection.focusedItem.resource_id); }}
+        onRetryTaskDetail={() => { if (projection.focusedItem) void loadTaskDetail(projection.focusedItem); }}
+        onRetryCalendarDetail={() => { if (projection.focusedItem) void loadCalendarDetail(projection.focusedItem); }}
         onDownloadGmailAttachment={(messageId, attachmentId) => { void downloadAttachment(messageId, attachmentId); }}
         onDrillInto={projection.openFocusedContainer}
         presentResource={presentResource}

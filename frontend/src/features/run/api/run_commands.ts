@@ -29,6 +29,29 @@ export function resumeRun(payload: { run_id: string; command_id: string; expecte
   });
 }
 
+export function adjustRunContext(payload: {
+  run_id: string;
+  command_id: string;
+  expected_version: number;
+  expected_retrieval_revision: number;
+  adjustment_kind: "EXCLUDE_EVIDENCE" | "RETRIEVE_MORE";
+  segment_ids?: string[] | null;
+  requested_information?: string | null;
+}): Promise<{ schema_version: 1; accepted: boolean; current_version: number; next_phase: "RETRIEVAL" | null }> {
+  return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/context-adjustments`, {
+    method: "POST",
+    body: {
+      schema_version: 1,
+      command_id: payload.command_id,
+      expected_version: payload.expected_version,
+      expected_retrieval_revision: payload.expected_retrieval_revision,
+      adjustment_kind: payload.adjustment_kind,
+      segment_ids: payload.segment_ids ?? null,
+      requested_information: payload.requested_information ?? null,
+    },
+  });
+}
+
 export function confirmRun(payload: { run_id: string; command_id: string; expected_version: number; interrupt_id: string; response_kind: "OPTION" | "FREE_TEXT" | "DECLINE"; selected_option?: string | null; free_text?: string | null }): Promise<RunCommandResponse> {
   return requestJson(`/api/v1/runs/${encodeURIComponent(payload.run_id)}/confirm`, {
     method: "POST",

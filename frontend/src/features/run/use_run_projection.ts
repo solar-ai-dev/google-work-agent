@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunContext, RunSnapshot } from "../../api/contract";
 import { getRunContext, getRunSnapshot } from "./api/get_run_snapshot";
-import { cancelRun, confirmRun, resumeRun } from "./api/run_commands";
+import { adjustRunContext, cancelRun, confirmRun, resumeRun } from "./api/run_commands";
 import { subscribeRunEvents } from "./api/subscribe_run_events";
 
 export type PendingConfirmation = {
@@ -119,6 +119,56 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     } finally { setBusyCommand(null); }
   }, [busyCommand, commandIdFor, completeCommand, refreshRun, runSnapshot, selectRun, setBusyCommand]);
 
+  const handleResumeAfterReauth = useCallback(async (): Promise<void> => {
+    if (!runSnapshot || runSnapshot.run.status !== "REAUTH_REQUIRED" || busyCommand) return;
+    const operation = `reauth-completed:${runSnapshot.run.run_id}`;
+    setBusyCommand(operation);
+    try {
+      await resumeRun({
+        run_id: runSnapshot.run.run_id,
+        command_id: commandIdFor(operation),
+        expected_version: runSnapshot.run.version,
+        resume_kind: "REAUTH_COMPLETED",
+      });
+      completeCommand(operation);
+      await selectRun(runSnapshot.run.run_id);
+    } catch (error) {
+      await refreshRun(runSnapshot.run.run_id);
+      throw error;
+    } finally {
+      setBusyCommand(null);
+    }
+  }, [busyCommand, commandIdFor, completeCommand, refreshRun, runSnapshot, selectRun, setBusyCommand]);
+
+  const handleAdjustContext = useCallback(async (
+    adjustmentKind: "EXCLUDE_EVIDENCE" | "RETRIEVE_MORE",
+    value: string[] | string,
+  ): Promise<void> => {
+    const preview = runSnapshot?.context_preview;
+    if (!runSnapshot || !preview?.adjustment_allowed || busyCommand) return;
+    if (!preview.allowed_adjustments.includes(adjustmentKind)) return;
+    const operation = `adjust-context:${runSnapshot.run.run_id}:${preview.retrieval_revision}:${adjustmentKind}`;
+    setBusyCommand(operation);
+    try {
+      await adjustRunContext({
+        run_id: runSnapshot.run.run_id,
+        command_id: commandIdFor(operation),
+        expected_version: runSnapshot.run.version,
+        expected_retrieval_revision: preview.retrieval_revision,
+        adjustment_kind: adjustmentKind,
+        segment_ids: adjustmentKind === "EXCLUDE_EVIDENCE" ? value as string[] : null,
+        requested_information: adjustmentKind === "RETRIEVE_MORE" ? value as string : null,
+      });
+      completeCommand(operation);
+      await selectRun(runSnapshot.run.run_id);
+    } catch (error) {
+      await refreshRun(runSnapshot.run.run_id);
+      throw error;
+    } finally {
+      setBusyCommand(null);
+    }
+  }, [busyCommand, commandIdFor, completeCommand, refreshRun, runSnapshot, selectRun, setBusyCommand]);
+
   const handleConfirmation = useCallback(async (selectedOption?: string): Promise<void> => {
     if (!runSnapshot || !pendingConfirmation || busyCommand) return;
     const isOption = pendingConfirmation.responseMode === "OPTION";
@@ -136,5 +186,5 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     } finally { setBusyCommand(null); }
   }, [busyCommand, commandIdFor, completeCommand, confirmationText, pendingConfirmation, refreshRun, runSnapshot, setBusyCommand]);
 
-  return { runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, resetRunProjection, refreshRun, selectRun, selectConversation, handleCancelRun, handleResumeRun, handleConfirmation };
+  return { runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, resetRunProjection, refreshRun, selectRun, selectConversation, handleCancelRun, handleResumeRun, handleResumeAfterReauth, handleAdjustContext, handleConfirmation };
 }

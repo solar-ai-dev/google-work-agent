@@ -1343,6 +1343,7 @@ test("saves llm settings and stores, tests, then deletes the api key", async () 
     if (path === "/api/v1/runtime") {
       return jsonResponse({
         summary: runtimeSummary([], {
+          deployment_profile: "LOCAL_CAPABLE",
           llm: llmConnectionPayload({
             requested_mode: requestedRuntimeMode,
             external_llm_consent: externalLLMConsent,
@@ -3126,6 +3127,47 @@ test("shows a visible error and releases the composer when run creation fails", 
   expect(screen.getByRole("button", { name: "보내기" })).not.toBeDisabled();
 });
 
+test("renders snapshot context/disclosure and sends a context adjustment command", async () => {
+  const requests = installUiContractFetch({
+    contextPreview: {
+      schema_version: 1,
+      run_id: "run-1",
+      retrieval_revision: 4,
+      items: [{ segment_id: "segment-1", role: "SUPPORTS", source: "gmail", resource_type: "gmail_message", resource_id: "message-1", display_label: "마감 메일", excerpt: "금요일 마감" }],
+      gmail_count: 1,
+      tasks_count: 0,
+      calendar_count: 0,
+      adjustment_allowed: true,
+      allowed_adjustments: ["EXCLUDE_EVIDENCE"],
+    },
+    externalLlmScope: {
+      schema_version: 1,
+      run_id: "run-1",
+      scope_revision: 2,
+      scope_hash: "a".repeat(64),
+      source_kinds: ["gmail"],
+      data_classes: ["USER_REQUEST", "EVIDENCE_EXCERPT"],
+    },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("article", { name: "외부 LLM 전송 범위" })).toHaveTextContent("gmail");
+  await user.click(screen.getByRole("checkbox", { name: "마감 메일 제외 선택" }));
+  await user.click(screen.getByRole("button", { name: "선택한 근거 제외" }));
+  await waitFor(() => expect(requests.some((request) => request.path === "/api/v1/runs/run-1/context-adjustments")).toBe(true));
+  const request = requests.find((item) => item.path === "/api/v1/runs/run-1/context-adjustments");
+  expect(JSON.parse(String(request?.init?.body))).toMatchObject({ adjustment_kind: "EXCLUDE_EVIDENCE", expected_retrieval_revision: 4, segment_ids: ["segment-1"] });
+});
+
+test("resumes a REAUTH_REQUIRED run after the Google connection is restored", async () => {
+  const requests = installUiContractFetch({ status: "REAUTH_REQUIRED" });
+  render(<App />);
+  await waitFor(() => expect(requests.some((request) => request.path === "/api/v1/runs/run-1/resume")).toBe(true));
+  const request = requests.find((item) => item.path === "/api/v1/runs/run-1/resume");
+  expect(JSON.parse(String(request?.init?.body))).toMatchObject({ resume_kind: "REAUTH_COMPLETED" });
+});
+
 function installUiContractFetch(options: {
   action?: boolean;
   actionToolName?: string;
@@ -3172,6 +3214,8 @@ function installUiContractFetch(options: {
   completedTaskErrors?: boolean[];
   completedTaskResponse?: Promise<Response>;
   twoItems?: boolean;
+  contextPreview?: Record<string, unknown>;
+  externalLlmScope?: Record<string, unknown>;
 } = {}): Array<{ path: string; init?: RequestInit }> {
   conversationOpenRunEnabled = options.run !== false;
   const requests: Array<{ path: string; init?: RequestInit }> = [];
@@ -3279,6 +3323,37 @@ function installUiContractFetch(options: {
     }
     if (path === "/api/v1/resources/tasks/count") {
       return jsonFetchResponse({ source: "tasks", total_count: 1, api_contract_version: "1" });
+    }
+    if (/^\/api\/v1\/resources\/tasks\/[^?]+\?/.test(path)) {
+      const resourceId = decodeURIComponent(path.split("/").at(-1)?.split("?")[0] ?? "task-1");
+      const metadata = options.taskMetadata ?? { task_status: "incomplete", scheduled_date: "2026-08-12" };
+      return jsonFetchResponse({
+        schema_version: 1,
+        resource_id: resourceId,
+        title: options.taskTitles?.[0] ?? "후속 조치",
+        task_status: metadata.task_status ?? "incomplete",
+        scheduled_date: metadata.scheduled_date ?? null,
+        completed_at: metadata.completed_at ?? null,
+        tasklist_id: "task-list-default",
+        notes: null,
+      });
+    }
+    if (/^\/api\/v1\/resources\/calendar\/[^?]+\?/.test(path)) {
+      const resourceId = decodeURIComponent(path.split("/").at(-1)?.split("?")[0] ?? "event-1");
+      const source = options.calendarEvents?.find((item) => item.resource_id === resourceId) ?? calendarEventItem({ resource_id: resourceId });
+      const metadata = (source.metadata ?? {}) as Record<string, unknown>;
+      return jsonFetchResponse({
+        schema_version: 1,
+        resource_id: resourceId,
+        title: source.title ?? "프로젝트 검토",
+        start: metadata.start ?? "2026-08-10T09:00:00+09:00",
+        end: metadata.end ?? "2026-08-10T10:00:00+09:00",
+        timezone: metadata.timezone ?? "Asia/Seoul",
+        calendar_id: source.parent_id ?? "primary",
+        attendees: [],
+        location: metadata.location ?? null,
+        description: null,
+      });
     }
     if (path.startsWith("/api/v1/resources/gmail")) {
       const gmailPageToken = new URL(`http://local${path}`).searchParams.get("page_token") ?? "first";
@@ -3408,8 +3483,14 @@ function installUiContractFetch(options: {
       }
       return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
     }
-    if (path === "/api/v1/runs/run-1") return jsonFetchResponse(snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: actionStatus === "APPROVED" ? ["MODIFY", "REJECT"] : actionStatus === "PROPOSED" || actionStatus === "MODIFIED" ? ["APPROVE", "MODIFY", "REJECT"] : [] }] : [] }));
+    if (path === "/api/v1/runs/run-1") return jsonFetchResponse({
+      ...snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: actionStatus === "APPROVED" ? ["MODIFY", "REJECT"] : actionStatus === "PROPOSED" || actionStatus === "MODIFIED" ? ["APPROVE", "MODIFY", "REJECT"] : [] }] : [] }),
+      context_preview: options.contextPreview ?? null,
+      external_llm_transfer_scope: options.externalLlmScope ?? null,
+    });
     if (path === "/api/v1/runs/run-1/context") return jsonFetchResponse({ context: null, api_contract_version: "1" });
+    if (path === "/api/v1/runs/run-1/context-adjustments" && init?.method === "POST") return jsonFetchResponse({ schema_version: 1, accepted: true, current_version: 2, next_phase: "RETRIEVAL" });
+    if (path === "/api/v1/runs/run-1/resume" && init?.method === "POST") return jsonFetchResponse({ applied: true, result_code: "OK", run_id: "run-1", run_status: "RUNNING", run_version: 2 });
     if (path.includes("/api/v1/actions/") && init?.method === "POST") {
       actionStatus = path.endsWith("/reject") ? "REJECTED" : "APPROVED";
       return jsonFetchResponse({ applied: true, result_code: "OK", action_id: "action-1", action_status: actionStatus, action_version: 8, next_allowed_commands: [] });

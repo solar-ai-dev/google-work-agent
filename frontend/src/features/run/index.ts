@@ -1,5 +1,7 @@
 export { ConfirmationCard } from "./confirmation_card";
 export { ExecutionStatusCard } from "./execution_status_card";
+export { ContextPreviewCard } from "./context_preview_card";
+export { ExternalLlmDisclosureCard } from "./external_llm_disclosure_card";
 export { RequestComposer, useRequestComposerController } from "./request_composer";
 export { RunProgress } from "./run_progress";
 export { useRunProjection } from "./use_run_projection";

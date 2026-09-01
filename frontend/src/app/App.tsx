@@ -46,6 +46,7 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     currentAccount,
     selectedResourceHandles: resourceProjection.selectedContext.selectionHandles,
     onStatusLine: setStatusLine,
+    requestedMode: runtime.runtime_mode.requested_mode,
   });
   const {
     conversations,
@@ -71,10 +72,13 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     handleAttachDescriptors,
     handleCancelRun,
     handleResumeRun,
+    handleResumeAfterReauth,
+    handleAdjustContext,
     handleConfirmation,
     handleResolveRecovery,
   } = conversation;
   const restoredOpenRunRef = useRef(false);
+  const reauthResumeAttemptRef = useRef<string | null>(null);
   const operationalCommandIds = useRef(new Map<string, string>());
 
   useEffect(() => {
@@ -116,6 +120,7 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       handleAttachDescriptors,
       handleCancelRun,
       handleResumeRun,
+      handleAdjustContext,
       handleConfirmation,
       handleResolveRecovery,
     },
@@ -134,6 +139,19 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     setGoogle(googleResponse);
     setCurrentAccount(accountResponse.account);
   }, []);
+
+  useEffect(() => {
+    if (google.connection_status !== "CONNECTED" || runSnapshot?.run.status !== "REAUTH_REQUIRED") {
+      reauthResumeAttemptRef.current = null;
+      return;
+    }
+    const identity = `${runSnapshot.run.run_id}:${runSnapshot.run.version}`;
+    if (reauthResumeAttemptRef.current === identity) return;
+    reauthResumeAttemptRef.current = identity;
+    void handleResumeAfterReauth().catch((error: unknown) => {
+      setStatusLine(error instanceof ApiClientError ? error.message : "Google 재인증 후 작업을 재개하지 못했습니다.");
+    });
+  }, [google.connection_status, handleResumeAfterReauth, runSnapshot]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

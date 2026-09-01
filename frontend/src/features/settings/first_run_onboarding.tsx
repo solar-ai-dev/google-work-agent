@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClientError } from "../../api/client";
+import type { CalendarContainer, TaskListContainer } from "../../api/contract";
 import type { RuntimeSummary } from "../diagnostics";
+import { listCalendars, listTaskLists } from "../resource_browser/api/list_resources";
 import type { GoogleConnection } from "./api/google_connection_operations";
 import { getSettings, type SettingsView } from "./api/get_settings";
 import { getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";
@@ -29,8 +31,10 @@ export function FirstRunOnboardingScreen({
   const [consent, setConsent] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
-  const [calendarId, setCalendarId] = useState("primary");
-  const [taskListId, setTaskListId] = useState("@default");
+  const [calendarId, setCalendarId] = useState("");
+  const [taskListId, setTaskListId] = useState("");
+  const [calendars, setCalendars] = useState<CalendarContainer[]>([]);
+  const [taskLists, setTaskLists] = useState<TaskListContainer[]>([]);
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul");
   const commandIds = useRef(new Map<string, string>());
 
@@ -42,8 +46,8 @@ export function FirstRunOnboardingScreen({
         setSettings(settingsResponse);
         setLLM(llmResponse);
         setConsent(settingsResponse.external_llm_consent);
-        setCalendarId(settingsResponse.default_calendar_id ?? "primary");
-        setTaskListId(settingsResponse.default_tasklist_id ?? "@default");
+        setCalendarId(settingsResponse.default_calendar_id ?? "");
+        setTaskListId(settingsResponse.default_tasklist_id ?? "");
         setTimezone(settingsResponse.timezone);
       })
       .catch((cause: unknown) => {
@@ -54,6 +58,26 @@ export function FirstRunOnboardingScreen({
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (google.connection_status !== "CONNECTED") return;
+    let active = true;
+    void Promise.allSettled([listCalendars(), listTaskLists()]).then(([calendarResult, taskListResult]) => {
+      if (!active) return;
+      if (calendarResult.status === "fulfilled") {
+        setCalendars(calendarResult.value.items);
+        setCalendarId((current) => current || calendarResult.value.items.find((item) => item.primary)?.calendar_id || calendarResult.value.items[0]?.calendar_id || "");
+      }
+      if (taskListResult.status === "fulfilled") {
+        setTaskLists(taskListResult.value.items);
+        setTaskListId((current) => current || taskListResult.value.items[0]?.tasklist_id || "");
+      }
+      if (calendarResult.status === "rejected" && taskListResult.status === "rejected") {
+        setError("Google 기본 리소스를 불러오지 못했습니다. 연결을 다시 확인해 주세요.");
+      }
+    });
+    return () => { active = false; };
+  }, [google.connection_status]);
 
   const apiProvider = useMemo(() => llm, [llm]);
   const apiAvailable = apiProvider?.validation_status === "VALID";
@@ -150,8 +174,8 @@ export function FirstRunOnboardingScreen({
             </ChecklistItem>
           ) : null}
           <ChecklistItem title="기본 리소스와 시간대" complete={defaultsReady}>
-            <label>기본 Calendar<input value={calendarId} onChange={(event) => setCalendarId(event.target.value)} /></label>
-            <label>기본 Task List<input value={taskListId} onChange={(event) => setTaskListId(event.target.value)} /></label>
+            <label>기본 Calendar<select value={calendarId} onChange={(event) => setCalendarId(event.target.value)}><option value="">선택</option>{calendars.map((item) => <option key={item.calendar_id} value={item.calendar_id}>{item.title}{item.primary ? " (기본)" : ""}</option>)}</select></label>
+            <label>기본 Task List<select value={taskListId} onChange={(event) => setTaskListId(event.target.value)}><option value="">선택</option>{taskLists.map((item) => <option key={item.tasklist_id} value={item.tasklist_id}>{item.title}</option>)}</select></label>
             <label>Timezone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>
             <button className="button-primary" type="button" onClick={() => void completeSetup()} disabled={busy || google.connection_status !== "CONNECTED" || google.missing_required_scopes.length > 0 || !consentSaved || !diagnosticsReady || !apiAvailable || !calendarId.trim() || !taskListId.trim() || !timezone.trim()}>설정 완료하고 시작</button>
           </ChecklistItem>

@@ -1,13 +1,23 @@
 import { requestJson } from "../../../api/client";
 import type {
   CalendarListItemWire,
+  CalendarContainer,
   GmailListItemWire,
   ResourceCountResponse,
   ResourceItem,
   ResourceListResponse,
   ResourceListWireResponse,
   TaskListItemWire,
+  TaskListContainer,
 } from "../../../api/contract";
+
+export function listTaskLists(): Promise<{ schema_version: 1; items: TaskListContainer[]; next_page_token: string | null }> {
+  return requestJson("/api/v1/resources/task-lists?page_size=100");
+}
+
+export function listCalendars(): Promise<{ schema_version: 1; items: CalendarContainer[]; next_page_token: string | null }> {
+  return requestJson("/api/v1/resources/calendars?page_size=100");
+}
 
 export type ListResourcesRequest =
   | { source: "gmail"; query: string; continuation?: string | null; pageSize?: number; includeThreadMetadata?: boolean }

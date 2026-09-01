@@ -27,6 +27,8 @@ describe("subscribeRunEvents", () => {
     current!.emit("plan_updated", { revision: 1 }, "event-1");
     current!.emit("plan_updated", { revision: 2 }, "event-1");
     expect(onEvent).toHaveBeenCalledTimes(1);
+    current!.emit("EXTERNAL_LLM_SCOPE_PUBLISHED", { scope_revision: 2 }, "event-2");
+    expect(onEvent).toHaveBeenLastCalledWith(expect.objectContaining({ eventType: "EXTERNAL_LLM_SCOPE_PUBLISHED" }));
     current!.emit("snapshot_required", {}, "");
     expect(current!.close).toHaveBeenCalled();
     expect(onSnapshotRequired).toHaveBeenCalledOnce();

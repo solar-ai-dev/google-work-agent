@@ -14,3 +14,10 @@ export function createBackup(commandId: string): Promise<BackupMetadata> {
 export function restoreBackup(commandId: string, backupRef: string): Promise<RestoreResult> {
   return requestJson("/api/v1/restore", { method: "POST", body: { schema_version: 1, command_id: commandId, backup_ref: backupRef } });
 }
+
+export function requestShutdown(commandId: string): Promise<{ schema_version: 1; accepted: boolean }> {
+  return requestJson("/api/v1/control/shutdown", {
+    method: "POST",
+    body: { schema_version: 1, command_id: commandId },
+  });
+}

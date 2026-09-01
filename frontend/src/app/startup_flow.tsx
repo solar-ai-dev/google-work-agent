@@ -13,6 +13,7 @@ import {
 } from "../api/contract";
 import { ApiCompatibilityGate, type ApiCompatibility } from "./api_compatibility_gate";
 import { bootstrapLocalSession, readBootstrapFragment } from "./session_bootstrap";
+import { SafeModeRecovery } from "./safe_mode_recovery";
 
 export type StartupFlowContext = {
   runtime: RuntimeSummary;
@@ -65,6 +66,31 @@ export function StartupFlow({ children }: Props): JSX.Element {
         return;
       }
 
+      setState((current) => ({
+        ...current,
+        phase: "session",
+        message: bootstrapFragment ? "로컬 세션을 수립하고 있습니다." : "기존 로컬 세션을 확인하고 있습니다.",
+      }));
+      if (bootstrapFragment !== null) {
+        const bootstrap = await bootstrapLocalSession(bootstrapFragment);
+        setServerApiContractVersion(bootstrap.api_contract_version);
+        if (
+          !bootstrap.session_established
+          || bootstrap.compatibility !== "COMPATIBLE"
+          || bootstrap.api_contract_version !== API_CONTRACT_VERSION
+        ) {
+          setCompatibility("INCOMPATIBLE");
+          setState({
+            phase: "compatibility",
+            status: "error",
+            message: "Local API 호환성 확인에 실패했습니다.",
+            checks: [],
+            error: "호환되는 앱 버전으로 다시 시작해 주세요.",
+          });
+          return;
+        }
+      }
+
       const ready = await getReady();
       if (ready.api_contract_version !== API_CONTRACT_VERSION) {
         setServerApiContractVersion(ready.api_contract_version);
@@ -79,9 +105,9 @@ export function StartupFlow({ children }: Props): JSX.Element {
         return;
       }
       if (ready.status !== "READY") {
-        setCompatibility("UNAVAILABLE");
+        setCompatibility(ready.status === "SAFE_MODE" ? "COMPATIBLE" : "UNAVAILABLE");
         setState({
-          phase: "readiness",
+          phase: ready.status === "SAFE_MODE" ? "safe-mode" : "readiness",
           status: "error",
           message: ready.status === "SAFE_MODE"
             ? "Local Service가 안전 모드로 실행 중입니다."
@@ -90,32 +116,6 @@ export function StartupFlow({ children }: Props): JSX.Element {
           error: "검사 상세를 확인하고 다시 시도해 주세요.",
         });
         return;
-      }
-      setState({
-        phase: "session",
-        status: "loading",
-        message: bootstrapFragment ? "로컬 세션을 수립하고 있습니다." : "기존 로컬 세션을 확인하고 있습니다.",
-        checks: ready.checks,
-      });
-
-      if (bootstrapFragment !== null) {
-        const bootstrap = await bootstrapLocalSession(bootstrapFragment);
-        setServerApiContractVersion(bootstrap.api_contract_version);
-        if (
-          !bootstrap.session_established
-          || bootstrap.compatibility !== "COMPATIBLE"
-          || bootstrap.api_contract_version !== API_CONTRACT_VERSION
-        ) {
-          setCompatibility("INCOMPATIBLE");
-          setState({
-            phase: "compatibility",
-            status: "error",
-            message: "Local API 호환성 확인에 실패했습니다.",
-            checks: ready.checks,
-            error: "호환되는 앱 버전으로 다시 시작해 주세요.",
-          });
-          return;
-        }
       }
 
       setCompatibility("COMPATIBLE");
@@ -169,7 +169,9 @@ export function StartupFlow({ children }: Props): JSX.Element {
     }
   }, [runStartup]);
 
-  const fallback = <StartupCheckScreen state={state} onRetry={() => void runStartup()} />;
+  const fallback = state.phase === "safe-mode"
+    ? <SafeModeRecovery reason={state.checks.map((check) => check.detail).filter(Boolean).join(", ") || "복구가 필요합니다."} onRetry={() => void runStartup()} />
+    : <StartupCheckScreen state={state} onRetry={() => void runStartup()} />;
   return (
     <ApiCompatibilityGate
       compatibility={compatibility}

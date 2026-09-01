@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import { DiagnosticsPanel, type RuntimeSummary } from "../diagnostics";
-import { createBackup, listBackups, restoreBackup, type BackupMetadata } from "./api/backup_operations";
+import { createBackup, listBackups, requestShutdown, restoreBackup, type BackupMetadata } from "./api/backup_operations";
+import { listCalendars, listTaskLists } from "../resource_browser/api/list_resources";
+import type { CalendarContainer, TaskListContainer } from "../../api/contract";
 import { disconnectGoogle, getGoogleConnection, startGoogleConnection, type GoogleConnection } from "./api/google_connection_operations";
 import { getSettings, type SettingsView } from "./api/get_settings";
 import { deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";
@@ -21,6 +23,8 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
   const [google, setGoogle] = useState<GoogleConnection | null>(null);
   const [credential, setCredential] = useState<LlmCredentialStatus | null>(null);
   const [backups, setBackups] = useState<BackupMetadata[]>([]);
+  const [taskLists, setTaskLists] = useState<TaskListContainer[]>([]);
+  const [calendars, setCalendars] = useState<CalendarContainer[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
   const [restoreRef, setRestoreRef] = useState("");
@@ -30,14 +34,16 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
   const commandIds = useRef(new Map<string, string>());
 
   const load = useCallback(async (): Promise<void> => {
-    const [nextSettings, nextGoogle, nextCredential, nextBackups] = await Promise.allSettled([
-      getSettings(), getGoogleConnection(), getLlmCredentialStatus(), listBackups(),
+    const [nextSettings, nextGoogle, nextCredential, nextBackups, nextTaskLists, nextCalendars] = await Promise.allSettled([
+      getSettings(), getGoogleConnection(), getLlmCredentialStatus(), listBackups(), listTaskLists(), listCalendars(),
     ]);
     if (nextSettings.status === "fulfilled") setSettings(nextSettings.value);
     if (nextGoogle.status === "fulfilled") setGoogle(nextGoogle.value);
     if (nextCredential.status === "fulfilled") setCredential(nextCredential.value);
     if (nextBackups.status === "fulfilled") setBackups(nextBackups.value.items);
-    if ([nextSettings, nextGoogle, nextCredential, nextBackups].every((result) => result.status === "rejected")) {
+    if (nextTaskLists.status === "fulfilled") setTaskLists(nextTaskLists.value.items);
+    if (nextCalendars.status === "fulfilled") setCalendars(nextCalendars.value.items);
+    if ([nextSettings, nextGoogle, nextCredential, nextBackups, nextTaskLists, nextCalendars].every((result) => result.status === "rejected")) {
       throw nextSettings.status === "rejected" ? nextSettings.reason : new Error("Settings unavailable");
     }
   }, []);
@@ -100,6 +106,40 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
     onClose();
   }
 
+  async function restoreSelected(): Promise<void> {
+    if (!restoreRef) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await restoreBackup(commandIdFor(`backup:restore:${restoreRef}`), restoreRef);
+      if (result.status !== "RESTORED") throw new Error(result.detail_code ?? "Restore rejected");
+      commandIds.current.delete(`backup:restore:${restoreRef}`);
+      setMessage("복원 처리가 끝났습니다. Migration·재시작 준비 상태를 다시 확인합니다.");
+      await Promise.allSettled([load(), onOperationalStateChanged()]);
+    } catch (error) {
+      setMessage(errorMessage(error, "복원을 완료하지 못했습니다."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function shutdownService(): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await requestShutdown(commandIdFor("control:shutdown"));
+      if (!result.accepted) throw new Error("Shutdown rejected");
+      commandIds.current.delete("control:shutdown");
+      setMessage("안전한 종료를 요청했습니다.");
+    } catch (error) {
+      setMessage(errorMessage(error, "종료를 요청하지 못했습니다."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const runtimeModes = availableRuntimeModes(runtime?.deployment_profile);
+
   return (
     <aside className="drawer" aria-label="설정 및 진단">
       <div className="panel-header"><strong>설정·진단</strong><button className="button-secondary" type="button" onClick={close}>닫기</button></div>
@@ -117,20 +157,20 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
         {settings ? <section className="info-card" aria-label="작업 설정">
           <strong>작업 설정</strong>
           <label>Timezone<input value={settings.timezone} onChange={(e) => patch("timezone", e.target.value)} /></label>
-          <label>기본 Calendar ID<input value={settings.default_calendar_id ?? ""} onChange={(e) => patch("default_calendar_id", e.target.value || null)} /></label>
-          <label>기본 Task list ID<input value={settings.default_tasklist_id ?? ""} onChange={(e) => patch("default_tasklist_id", e.target.value || null)} /></label>
+          <label>기본 Calendar<select value={settings.default_calendar_id ?? ""} onChange={(e) => patch("default_calendar_id", e.target.value || null)}><option value="">선택</option>{calendars.map((item) => <option key={item.calendar_id} value={item.calendar_id}>{item.title}{item.primary ? " (기본)" : ""}</option>)}</select></label>
+          <label>기본 Task list<select value={settings.default_tasklist_id ?? ""} onChange={(e) => patch("default_tasklist_id", e.target.value || null)}><option value="">선택</option>{taskLists.map((item) => <option key={item.tasklist_id} value={item.tasklist_id}>{item.title}</option>)}</select></label>
           <label>업무 시작<input type="time" value={settings.working_day_start_local} onChange={(e) => patch("working_day_start_local", e.target.value)} /></label>
           <label>업무 종료<input type="time" value={settings.working_day_end_local} onChange={(e) => patch("working_day_end_local", e.target.value)} /></label>
           <label><input type="checkbox" checked={settings.include_weekends} onChange={(e) => patch("include_weekends", e.target.checked)} />주말 포함</label>
           <label>일정 buffer(분)<input type="number" min="0" value={settings.calendar_buffer_minutes} onChange={(e) => patch("calendar_buffer_minutes", Number(e.target.value))} /></label>
           <label>보존 기간(일)<input type="number" min="1" value={settings.retention_days} onChange={(e) => patch("retention_days", Number(e.target.value))} /></label>
-          <label>Requested mode<select value={settings.preferred_llm_mode} onChange={(e) => patch("preferred_llm_mode", e.target.value as RuntimeMode)}><option>AUTO</option><option>LOCAL_GPU</option><option>API_LLM</option></select></label>
+          <label>Requested mode<select value={settings.preferred_llm_mode} onChange={(e) => patch("preferred_llm_mode", e.target.value as RuntimeMode)}>{runtimeModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
           <label><input type="checkbox" checked={settings.external_llm_consent} onChange={(e) => patch("external_llm_consent", e.target.checked)} />외부 LLM 사용 동의</label>
           <button type="button" className="button-primary" disabled={busy} onClick={() => void saveSettings()}>LLM 설정 저장</button>
         </section> : null}
         <section className="info-card" aria-label="런타임 모드">
           <strong>런타임 모드</strong><p>요청 {runtime?.runtime_mode.requested_mode ?? "-"} · 실제 {runtime?.runtime_mode.actual_runtime ?? "-"}</p>{runtime?.runtime_mode.fallback_reason ? <p className="status-warn">Fallback: {runtime.runtime_mode.fallback_reason}</p> : null}
-          <div className="button-row">{(["AUTO", "LOCAL_GPU", "API_LLM"] as RuntimeMode[]).map((mode) => <button key={mode} type="button" className="button-secondary" disabled={busy} onClick={() => void run(`runtime:${mode}`, async (id) => { await updateRuntimeMode(id, mode); }, `${mode} 모드를 요청했습니다.`)}>{mode}</button>)}</div>
+          <div className="button-row">{runtimeModes.map((mode) => <button key={mode} type="button" className="button-secondary" disabled={busy} onClick={() => void run(`runtime:${mode}`, async (id) => { await updateRuntimeMode(id, mode); }, `${mode} 모드를 요청했습니다.`)}>{mode}</button>)}</div>
         </section>
         <section className="info-card" aria-label="LLM 자격증명">
           <strong>LLM 자격증명</strong><p>{credential?.configured ? `${credential.storage_mode} / ${credential.validation_status}` : "설정되지 않음"}</p>
@@ -142,12 +182,17 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
           <strong>백업 및 복원</strong><button type="button" className="button-secondary" disabled={busy} onClick={() => void run("backup:create", async (id) => { await createBackup(id); }, "백업을 만들었습니다.")}>백업 만들기</button>
           <select aria-label="복원할 백업" value={restoreRef} onChange={(e) => { setRestoreRef(e.target.value); setRestoreConfirmed(false); }}><option value="">백업 선택</option>{backups.map((item) => <option key={item.backup_ref} value={item.backup_ref}>{new Date(item.created_at_ms).toLocaleString("ko-KR")} · {item.size_bytes} bytes</option>)}</select>
           <label><input type="checkbox" checked={restoreConfirmed} onChange={(e) => setRestoreConfirmed(e.target.checked)} />선택한 백업으로 복원함을 확인합니다.</label>
-          <button type="button" className="button-danger" disabled={busy || !restoreRef || !restoreConfirmed} onClick={() => void run(`backup:restore:${restoreRef}`, async (id) => { await restoreBackup(id, restoreRef); }, "복원을 완료했습니다.")}>복원</button>
+          <button type="button" className="button-danger" disabled={busy || !restoreRef || !restoreConfirmed} onClick={() => void restoreSelected()}>복원</button>
         </section>
+        <section className="info-card" aria-label="서비스 제어"><strong>서비스 제어</strong><button type="button" className="button-danger" disabled={busy} onClick={() => void shutdownService()}>안전하게 종료</button></section>
         <DiagnosticsPanel runtime={runtime} onRefresh={onOperationalStateChanged} />
       </div>
     </aside>
   );
+}
+
+function availableRuntimeModes(profile: string | undefined): RuntimeMode[] {
+  return profile === "LOCAL_CAPABLE" ? ["AUTO", "LOCAL_GPU", "API_LLM"] : ["API_LLM"];
 }
 
 function errorMessage(error: unknown, fallback: string): string {

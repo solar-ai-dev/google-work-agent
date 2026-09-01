@@ -12,9 +12,10 @@ type UseConversationOptions = {
   currentAccount: CurrentGoogleAccount["account"];
   selectedResourceHandles: string[];
   onStatusLine: (message: string) => void;
+  requestedMode: "AUTO" | "LOCAL_GPU" | "API_LLM";
 };
 
-export function useConversation({ currentAccount, selectedResourceHandles, onStatusLine }: UseConversationOptions) {
+export function useConversation({ currentAccount, selectedResourceHandles, onStatusLine, requestedMode }: UseConversationOptions) {
   const [busyCommand, setBusyCommand] = useState<string | null>(null);
   const resetRunProjectionRef = useRef<() => void>(() => undefined);
   const onResetProjection = useCallback(() => resetRunProjectionRef.current(), []);
@@ -51,6 +52,7 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     commandIdFor,
     completeCommand,
     createConversation,
+    requestedMode,
   });
   const actionCommands = useActionPlanCommands({
     runSnapshot: run.runSnapshot,
@@ -94,6 +96,8 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     ...actionCommands,
     handleCancelRun: run.handleCancelRun,
     handleResumeRun: run.handleResumeRun,
+    handleResumeAfterReauth: run.handleResumeAfterReauth,
+    handleAdjustContext: run.handleAdjustContext,
     handleConfirmation: run.handleConfirmation,
     ...recoveryCommands,
   };
