@@ -10,6 +10,7 @@ from typing import cast
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import pytest
 from fastapi.testclient import TestClient
 from tests.support.production_runtime import (
     build_test_production_container as build_container,
@@ -17,6 +18,7 @@ from tests.support.production_runtime import (
 from uvicorn import Config, Server
 
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
@@ -105,6 +107,28 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
     assert not thread.is_alive()
     assert isinstance(container.readiness_aggregator, LocalServiceReadinessAggregator)
     assert base_transport.runtime_metadata().process_status == "STOPPED"
+
+
+@pytest.mark.parametrize("graph_profile", tuple(GraphProfile))
+def test_development_container_selects_each_canonical_graph_profile(
+    tmp_path: Path,
+    graph_profile: GraphProfile,
+) -> None:
+    container = build_container(
+        runtime_root=tmp_path / graph_profile.value,
+        bootstrap_secret="test-bootstrap",
+        mcp_module_name="tests.fakes.google_workspace_mcp_server",
+        keyring_store=SessionMemorySecretStore(),
+        graph_profile=graph_profile,
+    )
+    try:
+        runtime = cast(LangGraphWorkflowRuntime, container.workflow_runtime)
+        assert container.graph_profile == graph_profile.value
+        assert runtime.graph_profile() is graph_profile
+        assert runtime._graph.get_graph().nodes
+    finally:
+        for callback in container.shutdown_callbacks:
+            callback()
 
 
 def _allocate_loopback_port() -> int:

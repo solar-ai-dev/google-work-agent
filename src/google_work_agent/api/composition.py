@@ -1908,6 +1908,7 @@ def build_production_runtime(
     verified_release_files: tuple[_VerifiedReleaseFile, ...] = (),
     code_signature_verified_paths: frozenset[str] = frozenset(),
     request_process_exit: Callable[[], None] | None = None,
+    graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
 ) -> ApiContainer:
     """Assemble the local service from authenticated or explicit development inputs."""
 
@@ -2232,6 +2233,7 @@ def build_production_runtime(
             sse_event_buffer=event_publisher,
             environment=oauth_environment.value,
             release_version=release_version,
+            graph_profile=graph_profile,
         )
     except InactivePromptArtifactError:
         prompt_active = False
@@ -2568,7 +2570,7 @@ def build_production_runtime(
         checkpoint_port=checkpoint,
         now_ms=clock.now_ms,
         id_factory=id_generator.new_uuid,
-        graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
+        graph_profile=graph_profile.value,
         graph_version=RESUME_CONTRACT_VERSION,
         settings_provider=settings_service.get_settings,
     )
@@ -2618,7 +2620,7 @@ def build_production_runtime(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),
-        graph_profile=GraphProfile.SIX_ROLE_BASELINE.value,
+        graph_profile=graph_profile.value,
         graph_version=RESUME_CONTRACT_VERSION,
         schedule_run_execution=production_runtime.schedule_run_execution,
         resume_target_registry=resume_target_registry,

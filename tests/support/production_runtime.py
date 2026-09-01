@@ -3,6 +3,7 @@
 import secrets
 from pathlib import Path
 
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.runtime.safe_mode import SafeModeController
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
@@ -23,6 +24,7 @@ def build_test_production_container(
     safe_mode_controller: SafeModeController | None = None,
     mcp_module_name: str | None = None,
     keyring_store: SecretStorePort | None = None,
+    graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
 ) -> ApiContainer:
     return build_production_runtime(
         host=host,
@@ -44,6 +46,7 @@ def build_test_production_container(
         safe_mode_controller=safe_mode_controller,
         mcp_module_name=mcp_module_name,
         keyring_store=keyring_store,
+        graph_profile=graph_profile,
     )
 
 
