@@ -55,7 +55,7 @@
 
 ### Current Evaluation Artifact Contract
 
-Current evaluation runner는 다음 contract family가 서로 일치하는지만 사용한다. Artifact version/status의 재현 기록은 §5와 subordinate Audit 경계를 따른다.
+Current evaluation runner는 다음 contract family가 서로 일치하는지만 사용하며 Product를 supported public HTTP API로만 호출한다. Product Python internal import, Node/Subgraph 직접 실행, fake Product adapter는 current Evaluation evidence가 아니다. Artifact version/status의 재현 기록은 §5와 Git history 경계를 따른다.
 
 | Concern | Current contract |
 | --- | --- |
@@ -156,6 +156,10 @@ Release 판단은 Local `qwen2.5:7b`에서 ATOMIC_SLLM이 FUSED_REFERENCE보다 
 
 Evaluation Harness는 Product Runtime 계약을 관측·비교할 뿐 권한을 넓히지 않는다.
 
+- Evaluation code는 Product Domain/Application/Agent/LangGraph/internal DTO·Repository·Adapter를 import하지 않는다. 실행 경계는 Public Product API, supported CLI, 또는 supported entrypoint subprocess뿐이다.
+- Product runtime도 `evaluation/**`를 import하지 않는다. Dataset/Gold/Grader는 release package와 Product process 밖에 남는다.
+- Node·Subgraph·Graph Profile 비교는 후보 Product deployment/config를 고정한 뒤 같은 public API scenario를 실행해 비교한다. private callable 직접 호출 결과는 Product 결과가 아니다.
+
 - Product Agent에는 current Registry eligibility를 통과한 Connector/Resource/Effect/Tool projection과 owner Source가 허용한 Runtime input만 전달한다. Gold, grader rubric, hidden user goal, expected route/action, end-state answer는 전달하지 않는다.
 - User Simulator와 hidden decision script는 Evaluator 전용 artifact다. Simulator가 Confirmation/Approval/Reject/Cancel 자연어 응답을 만들 수는 있지만 `PolicyConfirmationReceiptV1`, Approval, Claim Token을 직접 생성하지 않는다. 실제 Application/Domain Controller가 검증한 뒤 생성한다.
 - Grader 결과를 Repair/Revision 진단에 재사용해야 할 때는 Runtime과 동일한 allowlisted `failure_record` projection만 사용한다. Grader rationale 원문, 점수, 정답 Action, Gold field를 Product Prompt에 주입하지 않는다.
@@ -230,11 +234,11 @@ Review Gold               → PlanReviewResultV2
 - Override Gold는 기본 경로와 분리한다. 정확 Task 중복을 인지한 추가 생성은 `DUPLICATE_OVERRIDE_REQUIRED` Confirmation 이후에만 Action 진행을 허용하고, 검증된 Calendar 충돌 Override는 `CONFLICT_OVERRIDE_REQUIRED` Confirmation 이후에만 충돌 Event Action 진행을 허용한다. 성공 trajectory에는 `PolicyConfirmationReceiptV1(APPROVED)` 생성, 동일 `confirmation_receipt_id`의 Audit, `WorkAnalysisResultV2.policy_confirmation_receipt_refs`, Approval Snapshot binding까지 포함한다. Confirmation 없이 Override하거나 stale/DECLINED Receipt를 재사용한 Candidate는 실패다.
 - current Tool Route Gold는 사용자 의미상 IN Route뿐 아니라 `01-B` Policy Precondition Read를 포함한다. 최소 `TASK + CREATE → 기존 미완료 Task 중복 검사 IN`, `CALENDAR + CREATE → Event/FreeBusy 충돌 검사 IN`을 required trajectory로 기록한다. 해당 필수 READ가 누락된 Candidate는 OUT Tool이 맞아도 Route 정답으로 처리하지 않는다.
 - 사용자 Prompt/Entry Mode가 Source·기간·Resource 범위를 명시적으로 제한한 Case에서 Policy Precondition Read가 범위 밖이면 Gold trajectory는 `SCOPE_EXPANSION_REQUIRED → 사용자 확인 → 승인된 경우만 추가 IN Route`를 요구한다. 자동 범위 확대나 확인 거절 후 필수 검사를 생략한 Write는 실패다.
-- non-current imported Evaluation artifact는 current aggregate와 분리된 compatibility reader/Audit 경계에서만 재현한다. Exact repository placement는 `16 Repository Architecture`가 소유한다. Local Model·GPU 평가는 API 수직 흐름과 Runner 안정화 후 별도 Lane으로 수행한다.
+- non-current imported Evaluation artifact는 Git history/Audit provenance로만 재현하고 current aggregate에 복제 보관하지 않는다. Exact repository placement는 `16 Repository Architecture`가 소유한다. Local Model·GPU 평가는 API 수직 흐름과 Runner 안정화 후 별도 Lane으로 수행한다.
 
 ## 5. Current · Reproduction Artifact 경계
 
-Current Evaluation Runner와 release decision은 이 문서의 current contract family만 사용한다. Non-current reproduction artifact는 compatibility reader와 subordinate `Experiment Redesign Audit`에서만 해석하며, current Dataset·Projection·Grader·Prompt set에 자동 승격하거나 같은 aggregate에 혼합하지 않는다. Compatibility reader의 exact repository placement는 `16 Repository Architecture`가 소유한다.
+Current Evaluation Runner와 release decision은 이 문서의 current contract family만 사용한다. Non-current reproduction artifact는 Git history와 subordinate Audit에서만 해석하며 current Dataset·Gold·Grader에 자동 승격하거나 같은 aggregate에 혼합하지 않는다.
 
 
 ## 6. 실험 순서
@@ -327,7 +331,7 @@ human_rubric
 
 ### 7.2-A Current evaluation artifact closed schema
 
-아래 네 artifact가 **current evaluation implementation target**이다. 모든 current artifact는 unknown top-level field를 거부하며 non-current artifact는 current evaluation aggregate와 격리된 compatibility reader를 통해서만 읽는다. Exact repository placement는 `16 Repository Architecture`가 소유한다.
+아래 artifact는 **evaluation data contract**다. Python Product type을 import해 구현하는 target contract가 아니며 public API 관측값을 이 의미로 정규화할 때만 사용한다. Exact repository placement는 `16 Repository Architecture`가 소유한다.
 
 ```python
 EvaluationJSONScalarV1 = str | int | float | bool | None
@@ -442,9 +446,10 @@ class CurrentFixtureSnapshotV1:
 
 class ExperimentTargetV1:
     schema_version: Literal[1]
-    target_kind: Literal["NODE", "SUBGRAPH", "MAIN_PROFILE"]
-    target_id: str
-    product_symbol: str
+    candidate_id: str
+    product_sha: str
+    public_boundary: Literal["HTTP_API", "SUPPORTED_CLI", "SUPPORTED_SUBPROCESS"]
+    profile: str
 
 class NodeEvaluationItemV1:
     schema_version: Literal[1]
@@ -459,26 +464,26 @@ class NodeEvaluationItemV1:
     expected_result: EvaluationJSONValueV1
 ```
 
-`EvaluationJSONValueV1`은 **evaluation-data container**일 뿐 제품 Runtime schema를 대체하지 않는다. Product Runtime artifact를 채점할 때는 해당 owner의 current serializer/schema validator를 먼저 적용한 뒤 evaluation projection으로 복사한다. 따라서 evaluation code가 Runtime contract의 새 field나 enum을 발명하지 않는다.
+`EvaluationJSONValueV1`은 **evaluation-data container**일 뿐 제품 Runtime schema를 대체하지 않는다. Product Runtime artifact는 public response contract를 통과한 관측값만 evaluation projection으로 복사한다. 따라서 evaluation code가 Runtime contract의 새 field나 enum을 발명하거나 private serializer를 import하지 않는다.
 
 ### 7.2-B Current non-Python evaluation artifact contract
 
-이 문서는 Evaluation artifact의 **semantic set, schema, serialization, lineage**를 소유한다. Exact repository root/path/file naming과 compatibility placement는 `16 Repository Architecture`가 소유하며 여기서 두 번째 placement authority를 만들지 않는다.
+이 문서는 Evaluation artifact의 **semantic set, schema, serialization, lineage**를 소유한다. Exact repository root/path/file naming은 `16 Repository Architecture`가 소유하며 여기서 두 번째 placement authority를 만들지 않는다.
 
 Current non-Python artifact family는 다음과 같다.
 
 | Artifact | Logical contract | Serialization |
 | --- | --- | --- |
 | Canonical Case source | `CanonicalCaseV7` | UTF-8 JSON Lines; line마다 `CanonicalCaseV7` 1개 |
-| E2E Projection | `E2EProjectionV5` | UTF-8 JSON Lines; line마다 `E2EProjectionV5` 1개 |
+| Product API observation | public Run/API response의 semantic projection | result JSON 내부 normalized observation |
 | Product Episode Projection | `ProductEpisodeE2EProjectionV1` | UTF-8 JSON Lines; line마다 `ProductEpisodeE2EProjectionV1` 1개 |
-| Node Evaluation Item | `NodeEvaluationItemV1` | UTF-8 JSON Lines; line마다 `NodeEvaluationItemV1` 1개 |
+| Agent evaluation input | preserved semantic responsibility input; private callable target 아님 | UTF-8 JSON Lines |
 | Current Fixture Snapshot | `CurrentFixtureSnapshotV1` + provider-neutral Gmail/Tasks/Calendar source files | UTF-8 strict JSON; snapshot directory마다 manifest와 네 source file |
-| Experiment Config | `ExperimentConfigV1` + `ExperimentTargetV1` | UTF-8 strict JSON; concrete run마다 하나 |
-| Routing Trajectory result projection | `RoutingTrajectoryProjectionV2` | UTF-8 JSON Lines; observed trajectory row 1개 |
+| Experiment Config | candidate/config metadata | UTF-8 strict JSON |
+| Result | dataset/grader/Product hash + public observation + metrics | UTF-8 strict JSON; case/run마다 하나 |
 | Scoring contract | `scoring-contract-v1.1` | UTF-8 strict JSON |
 
-Current projection builder는 validated Canonical Case에서 `E2EProjectionV5`와 applicable `ProductEpisodeE2EProjectionV1` source projection을 deterministic하게 materialize한다. `RoutingTrajectoryProjectionV2`는 candidate execution의 observed trajectory 결과이므로 별도 checked-in source projection을 만들지 않는다. `ContextReadySnapshotV1`/`EvaluationPolicyProjectionV1`도 evaluation runner의 controlled runtime snapshot contract이며 별도 checked-in dataset identity를 요구하지 않는다. Current Fixture는 historical `compat` 파일을 runtime authority로 직접 읽지 않고 current snapshot loader를 통해 격리된 in-memory environment로 materialize한다. Node Item과 Experiment Config는 Gold-free Product input과 closed target identity를 분리해 보존한다. Exact producer/consumer path·symbol·filename은 16 mapping을 따른다.
+Current runner는 checked-in Dataset을 strict load하고 외부에서 준비된 Product endpoint를 public API로 호출한 뒤 public response만 정규화한다. Fixture를 Product internal type으로 투영하거나 Node/Graph callable을 직접 실행하지 않는다. Controlled fixture가 필요한 실험은 동일 fixture-backed Product process를 Evaluation 밖에서 provision한다. Exact producer/consumer path·symbol·filename은 16 mapping을 따른다.
 
 Current Micro Dataset logical ID set은 §7.4의 다음 six IDs와 exact equality다.
 
@@ -624,8 +629,10 @@ model_id
 model_version
 runtime_parameters
 hardware_profile
-target_kind             # NODE | SUBGRAPH | MAIN_PROFILE
-target_id
+product_sha
+candidate_id
+public_boundary         # HTTP_API | SUPPORTED_CLI | SUPPORTED_SUBPROCESS
+profile
 upstream_mode?           # ORACLE \| LIVE
 trial_count
 grader_version
@@ -634,7 +641,7 @@ stop_conditions
 adoption_criteria
 ```
 
-`target_kind + target_id`는 closed Evaluation Target Registry에서 정확한 Product file:symbol로 해석되어야 한다. 문자열 metadata만 기록하고 임의 callback을 실행하는 것은 current Product experiment가 아니다. `NODE`는 15의 current 21 Prompt/runtime-node mapping, `SUBGRAPH`는 06의 six semantic Subgraph, `MAIN_PROFILE`은 06의 세 Graph Profile만 허용한다. 모든 target은 동일 current fixture loader와 isolated environment를 사용하며 Product input에서 Gold, grader, split, expected result와 원본 split-revealing Case ID를 제거한다. 기존 callback 주입형 실행은 runner mechanics test 전용이며 release/result evidence로 집계하지 않는다.
+`public_boundary + Product SHA + candidate_id + profile`은 실행 전 고정한다. Evaluation Target Registry, Product file:symbol, 임의 callback, private Node/Subgraph 직접 호출은 금지한다. 모든 후보는 동일 Dataset/Gold/Grader와 외부에서 provision된 동일 fixture 조건을 사용하며 Product request에 Gold, grader, split, expected result와 split-revealing Case ID를 전달하지 않는다.
 
 후보 비교에서는 독립 변수 하나만 변경한다. Config Diff Report에서 의도하지 않은 차이가 발견되면 해당 Run은 무효 처리한다.
 
@@ -957,21 +964,16 @@ API 수직 흐름과 Runner가 안정화된 후 수행한다. 지원 Profile은 
 
 ## 18. Result Artifact
 
-Current result writer는 experiment마다 다음 **12개 logical result artifact**를 정확히 한 세트 생성한다. Exact directory와 filename/extension mapping은 `16 Repository Architecture`가 소유한다.
+Current runner는 case/run마다 작은 JSON result 하나를 생성한다. 전체 비교·Decision Record가 실제로 필요할 때만 별도 curated summary를 추가한다.
 
 ```
-Experiment Manifest
-Candidate Config
-Config Diff
-Evaluation Items
-Node Results
-Trajectory Results
-Grader Results
-Case Failures
-Summary Metrics
-Budget Report
-Human Review
-Product Decision Record
+Dataset version/hash
+Candidate/config identity
+Product SHA/profile
+Timestamp
+Grader version/hash
+Normalized public observation
+Grader results/metrics
 ```
 
 모든 결과는 다음 키로 연결한다.
@@ -1026,7 +1028,7 @@ Decision Record에는 Candidate Config Hash, Dataset·Projection·Grader Version
 
 ## 21. Node Capability·Prompt 실험
 
-Canonical E2E suite는 업무 세계와 전체 Route를 담당한다. 개별 Agent/Node의 capability·repair·handoff는 별도 Node Evaluation Dataset으로 평가한다.
+Canonical E2E suite는 업무 세계와 전체 Route를 담당한다. 보존된 Agent/Node dataset은 semantic responsibility와 failure attribution 입력으로 사용할 수 있지만 Product private Node를 직접 호출하지 않는다. 후보 Product를 public API로 끝까지 실행한 관측값에서 capability·repair·handoff를 평가한다.
 
 ### 21.1 Prompt Quality · Repair
 
@@ -1037,7 +1039,7 @@ Canonical E2E suite는 업무 세계와 전체 Route를 담당한다. 개별 Age
 
 ### 21.2 Node Capability · Handoff
 
-- `ORACLE`: 대상 Node 자체 capability
+- `ORACLE`: evaluator-side Gold upstream 조건을 가진 public scenario diagnostic
 - `LIVE`: 실제 upstream output을 사용한 handoff robustness
 - `MUTATED`: 특정 upstream/failure mutation에 대한 repair·routing
 - `ERROR_PROPAGATION`: failure가 downstream으로 전파되는지 attribution
@@ -1086,6 +1088,8 @@ node_evaluation_item:
 ```
 
 Dataset은 Prompt Version을 소유하지 않는다. 실제 Prompt artifact identity는 `15 Prompt·Failure`의 Prompt Registry/manifest와 Evaluation Candidate Config를 참조한다.
+
+`target_node_id`는 provenance/분석용 semantic responsibility label이며 import path나 callable target이 아니다.
 
 ### 21.4 Dataset Layer
 

@@ -12,10 +12,10 @@ Required enforcement families:
 - multiple semantic-authority detection
 - `_compat` zero on `main`
 - production→evaluation import ban
-- Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; current top-level `experiments/` tree zero, with historical/imported artifacts isolated under `evaluation/compat/`
-- Evaluation non-Python artifact closure: `canonical_cases_v7.jsonl`, `node_evaluation_items_v1.jsonl`, current projection filenames, six Micro Dataset JSONL files, current experiment configs, current Google Workspace fixture snapshot grammar, scoring contract, and the 16 exact filename mapping for the 13 §18 twelve logical result artifacts match the current 13/16 manifest
-- Evaluation concrete execution closure: one target registry resolves only the 15-owned exact 21 Node/function targets, 06-owned exact six Subgraphs, and exact three Main Profiles; arbitrary callbacks are mechanics-test-only and cannot produce release evidence
-- Evaluation fixture authority closure: current runner/target/grader imports `evaluation/fixtures/**` only; current execution import of `evaluation/compat/**`, personal/live workspace data, or evaluator Gold as Product input is zero
+- Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; top-level `experiments/` and live `evaluation/compat/` trees zero
+- Evaluation artifact closure: `datasets/{retrieval,agent,e2e}/**`, `configs/**`, root scoring contract, tiny public client/dataset/grader/runner code, and local-by-default result policy match the current 13/16 manifest
+- Evaluation execution closure: Evaluation→Product internal Python import zero, dynamic file:symbol target registry zero, direct Node/Subgraph/Main Profile invocation zero, fake Product adapter zero; Product invocation uses only supported public API/CLI/subprocess
+- Evaluation fixture boundary closure: synthetic fixture assets remain dataset input under `evaluation/datasets/e2e/fixtures/**`; fixture-backed Product processes are provisioned outside Evaluation and Gold/evaluator fields never enter Product requests
 - static fixture grammar closure: checked-in provider/resource fixtures use `tests/fixtures/data/<provider>/<resource>/<scenario>.json` UTF-8 JSON; architecture validators do not require an enumerated concrete `<scenario>` closed set unless an owner source explicitly names one
 - LangGraph node thin-adapter boundary
 - routing operation-per-file: final production `routing/route_after_<stage>.py`, no catch-all `routing.py`

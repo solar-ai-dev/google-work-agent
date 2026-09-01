@@ -434,8 +434,8 @@ Crash at page1→page2, detail fetch, normalize, evidence selection, sufficiency
 
 ### Dataset·Projection
 
-- Current Evaluation non-Python placement closure: checked-in Canonical Case는 `evaluation/datasets/canonical_cases_v7.jsonl`; current E2E/Product Episode source projection은 `evaluation/projections/data/`의 16 exact JSONL mapping이고 Routing trajectory materialization은 `evaluation/results/<experiment_id>/trajectory_results.jsonl`; scoring contract는 `evaluation/graders/scoring-contract-v1.1.json`; result writer는 13 §18의 12 logical result artifacts를 `evaluation/results/<experiment_id>/` 아래 16 exact filename mapping으로만 생성한다. Top-level `experiments/` current artifact 생성/소비는 실패다.
-- Current Micro Dataset path set은 `evaluation/datasets/micro/` 아래 13의 six dataset IDs와 exact equality다. Unknown extra dataset ID를 current release-evaluation input으로 자동 승격하면 실패다.
+- Current Evaluation placement closure: checked-in Dataset/Gold는 `evaluation/datasets/{retrieval,agent,e2e}/**`, scoring contract는 `evaluation/scoring-contract-v1.1.json`, candidate metadata는 `evaluation/configs/**`, transient result는 gitignored `evaluation/results/**`에만 둔다. Top-level `experiments/`, live `evaluation/compat/`, internal Product target registry 생성/소비는 실패다.
+- Current Micro Dataset은 13의 six dataset IDs를 retrieval/agent semantic category 아래 유지한다. Unknown extra dataset ID를 current release-evaluation input으로 자동 승격하면 실패다.
 - Canonical Case → Node·Trajectory·E2E Projection 참조 무결성
 - Required·Forbidden·Hard Negative 중복 0
 - `scenario_family_id`·`fixture_relation_family` Split 누수 0
@@ -939,7 +939,7 @@ Release/Main structural validation must assert:
 - Agent atomic responsibility operation-per-file exact coverage;
 - legacy test imports/ownership zero for migrated capabilities;
 - Application dependency violations zero: FastAPI responsibility, LangGraph routing responsibility, concrete Connector/MCP Adapter, Provider SDK/API client, concrete SQLite adapter/direct SQLite access.
-- top-level closed ownership summary includes the already-normative `evaluation/` root, while product runtime import graph from `domain|application|api|launcher` into `evaluation/**` remains zero.
+- top-level closed ownership summary includes the already-normative `evaluation/` root; product runtime → `evaluation/**`와 Evaluation → Product internal Python import graph가 모두 zero다.
 
 Old path strings used solely by negative architecture tests are allowed as enforcement literals and are not live-import violations.
 

@@ -866,62 +866,23 @@ Test: `tests/architecture/test_production_composition_root.py`.
 
 | Responsibility | Path | Symbol | Test |
 | --- | --- | --- | --- |
-| Canonical Case contract | `evaluation/contracts/canonical_case.py` | `CanonicalCaseV7`, `EndStateGoldV1` | `tests/evaluation/contracts/test_canonical_case.py` |
-| E2E Projection contract | `evaluation/contracts/e2e_projection.py` | `E2EProjectionV5` | `tests/evaluation/contracts/test_e2e_projection.py` |
-| Product Episode contract | `evaluation/contracts/product_episode_projection.py` | `ProductEpisodeE2EProjectionV1` | `tests/evaluation/contracts/test_product_episode_projection.py` |
-| Routing Trajectory contract | `evaluation/contracts/routing_trajectory_projection.py` | `RoutingTrajectoryProjectionV2` | `tests/evaluation/contracts/test_routing_trajectory_projection.py` |
-| Context Ready snapshot contract | `evaluation/contracts/context_ready_snapshot.py` | `ContextReadySnapshotV1`, `EvaluationPolicyProjectionV1` | `tests/evaluation/contracts/test_context_ready_snapshot.py` |
-| Current Fixture snapshot contract | `evaluation/contracts/current_fixture_snapshot.py` | `CurrentFixtureSnapshotV1` | `tests/evaluation/contracts/test_current_fixture_snapshot.py` |
-| Experiment config contract | `evaluation/contracts/experiment_config.py` | `ExperimentConfigV1`, `ExperimentTargetV1` | `tests/evaluation/contracts/test_experiment_config.py` |
-| Node Evaluation Item contract | `evaluation/contracts/node_evaluation_item.py` | `NodeEvaluationItemV1` | `tests/evaluation/contracts/test_node_evaluation_item.py` |
-| canonical case load | `evaluation/datasets/load_canonical_cases.py` | `load_canonical_cases` | `tests/evaluation/datasets/test_load_canonical_cases.py` |
-| Node Evaluation Item load | `evaluation/datasets/load_node_evaluation_items.py` | `load_node_evaluation_items` | `tests/evaluation/datasets/test_load_node_evaluation_items.py` |
-| current fixture load | `evaluation/fixtures/load_current_fixture.py` | `load_current_fixture` | `tests/evaluation/fixtures/test_load_current_fixture.py` |
-| isolated fixture environment | `evaluation/fixtures/fixture_environment.py` | `FixtureEnvironment` | `tests/evaluation/fixtures/test_fixture_environment.py` |
-| fixture Product resource projection | `evaluation/fixtures/product_resource_projection.py` | `project_product_resources` | `tests/evaluation/fixtures/test_current_fixture.py` |
-| experiment config load | `evaluation/configs/load_experiment_config.py` | `load_experiment_config` | `tests/evaluation/configs/test_load_experiment_config.py` |
-| target registry | `evaluation/targets/target_registry.py` | `resolve_target` | `tests/evaluation/targets/test_target_registry.py` |
-| Node Product target | `evaluation/targets/node_product_target.py` | `execute_node_product_target` | `tests/evaluation/targets/test_target_registry.py` |
-| Subgraph Product target | `evaluation/targets/subgraph_product_target.py` | `execute_subgraph_product_target` | `tests/evaluation/targets/test_target_registry.py` |
-| Main Profile Product target | `evaluation/targets/main_profile_product_target.py` | `execute_main_profile_product_target` | `tests/evaluation/targets/test_target_registry.py`, `tests/evaluation/targets/test_real_main_profile_product.py` |
-| current projection build | `evaluation/projections/build_current_projections.py` | `build_current_projections` | `tests/evaluation/projections/test_build_current_projections.py` |
-| experiment orchestration | `evaluation/runner/run_experiment.py` | `run_experiment` | `tests/evaluation/runner/test_run_experiment.py` |
-| grader dispatch | `evaluation/graders/grade_item.py` | `grade_item` | `tests/evaluation/graders/test_grade_item.py` |
-| result artifacts | `evaluation/reporting/write_results.py` | `write_results` | `tests/evaluation/reporting/test_write_results.py` |
+| public Product HTTP invocation | `evaluation/client/http.py` | `ProductApiClient` | `tests/evaluation/test_client.py`, `tests/evaluation/test_public_product_smoke.py` |
+| strict dataset load/hash | `evaluation/dataset.py` | `load_jsonl`, `load_case`, `file_sha256` | `tests/evaluation/test_dataset.py` |
+| deterministic semantic grading | `evaluation/grader.py` | `grade_case` | `tests/evaluation/test_grader.py` |
+| one-case execution/result | `evaluation/runner.py` | `run_case`, `write_result` | `tests/evaluation/test_runner.py` |
 
 Current non-Python evaluation artifact mapping is exact:
 
 | Artifact | Canonical path | Producer/consumer | Test owner |
 | --- | --- | --- | --- |
-| Canonical Case dataset | `evaluation/datasets/canonical_cases_v7.jsonl` | `load_canonical_cases()` | `tests/evaluation/datasets/test_load_canonical_cases.py` |
-| Node Evaluation Item dataset | `evaluation/datasets/node_evaluation_items_v1.jsonl` | `load_node_evaluation_items()` / closed Node target | `tests/evaluation/datasets/test_load_node_evaluation_items.py` |
-| E2E Projection dataset | `evaluation/projections/data/e2e_projection_v5.jsonl` | `build_current_projections()` | `tests/evaluation/projections/test_build_current_projections.py` |
-| Product Episode Projection dataset | `evaluation/projections/data/product_episode_e2e_projection_v1.jsonl` | `build_current_projections()` | `tests/evaluation/projections/test_build_current_projections.py` |
-| Routing Trajectory Projection materialization | `evaluation/results/<experiment_id>/trajectory_results.jsonl` | runner diagnostics / `write_results()` | `tests/evaluation/reporting/test_write_results.py` |
-| Scoring contract | `evaluation/graders/scoring-contract-v1.1.json` | `grade_item()` | `tests/evaluation/graders/test_scoring_contract.py` |
-| Micro dataset | `evaluation/datasets/micro/<dataset_id>.jsonl` where current IDs are the six 13-owned IDs | current evaluation loader/runner | `tests/evaluation/datasets/test_micro_datasets.py` |
-| Experiment config | `evaluation/configs/<experiment_id>.json` | `load_experiment_config()` / `run_experiment()` | `tests/evaluation/configs/test_load_experiment_config.py` |
-| Current Google Workspace fixture | `evaluation/fixtures/data/google_workspace/<fixture_snapshot_id>/{fixture-world,gmail,tasks,calendar,relations}.json` | `load_current_fixture()` / concrete Product targets / End-state grader | `tests/evaluation/fixtures/test_load_current_fixture.py` |
-| Result directory | `evaluation/results/<experiment_id>/` | `write_results()` | `tests/evaluation/reporting/test_write_results.py` |
+| Canonical/E2E dataset and Gold | `evaluation/datasets/e2e/**` | runner/grader input only | `tests/evaluation/test_dataset.py` |
+| Retrieval dataset and Gold | `evaluation/datasets/retrieval/**` | retrieval experiment input only | `tests/evaluation/test_dataset.py` |
+| Agent dataset and Gold | `evaluation/datasets/agent/**` | agent experiment input only; direct Node target 아님 | `tests/evaluation/test_dataset.py` |
+| Candidate/config provenance | `evaluation/configs/**` | candidate metadata only | architecture/data validation |
+| Scoring contract | `evaluation/scoring-contract-v1.1.json` | grader policy metadata | `tests/evaluation/test_grader.py` |
+| Local result | `evaluation/results/<experiment_id>/<case_or_run>.json` | `write_result()`; gitignored by default | `tests/evaluation/test_runner.py` |
 
-The current six `<dataset_id>` values are exactly `resource_selected_variants | review_challenges | structured_output_repair | fault_profiles | injection_variants | paraphrase_robustness`. All checked-in dataset/projection files use UTF-8 JSON Lines except the scoring contract, which is strict JSON. `evaluation/results/<experiment_id>/` contains exactly these repository-mapped files for the 13-owned twelve logical result artifacts:
-
-```text
-experiment_manifest.json
-candidate_config.json
-config_diff.json
-evaluation_items.jsonl
-node_results.jsonl
-trajectory_results.jsonl
-grader_results.jsonl
-case_failures.jsonl
-summary_metrics.json
-budget_report.json
-human_review.md
-product_decision_record.md
-```
-
-Top-level `experiments/` is not a current canonical path.
+All checked-in line-oriented datasets use UTF-8 JSON Lines. Top-level `experiments/`, `evaluation/compat/`, private Product target registry, and checked-in transient run output are not current canonical paths.
 
 ### Repository callable closure rule
 
