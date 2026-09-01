@@ -189,6 +189,49 @@ def test_cancelled_read_plan_stops_before_read_or_write_execution() -> None:
     assert read_called is False
 
 
+def test_verified_and_rejected_write_actions_route_to_partial_terminal_synthesis() -> None:
+    verified = replace(_action(), status=ActionStatusV1.VERIFIED.value)
+    rejected = replace(
+        _action(),
+        id="action-2",
+        position=2,
+        status=ActionStatusV1.REJECTED.value,
+    )
+    node = WriteExecutionNode(
+        id_factory=lambda: "id-1",
+        request_hash=lambda _payload: "hash",
+        should_stop_for_cancel=lambda _run_id: False,
+        list_actions=lambda _plan_id: (verified, rejected),
+        has_independent_executable_action=lambda _plan_id, _action_id: False,
+        execution_phase=cast(Any, SimpleNamespace()),
+        has_persisted_cancel_intent=lambda _run_id: False,
+    )
+
+    result = node(cast(Any, {"run_id": "run-1", "approved_plan_id": "plan-1"}))
+
+    assert result["__target__"] == "response_synthesis"
+    assert result["__workflow_control__"]["action_statuses"] == ["VERIFIED", "REJECTED"]
+
+
+def test_preflight_routes_closed_partial_plan_to_terminal_action_reconciliation() -> None:
+    verified = replace(_action(), status=ActionStatusV1.VERIFIED.value)
+    rejected = replace(_action(), id="action-2", status=ActionStatusV1.REJECTED.value)
+    node = WriteExecutionNode(
+        id_factory=lambda: "id-1",
+        request_hash=lambda _payload: "hash",
+        should_stop_for_cancel=lambda _run_id: False,
+        list_actions=lambda _plan_id: (verified, rejected),
+        has_independent_executable_action=lambda _plan_id, _action_id: False,
+        execution_phase=cast(Any, SimpleNamespace()),
+        has_persisted_cancel_intent=lambda _run_id: False,
+    )
+
+    result = node.preflight({"run_id": "run-1", "approved_plan_id": "plan-1"})
+
+    assert result["__target__"] == "action_execution"
+    assert result["__logical_target__"] == "action_execution"
+
+
 def test_read_gateway_failure_is_settled_before_terminal_projection() -> None:
     failed_commands: list[object] = []
     proposed = replace(

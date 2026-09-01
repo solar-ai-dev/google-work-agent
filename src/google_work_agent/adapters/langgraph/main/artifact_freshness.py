@@ -21,6 +21,9 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
 from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     RunScopedResourceIdentityReader,
 )
+from google_work_agent.adapters.langgraph.write_execution import (
+    write_action_statuses_are_closed,
+)
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionPlanDraftV2,
 )
@@ -29,7 +32,6 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
     load_plan_record,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_execution import (
@@ -351,9 +353,7 @@ class ArtifactFreshnessMixin:
         if self._has_persisted_cancel_intent(run_id):
             return False
         actions = self._list_actions(plan_id)
-        return bool(actions) and all(
-            action.status == ActionStatusV1.VERIFIED.value for action in actions
-        )
+        return write_action_statuses_are_closed([action.status for action in actions])
 
     def discard_run_transients(self, run_id: str) -> None:
         """Release every memory-only transient owned by a terminal Run."""

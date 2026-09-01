@@ -64,6 +64,38 @@ class CheckpointEffectiveBindingResolver:
     ) -> WorkflowExecutionBindingV1 | None:
         if submission_kind == "NORMAL_HANDOFF":
             execution = handoff.execution
+            if execution.execution_kind == "RESUME":
+                checkpoint = self._checkpoint_port.load_same_run_checkpoint(
+                    execution.run_id,
+                    execution.langgraph_thread_id,
+                )
+                target = execution.resume_target
+                if (
+                    checkpoint is None
+                    or target is None
+                    or checkpoint.run_id != execution.run_id
+                    or checkpoint.langgraph_thread_id != execution.langgraph_thread_id
+                    or checkpoint.graph_profile != execution.graph_profile
+                    or checkpoint.graph_version != execution.graph_version
+                    or checkpoint.checkpoint_generation < handoff.checkpoint_generation
+                ):
+                    return None
+                try:
+                    self._resume_target_registry.validate(target)
+                except ValueError:
+                    return None
+                return WorkflowExecutionBindingV1(
+                    schema_version=1,
+                    execution_kind="RESUME",
+                    run_id=execution.run_id,
+                    langgraph_thread_id=execution.langgraph_thread_id,
+                    graph_profile=execution.graph_profile,
+                    graph_version=execution.graph_version,
+                    requested_mode=execution.requested_mode,
+                    checkpoint_id=checkpoint.checkpoint_id,
+                    checkpoint_generation=checkpoint.checkpoint_generation,
+                    resume_target=target,
+                )
             return WorkflowExecutionBindingV1(
                 schema_version=1,
                 execution_kind=execution.execution_kind,
@@ -153,6 +185,16 @@ class ScheduleRunExecutionHandler:
                 run.status
             ) and not handoff_matches_preempting_run_authority(run.status, handoff):
                 return _rejected("BINDING_MISMATCH")
+            if command.submission_kind == "NORMAL_HANDOFF" and existing is None:
+                head = unit_of_work.workflow_handoffs.get_dispatch_head(run.id)
+                if (
+                    head is None
+                    or head.handoff_id != handoff.handoff_id
+                    or handoff.status != "PENDING"
+                ):
+                    # A later durable handoff remains queued for the sole live
+                    # reconciliation owner after the active head settles.
+                    return _rejected("ALREADY_RUNNING")
             binding = self._resolve_binding(handoff, command.submission_kind)
             if existing is not None:
                 if binding is None or binding != existing.effective_binding:

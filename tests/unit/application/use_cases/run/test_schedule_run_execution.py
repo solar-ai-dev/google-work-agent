@@ -96,6 +96,48 @@ def test_non_accepted_submit_releases_equal_epoch_admission(tmp_path: Path) -> N
     assert persisted.last_submit_reason == "ALREADY_RUNNING"
 
 
+def test_later_normal_handoff_stays_queued_while_dispatch_head_is_active(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage())
+        unit_of_work.workflow_handoffs.stage_pending(
+            WorkflowHandoffStageV1(
+                schema_version=1,
+                handoff_id="h-2",
+                trigger_command_id="cmd-2",
+                execution=RunExecutionRefV1(
+                    1, "START", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", None
+                ),
+                checkpoint_id=None,
+                checkpoint_generation=0,
+                control_kind="NONE",
+                control=None,
+                control_payload_hash=None,
+            )
+        )
+        unit_of_work.commit()
+    execution = _ExecutionPort()
+    handler = ScheduleRunExecutionHandler(
+        unit_of_work_factory=factory,
+        workflow_execution=execution,
+        id_factory=lambda: "admission-2",
+    )
+
+    result = handler(ScheduleRunExecutionCommand("h-2"))
+
+    assert not result.accepted
+    assert result.reason_code == "ALREADY_RUNNING"
+    assert execution.submissions == []
+    with factory() as unit_of_work:
+        queued = unit_of_work.workflow_handoffs.get("h-2")
+    assert queued is not None
+    assert queued.status == "PENDING"
+    assert queued.execution_admission is None
+
+
 def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted(
     tmp_path: Path,
 ) -> None:
@@ -287,6 +329,47 @@ def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
     assert binding.resume_target == target
 
 
+def test_normal_resume_rebases_queued_handoff_onto_latest_same_run_checkpoint() -> None:
+    target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
+    checkpoint = GraphCheckpointEnvelopeV1(
+        1,
+        "cp-latest",
+        4,
+        "r-1",
+        "t-1",
+        "SIX_ROLE_BASELINE",
+        "v1",
+        "MAIN_CONTROL",
+        target,
+        None,
+        None,
+        "h-previous",
+        1,
+        (),
+        10,
+        b"opaque",
+    )
+
+    class _CheckpointPort:
+        def load_same_run_checkpoint(
+            self, run_id: str, thread_id: str
+        ) -> GraphCheckpointEnvelopeV1 | None:
+            assert (run_id, thread_id) == ("r-1", "t-1")
+            return checkpoint
+
+    resolver = CheckpointEffectiveBindingResolver(
+        _CheckpointPort(),  # type: ignore[arg-type]
+        ResumeTargetRegistry(NodeRegistry(graph_version="v1"), "v1"),
+    )
+
+    binding = resolver(_pending_resume_handoff(target), "NORMAL_HANDOFF")
+
+    assert binding is not None
+    assert binding.checkpoint_id == "cp-latest"
+    assert binding.checkpoint_generation == 4
+    assert binding.resume_target == target
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "schedule.db"
     with connect_sqlite(path) as connection:
@@ -365,4 +448,27 @@ def _consumed_handoff() -> WorkflowHandoffV1:
         "cp-initial",
         1,
         2,
+    )
+
+
+def _pending_resume_handoff(target: MainControlResumeTargetV2) -> WorkflowHandoffV1:
+    return WorkflowHandoffV1(
+        1,
+        "h-queued",
+        "cmd-queued",
+        RunExecutionRefV1(
+            1, "RESUME", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", target
+        ),
+        "cp-old",
+        2,
+        2,
+        "NONE",
+        None,
+        None,
+        "PENDING",
+        None,
+        None,
+        None,
+        None,
+        0,
     )

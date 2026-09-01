@@ -144,6 +144,32 @@ def test_redrive_prefers_latest_active_consumed_lineage_over_historical_consumed
     assert [item.handoff_id for item in candidates] == ["h-2"]
 
 
+def test_redrive_prefers_pending_dispatch_head_over_consumed_continuation(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        first = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        first_admission = _admission(first.version, first.run_sequence)
+        first_claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            first.handoff_id, first.version, first_admission
+        )
+        unit_of_work.workflow_handoffs.mark_consumed_and_clear_payload(
+            first_claimed.handoff_id,
+            first_claimed.version,
+            first_admission.admission_id,
+            "cp-1",
+            1,
+        )
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-2", "cmd-2"))
+
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(10)
+        unit_of_work.commit()
+
+    assert [item.handoff_id for item in candidates] == ["h-2"]
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "handoff.db"
     with connect_sqlite(path) as connection:

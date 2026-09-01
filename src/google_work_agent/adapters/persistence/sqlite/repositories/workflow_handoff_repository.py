@@ -132,10 +132,8 @@ class SqliteWorkflowHandoffRepository:
                         PARTITION BY run_id
                         ORDER BY
                             CASE
-                                WHEN status = 'CONSUMED'
-                                     AND applied_checkpoint_id IS NOT NULL THEN 0
-                                WHEN status = 'BLOCKED_BINDING' THEN 1
-                                ELSE 2
+                                WHEN status IN ('BLOCKED_BINDING', 'PENDING', 'DISPATCHED') THEN 0
+                                ELSE 1
                             END,
                             CASE
                                 WHEN status = 'CONSUMED'
@@ -152,9 +150,8 @@ class SqliteWorkflowHandoffRepository:
             WHERE run_rank = 1
             ORDER BY
                 CASE
-                    WHEN status = 'CONSUMED' AND applied_checkpoint_id IS NOT NULL THEN 0
-                    WHEN status = 'BLOCKED_BINDING' THEN 1
-                    ELSE 2
+                    WHEN status IN ('BLOCKED_BINDING', 'PENDING', 'DISPATCHED') THEN 0
+                    ELSE 1
                 END,
                 created_at_ms ASC,
                 handoff_id ASC

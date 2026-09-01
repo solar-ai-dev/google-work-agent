@@ -26,6 +26,25 @@ from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 
+_CLOSED_WRITE_ACTION_STATUSES = frozenset(
+    {
+        ActionStatusV1.VERIFIED,
+        ActionStatusV1.REJECTED,
+        ActionStatusV1.CANCELLED,
+        ActionStatusV1.BLOCKED,
+        ActionStatusV1.DEPENDENCY_BLOCKED,
+    }
+)
+
+
+def write_action_statuses_are_closed(statuses: tuple[str, ...] | list[str]) -> bool:
+    if not statuses:
+        return False
+    try:
+        return all(ActionStatusV1(status) in _CLOSED_WRITE_ACTION_STATUSES for status in statuses)
+    except ValueError:
+        return False
+
 
 class WriteExecutionNode:
     """Translate one approved Plan execution into LangGraph state updates."""
@@ -64,6 +83,11 @@ class WriteExecutionNode:
             None,
         )
         if action is None:
+            if write_action_statuses_are_closed([item.status for item in actions]):
+                return {
+                    "__target__": "action_execution",
+                    "__logical_target__": "action_execution",
+                }
             return {
                 "__target__": "domain_reconcile",
                 "__logical_target__": "domain_reconcile",
@@ -163,13 +187,11 @@ class WriteExecutionNode:
             and control.get("action_id") == action.id
         )
         if action.status in {
-            ActionStatusV1.VERIFIED.value,
+            status.value
+            for status in _CLOSED_WRITE_ACTION_STATUSES
+        } | {
             ActionStatusV1.MISMATCH.value,
             ActionStatusV1.FAILED.value,
-            ActionStatusV1.BLOCKED.value,
-            ActionStatusV1.DEPENDENCY_BLOCKED.value,
-            ActionStatusV1.CANCELLED.value,
-            ActionStatusV1.REJECTED.value,
         }:
             verification_statuses.append(action.status)
             return None
@@ -479,7 +501,7 @@ class WriteExecutionNode:
         return bool(
             actions
             and len(verification_statuses) == len(actions)
-            and all(status == ActionStatusV1.VERIFIED.value for status in verification_statuses)
+            and write_action_statuses_are_closed(verification_statuses)
             and not self._has_persisted_cancel_intent(run_id)
         )
 

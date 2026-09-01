@@ -117,7 +117,10 @@ from google_work_agent.adapters.langgraph.subgraphs.three_stage import (
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.graph import (
     WorkAnalysisSubgraph,
 )
-from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
+from google_work_agent.adapters.langgraph.write_execution import (
+    WriteExecutionNode,
+    write_action_statuses_are_closed,
+)
 from google_work_agent.adapters.langgraph.write_execution_driver import (
     UnknownRecoveryPhaseRequest,
     WriteExecutionStructuralDriver,
@@ -2138,9 +2141,7 @@ class _WorkflowRuntimeComposition:
         if self._has_persisted_cancel_intent(run_id):
             return False
         actions = self._list_actions(plan_id)
-        return bool(actions) and all(
-            action.status == ActionStatusV1.VERIFIED.value for action in actions
-        )
+        return write_action_statuses_are_closed([action.status for action in actions])
 
     def _should_stop_for_cancel(self, run_id: str) -> bool:
         with self._cancel_signal_lock:
