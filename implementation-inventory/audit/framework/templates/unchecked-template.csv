@@ -1,2 +1,1 @@
-unchecked_id,requirement_id,lane_id,question,blocking_reason,attempted_scope,needed_evidence,dependency_lane,owner_for_resolution,status,is_example
-EXAMPLE-A-UNC-000,EXAMPLE-A-FUNC-000,A,Example only,Example only,Example only,Example only,H,Coordinator,OPEN,true
+unchecked_id,requirement_id,lane_id,question,blocking_reason,attempted_scope,needed_evidence,dependency_lane,owner_for_resolution,status,product_source_sha,audit_framework_sha
