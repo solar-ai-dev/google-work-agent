@@ -99,10 +99,28 @@ def test_google_reads_reach_terminal_through_actual_retrieval_and_mcp(
         conversation_id = _create_conversation(client, scenario.lower())
         run_id = _start_run(client, conversation_id, f"E2E:{scenario} read evidence")
         snapshot = _wait_for_status(client, run_id, {"COMPLETED"})
+        checkpoint_port = container.checkpoint_port
+        assert checkpoint_port is not None
+        retrieval_head = checkpoint_port.load_retrieval_head(run_id)
+        workflow_binding = checkpoint_port.load_workflow_binding(run_id)
 
     assert snapshot["terminal_result_kind"] == "SUCCESS"
     assert snapshot["actions"] == []
-    assert expected_tool in [event["tool_name"] for event in _mcp_events(runtime_root)]
+    assert any(
+        message["role"] == "ASSISTANT"
+        and message["content"] == f"E2E completed: {scenario}"
+        for message in cast(list[dict[str, object]], snapshot["messages"])
+    )
+    assert workflow_binding is not None
+    assert retrieval_head is not None
+    assert retrieval_head.run_id == run_id
+    assert retrieval_head.langgraph_thread_id == workflow_binding.langgraph_thread_id
+    assert retrieval_head.retrieval_revision >= 1
+    assert retrieval_head.retrieval_artifact_id
+    read_events = [
+        event for event in _mcp_events(runtime_root) if event["tool_name"] == expected_tool
+    ]
+    assert len(read_events) == 1
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
