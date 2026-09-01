@@ -2,12 +2,13 @@
 
 ## Baseline and truth hierarchy
 
-- `FINAL_PRODUCT_SHA`: `ef5bd38a4526b5e10f9c7d848cefbaed0ef43341`
+- `FINAL_PRODUCT_SHA`: `bd67fae5e56fb69982ec5b8f5b91fedf65ba6828`
+- Product implementation anchor: `ef5bd38a4526b5e10f9c7d848cefbaed0ef43341`
 - Local branch: `remediation/fresh-audit-product-closure`
 - Canonical root: `docs/canonical/`
-- Truth order: current Canonical → `ef5bd38a4526b5e10f9c7d848cefbaed0ef43341` production owner → actual caller/runtime → durable fact/effect → API/SSE/frontend → failure/recovery/restart → meaningful production-path proof.
+- Truth order: current Canonical → `bd67fae5e56fb69982ec5b8f5b91fedf65ba6828` production owner → actual caller/runtime → durable fact/effect → API/SSE/frontend → failure/recovery/restart → meaningful production-path proof.
 - Current Canonical content is unchanged from the Wave 1 Product source SHA. Requirement IDs and statements were retained solely for exhaustive coverage; every implementation locator and final disposition in these artifacts was re-resolved at `FINAL_PRODUCT_SHA`.
-- The test-only proof typing commit `082a60cc` follows the fixed Product SHA and changes no Product source or behavior.
+- `ef5bd38a..bd67fae5` changes only test-proof typing, closure artifacts, architecture-reference cut-over, and historical artifact removal. Product, Frontend, Evaluation, Release, Launcher, Installer, and current Canonical content are unchanged, so the existing CSV locators remain current without a full regeneration.
 
 ## Remediation commits
 
@@ -25,6 +26,8 @@
 | `c8af6b3c` | final Product identity pinning |
 | `ef5bd38a` | Ed25519 release-manifest trust root |
 | `082a60cc` | test-only typing alignment for the final Gate |
+| `ae993351` | final Product closure traceability compression |
+| `bd67fae5` | historical Audit/Ledger/Map removal and Canonical test-reference cut-over |
 
 ## Historical coverage provenance
 
@@ -39,6 +42,53 @@ Historical artifacts are coverage/provenance inputs, not implementation truth.
 | X4 uniqueness | `7b9976db05b77158963fef96ba15d7a1d7d0b565` | 15 candidates in 13 semantic groups; all groups revalidated |
 
 The final lineage adds one explicit `SAFE_MODE_RESTORE` row by splitting that required scenario from historical X2 installed-lifecycle coverage. No historical requirement or substantive finding was dropped.
+
+## Final remediation re-evaluation
+
+```text
+REMEDIATION_START_SHA = bd67fae5e56fb69982ec5b8f5b91fedf65ba6828
+REMEDIATED_PRODUCT_SHA = bd67fae5e56fb69982ec5b8f5b91fedf65ba6828
+ROOT_CAUSES_FOUND = 0
+PRODUCT_DEFECTS_FIXED = 0
+TEST_PROOF_DEFECTS_FIXED = 0
+AUTHORITY_DEFECTS_FIXED = 0
+OPEN_FIXABLE_DEFECTS = 0
+```
+
+Artifact 1 contained no `OPEN` requirement, Artifact 2 contained no broken handoff/scenario or competing authority, and all final zero-gate counters were already zero. Semantic root-cause grouping therefore produced an empty remediation queue. No Product or test assertion was weakened and no speculative fix was introduced.
+
+Targeted refresh impact:
+
+- Artifact 1: affected requirement rows = 0; all 1,010 rows revalidated without content change.
+- Artifact 2: affected lineage rows = 0; all 66 handoffs and 19 scenarios revalidated without content change.
+- Artifact 3: baseline, remediation accounting, current regression results, external distribution gates, and verdict refreshed.
+
+## Current full regression
+
+```text
+Python full pytest = PASS (2003 passed)
+Architecture final cutover = PASS (332 passed)
+Evaluation = PASS (71 passed)
+Release / Installer / Launcher = PASS (84 passed)
+Python compile / import = PASS
+Ruff = PASS
+Mypy = PASS (1342 source files)
+Frontend tests = PASS (156 passed)
+Frontend typecheck = PASS
+Frontend lint = PASS
+Frontend production build = PASS
+git diff --check = PASS
+```
+
+## External distribution gates
+
+The following are deliberately outside Product implementation closure and remain deferred:
+
+- Windows Authenticode production certificate.
+- External timestamp-backed production signing.
+- Public signed Windows installer distribution and SmartScreen reputation.
+
+The internal Ed25519 release-manifest trust root is closed and is not included in this deferred set.
 
 ## Final accounting
 
@@ -213,6 +263,8 @@ MEANINGFUL_TEST_PROOF_CONNECTED = YES
 UNACCOUNTED_OLD_FINDINGS = 0
 FINAL_ARTIFACT_COUNT = 3
 FINAL_PRODUCT_CLOSURE = PASS
+REMAINING_FIXABLE_PRODUCT_BLOCKERS = 0
+EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED
 ```
 
 Wave 1/2 and the former Ledger/Map/Audit framework have completed their role. After the separately committed historical cleanup, these three files are the long-term implementation/runtime/verification reference for `FINAL_PRODUCT_SHA`.
