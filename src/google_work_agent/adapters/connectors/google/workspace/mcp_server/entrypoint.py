@@ -110,7 +110,7 @@ def run_server(
                 {
                     "id": request_id,
                     "error": _error_payload(
-                        code="TOOL_REJECTED",
+                        code=_workspace_error_code(error.safe_code),
                         message=error.safe_code,
                         certainty=error.delivery_certainty,
                     ),
@@ -151,6 +151,14 @@ def _error_payload(
         "message": message,
         "delivery_certainty": certainty.value,
     }
+
+
+def _workspace_error_code(safe_code: str) -> str:
+    if safe_code in {"REAUTH_REQUIRED", "OAUTH_NOT_CONNECTED"}:
+        return "AUTH_REQUIRED"
+    if safe_code == "PERMISSION_DENIED":
+        return "PERMISSION_DENIED"
+    return "TOOL_REJECTED"
 
 
 def _dispatch(
