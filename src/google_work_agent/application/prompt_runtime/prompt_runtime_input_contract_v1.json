@@ -86,8 +86,8 @@
       "prompt_slot_id": "retrieval.assess_sufficiency",
       "runtime_node_id": "retrieval.assess_sufficiency",
       "input_schema_version": 1,
-      "required_root_fields": ["request_intent", "selected_evidence", "retrieval_budget"],
-      "optional_root_fields": ["availability_results", "retrieval_failures", "confirmation_response"],
+      "required_root_fields": ["request_intent", "selected_evidence", "source_statuses", "budget_state"],
+      "optional_root_fields": ["confirmation_response"],
       "output_schema_version": 1
     },
     {

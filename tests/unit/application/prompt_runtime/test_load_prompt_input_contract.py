@@ -36,6 +36,23 @@ def test_load_prompt_input_contract_closes_exact_slot_set() -> None:
     assert contract.slot_ids == REQUIRED_PROMPT_SLOT_IDS
 
 
+def test_sufficiency_contract_matches_the_live_typed_projection() -> None:
+    contract = load_prompt_input_contract()
+
+    contract.validate_projection(
+        "retrieval.assess_sufficiency",
+        {
+            "request_intent": {},
+            "selected_evidence": [],
+            "source_statuses": [],
+            "budget_state": {
+                "additional_rounds_used": 0,
+                "additional_rounds_remaining": 2,
+            },
+        },
+    )
+
+
 def test_load_prompt_input_contract_rejects_schema_version(tmp_path: Path) -> None:
     payload = _payload()
     payload["schema_version"] = 2
