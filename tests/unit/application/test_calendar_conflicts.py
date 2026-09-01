@@ -86,7 +86,7 @@ def test_fresh_check_scopes_every_page_to_exact_zero_buffer_interval() -> None:
         {
             "calendar_id": "primary",
             "page_token": None,
-            "page_size": 250,
+            "page_size": 100,
             "time_min": "2026-08-12T09:00:00+09:00",
             "time_max": "2026-08-12T10:00:00+09:00",
             "single_events": True,

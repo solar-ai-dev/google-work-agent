@@ -27,7 +27,7 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 CALENDAR_CREATE_TOOL = "calendar_create_event"
 CALENDAR_UPDATE_TOOL = "calendar_update_event"
 CALENDAR_CONFLICT_TOOLS = frozenset({CALENDAR_CREATE_TOOL, CALENDAR_UPDATE_TOOL})
-CALENDAR_CONFLICT_PAGE_SIZE = 250
+CALENDAR_CONFLICT_PAGE_SIZE = 100
 CALENDAR_CONFLICT_BUFFER_SECONDS = 0
 
 
