@@ -246,15 +246,14 @@ def _current_user_identity() -> str:
             ["whoami", "/user", "/fo", "csv", "/nh"],
             check=True,
             capture_output=True,
-            text=True,
             timeout=5,
         ).stdout
     except (OSError, subprocess.SubprocessError) as error:
         raise SingleInstanceError("CURRENT_USER_UNAVAILABLE") from error
-    match = re.search(r"S-1-[0-9-]+", output)
+    match = re.search(rb"S-1-[0-9-]+", output)
     if match is None:
         raise SingleInstanceError("CURRENT_USER_UNAVAILABLE")
-    return match.group(0)
+    return match.group(0).decode("ascii")
 
 
 def _process_identity(process_id: int) -> str | None:
