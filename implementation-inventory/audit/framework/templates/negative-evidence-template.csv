@@ -1,2 +1,1 @@
-negative_evidence_id,requirement_id,lane_id,absence_claim,search_scope,method,query,result_count,non_vacuity_anchor,exclusion_basis,evidence_refs,audit_sha,is_example
-EXAMPLE-A-NEG-000,EXAMPLE-A-FUNC-000,A,Example only,example scope,EXAMPLE,example query,0,EXAMPLE-A-EV-000,Example only,EXAMPLE-A-EV-000,EXAMPLE_SHA,true
+negative_evidence_id,requirement_id,lane_id,absence_claim,search_scope,method,query,result_count,non_vacuity_anchor,exclusion_basis,evidence_refs,product_source_sha,audit_framework_sha
