@@ -148,6 +148,28 @@ def native_resume_command(
         raw_control = cast(dict[str, object], asdict(control))
         update: dict[str, object] = {"__workflow_control__": raw_control}
         if control.kind == "CONTEXT_ADJUSTMENT":
+            # BeginPlanning already superseded the durable Plan. Invalidate
+            # every checkpoint projection derived from the prior Retrieval
+            # revision before the fresh Retrieval entry is consumed. Keep the
+            # prior retrieval_result itself so Retrieval can issue the next
+            # monotonic revision.
+            update.update(
+                {
+                    "work_analysis_result": None,
+                    "planning_result": None,
+                    "plan_review": None,
+                    "approved_plan_id": None,
+                    "execution_summary": None,
+                    "verification_summary": None,
+                    "finalize_intent": None,
+                    "terminal_commit_intent": None,
+                    "__modify_review_plan_id__": None,
+                    "__modify_review_version__": None,
+                    "__modify_review_risks__": None,
+                    "__replan_from_plan_id__": None,
+                    "__reserved_corrective_plan_id__": None,
+                }
+            )
             adjustment = cast(Mapping[str, object], control.adjustment)
             adjustment_kind = adjustment.get("kind")
             if adjustment_kind == "EXCLUDE_EVIDENCE":

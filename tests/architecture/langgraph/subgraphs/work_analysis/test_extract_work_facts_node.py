@@ -11,7 +11,6 @@ def test_extract_work_facts_exact_node_projection_and_router() -> None:
         in (owner / "nodes/extract_work_facts_node.py").read_text()
     )
     assert (owner / "projections/extract_work_facts_projection.py").exists()
-    assert (
-        'return "resolve_entity_relations"'
-        in (owner / "routing/route_after_extract_work_facts.py").read_text()
-    )
+    router = (owner / "routing/route_after_extract_work_facts.py").read_text()
+    assert 'return "validate_relations"' in router
+    assert 'return "resolve_entity_relations"' in router

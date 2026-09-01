@@ -38,6 +38,17 @@ def test_inspect_constraints_uses_only_bounded_supplied_policy_summary() -> None
     assert "tool_route_plan" not in calls[0]
 
 
+def test_inspect_constraints_skips_inference_when_bounded_inputs_are_empty() -> None:
+    result = inspect_constraints_and_policy_summary(
+        request_intent={"constraints": []},
+        planning_result={"schema_version": 2, "actions": []},
+        policy_summary={},
+        invoke=lambda _prompt_id, _input: pytest.fail("empty inputs must not invoke the LLM"),
+    )
+
+    assert result == _result()
+
+
 def test_inspect_constraints_rejects_finding_with_final_status() -> None:
     candidate = _result()
     candidate["status"] = "BLOCK"

@@ -117,6 +117,12 @@ def evidence_ids_from_plan(plan: ActionPlanDraftV2) -> list[str]:
     return result
 
 
+def next_plan_revision_no(existing_plans: tuple[Any, ...]) -> int:
+    """Allocate monotonically across the complete durable Plan history."""
+
+    return max((int(plan.revision_no) for plan in existing_plans), default=0) + 1
+
+
 def expected_for_action(action: PlannedActionV2) -> dict[str, object]:
     return build_expected_verification_projection(
         tool_name=action["tool_id"],
@@ -252,17 +258,21 @@ class PlanPersistenceMixin:
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
         replan_from_plan_id = state.get("__replan_from_plan_id__")
-        revision_no = 1
+        plans = self._plans_for_run(run_id)
+        revision_no = next_plan_revision_no(plans)
         plan_id = self._required_string(plan["meta"].get("artifact_id"), "plan artifact_id")
         action_id_map = {action["action_id"]: action["action_id"] for action in plan["actions"]}
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
         evidence_ids = evidence_ids_from_plan(plan)
         evidence_id_map = {item: item for item in evidence_ids}
         if replan_from_plan_id is not None:
-            plans = self._plans_for_run(run_id)
             if not any(plan.id == replan_from_plan_id for plan in plans):
                 raise LookupError(f"replan source not found: {replan_from_plan_id}")
-            revision_no = max(plan.revision_no for plan in plans) + 1
+        if plans:
+            # A fresh Planning artifact after Context Adjustment or any other
+            # published re-entry is a new durable revision even when the
+            # one-shot replan marker is absent. Never reuse artifact/action/
+            # evidence identities that already belong to an older Plan.
             plan_id = self._id_factory()
             action_id_map = {action["action_id"]: self._id_factory() for action in plan["actions"]}
             evidence_id_map = {item: self._id_factory() for item in evidence_ids}

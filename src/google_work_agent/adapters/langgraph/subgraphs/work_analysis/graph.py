@@ -164,7 +164,10 @@ class WorkAnalysisSubgraph:
         graph.add_conditional_edges(
             "extract_work_facts",
             route_after_extract_work_facts,
-            {"resolve_entity_relations": "resolve_entity_relations"},
+            {
+                "resolve_entity_relations": "resolve_entity_relations",
+                "validate_relations": "validate_relations",
+            },
         )
         graph.add_conditional_edges(
             "resolve_entity_relations",
@@ -267,7 +270,7 @@ class WorkAnalysisSubgraph:
             )
             owner_inputs[ANALYSIS_AGENT_LOCAL_KEY] = local_state
             working[ANALYSIS_AGENT_LOCAL_KEY] = local_state
-        return cast(
+        returned = cast(
             WorkAnalysisLocalState,
             {
                 **owner_inputs,
@@ -278,6 +281,11 @@ class WorkAnalysisSubgraph:
                 ),
             },
         )
+        if not returned["fact_candidates"]:
+            returned["entity_relation_candidates"] = []
+            returned["temporal_dependency_candidates"] = []
+            returned["duplicate_conflict_candidates"] = []
+        return returned
 
     def _resolve_entity_relations_node(
         self, state: WorkAnalysisLocalState

@@ -359,7 +359,11 @@ class ReviewSubgraph:
         result = cast(ReviewState, {**working, **patch})
         if self._is_production_integration:
             consumed = len(results)
-            result["retry_budget"] = consume_llm_call_budget(cast(Any, original))
+            result["retry_budget"] = (
+                consume_llm_call_budget(cast(Any, original))
+                if consumed
+                else cast(Any, original["retry_budget"])
+            )
             assert self._graph_profile is not None
             result["trace_context"] = merge_trace_context(
                 original,

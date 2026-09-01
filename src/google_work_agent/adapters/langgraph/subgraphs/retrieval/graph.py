@@ -131,7 +131,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.run.guard_run_budget import (
+    BudgetDecision,
     RunBudgetV2,
+    approve_additional_acquisition,
+    approve_planning_revision,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
@@ -300,6 +303,26 @@ def _retrieval_trace_context(
     )
 
 
+def _authorize_context_adjustment_budget(
+    state: Mapping[str, object],
+) -> RunBudgetV2:
+    """Charge the user-requested fresh Retrieval and downstream replanning once."""
+
+    current = cast(RunBudgetV2, state["retry_budget"])
+    control = state.get("__workflow_control__")
+    if not isinstance(control, Mapping) or control.get("kind") != "CONTEXT_ADJUSTMENT":
+        return current
+    revision = approve_planning_revision(current)
+    if revision["decision"] == BudgetDecision.DENY.value:
+        return current
+    acquisition = approve_additional_acquisition(revision["run_budget"])
+    return (
+        current
+        if acquisition["decision"] == BudgetDecision.DENY.value
+        else acquisition["run_budget"]
+    )
+
+
 class RetrievalSubgraph:
     """Build and execute the canonical Retrieval runtime."""
 
@@ -424,8 +447,10 @@ class RetrievalSubgraph:
             },
             prompt_ref=self._select_prompt_ref,
         )
+        retry_budget = _authorize_context_adjustment_budget(state)
         next_state: ContextRetrievalLocalState = {
             **state,
+            "retry_budget": retry_budget,
             "input_route_ref": cast(
                 StateArtifactRefV1, dict(tool_route_plan["input_plan"]["meta"])
             ),

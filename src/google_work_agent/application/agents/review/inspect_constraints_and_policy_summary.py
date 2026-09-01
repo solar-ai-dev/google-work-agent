@@ -29,6 +29,16 @@ def inspect_constraints_and_policy_summary(
     evidence: Sequence[Mapping[str, object]] = (),
     confirmation_response: Mapping[str, object] | None = None,
 ) -> ReviewInspectorResultV1:
+    constraints = request_intent.get("constraints")
+    if constraints == [] and not policy_summary and confirmation_response is None:
+        # This inspector may report only supplied user-constraint or policy
+        # contradictions. With both bounded inputs explicitly empty there is
+        # no grounded finding an LLM is allowed to invent.
+        return {
+            "schema_version": 1,
+            "dimension": DIMENSION,
+            "findings": [],
+        }
     prompt_input: dict[str, object] = {
         "request_intent": dict(request_intent),
         "planning_result": dict(planning_result),
