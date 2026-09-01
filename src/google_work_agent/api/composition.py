@@ -2367,10 +2367,11 @@ def build_production_runtime(
         return materialized
 
     def _native_resume_node(resume_target: RegisteredResumeTargetRefV2) -> str:
-        return (
+        return cast(
+            str,
             workflow_runtime.control_resume_node(resume_target.stage_id)
             if resume_target.kind == "MAIN_CONTROL"
-            else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id)
+            else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id),
         )
 
     def _invoke_semantic_owner(
