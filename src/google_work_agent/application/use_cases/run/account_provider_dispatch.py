@@ -67,15 +67,17 @@ def bind_provider_dispatch_budget(run_budget: RunBudgetV2) -> RunBudgetV2:
 
 @contextmanager
 def provider_dispatch_budget_scope(run_budget: RunBudgetV2) -> Iterator[RunBudgetV2]:
-    """Bind one authoritative RunBudget and always restore the prior context."""
+    """Bind one RunBudget without replacing an enclosing execution identity."""
 
     validated = validate_run_budget_v2(run_budget)
     mutable = cast(dict[str, object], run_budget)
     mutable.clear()
     mutable.update(validated)
     token = _CURRENT_RUN_BUDGET.set(run_budget)
-    run_token = _CURRENT_RUN_ID.set("direct-provider-dispatch")
-    clock_token = _CURRENT_NOW_MS.set(lambda: run_budget["started_at_ms"])
+    current_run_id = _CURRENT_RUN_ID.get()
+    current_clock = _CURRENT_NOW_MS.get()
+    run_token = _CURRENT_RUN_ID.set(current_run_id or "direct-provider-dispatch")
+    clock_token = _CURRENT_NOW_MS.set(current_clock or (lambda: run_budget["started_at_ms"]))
     try:
         yield run_budget
     finally:

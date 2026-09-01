@@ -9,6 +9,7 @@ from google_work_agent.application.prompt_runtime.dispatch_guarded_prompt import
 )
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     current_provider_dispatch_budget,
+    current_provider_dispatch_run_id,
     provider_dispatch_budget_scope,
     provider_dispatch_execution_scope,
 )
@@ -300,6 +301,17 @@ def test_execution_scope_clears_budget_after_success_and_unrelated_probe_is_unac
     _invoke_structured(guarded)
     assert provider.structured_dispatches == 2
     assert budget["llm_calls_used"] == 1
+
+
+def test_budget_scope_preserves_enclosing_production_run_identity() -> None:
+    budget = build_default_run_budget()
+
+    with provider_dispatch_execution_scope(run_id="run-production"):
+        with provider_dispatch_budget_scope(budget):
+            assert current_provider_dispatch_run_id() == "run-production"
+        assert current_provider_dispatch_run_id() == "run-production"
+
+    assert current_provider_dispatch_run_id() is None
 
 
 def test_execution_scope_clears_budget_after_escaping_provider_error() -> None:
