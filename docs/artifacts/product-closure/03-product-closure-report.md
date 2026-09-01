@@ -2,13 +2,15 @@
 
 ## Baseline and truth hierarchy
 
-- `FINAL_PRODUCT_SHA`: `bd67fae5e56fb69982ec5b8f5b91fedf65ba6828`
-- Product implementation anchor: `ef5bd38a4526b5e10f9c7d848cefbaed0ef43341`
+- `E2E_START_SHA`: `8a7182d5c10a4325a5031492465ce113b70c2d9e`
+- `POST_E2E_FINAL_PRODUCT_SHA`: `09bf45013f0fb0572fce65de9bb7ef2f6e06ec99`
+- Product source anchor: `0ec4583efb9589cddaff4edfe5ede2bb899fd14e`
+- E2E certification commits: `4aed0a857c65277a4099fe6a329df58f40bec3cb`, `32295d97fe54cde5038ffd60c57822e18cefded6`, `09bf45013f0fb0572fce65de9bb7ef2f6e06ec99`
 - Local branch: `remediation/fresh-audit-product-closure`
 - Canonical root: `docs/canonical/`
-- Truth order: current Canonical → `bd67fae5e56fb69982ec5b8f5b91fedf65ba6828` production owner → actual caller/runtime → durable fact/effect → API/SSE/frontend → failure/recovery/restart → meaningful production-path proof.
-- Current Canonical content is unchanged from the Wave 1 Product source SHA. Requirement IDs and statements were retained solely for exhaustive coverage; every implementation locator and final disposition in these artifacts was re-resolved at `FINAL_PRODUCT_SHA`.
-- `ef5bd38a..bd67fae5` changes only test-proof typing, closure artifacts, architecture-reference cut-over, and historical artifact removal. Product, Frontend, Evaluation, Release, Launcher, Installer, and current Canonical content are unchanged, so the existing CSV locators remain current without a full regeneration.
+- Truth order: current Canonical → Product source anchor → actual caller/runtime → durable fact/effect → API/SSE/frontend → failure/recovery/restart → meaningful production-path proof.
+- Current Canonical content was not changed to satisfy E2E. Normal Release Google READ remains `InputRoutePlanV1 → Retrieval → ConnectorReadPort → RetrievalResultV1` with Action/Write 0; `READ_EXECUTION` remains Legacy compatibility only.
+- The two CSV artifacts were targeted rather than regenerated: 35 directly affected requirement rows, 36 affected handoffs, and all 19 retained scenario rows were re-resolved.
 
 ## Remediation commits
 
@@ -28,6 +30,24 @@
 | `082a60cc` | test-only typing alignment for the final Gate |
 | `ae993351` | final Product closure traceability compression |
 | `bd67fae5` | historical Audit/Ledger/Map removal and Canonical test-reference cut-over |
+| `273cb849` | preserve connected Google account identity in the production composition |
+| `08464473` | activate all production LangGraph profiles |
+| `787788e8` | preserve Run identity in nested LLM scopes |
+| `7b862827` | align retrieval sufficiency Prompt contract |
+| `3d6512a4` | serialize partial-approval continuation |
+| `1edbc83b` | execute durable normal handoff targets |
+| `8127fc84` | preserve MCP provider authentication errors |
+| `319043b6` | align Calendar conflict page contract |
+| `83408f27` | wire internal UNKNOWN_RESULT recovery search |
+| `7fd61ff1` | restore safe Reauth continuation |
+| `ff3ccbcd` | reopen Verification for Recovery RECHECK |
+| `ad16af91` | preserve Context Adjustment freshness |
+| `c34bb67e` | preserve durable workflow resume semantics |
+| `3cf4cf62` | type durable resume-target resolution |
+| `0ec4583e` | align schema-repair failure metadata with `FailureRecordV1` |
+| `4aed0a85` | add real production-composition LangGraph E2E certification harness |
+| `32295d97` | certify durable read-backed terminal projection |
+| `09bf4501` | certify the full scenario universe across all three graph profiles |
 
 ## Historical coverage provenance
 
@@ -43,42 +63,127 @@ Historical artifacts are coverage/provenance inputs, not implementation truth.
 
 The final lineage adds one explicit `SAFE_MODE_RESTORE` row by splitting that required scenario from historical X2 installed-lifecycle coverage. No historical requirement or substantive finding was dropped.
 
+## LangGraph real production E2E certification
+
+```text
+REAL_PRODUCTION_COMPOSITION = YES
+REAL_COMPILED_MAIN_LANGGRAPH = YES
+REAL_MAIN_STATE_SCHEMA = YES
+REAL_SUPERVISOR = YES
+REAL_AGENT_SUBGRAPHS = YES
+REAL_APPLICATION_OPERATIONS = YES
+REAL_PROMPT_RUNTIME = YES
+REAL_CHECKPOINT_RESUME = YES
+INTERNAL_PRODUCT_MOCKS = 0
+EXTERNAL_BOUNDARY_FAKES = 2
+REQUIRED_E2E_SCENARIOS_PASS = YES
+PROFILE_SEMANTIC_PARITY = PASS
+LANGGRAPH_REAL_E2E_CERTIFICATION = PASS
+```
+
+External fakes stay behind real production adapters and Port boundaries:
+
+- Gemini external transport boundary → `tests.support.fakes.langgraph_e2e.LangGraphE2EGeminiTransport`; Product still uses the production structured-inference router, Prompt registry/runtime, and Gemini adapter.
+- `ConnectorReadPort` / `ConnectorWritePort` through the real MCP connector adapters → external process `tests.fakes.langgraph_e2e_mcp_server`; it serves deterministic Gmail, Tasks, Calendar, transport, auth, certainty, and recovery behavior.
+
+### Scenario certification matrix
+
+| Scenario | Real graph | Internal mock | Durable proof | External effect | Recovery/continuation | Result |
+|---|---:|---:|---:|---|---|---|
+| ANSWER_ONLY | YES | 0 | YES | 0 | N/A | PASS |
+| READ_GMAIL | YES | 0 | YES | Write 0; one Gmail read | N/A | PASS |
+| READ_TASKS | YES | 0 | YES | Write 0; one Tasks read | N/A | PASS |
+| READ_CALENDAR | YES | 0 | YES | Write 0; one Calendar read | N/A | PASS |
+| APPROVED_WRITE | YES | 0 | YES | exact approved effect | Verification | PASS |
+| PARTIAL_APPROVAL | YES | 0 | YES | exact approved subset | Verification | PASS |
+| REJECTION | YES | 0 | YES | 0 | N/A | PASS |
+| FAILED_RETRY | YES | 0 | YES | bounded; first NOT_SENT, then exact | fresh approval | PASS |
+| UNKNOWN_RESULT | YES | 0 | YES | one uncertain dispatch; resend 0 | recovery lookup | PASS |
+| VERIFICATION_MISMATCH | YES | 0 | YES | one observed effect | explicit Recovery | PASS |
+| RECOVERY | YES | 0 | YES | second Write 0 | RECHECK → Verification | PASS |
+| CANCEL | YES | 0 | YES | forbidden Write 0 | terminal cancel | PASS |
+| REAUTH | YES | 0 | YES | one final mutation | registered safe continuation | PASS |
+| RESTART_RESUME | YES | 0 | YES | exact one mutation | new composition from checkpoint | PASS |
+| RETRIEVAL_CACHE_LOSS | YES | 0 | YES | exact one mutation | durable retrieval restart | PASS |
+| REVIEW_BACK_EDGE | YES | 0 | YES | exact one mutation | real Review back-edge | PASS |
+| CONTEXT_ADJUSTMENT | YES | 0 | YES | exact revised-plan mutation | same-run retrieval re-entry | PASS |
+| SAFE_MODE_RESTORE | system path | 0 | YES | N/A | migration before ready-core rebind | PASS |
+
+Normal Gmail/Tasks/Calendar reads intentionally do not create a Legacy READ Action. Their durable proof is the persisted workflow binding/retrieval head plus the terminal assistant message exposed by the versioned Run snapshot.
+
+### Profile parity
+
+| Profile | Scenario cases | Semantic parity | Safety/effect parity | Verification/recovery parity |
+|---|---:|---|---|---|
+| SINGLE_BASELINE | 17 | PASS | PASS | PASS |
+| THREE_STAGE | 17 | PASS | PASS | PASS |
+| SIX_ROLE_BASELINE | 17 | PASS | PASS | PASS |
+
+All 51 profile/scenario combinations execute the production-composed compiled graph. Topology differs; policy, approval, external effect, terminal meaning, UNKNOWN_RESULT handling, Verification, Recovery, restart, and cache-loss semantics do not.
+
+### E2E-discovered product defects
+
+Fifteen Product defects were found and all fifteen were closed. No open Product defect remains.
+
+| Root defect | Commit | Closure |
+|---|---|---|
+| connected Google account identity was not preserved | `273cb849` | exact account identity reaches production connector composition |
+| profile selection did not activate every production graph | `08464473` | all three compiled profiles are reachable |
+| nested LLM scopes lost Run identity | `787788e8` | dispatch accounting remains same-Run bound |
+| retrieval sufficiency Prompt input drifted from its contract | `7b862827` | active Prompt projection and schema agree |
+| partial approval continuation was not serialized durably | `3d6512a4` | approved subset resumes without executing rejected actions |
+| committed normal handoffs were not executed by the runtime | `1edbc83b` | durable target is consumed by the production executor |
+| MCP auth failures were collapsed into generic rejection | `8127fc84` | AUTH_REQUIRED reaches Reauth semantics |
+| Calendar conflict paging drifted from the registered contract | `319043b6` | deterministic preflight read uses the current page contract |
+| UNKNOWN_RESULT lacked internal recovery search wiring | `83408f27` | lookup/reconciliation occurs without blind resend |
+| Reauth continuation could not safely return to the retry path | `7fd61ff1` | registered safe continuation completes |
+| Recovery RECHECK did not reopen Verification | `ff3ccbcd` | RECHECK resumes Verification with no repeated Write |
+| Context Adjustment retained stale artifacts | `ad16af91` | retrieval/plan revisions advance monotonically |
+| durable resume semantics could lose checkpoint authority | `c34bb67e` | restart/cache-loss use persisted authority |
+| resume-target resolver returned an untyped target | `3cf4cf62` | exact registered target type/currentness is enforced |
+| schema-repair metadata bypassed canonical `FailureRecordV1` | `0ec4583e` | one builder emits valid origin/detector enums and reaches Prompt assembly |
+
 ## Final remediation re-evaluation
 
 ```text
-REMEDIATION_START_SHA = bd67fae5e56fb69982ec5b8f5b91fedf65ba6828
-REMEDIATED_PRODUCT_SHA = bd67fae5e56fb69982ec5b8f5b91fedf65ba6828
-ROOT_CAUSES_FOUND = 0
-PRODUCT_DEFECTS_FIXED = 0
-TEST_PROOF_DEFECTS_FIXED = 0
+REMEDIATION_START_SHA = 8a7182d5c10a4325a5031492465ce113b70c2d9e
+POST_E2E_FINAL_PRODUCT_SHA = 09bf45013f0fb0572fce65de9bb7ef2f6e06ec99
+PRODUCT_SOURCE_ANCHOR = 0ec4583efb9589cddaff4edfe5ede2bb899fd14e
+ROOT_CAUSES_FOUND = 15
+PRODUCT_DEFECTS_FIXED = 15
+TEST_PROOF_DEFECTS_FIXED = 3
 AUTHORITY_DEFECTS_FIXED = 0
 OPEN_FIXABLE_DEFECTS = 0
 ```
 
-Artifact 1 contained no `OPEN` requirement, Artifact 2 contained no broken handoff/scenario or competing authority, and all final zero-gate counters were already zero. Semantic root-cause grouping therefore produced an empty remediation queue. No Product or test assertion was weakened and no speculative fix was introduced.
+Real production E2E exposed fifteen Product defects after the previous static closure. Each defect was fixed at its current owner, the production caller was exercised again, and no Canonical safety rule or test assertion was weakened. The final queue is empty.
 
 Targeted refresh impact:
 
-- Artifact 1: affected requirement rows = 0; all 1,010 rows revalidated without content change.
-- Artifact 2: affected lineage rows = 0; all 66 handoffs and 19 scenarios revalidated without content change.
-- Artifact 3: baseline, remediation accounting, current regression results, external distribution gates, and verdict refreshed.
+- Artifact 1: 35 directly/indirectly affected requirement rows refreshed; 1,010-row coverage retained.
+- Artifact 2: 36 affected handoffs plus all 19 scenario rows refreshed; 66 handoffs/19 scenarios retained.
+- Artifact 3: Product/E2E identities, defects, scenario/profile matrices, regression, zero gates, and verdict refreshed.
+- Fresh Audit/Wave/Ledger/Map structures were not recreated.
 
 ## Current full regression
 
 ```text
-Python full pytest = PASS (2003 passed)
-Architecture final cutover = PASS (332 passed)
-Evaluation = PASS (71 passed)
-Release / Installer / Launcher = PASS (84 passed)
-Python compile / import = PASS
+Real LangGraph E2E = PASS (51 passed in 283.95s)
+Remaining Python suite = PASS (2025 passed, 5 skipped in 53.58s)
+Combined Python coverage = PASS (2076 passed, 5 skipped; 2081 collected)
+E2E + MCP same-process stress = PASS (158 passed in 282.03s)
+SAFE_MODE_RESTORE exact system test = PASS (1 passed)
+Domain / Application / Agent / LangGraph / Persistence / API / Security / Architecture / Evaluation / Release / Launcher = PASS (covered by the Python suite)
 Ruff = PASS
-Mypy = PASS (1342 source files)
-Frontend tests = PASS (156 passed)
+Mypy = PASS (1351 source files)
+Frontend tests = PASS (34 files, 156 tests)
 Frontend typecheck = PASS
 Frontend lint = PASS
 Frontend production build = PASS
 git diff --check = PASS
 ```
+
+One all-in-one Windows pytest attempt stalled without a failing assertion late in process teardown. Exhaustive split-process coverage passed every collected item, and an additional E2E-plus-MCP same-process stress run passed; no Product child process or internal mock leak remained.
 
 ## External distribution gates
 
@@ -164,7 +269,7 @@ Old finding accounting covers `189` distinct substantive Wave 1/X1/X2/X3/X4 IDs.
 **BEFORE** — Retrieval READ existed, but the required durable Legacy READ Action lifecycle and resume stage had been deleted.
 **ROOT CAUSE** — A historical deletion conflated retrieval evidence acquisition with canonical durable READ execution.
 **REMEDIATION** — `7654b080` restored claim/complete/fail READ handlers, persistence, `READ_EXECUTION`, and exact continuation routing.
-**AFTER** — READ persists Action execution, settles Plan/Run, and restarts through the canonical target without invoking Write.
+**AFTER** — Legacy/compatibility READ persists Action execution, settles Plan/Run, and restarts through the canonical target without invoking Write. Normal Release Google READ remains Retrieval-owned and creates no Action.
 **FINAL PROOF** — `tests/integration/persistence/test_legacy_read_execution.py` and LangGraph read execution tests.
 **FINAL STATUS** — PASS.
 
@@ -256,6 +361,14 @@ All mandatory zero gates are zero. The five retained debts are non-functional st
 ```text
 PHASE7_PROOF_CLOSURE_CONFIRMED = YES
 FINAL_PRODUCT_SHA_FIXED = YES
+REAL_PRODUCTION_COMPOSITION = YES
+REAL_COMPILED_MAIN_LANGGRAPH = YES
+INTERNAL_PRODUCT_MOCKS = 0
+ALL_REQUIRED_REAL_E2E_SCENARIOS_PASS = YES
+PROFILE_SEMANTIC_PARITY = PASS
+FULL_REGRESSION = PASS
+PRODUCT_CLOSURE_ARTIFACTS_CURRENT = YES
+LANGGRAPH_REAL_E2E_CERTIFICATION = PASS
 CANONICAL_REQUIREMENT_REVALIDATION_COMPLETE = YES
 WAVE1_COVERAGE_ACCOUNTED = YES
 WAVE2_HANDOFF_E2E_AUTHORITY_REVALIDATED = YES
@@ -267,4 +380,4 @@ REMAINING_FIXABLE_PRODUCT_BLOCKERS = 0
 EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED
 ```
 
-Wave 1/2 and the former Ledger/Map/Audit framework have completed their role. After the separately committed historical cleanup, these three files are the long-term implementation/runtime/verification reference for `FINAL_PRODUCT_SHA`.
+Wave 1/2 and the former Ledger/Map/Audit framework have completed their role. These three files are the long-term implementation/runtime/verification reference for `POST_E2E_FINAL_PRODUCT_SHA`.
