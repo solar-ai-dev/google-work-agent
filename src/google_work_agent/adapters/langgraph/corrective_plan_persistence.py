@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from hashlib import sha256
 from json import dumps, loads
 from typing import Any, cast
@@ -571,11 +572,17 @@ def _build_durable_materialization_proof(
 
 
 def _corrective_review_input(state: GraphState) -> tuple[int, str]:
-    review = _require_state_value(state.get("plan_review"), "plan_review")
-    if review["status"] != "PASS":
+    review = cast(
+        Mapping[str, object],
+        _require_state_value(state.get("plan_review"), "plan_review"),
+    )
+    if review.get("status") != "PASS":
         raise ValueError("corrective Plan persistence requires a PASS Review")
-    revision = review["meta"]["revision"]
-    artifact_id = review["meta"]["artifact_id"]
+    meta = review.get("meta")
+    if not isinstance(meta, Mapping):
+        raise ValueError("corrective Review metadata is required")
+    revision = meta.get("revision")
+    artifact_id = meta.get("artifact_id")
     if not isinstance(revision, int) or revision < 1:
         raise ValueError("corrective Review revision must be positive")
     if not isinstance(artifact_id, str) or not artifact_id:

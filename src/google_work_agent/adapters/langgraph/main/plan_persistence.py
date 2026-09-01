@@ -390,11 +390,17 @@ class PlanPersistenceMixin:
         *,
         state: GraphState,
     ) -> tuple[str, int]:
-        review = _require_state_value(state.get("plan_review"), "plan_review")
-        if review["status"] != "PASS":
+        review = cast(
+            Mapping[str, object],
+            _require_state_value(state.get("plan_review"), "plan_review"),
+        )
+        if review.get("status") != "PASS":
             raise ValueError("only a PASS Review may open a persisted Plan approval gate")
-        artifact_id = review["meta"]["artifact_id"]
-        revision = review["meta"]["revision"]
+        meta = review.get("meta")
+        if not isinstance(meta, Mapping):
+            raise ValueError("persisted Review metadata is required")
+        artifact_id = meta.get("artifact_id")
+        revision = meta.get("revision")
         if not isinstance(artifact_id, str) or not artifact_id:
             raise ValueError("persisted Review artifact_id is required")
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
