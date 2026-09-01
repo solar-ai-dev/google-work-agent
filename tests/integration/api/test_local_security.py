@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.fakes.llm import DisabledLlmRuntimeStatusPort
 
 from google_work_agent.adapters.readiness.composite import (
     StaticLauncherProbeVerifier,
@@ -20,12 +21,11 @@ from google_work_agent.application.use_cases.runtime_status.get_runtime_status i
 )
 from google_work_agent.ports.connector.oauth_credential_port import (
     AccessContextHandle,
-    AuthorizationStartV1,
-    ConnectionMetadataV1,
+    OAuthAuthorizationStart,
+    OAuthConnectionMetadata,
     OAuthEnvironment,
-    RevokeResultV1,
+    OAuthRevokeResult,
 )
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )
@@ -37,14 +37,6 @@ from google_work_agent.ports.system.readiness_port import (
 )
 
 
-class _CoordinatorStub:
-    def start(self) -> None:
-        return None
-
-    def stop(self) -> None:
-        return None
-
-
 class _OAuthStatusStub:
     def start_authorization(
         self,
@@ -52,7 +44,7 @@ class _OAuthStatusStub:
         environment: OAuthEnvironment,
         requested_scopes: tuple[str, ...],
         operation_ref: str,
-    ) -> AuthorizationStartV1:
+    ) -> OAuthAuthorizationStart:
         del connector_id, environment, requested_scopes, operation_ref
         raise AssertionError("authorization is outside this runtime-status test")
 
@@ -66,12 +58,12 @@ class _OAuthStatusStub:
         del connector_id, account_id
         raise AssertionError("credential refresh is outside this runtime-status test")
 
-    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
-        return ConnectionMetadataV1(1, connector_id, None, None, "DISCONNECTED", (), ())
+    def get_connection_status(self, connector_id: str) -> OAuthConnectionMetadata:
+        return OAuthConnectionMetadata(1, connector_id, None, None, "DISCONNECTED", (), ())
 
     def revoke_connection(
         self, connector_id: str, account_id: str, operation_ref: str
-    ) -> RevokeResultV1:
+    ) -> OAuthRevokeResult:
         del connector_id, account_id, operation_ref
         raise AssertionError("revocation is outside this runtime-status test")
 
@@ -80,11 +72,6 @@ class _OAuthStatusStub:
     ) -> OperationalReconcileResultV1:
         del connector_id, account_id, operation_ref
         raise AssertionError("revocation reconciliation is outside this test")
-
-
-class _LlmStatusStub:
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
-        return LlmRuntimeStatusV1(1, provider, False, "DISABLED", None, None)
 
 
 def _build_client(
@@ -163,7 +150,7 @@ def _build_client(
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
             oauth=_OAuthStatusStub(),
-            llm_status=_LlmStatusStub(),
+            llm_status=DisabledLlmRuntimeStatusPort(),
             circuits=ProcessComponentCircuitStateAdapter(),
         ),
     )

@@ -7,21 +7,12 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     SqliteUnitOfWork,
-    sqlite_unit_of_work_factory,
-)
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
-)
-from google_work_agent.application.use_cases.action.read_contracts import (
-    CompletedResourceRef,
-    CompleteReadActionCommand,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     persist_registered_resource_ref,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -113,81 +104,6 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         assert (
             connection.execute(
                 "SELECT connector_id FROM resource_refs WHERE id = 'resource-ref-1';"
-            ).fetchone()[0]
-            == "google_workspace"
-        )
-        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
-    finally:
-        connection.close()
-
-
-def test_read_action_and_completion_resource_keep_same_connector(tmp_path: Path) -> None:
-    database_path = tmp_path / "read-connector-binding.db"
-    _seed_plan(database_path)
-
-    action = ActionRecord(
-        id="read-action-1",
-        plan_id="plan-1",
-        connector_id="google_workspace",
-        position=1,
-        tool_name="tasks_list_tasks",
-        effect_type="READ",
-        approval_requirement="NONE",
-        verification_policy="NONE",
-        recovery_policy="NONE",
-        target_resource_ref_id=None,
-        status="EXECUTING",
-        arguments_json='{"task_list_id":"list-1"}',
-        arguments_hash="b" * 64,
-        expected_json="{}",
-        risk={},
-        version=0,
-        created_at_ms=2,
-        updated_at_ms=2,
-    )
-    with SqliteUnitOfWork(database_path) as unit_of_work:
-        unit_of_work.actions.insert_for_plan(action)
-        unit_of_work.commit()
-
-    factory = sqlite_unit_of_work_factory(database_path)
-    service = CompleteReadActionHandler(unit_of_work_factory=factory, now_ms=lambda: 3)
-    response = service(
-        CompleteReadActionCommand(
-            command_id="complete-read-1",
-            request_hash="r1" * 32,
-            action_id="read-action-1",
-            expected_version=0,
-            output_json="{}",
-            resource_refs=(
-                CompletedResourceRef(
-                    id="read-resource-1",
-                    source=ResourceSource.TASKS,
-                    resource_type="task",
-                    resource_id="issue-2",
-                    parent_resource_id="list-1",
-                    canonical_url=None,
-                    title="Issue 2",
-                    event_time_ms=None,
-                    version_token="v2",
-                    metadata_json="{}",
-                ),
-            ),
-            evidence=(),
-        )
-    )
-    assert response.applied is True
-
-    connection = connect_sqlite(database_path)
-    try:
-        assert (
-            connection.execute(
-                "SELECT connector_id FROM actions WHERE id = 'read-action-1';"
-            ).fetchone()[0]
-            == "google_workspace"
-        )
-        assert (
-            connection.execute(
-                "SELECT connector_id FROM resource_refs WHERE id = 'read-resource-1';"
             ).fetchone()[0]
             == "google_workspace"
         )

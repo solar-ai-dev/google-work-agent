@@ -7,7 +7,7 @@ from typing import Literal
 
 from google_work_agent.adapters.llm.gemini.credential import GeminiLlmCredentialAdapter
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
-from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatusV1
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatus
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )
@@ -52,13 +52,13 @@ class LlmCredentialRouter:
         secret: bytes,
         storage_mode: Literal["KEYRING", "SESSION_ONLY"],
         operation_ref: str,
-    ) -> LlmCredentialStatusV1:
+    ) -> LlmCredentialStatus:
         return self._leaf(provider).store(secret, storage_mode, operation_ref)
 
-    def delete_credential(self, provider: str, operation_ref: str) -> LlmCredentialStatusV1:
+    def delete_credential(self, provider: str, operation_ref: str) -> LlmCredentialStatus:
         return self._leaf(provider).delete(operation_ref)
 
-    def get_credential_status(self, provider: str) -> LlmCredentialStatusV1:
+    def get_credential_status(self, provider: str) -> LlmCredentialStatus:
         return self._leaf(provider).status()
 
     def reconcile_credential(

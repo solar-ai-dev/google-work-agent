@@ -24,8 +24,8 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 )
 from google_work_agent.adapters.langgraph.main.state import (
     PLANNING_AGENT_LOCAL_KEY,
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphStateV2,
     WorkflowPhase,
     request_from_state,
 )
@@ -33,7 +33,7 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.planning.nodes import (
     assemble_plan_node as assemble_node_module,
 )
@@ -116,7 +116,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     approve_planning_revision,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -194,7 +197,7 @@ class PlanningSubgraph:
             StateGraph(
                 PlanningLocalState,
                 input_schema=PlanningInputState,
-                output_schema=MultiAgentGraphStateV2,
+                output_schema=GraphState,
             )
             if self._is_production_integration
             else StateGraph(PlanningLocalState)
@@ -325,7 +328,6 @@ class PlanningSubgraph:
                 GraphStateUpdateV1,
                 {
                     "workflow_phase": WorkflowPhase.RESPONSE_SYNTHESIS.value,
-                    "answer_draft": answer,
                     "planning_result": answer,
                     "workflow_signal": None,
                     "user_interrupt": None,
@@ -338,7 +340,6 @@ class PlanningSubgraph:
         update = cast(
             GraphStateUpdateV1,
             {
-                "answer_draft": answer,
                 "planning_result": answer,
                 "retry_budget": consume_llm_call_budget(cast(Any, state)),
                 "trace_context": self._trace(
@@ -400,9 +401,7 @@ class PlanningSubgraph:
                         "planning.draft_action_objective_per_output_route"
                     ],
                 )
-            result["retry_budget"] = consume_llm_call_budget(
-                cast(Any, state), provider_calls_consumed=len(cast(list[object], routes))
-            )
+            result["retry_budget"] = consume_llm_call_budget(cast(Any, state))
             trace_state = cast(PlanningLocalState, {**state, **result})
             result["trace_context"] = self._trace(
                 trace_state,
@@ -471,9 +470,7 @@ class PlanningSubgraph:
         context.pop("planning_missing_container", None)
         result["prompt_context"] = context
         if self._llm_runtime is not None:
-            result["retry_budget"] = consume_llm_call_budget(
-                cast(Any, state), provider_calls_consumed=len(cast(list[object], routes))
-            )
+            result["retry_budget"] = consume_llm_call_budget(cast(Any, state))
             result["trace_context"] = self._trace(
                 state,
                 "compose_arguments_per_output_route",

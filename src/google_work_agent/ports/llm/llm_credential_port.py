@@ -11,7 +11,7 @@ from google_work_agent.ports.system.contracts.operational_command_replay import 
 
 
 @dataclass(frozen=True, slots=True)
-class LlmCredentialStatusV1:
+class LlmCredentialStatus:
     schema_version: Literal[1]
     provider: str
     configured: bool
@@ -26,11 +26,11 @@ class LlmCredentialPort(Protocol):
         secret: bytes,
         storage_mode: Literal["KEYRING", "SESSION_ONLY"],
         operation_ref: str,
-    ) -> LlmCredentialStatusV1: ...
+    ) -> LlmCredentialStatus: ...
 
-    def delete_credential(self, provider: str, operation_ref: str) -> LlmCredentialStatusV1: ...
+    def delete_credential(self, provider: str, operation_ref: str) -> LlmCredentialStatus: ...
 
-    def get_credential_status(self, provider: str) -> LlmCredentialStatusV1: ...
+    def get_credential_status(self, provider: str) -> LlmCredentialStatus: ...
 
     def reconcile_credential(
         self,
@@ -41,4 +41,4 @@ class LlmCredentialPort(Protocol):
     ) -> OperationalReconcileResultV1: ...
 
 
-__all__ = ["LlmCredentialPort", "LlmCredentialStatusV1"]
+__all__ = ["LlmCredentialPort", "LlmCredentialStatus"]

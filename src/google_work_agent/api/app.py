@@ -10,7 +10,7 @@ from typing import Any, BinaryIO, cast
 
 from fastapi import FastAPI
 
-from google_work_agent.adapters.runtime import SafeModeController
+from google_work_agent.adapters.runtime.safe_mode import SafeModeController
 from google_work_agent.api.composition import (
     DeferredApiContainer,
     ProductionRuntimeConfig,

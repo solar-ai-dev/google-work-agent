@@ -7,9 +7,9 @@ from google_work_agent.application.use_cases.component_circuit.record_component_
     RecordComponentCallResultCommandV1,
     RecordComponentCallResultHandler,
 )
-from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitKeyV1
+from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitKey
 
-KEY = ComponentCircuitKeyV1(1, "LLM_RUNTIME", None, "API_LLM")
+KEY = ComponentCircuitKey(1, "LLM_RUNTIME", None, "API_LLM")
 
 
 def test_record_component_call_result_opens_and_success_resets_circuit() -> None:

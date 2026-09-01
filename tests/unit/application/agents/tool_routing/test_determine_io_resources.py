@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Literal, cast
+from typing import cast
+
+from tests.support.fakes.llm import FakeStructuredInferencePort
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
@@ -10,54 +11,17 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
 from google_work_agent.application.agents.tool_routing.determine_io_resources import (
     determine_io_resources,
 )
-from google_work_agent.application.tool_registry import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
 )
-from google_work_agent.ports.llm import (
-    OutputSchemaDefinition,
-    PromptReference,
-)
-from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-
-
-@dataclass
-class FakeLLMRuntime:
-    outputs: list[object] = field(default_factory=lambda: [_valid_output()])
-    calls: list[dict[str, object]] = field(default_factory=list)
-
-    def infer(
-        self,
-        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
-        prompt_ref: PromptReference,
-        input_projection: Mapping[str, object],
-        output_schema_ref: OutputSchemaDefinition,
-    ) -> StructuredInferenceResultV1:
-        self.calls.append(
-            {
-                "requested_mode": requested_mode,
-                "prompt_ref": prompt_ref,
-                "prompt_input": input_projection,
-                "output_schema": output_schema_ref,
-            }
-        )
-        return StructuredInferenceResultV1(
-            schema_version=1,
-            structured_output=cast(dict[str, object], self.outputs.pop(0)),
-            provider="fake",
-            model="fake",
-            actual_runtime="API_LLM",
-            input_tokens=1,
-            output_tokens=1,
-            latency_ms=1,
-            fallback_reason=None,
-        )
 
 
 def _valid_output() -> dict[str, object]:
@@ -109,7 +73,7 @@ def test_task_create_produces_semantic_candidate_without_tool_identity() -> None
         input_schema_version="v1",
         output_schema_version="v1",
     )
-    runtime = FakeLLMRuntime()
+    runtime = FakeStructuredInferencePort(outputs=[_valid_output()])
     candidate, _ = determine_io_resources(
         llm_runtime=runtime,
         tool_catalog=catalog,
@@ -166,7 +130,7 @@ def test_semantic_revision_reuses_base_slot_and_bounded_failure_envelope() -> No
         input_schema_version="v1",
         output_schema_version="v1",
     )
-    runtime = FakeLLMRuntime(outputs=[{"schema_version": 0}, _valid_output()])
+    runtime = FakeStructuredInferencePort(outputs=[{"schema_version": 0}, _valid_output()])
 
     determine_io_resources(
         llm_runtime=runtime,

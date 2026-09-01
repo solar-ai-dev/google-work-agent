@@ -623,7 +623,7 @@ class StdioMCPClientAdapter:
             raise MCPClientPortError(
                 code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                 message="mcp child stdin closed during dispatch",
-                dispatch_started=True,
+                delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
                 request_id=request_id,
             ) from error
 
@@ -638,7 +638,7 @@ class StdioMCPClientAdapter:
                     raise MCPClientPortError(
                         code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
-                        dispatch_started=True,
+                        delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
                         request_id=request_id,
                     ) from error
                 continue
@@ -646,7 +646,7 @@ class StdioMCPClientAdapter:
                 raise MCPClientPortError(
                     code=MCPClientPortErrorCode.MALFORMED_RESPONSE,
                     message="unexpected response id",
-                    dispatch_started=True,
+                    delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
                     request_id=request_id,
                 )
             if "error" in message:
@@ -658,11 +658,7 @@ class StdioMCPClientAdapter:
                 try:
                     certainty = DeliveryCertainty(str(raw_certainty))
                 except ValueError:
-                    certainty = (
-                        DeliveryCertainty.MAY_HAVE_BEEN_SENT
-                        if bool(error_payload.get("dispatch_started", True))
-                        else DeliveryCertainty.NOT_SENT
-                    )
+                    certainty = DeliveryCertainty.MAY_HAVE_BEEN_SENT
                 try:
                     error_code = MCPClientPortErrorCode(
                         str(error_payload.get("code", "MALFORMED_RESPONSE"))
@@ -680,7 +676,7 @@ class StdioMCPClientAdapter:
         raise MCPClientPortError(
             code=MCPClientPortErrorCode.TIMEOUT,
             message="mcp request timed out",
-            dispatch_started=True,
+            delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
             request_id=request_id,
         )
 

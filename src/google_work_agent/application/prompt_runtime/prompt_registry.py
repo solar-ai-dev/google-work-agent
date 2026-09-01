@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
@@ -18,12 +17,11 @@ from google_work_agent.application.prompt_runtime.load_prompt_input_contract imp
     default_prompt_input_contract_path,
     load_prompt_input_contract,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _DEFAULT_MANIFEST_PATH = _PACKAGE_DIR / "prompt_manifest.json"
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_MANIFEST_FILENAME_PATTERN = re.compile(r"^prompt-manifest-v(\d+)\.(\d+)\.(\d+)\.json$")
 _ACTIVATION_STATUSES: Final = frozenset(
     {"DRAFT", "DEV_VALIDATED", "HOLDOUT_VALIDATED", "RUNTIME_ACTIVE", "RETIRED"}
 )
@@ -286,125 +284,14 @@ def default_prompt_manifest_path() -> Path:
     return _DEFAULT_MANIFEST_PATH
 
 
-def _canonical_registry(manifest_path: Path, contract_path: Path) -> PromptRegistry:
-    return PromptRegistry(manifest_path, contract_path)
-
-
 def load_prompt_reference(prompt_id: str, manifest_path: Path | None = None) -> PromptReference:
     path = (manifest_path or _DEFAULT_MANIFEST_PATH).resolve()
-    payload = _load_json_object(path, "prompt manifest")
-    if _is_canonical_manifest(payload):
-        contract_path = (
-            path.parent / "prompt_runtime_input_contract_v1.json"
-            if path.parent != _PACKAGE_DIR
-            else default_prompt_input_contract_path()
-        )
-        try:
-            return _canonical_registry(path, contract_path.resolve()).lookup_by_id(prompt_id)
-        except LookupError as error:
-            # Broad predecessor callers are migrated by the successor Agent slices.
-            # Until then, an unrepresented caller slot makes Product runtime inactive;
-            # it must not turn launcher construction into an uncaught error.
-            raise InactivePromptArtifactError(
-                f"{prompt_id} is not represented by the Canonical Prompt runtime"
-            ) from error
-    return _load_migration_prompt_reference(prompt_id, payload, enforce_runtime_active=True)
-
-
-def load_prompt_reference_for_evaluation(prompt_id: str, manifest_path: Path) -> PromptReference:
-    path = manifest_path.resolve()
-    payload = _load_json_object(path, "prompt manifest")
-    if _is_canonical_manifest(payload):
-        contract_path = (
-            path.parent / "prompt_runtime_input_contract_v1.json"
-            if path.parent != _PACKAGE_DIR
-            else default_prompt_input_contract_path()
-        )
-        return _canonical_registry(path, contract_path.resolve()).lookup_for_evaluation(prompt_id)
-    return _load_migration_prompt_reference(prompt_id, payload, enforce_runtime_active=False)
-
-
-def discover_canonical_prompt_manifest_path(prompts_agent_dir: Path) -> Path:
-    """Migration-only discovery for the versioned predecessor Prompt packs."""
-
-    if not prompts_agent_dir.is_dir():
-        raise FileNotFoundError(f"prompt manifest directory is not available: {prompts_agent_dir}")
-    candidates: list[tuple[tuple[int, int, int], Path]] = []
-    for path in sorted(prompts_agent_dir.iterdir()):
-        match = _MANIFEST_FILENAME_PATTERN.match(path.name) if path.is_file() else None
-        if match is not None:
-            version = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-            candidates.append((version, path))
-    if not candidates:
-        raise FileNotFoundError(
-            f"no prompt-manifest-vX.Y.Z.json file found in: {prompts_agent_dir}"
-        )
-    highest = max(version for version, _ in candidates)
-    matches = [path for version, path in candidates if version == highest]
-    if len(matches) != 1:
-        raise PromptRegistryError(f"ambiguous migration prompt manifest version: {highest}")
-    return matches[0]
-
-
-def _is_canonical_manifest(payload: dict[str, object]) -> bool:
-    slots = payload.get("slots")
-    return bool(
-        isinstance(slots, list)
-        and slots
-        and isinstance(slots[0], dict)
-        and "prompt_slot_id" in slots[0]
+    contract_path = (
+        path.parent / "prompt_runtime_input_contract_v1.json"
+        if path.parent != _PACKAGE_DIR
+        else default_prompt_input_contract_path()
     )
-
-
-def _load_migration_prompt_reference(
-    prompt_id: str,
-    payload: dict[str, object],
-    *,
-    enforce_runtime_active: bool,
-) -> PromptReference:
-    slot = _find_migration_slot(prompt_id, payload)
-    if (
-        enforce_runtime_active
-        and _require_string(slot.get("activation_status"), "activation_status") != "RUNTIME_ACTIVE"
-    ):
-        raise InactivePromptArtifactError(
-            f"{prompt_id} prompt exists but is not runtime-active: {slot.get('activation_status')}"
-        )
-    manifest_prompt_id = _optional_string(slot.get("prompt_id")) or prompt_id
-    subgraph_name = _optional_string(slot.get("subgraph_name"))
-    node_name = _optional_string(slot.get("node_name"))
-    if subgraph_name is None or node_name is None:
-        subgraph_name, node_name = _split_prompt_id(manifest_prompt_id)
-    return PromptReference(
-        prompt_bundle_version=_require_string(
-            payload.get("prompt_bundle_version") or slot.get("prompt_bundle_version"),
-            "prompt_bundle_version",
-        ),
-        prompt_id=manifest_prompt_id,
-        prompt_version=_optional_string(slot.get("prompt_version"))
-        or _require_string(slot.get("version"), "version"),
-        content_hash=_require_string(slot.get("content_hash"), "content_hash"),
-        agent_role=_require_string(slot.get("agent_role"), "agent_role"),
-        subgraph_name=subgraph_name,
-        node_name=node_name,
-        node_state=_optional_string(slot.get("node_state")) or "BASELINE",
-        purpose=_require_string(slot.get("purpose"), "purpose"),
-        input_schema_version=_optional_string(slot.get("input_schema_version"))
-        or "agent-node-input-v0.1",
-        output_schema_version=_optional_string(slot.get("output_schema_version"))
-        or "agent-node-output-v0.1",
-    )
-
-
-def _find_migration_slot(prompt_id: str, payload: dict[str, object]) -> dict[str, object]:
-    raw_slots = payload.get("slots", payload.get("prompt_manifest"))
-    if not isinstance(raw_slots, list):
-        raise PromptRegistryError("migration prompt manifest must contain a slot list")
-    for index, raw_slot in enumerate(raw_slots):
-        slot = _require_object(raw_slot, f"slots[{index}]")
-        if slot.get("slot_id") == prompt_id or slot.get("prompt_id") == prompt_id:
-            return slot
-    raise LookupError(f"{prompt_id} prompt is missing from manifest")
+    return PromptRegistry(path, contract_path.resolve()).lookup_by_id(prompt_id)
 
 
 def _read_verified_source(entry: _PromptManifestEntry) -> str:
@@ -505,10 +392,6 @@ def _require_string(value: object, path: str) -> str:
     return value
 
 
-def _optional_string(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
-
-
 def _require_int(value: object, path: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise PromptRegistryError(f"{path} must be an integer")
@@ -528,12 +411,6 @@ def _require_sha256(value: object, path: str) -> str:
     return text
 
 
-def _split_prompt_id(prompt_id: str) -> tuple[str, str]:
-    if "." not in prompt_id:
-        raise PromptRegistryError(f"prompt_id must contain a role and operation: {prompt_id}")
-    return cast(tuple[str, str], tuple(prompt_id.split(".", 1)))
-
-
 def _raise_set_mismatch(label: str, expected: frozenset[str], actual: frozenset[str]) -> None:
     raise PromptRegistryError(
         f"{label} slot set mismatch; missing={sorted(expected - actual)}, "
@@ -547,7 +424,5 @@ __all__ = [
     "PromptRegistryError",
     "PromptSelectionKey",
     "default_prompt_manifest_path",
-    "discover_canonical_prompt_manifest_path",
     "load_prompt_reference",
-    "load_prompt_reference_for_evaluation",
 ]

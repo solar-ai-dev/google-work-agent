@@ -5,7 +5,7 @@ from hashlib import sha256
 from typing import Any, Literal, cast
 
 from google_work_agent.application.use_cases.operational_replay import execute_operational_command
-from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort, LlmCredentialStatusV1
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort, LlmCredentialStatus
 from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
 )
@@ -21,7 +21,7 @@ class StoreLlmCredentialCommand:
 
 @dataclass(frozen=True, slots=True)
 class StoreLlmCredentialResult:
-    status: LlmCredentialStatusV1
+    status: LlmCredentialStatus
     operation_ref: str
     replayed: bool
 
@@ -55,7 +55,7 @@ class StoreLlmCredentialHandler:
             execute=execute,
         )
         return StoreLlmCredentialResult(
-            status=LlmCredentialStatusV1(**cast(Any, outcome.bounded_result)),
+            status=LlmCredentialStatus(**cast(Any, outcome.bounded_result)),
             operation_ref=outcome.operation_ref,
             replayed=outcome.replayed,
         )

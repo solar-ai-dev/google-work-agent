@@ -8,7 +8,7 @@ Audit) -- these tests lock in the corrected behavior.
 
 from __future__ import annotations
 
-from google_work_agent.adapters.llm.schema import validate_output_schema
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 
 def test_type_union_accepts_either_listed_type() -> None:

@@ -10,12 +10,12 @@ from google_work_agent.adapters.llm.gemini.runtime_status import GeminiLlmRuntim
 from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
 from google_work_agent.adapters.llm.ollama.runtime_status import OllamaLlmRuntimeStatusAdapter
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
     OllamaRuntimeProbe,
     RuntimePolicy,
 )
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 from google_work_agent.ports.system.contracts.runtime import AppSettings
 
 
@@ -30,7 +30,7 @@ class LlmRuntimeStatusRouter:
     runtime_policy: RuntimePolicy
     api_provider_name: str
 
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
+    def get_status(self, provider: str) -> LlmProviderRuntimeStatus:
         settings = self.settings_service()
         if provider in {"ollama", "LOCAL_GPU"}:
             status = self._ollama_status(settings)
@@ -57,7 +57,7 @@ class LlmRuntimeStatusRouter:
     def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
         return self.approved_models.get(model_id)
 
-    def _ollama_status(self, settings: AppSettings) -> LlmRuntimeStatusV1:
+    def _ollama_status(self, settings: AppSettings) -> LlmProviderRuntimeStatus:
         if self.build_profile == "API_ONLY":
             return _status("ollama", False, "DISABLED", None, None)
         model = self.approved_models.get(settings.approved_model_id or "")
@@ -81,8 +81,8 @@ def _status(
     availability: Literal["READY", "UNAVAILABLE", "DISABLED"],
     model_id: str | None,
     error_code: str | None,
-) -> LlmRuntimeStatusV1:
-    return LlmRuntimeStatusV1(
+) -> LlmProviderRuntimeStatus:
+    return LlmProviderRuntimeStatus(
         schema_version=1,
         provider=provider,
         configured=configured,
@@ -92,8 +92,8 @@ def _status(
     )
 
 
-def _with_provider(status: LlmRuntimeStatusV1, provider: str) -> LlmRuntimeStatusV1:
-    return LlmRuntimeStatusV1(
+def _with_provider(status: LlmProviderRuntimeStatus, provider: str) -> LlmProviderRuntimeStatus:
+    return LlmProviderRuntimeStatus(
         schema_version=1,
         provider=provider,
         configured=status.configured,

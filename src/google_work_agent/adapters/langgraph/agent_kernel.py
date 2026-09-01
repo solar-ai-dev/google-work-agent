@@ -20,11 +20,10 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
     check_llm_call_budget,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
     PromptReference,
-    StructuredLLMResult,
 )
 
 GraphState = Mapping[str, object]
@@ -115,17 +114,6 @@ def merge_trace_context(
     }
 
 
-def record_llm_result(
-    local_state: AgentLocalStateV1,
-    llm_result: StructuredLLMResult,
-) -> AgentLocalStateV1:
-    updated = dict(local_state)
-    candidate = llm_result.structured_output
-    updated["candidate_output"] = candidate if isinstance(candidate, dict) else None
-    updated["schema_repair_count"] = max(0, llm_result.structured_output_attempts - 1)
-    return cast(AgentLocalStateV1, updated)
-
-
 def ensure_llm_call_budget(
     state: GraphState,
     *,
@@ -152,19 +140,8 @@ def ensure_llm_call_budget(
     bind_provider_dispatch_budget(retry_budget)
 
 
-def consume_llm_call_budget(
-    state: GraphState,
-    *,
-    provider_calls_consumed: int = 1,
-) -> RunBudgetV2:
-    """Checkpoint the usage already consumed at provider dispatch.
-
-    ``provider_calls_consumed`` is retained only for source compatibility with
-    older node callers and is intentionally *not* an accounting authority.
-    Successful ``StructuredLLMResult`` metadata can no longer increment the
-    durable budget; it merely remains available for trace/latency reporting.
-    """
-    del provider_calls_consumed
+def consume_llm_call_budget(state: GraphState) -> RunBudgetV2:
+    """Checkpoint usage already consumed at the provider dispatch authority."""
     retry_budget = cast(RunBudgetV2, state["retry_budget"])
     return merge_provider_dispatch_usage(retry_budget)
 

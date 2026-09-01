@@ -1,4 +1,3 @@
-from json import dumps, loads
 from pathlib import Path
 
 import pytest
@@ -207,53 +206,6 @@ def test_bounded_answer_only_completion_persists_and_replays_partial(
             "SELECT terminal_result_kind FROM runs WHERE id='run-1';"
         ).fetchone()
         assert run["terminal_result_kind"] == "PARTIAL"
-        assert (
-            connection.execute(
-                "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"
-            ).fetchone()[0]
-            == 1
-        )
-    finally:
-        connection.close()
-
-
-def test_legacy_receipt_replay_restores_durable_terminal_result_kind(
-    answer_only_database: Path,
-) -> None:
-    service = CompleteAnswerOnlyRunHandler(
-        unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
-        now_ms=lambda: 1000,
-        message_id_factory=lambda: "message-legacy",
-    )
-    command = CompleteAnswerOnlyRunCommand(
-        command_id="command-legacy",
-        conversation_id="conversation-1",
-        run_id="run-1",
-        assistant_message="done",
-        expected_version=0,
-        request_hash="l" * 64,
-    )
-    first = service(command)
-
-    connection = connect_sqlite(answer_only_database)
-    try:
-        row = connection.execute(
-            "SELECT response_json FROM command_receipts WHERE command_id='command-legacy';"
-        ).fetchone()
-        payload = loads(row["response_json"])
-        payload.pop("result_kind")
-        connection.execute(
-            "UPDATE command_receipts SET response_json=? WHERE command_id='command-legacy';",
-            (dumps(payload, sort_keys=True),),
-        )
-    finally:
-        connection.close()
-
-    replay = service(command)
-
-    assert first.result_kind == replay.result_kind == "SUCCESS"
-    connection = connect_sqlite(answer_only_database)
-    try:
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM messages WHERE run_id='run-1' AND role='ASSISTANT';"

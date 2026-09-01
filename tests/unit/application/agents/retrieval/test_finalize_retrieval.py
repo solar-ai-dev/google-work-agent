@@ -1,6 +1,6 @@
 from typing import cast
 
-from tests.unit.application.workflows.test_context_retrieval import (
+from tests.support.context_retrieval import (
     _acquisition_result,
     _intent,
     _selection_output,

@@ -8,57 +8,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import Resourc
 
 
 @dataclass(frozen=True, slots=True)
-class ClaimWriteActionCommand:
-    command_id: str
-    request_hash: str
-    action_id: str
-    expected_version: int
-    source_snapshot: dict[str, object]
-    attempt_id: str
-    nonce: str
-
-
-@dataclass(frozen=True, slots=True)
-class CompletedWriteAction:
-    resource_ref_id: str
-    response_metadata_json: str
-    snapshot_projection_json: str
-
-
-@dataclass(frozen=True, slots=True)
-class StoreWriteActionSuccessCommand:
-    command_id: str
-    request_hash: str
-    action_id: str
-    attempt_id: str
-    expected_action_version: int
-    expected_attempt_version: int
-    snapshot: ResourceSnapshot
-
-
-@dataclass(frozen=True, slots=True)
-class MarkWriteActionFailedCommand:
-    command_id: str
-    request_hash: str
-    action_id: str
-    attempt_id: str
-    expected_action_version: int
-    expected_attempt_version: int
-    error_code: str
-    error_detail: str
-
-
-@dataclass(frozen=True, slots=True)
-class VerifyWriteActionCommand:
-    command_id: str
-    request_hash: str
-    action_id: str
-    attempt_id: str
-    expected_action_version: int
-    verification_id: str
-
-
-@dataclass(frozen=True, slots=True)
 class WriteActionResponse:
     applied: bool
     result_code: str

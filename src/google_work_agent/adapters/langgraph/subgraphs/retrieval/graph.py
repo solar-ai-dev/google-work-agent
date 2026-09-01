@@ -45,7 +45,7 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentLocalStateV1,
 )
@@ -73,7 +73,7 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.nodes.select_evide
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
     ContextRetrievalInputState,
     ContextRetrievalLocalState,
-    RetrievalStateV2,
+    RetrievalState,
 )
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
@@ -94,9 +94,7 @@ from google_work_agent.application.agents.retrieval.contracts.query_attempt impo
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     RetrievalConstraintKindV1,
     RetrievalQueryPlanV2,
-)
-from google_work_agent.application.agents.retrieval.contracts.query_plan import (
-    SourceFetchPlanV1 as CanonicalSourceFetchPlanV1,
+    SourceFetchPlanV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
     RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
@@ -192,7 +190,7 @@ ConfirmInline = Callable[
 def _resolve_availability_from_reads(
     *,
     acquisition_result: AcquisitionResultV1,
-    canonical_plans: Mapping[str, CanonicalSourceFetchPlanV1],
+    canonical_plans: Mapping[str, SourceFetchPlanV1],
 ) -> list[AvailableIntervalV1]:
     """Project FreeBusy reads into provider-neutral availability Local State."""
     freebusy_resources = [
@@ -254,9 +252,8 @@ def _runtime_route_constraint_policies(
 ) -> dict[str, RouteConstraintPolicy]:
     """Current read executor capability projection, kept outside planner authority.
 
-    The legacy Google read port can deterministically execute keyword search
-    only.  Other V2 semantic kinds remain valid contracts but require the
-    later provider-translation migration; they are not silently discarded.
+    The current Google read port supports only the listed deterministic query
+    constraints. Unsupported semantic kinds fail closed before dispatch.
     """
     supported_by_resource = {
         "EMAIL": frozenset(
@@ -498,7 +495,7 @@ class RetrievalSubgraph:
         ensure_llm_call_budget(state)
         patch = select_evidence_node(
             cast(
-                RetrievalStateV2,
+                RetrievalState,
                 {
                     "request_intent": request_intent,
                     "rag_candidates": rag_candidates,
@@ -529,7 +526,7 @@ class RetrievalSubgraph:
                 "rag_candidates": rag_candidates,
                 "evidence_selection": selection,
                 "retry_budget": consume_llm_call_budget(
-                    {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+                    {**state, "retry_budget": revised_retry_budget}
                 ),
                 "trace_context": merge_trace_context(
                     state,
@@ -690,7 +687,7 @@ class RetrievalSubgraph:
         ensure_llm_call_budget(state)
         patch = assess_sufficiency_node(
             cast(
-                RetrievalStateV2,
+                RetrievalState,
                 {
                     "request_intent": _require_state_value(
                         state["request_intent"], "request_intent"
@@ -711,10 +708,7 @@ class RetrievalSubgraph:
         )
         sufficiency_result = cast(SufficiencyResultV2, patch["sufficiency"])
         llm_provider_result: dict[str, object] = {"structured_output_attempts": 1}
-        retry_budget = consume_llm_call_budget(
-            state,
-            provider_calls_consumed=cast(int, llm_provider_result["structured_output_attempts"]),
-        )
+        retry_budget = consume_llm_call_budget(state)
         return sufficiency_result, llm_provider_result, retry_budget
 
     def _assess_sufficiency_node(
@@ -914,13 +908,13 @@ class RetrievalSubgraph:
             **state,
             "query_plan": query_plan,
             "retry_budget": consume_llm_call_budget(
-                {**state, "retry_budget": revised_retry_budget}, provider_calls_consumed=1
+                {**state, "retry_budget": revised_retry_budget}
             ),
         }
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         plans = cast(
-            list[CanonicalSourceFetchPlanV1],
+            list[SourceFetchPlanV1],
             list(state.get(CONTEXT_CANONICAL_PLANS_KEY, {}).values()),
         )
         route_plan = _require_state_value(state.get("tool_route_plan"), "tool_route_plan")
@@ -1084,12 +1078,12 @@ class RetrievalSubgraph:
     def _plans_for_cached_results(
         state: ContextRetrievalLocalState,
         *,
-        plans: list[CanonicalSourceFetchPlanV1],
+        plans: list[SourceFetchPlanV1],
         bindings: Mapping[str, object],
         handles: list[str],
-    ) -> list[CanonicalSourceFetchPlanV1]:
+    ) -> list[SourceFetchPlanV1]:
         prior = cast(
-            Mapping[str, CanonicalSourceFetchPlanV1],
+            Mapping[str, SourceFetchPlanV1],
             state.get(CONTEXT_CANONICAL_PLANS_KEY, {}),
         )
         by_route = {**prior, **{plan["route_id"]: plan for plan in plans}}
@@ -1155,7 +1149,7 @@ class RetrievalSubgraph:
                     },
                 )
             )
-            canonical_plans = cast(list[CanonicalSourceFetchPlanV1], patch["source_fetch_plans"])
+            canonical_plans = cast(list[SourceFetchPlanV1], patch["source_fetch_plans"])
             return {
                 **state,
                 CONTEXT_CANONICAL_PLANS_KEY: {plan["route_id"]: plan for plan in canonical_plans},
@@ -1186,7 +1180,7 @@ class RetrievalSubgraph:
                     },
                 )
             )
-            canonical_plans = cast(list[CanonicalSourceFetchPlanV1], patch["source_fetch_plans"])
+            canonical_plans = cast(list[SourceFetchPlanV1], patch["source_fetch_plans"])
         except Exception:
             return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
         operations = {plan["operation_kind"] for plan in canonical_plans}
@@ -1392,7 +1386,7 @@ class RetrievalSubgraph:
         }:
             patch = finalize_retrieval_node(
                 cast(
-                    RetrievalStateV2,
+                    RetrievalState,
                     {
                         "request_intent": _require_state_value(
                             state["request_intent"], "request_intent"
@@ -1454,6 +1448,9 @@ class RetrievalSubgraph:
         )
         if retrieval_result is not None:
             merged["retrieval_result"] = retrieval_result
+            merged["acquisition_result"] = sanitize_acquisition_result(
+                _require_state_value(state["acquisition_result"], "acquisition_result")
+            )
             merged["pending_user_retrieval_need"] = None
             merged["exclusion_obligation_segment_ids"] = []
         merged.pop(CONTEXT_AGENT_LOCAL_KEY, None)
@@ -1487,7 +1484,6 @@ class RetrievalSubgraph:
         merged.pop("evidence_drafts", None)
         merged.pop("llm_provider_result", None)
         merged.pop("source_fetch_plans", None)
-        merged.pop("acquisition_result", None)
         return cast(ContextRetrievalLocalState, merged)
 
     def _bounded_read_result_summaries(

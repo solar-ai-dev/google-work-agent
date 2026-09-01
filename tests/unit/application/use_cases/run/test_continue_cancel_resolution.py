@@ -1,6 +1,5 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
-from importlib import import_module
 from types import SimpleNamespace
 from typing import Self
 
@@ -9,13 +8,6 @@ from google_work_agent.application.use_cases.run.continue_cancel_resolution impo
     ContinueCancelResolutionHandler,
 )
 from google_work_agent.domain.run.model import RunStatusV1
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.run.continue_cancel_resolution")
-        is not None
-    )
 
 
 def test_expired_action_is_settled_before_finalize_cancel() -> None:

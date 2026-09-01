@@ -22,12 +22,12 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
 )
-from tests.integration.persistence.test_corrective_plan_persistence import (
+from tests.support.checkpoint import sqlite_checkpoint
+from tests.support.corrective_plan_persistence import (
     _aggregate_snapshot,
     _persist,
     _prepare,
 )
-from tests.support.checkpoint import sqlite_checkpoint
 from tests.support.resolve_recovery_adapter import (
     RecoveryResolutionKind,
     ResolveMismatchRecoveryCommand,

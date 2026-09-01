@@ -8,6 +8,7 @@ from urllib.request import HTTPRedirectHandler, build_opener
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.fakes.llm import DisabledLlmRuntimeStatusPort
 from tests.support.mcp_manifest import build_manifest_payload
 
 from google_work_agent.adapters.connectors.google.workspace.composition import (
@@ -49,7 +50,9 @@ from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.security.access_guard import LocalApiAccessGuard
 from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.connection.get_connection_status import (
     GetConnectionStatusHandler,
 )
@@ -63,25 +66,11 @@ from google_work_agent.application.use_cases.runtime_status.get_runtime_status i
     GetRuntimeStatusHandler,
 )
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import (
     ReadinessReport,
     ReadinessState,
 )
-
-
-class _CoordinatorStub:
-    def start(self) -> None:
-        return None
-
-    def stop(self) -> None:
-        return None
-
-
-class _LlmStatusStub:
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
-        return LlmRuntimeStatusV1(1, provider, False, "DISABLED", None, None)
 
 
 def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> None:
@@ -210,7 +199,7 @@ def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> No
         get_runtime_status_handler=GetRuntimeStatusHandler(
             runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
             oauth=provider,
-            llm_status=_LlmStatusStub(),
+            llm_status=DisabledLlmRuntimeStatusPort(),
             circuits=ProcessComponentCircuitStateAdapter(),
         ),
     )

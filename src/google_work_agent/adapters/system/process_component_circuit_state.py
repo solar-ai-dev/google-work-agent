@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from threading import RLock
 
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStatePort,
     ComponentCircuitStateV1,
 )
@@ -16,7 +16,7 @@ from google_work_agent.ports.system.component_circuit_state_port import (
 class ProcessComponentCircuitStateAdapter(ComponentCircuitStatePort):
     failure_threshold: int = 3
     open_duration_ms: int = 30_000
-    _states: dict[ComponentCircuitKeyV1, ComponentCircuitStateV1] = field(
+    _states: dict[ComponentCircuitKey, ComponentCircuitStateV1] = field(
         default_factory=dict, init=False
     )
     _lock: RLock = field(default_factory=RLock, init=False)
@@ -25,12 +25,12 @@ class ProcessComponentCircuitStateAdapter(ComponentCircuitStatePort):
         if self.failure_threshold <= 0 or self.open_duration_ms <= 0:
             raise ValueError("circuit threshold and open duration must be positive")
 
-    def get_state(self, key: ComponentCircuitKeyV1) -> ComponentCircuitStateV1:
+    def get_state(self, key: ComponentCircuitKey) -> ComponentCircuitStateV1:
         with self._lock:
             return self._states.get(key, _closed(key))
 
     def record_technical_failure(
-        self, key: ComponentCircuitKeyV1, failure_code: str, now_ms: int
+        self, key: ComponentCircuitKey, failure_code: str, now_ms: int
     ) -> ComponentCircuitStateV1:
         if not failure_code.strip():
             raise ValueError("failure_code is required")
@@ -49,7 +49,7 @@ class ProcessComponentCircuitStateAdapter(ComponentCircuitStatePort):
             self._states[key] = state
             return state
 
-    def record_success(self, key: ComponentCircuitKeyV1, now_ms: int) -> ComponentCircuitStateV1:
+    def record_success(self, key: ComponentCircuitKey, now_ms: int) -> ComponentCircuitStateV1:
         del now_ms
         with self._lock:
             state = _closed(key)
@@ -57,7 +57,7 @@ class ProcessComponentCircuitStateAdapter(ComponentCircuitStatePort):
             return state
 
 
-def _closed(key: ComponentCircuitKeyV1) -> ComponentCircuitStateV1:
+def _closed(key: ComponentCircuitKey) -> ComponentCircuitStateV1:
     return ComponentCircuitStateV1(
         schema_version=1,
         key=key,

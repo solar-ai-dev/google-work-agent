@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.domain.action.model import ActionStatusV1, EffectType
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
@@ -144,11 +144,6 @@ class RequireReauthHandler:
                     binding_is_current=binding_is_current,
                     action_statuses=tuple(ActionStatusV1(action.status) for action in actions),
                     attempt_statuses=tuple(attempt.status for attempt in attempts),
-                    has_legacy_read_executing=any(
-                        EffectType(action.effect_type) is EffectType.READ
-                        and ActionStatusV1(action.status) is ActionStatusV1.EXECUTING
-                        for action in actions
-                    ),
                     delivery_uncertain=any(
                         ActionStatusV1(action.status)
                         in {ActionStatusV1.EXECUTED, ActionStatusV1.UNKNOWN_RESULT}
@@ -244,6 +239,4 @@ class RequireReauthHandler:
         return response
 
 
-RequireReauthResult = WriteRunResponse
-
-__all__ = ["RequireReauthCommand", "RequireReauthHandler", "RequireReauthResult"]
+__all__ = ["RequireReauthCommand", "RequireReauthHandler"]

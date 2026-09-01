@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStatePort,
     ComponentCircuitStateV1,
 )
@@ -13,7 +13,7 @@ from google_work_agent.ports.system.component_circuit_state_port import (
 @dataclass(frozen=True, slots=True)
 class RecordComponentCallResultCommandV1:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     outcome: Literal["SUCCESS", "TECHNICAL_FAILURE"]
     failure_code: str | None = None
     now_ms: int = 0
@@ -22,7 +22,7 @@ class RecordComponentCallResultCommandV1:
 @dataclass(frozen=True, slots=True)
 class RecordComponentCallResultResultV1:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     state: ComponentCircuitStateV1
     transition: Literal["UNCHANGED", "OPENED", "CLOSED", "REOPENED"]
 

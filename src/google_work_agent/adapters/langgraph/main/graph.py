@@ -12,7 +12,7 @@ from google_work_agent.adapters.langgraph.checkpoint_secret_boundary import (
     SecretBoundaryCheckpointer,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 
 
 @dataclass(frozen=True, slots=True)

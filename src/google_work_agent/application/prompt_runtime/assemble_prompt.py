@@ -14,7 +14,7 @@ from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input
     PromptRuntimeInputContractError,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 
 
 class PromptAssemblyError(ValueError):

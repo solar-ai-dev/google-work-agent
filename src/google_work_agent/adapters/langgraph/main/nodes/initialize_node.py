@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Protocol
 
-
-class StartAnalysisResult(Protocol):
-    applied: bool
-    current_status: str
+from google_work_agent.application.use_cases.run.start_analysis import StartAnalysisResult
 
 
 def initialize_node(

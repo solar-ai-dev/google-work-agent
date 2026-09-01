@@ -25,7 +25,7 @@ def test_retrieval_state_v2_declares_exact_semantic_fields() -> None:
     }
     annotations = __import__(
         "google_work_agent.adapters.langgraph.subgraphs.retrieval.state",
-        fromlist=["RetrievalStateV2"],
-    ).RetrievalStateV2.__annotations__
+        fromlist=["RetrievalState"],
+    ).RetrievalState.__annotations__
     assert set(annotations) == expected
     assert "operation_inputs" not in source

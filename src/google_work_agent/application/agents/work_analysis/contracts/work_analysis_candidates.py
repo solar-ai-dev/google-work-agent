@@ -6,15 +6,11 @@ from typing import Literal, NotRequired, TypedDict
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAmbiguityV1,
-    WorkFactV1,
-    WorkRelationV1,
     WorkRiskV1,
 )
 from google_work_agent.ports.system.contracts.workflow_signal import (
     RetrievalNeedV1,
 )
-
-WorkRelationCandidateV1 = WorkRelationV1
 
 
 class WorkAnalysisSemanticInputV1(TypedDict):
@@ -55,12 +51,4 @@ class OperationalRiskAssessmentV1(TypedDict):
     risks: list[WorkRiskV1]
     action_necessity_candidate: Literal["REQUIRED", "NOT_REQUIRED", "UNDETERMINED"]
     action_necessity_reason: str | None
-    evidence_refs: list[str]
-
-
-class WorkAnalysisAssemblyInputV1(TypedDict):
-    work_facts: list[WorkFactV1]
-    validated_relations: list[WorkRelationV1]
-    ambiguities: list[WorkAmbiguityV1]
-    risks: list[WorkRiskV1]
     evidence_refs: list[str]

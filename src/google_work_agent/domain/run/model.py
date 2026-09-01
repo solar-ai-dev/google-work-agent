@@ -76,7 +76,6 @@ class RunCommand(StrEnum):
     RESUME_CONFIRMATION = "RESUME_CONFIRMATION"
     BLOCK_RUN = "BLOCK_RUN"
     COMPLETE_ANSWER_ONLY_RUN = "COMPLETE_ANSWER_ONLY_RUN"
-    COMPLETE_READ_ONLY_RUN = "COMPLETE_READ_ONLY_RUN"
     COMPLETE_WRITE_RUN = "COMPLETE_WRITE_RUN"
     REQUEST_CANCEL = "REQUEST_CANCEL"
     FINALIZE_CANCEL = "FINALIZE_CANCEL"
@@ -135,8 +134,6 @@ def next_allowed_run_commands(current_status: RunStatusV1) -> tuple[RunCommand, 
         RunStatusV1.PLANNING,
     }:
         allowed.append(RunCommand.COMPLETE_ANSWER_ONLY_RUN)
-    if current_status is RunStatusV1.EXECUTING:
-        allowed.append(RunCommand.COMPLETE_READ_ONLY_RUN)
     if current_status in {
         RunStatusV1.CREATED,
         RunStatusV1.ANALYZING,

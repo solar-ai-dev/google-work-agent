@@ -32,7 +32,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetProfile,
     build_default_run_budget,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
 )
@@ -117,7 +117,7 @@ def test_consume_merges_usage_counted_at_real_dispatches() -> None:
     ensure_llm_call_budget(state, provider_calls_requested=2)
     account_provider_dispatch()
     account_provider_dispatch()
-    updated = consume_llm_call_budget(state, provider_calls_consumed=2)
+    updated = consume_llm_call_budget(state)
 
     assert updated["llm_calls_used"] == 5
     # RunBudgetV2 itself is the single mutable dispatch authority.
@@ -134,7 +134,7 @@ def test_budget_state_is_carried_entirely_by_the_caller_not_by_any_runtime_insta
 
     ensure_llm_call_budget(state)
     account_provider_dispatch()
-    consumed = consume_llm_call_budget(state, provider_calls_consumed=1)
+    consumed = consume_llm_call_budget(state)
     assert consumed["llm_calls_used"] == 14
 
     # Simulate "checkpoint restore into a freshly constructed runtime":

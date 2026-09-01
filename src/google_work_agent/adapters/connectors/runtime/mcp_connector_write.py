@@ -12,7 +12,9 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
     ConnectorWriteResultV1,
 )
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort
 
 _WRITE_EFFECTS = frozenset({"CREATE", "UPDATE", "SEND", "DELETE"})

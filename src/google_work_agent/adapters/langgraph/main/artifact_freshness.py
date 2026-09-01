@@ -1,17 +1,4 @@
-"""Canonical downstream-artifact freshness compatibility boundary.
-
-Until Main State V2 moves every downstream artifact onto ``meta.based_on``
-freshness, the legacy Supervisor still clears downstream fields explicitly on
-route reconsideration. It omitted the canonical ``retrieval_result`` field,
-leaving an old RetrievalResult alive while Tool Route was being recomputed.
-
-This release wrapper fixes only that omission. It also closes write-runtime
-compatibility seams without changing Main State/Supervisor authority: durable
-cancel checks use the command-receipt repository, recovery completion returns
-its CommandResult-backed response, terminal cancellation explicitly discards
-run-scoped transient stores, and corrective-plan recovery resumes through the
-registered production Planning route.
-"""
+"""Canonical downstream-artifact freshness and runtime safety boundary."""
 
 from __future__ import annotations
 
@@ -31,8 +18,11 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
+    RunScopedResourceIdentityReader,
+)
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import (
     current_plan_tuple,
@@ -65,11 +55,16 @@ class _ArtifactFreshnessSuper(Protocol):
 
     def recover_open_run(self, request: WorkflowRecoveryRequest) -> WorkflowInvocationResult: ...
 
-    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str: ...
+    def _persist_write_plan(
+        self,
+        state: GraphState,
+        plan: ActionPlanDraftV2,
+        resource_identity_reader: RunScopedResourceIdentityReader,
+    ) -> str: ...
 
 
 class ArtifactFreshnessMixin:
-    """Release runtime with canonical freshness and write safety seams."""
+    """Enforce canonical freshness, recovery, cancellation, and corrective routing."""
 
     if TYPE_CHECKING:
         _graph: Any
@@ -282,7 +277,7 @@ class ArtifactFreshnessMixin:
                 "__logical_target__": SupervisorTarget.SOLUTION_PLANNING.value,
                 "__target__": translation.node,
                 "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
-                "plan_draft": None,
+                "planning_result": None,
                 "plan_review": None,
                 "approved_plan_id": None,
                 "execution_summary": None,
@@ -297,11 +292,18 @@ class ArtifactFreshnessMixin:
             run_id=request.run_id,
         )
 
-    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
+    def _persist_write_plan(
+        self,
+        state: GraphState,
+        plan: ActionPlanDraftV2,
+        resource_identity_reader: RunScopedResourceIdentityReader,
+    ) -> str:
         """Persist ordinary replans normally, or continue one reserved corrective revision."""
         reserved_plan_id = state.get("__reserved_corrective_plan_id__")
         if not isinstance(reserved_plan_id, str) or not reserved_plan_id:
-            return cast(_ArtifactFreshnessSuper, super())._persist_write_plan(state, plan_draft)
+            return cast(_ArtifactFreshnessSuper, super())._persist_write_plan(
+                state, plan, resource_identity_reader
+            )
 
         with self._unit_of_work_factory() as unit_of_work:
             reserved_plan = load_plan_record(unit_of_work.plans, reserved_plan_id)
@@ -311,7 +313,8 @@ class ArtifactFreshnessMixin:
         persisted_plan_id = persist_reachable_corrective_write_plan(
             self,
             state=state,
-            plan_draft=plan_draft,
+            plan=plan,
+            resource_identity_reader=resource_identity_reader,
             reserved_plan=reserved_plan,
         )
         # One-shot marker is consumed only after the helper has reached either

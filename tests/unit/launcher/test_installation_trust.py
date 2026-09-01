@@ -47,7 +47,7 @@ def _write_signed_installation(root: Path) -> bytes:
         "api_contract_version": "1",
         "mcp_schema_version": "2026-08-07.p0",
         "policy_version": "2026-08-06.p0",
-        "database_migration_version": "0018",
+        "database_migration_version": "0001",
         "files": files,
     }
     manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()

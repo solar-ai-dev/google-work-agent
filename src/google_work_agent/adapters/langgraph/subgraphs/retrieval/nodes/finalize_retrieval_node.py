@@ -13,11 +13,11 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from ..projections.finalize_retrieval_projection import (
     project_finalize_retrieval_input,
 )
-from ..state import RetrievalStateV2
+from ..state import RetrievalState
 
 
 def finalize_retrieval_node(
-    state: RetrievalStateV2,
+    state: RetrievalState,
     *,
     artifact_id: str,
     tool_route_plan: ToolRoutePlanV2,

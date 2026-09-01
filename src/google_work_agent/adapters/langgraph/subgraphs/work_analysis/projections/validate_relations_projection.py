@@ -5,18 +5,18 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     CurrentSourceRelationV1,
-    WorkRelationCandidateV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
+    WorkRelationV1,
 )
 
 
 class ValidateRelationsInput(TypedDict):
     work_facts: list[WorkFactV1]
-    entity_relation_candidates: list[WorkRelationCandidateV1]
-    temporal_dependency_candidates: list[WorkRelationCandidateV1]
-    duplicate_conflict_candidates: list[WorkRelationCandidateV1]
+    entity_relation_candidates: list[WorkRelationV1]
+    temporal_dependency_candidates: list[WorkRelationV1]
+    duplicate_conflict_candidates: list[WorkRelationV1]
     current_source_relations: list[CurrentSourceRelationV1]
     allowed_evidence_refs: set[str]
 

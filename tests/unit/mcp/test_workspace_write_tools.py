@@ -17,6 +17,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.credentia
     GoogleOAuthSettings,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
 SESSION_KEY = "11" * 32
 SERVICE_INSTANCE_ID = "svc-test-1"
@@ -252,7 +253,7 @@ def test_missing_claim_context_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
         )
 
     assert exc_info.value.safe_code == "CLAIM_MISSING"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_malformed_claim_context_missing_field_is_rejected(
@@ -274,7 +275,7 @@ def test_malformed_claim_context_missing_field_is_rejected(
         )
 
     assert exc_info.value.safe_code == "CLAIM_MISSING"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_invalid_signature_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -294,7 +295,7 @@ def test_invalid_signature_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert exc_info.value.safe_code == "CLAIM_INVALID_SIGNATURE"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_expired_claim_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -317,7 +318,7 @@ def test_expired_claim_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     assert exc_info.value.safe_code == "CLAIM_EXPIRED"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_ttl_exceeding_maximum_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -339,7 +340,7 @@ def test_ttl_exceeding_maximum_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
         )
 
     assert exc_info.value.safe_code == "CLAIM_TTL_EXCEEDED"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_wrong_service_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -361,7 +362,7 @@ def test_wrong_service_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
         )
 
     assert exc_info.value.safe_code == "CLAIM_SERVICE_INSTANCE_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_wrong_mcp_process_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -383,7 +384,7 @@ def test_wrong_mcp_process_instance_is_rejected(monkeypatch: pytest.MonkeyPatch)
         )
 
     assert exc_info.value.safe_code == "CLAIM_PROCESS_INSTANCE_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_wrong_tool_binding_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -402,7 +403,7 @@ def test_wrong_tool_binding_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None
         )
 
     assert exc_info.value.safe_code == "CLAIM_TOOL_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_wrong_execution_arguments_hash_is_rejected(
@@ -426,7 +427,7 @@ def test_wrong_execution_arguments_hash_is_rejected(
         )
 
     assert exc_info.value.safe_code == "CLAIM_ARGUMENTS_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_nonce_reuse_is_rejected_and_google_is_called_at_most_once(
@@ -468,7 +469,7 @@ def test_nonce_reuse_is_rejected_and_google_is_called_at_most_once(
         )
 
     assert exc_info.value.safe_code == "CLAIM_TOKEN_REUSED"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
     assert len(calls) == 1
 
 
@@ -508,7 +509,7 @@ def test_tool_not_available_without_claim_infrastructure(
         )
 
     assert exc_info.value.safe_code == "CLAIM_SERVICE_UNAVAILABLE"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 # --------------------------------------------------------------------------
@@ -619,7 +620,7 @@ def test_tasks_create_task_claim_rejection_dispatches_zero_calls(
         )
 
     assert exc_info.value.safe_code == "CLAIM_ARGUMENTS_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_tasks_update_task_missing_claim_dispatches_zero_calls(
@@ -640,7 +641,7 @@ def test_tasks_update_task_missing_claim_dispatches_zero_calls(
         )
 
     assert exc_info.value.safe_code == "CLAIM_MISSING"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 # --------------------------------------------------------------------------
@@ -893,7 +894,7 @@ def test_tasks_delete_task_claim_rejection_dispatches_zero_calls(
         )
 
     assert exc_info.value.safe_code == "CLAIM_TOOL_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_calendar_create_event_claim_rejection_dispatches_zero_calls(
@@ -920,7 +921,7 @@ def test_calendar_create_event_claim_rejection_dispatches_zero_calls(
         )
 
     assert exc_info.value.safe_code == "CLAIM_TOOL_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_calendar_delete_event_nonce_reuse_dispatches_at_most_once(

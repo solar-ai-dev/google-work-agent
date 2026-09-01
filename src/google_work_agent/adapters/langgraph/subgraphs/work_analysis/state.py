@@ -23,7 +23,6 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     CurrentSourceRelationV1,
     InformationGapAssessmentV1,
     OperationalRiskAssessmentV1,
-    WorkRelationCandidateV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAmbiguityV1,
@@ -59,9 +58,9 @@ class WorkAnalysisLocalState(GraphState):
     confirmation_response: NotRequired[dict[str, object]]
     current_source_relations: NotRequired[list[CurrentSourceRelationV1]]
     fact_candidates: NotRequired[list[WorkFactV1]]
-    entity_relation_candidates: NotRequired[list[WorkRelationCandidateV1]]
-    temporal_dependency_candidates: NotRequired[list[WorkRelationCandidateV1]]
-    duplicate_conflict_candidates: NotRequired[list[WorkRelationCandidateV1]]
+    entity_relation_candidates: NotRequired[list[WorkRelationV1]]
+    temporal_dependency_candidates: NotRequired[list[WorkRelationV1]]
+    duplicate_conflict_candidates: NotRequired[list[WorkRelationV1]]
     validated_relations: NotRequired[list[WorkRelationV1]]
     relation_validation_ambiguities: NotRequired[list[WorkAmbiguityV1]]
     ambiguity_candidates: NotRequired[list[WorkAmbiguityV1]]
@@ -82,9 +81,9 @@ class WorkAnalysisStateV2(TypedDict, total=False):
     request_intent: RequestIntentV2
     evidence_refs: list[str]
     fact_candidates: list[WorkFactV1]
-    entity_relation_candidates: list[WorkRelationCandidateV1]
-    temporal_dependency_candidates: list[WorkRelationCandidateV1]
-    duplicate_conflict_candidates: list[WorkRelationCandidateV1]
+    entity_relation_candidates: list[WorkRelationV1]
+    temporal_dependency_candidates: list[WorkRelationV1]
+    duplicate_conflict_candidates: list[WorkRelationV1]
     validated_relations: list[WorkRelationV1]
     relation_validation_ambiguities: list[WorkAmbiguityV1]
     ambiguity_candidates: list[WorkAmbiguityV1]

@@ -11,10 +11,6 @@ class ApprovalStatusV1(StrEnum):
     REVOKED = "REVOKED"
 
 
-class ApprovalCommand(StrEnum):
-    EXPIRE_APPROVAL = "EXPIRE_APPROVAL"
-
-
 @dataclass(frozen=True, slots=True)
 class Approval:
     id: str

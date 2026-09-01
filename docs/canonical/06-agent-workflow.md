@@ -213,7 +213,7 @@ CREATE_CORRECTIVE_PLAN  → MAIN_CONTROL:PLANNING_ENTRY
 `WorkflowControlEnvelopeV1`은 Main State history가 아니라 **한 번 적용되는 external-control input**이다. Workflow가 소유하는 불변조건은 다음이다.
 
 - Background continuation은 durable handoff/admission을 통해서만 시작하고 API/Application이 LangGraph를 직접 invoke하지 않는다. Persistence CAS와 repository method shape는 `04/07`이 소유한다.
-- Control patch는 resumed owner I/O보다 먼저 checkpoint에 materialize된다. `EXCLUDE_EVIDENCE`는 `RetrievalStateV2.exclusion_obligation_segment_ids`, `RETRIEVE_MORE`는 `RetrievalStateV2.pending_user_retrieval_need`에 typed fact를 남긴다. Payload가 이후 clear되어도 이 checkpoint fact는 restart-safe하다.
+- Control patch는 resumed owner I/O보다 먼저 checkpoint에 materialize된다. `EXCLUDE_EVIDENCE`는 `RetrievalState.exclusion_obligation_segment_ids`, `RETRIEVE_MORE`는 `RetrievalState.pending_user_retrieval_need`에 typed fact를 남긴다. Payload가 이후 clear되어도 이 checkpoint fact는 restart-safe하다.
 - 동일 handoff가 이미 적용된 checkpoint를 재개할 때 control payload를 다시 주입하지 않는다. Crash 후 owner Node/read/LLM은 idempotent하게 replay될 수 있지만 external control injection과 Write authority는 중복되지 않는다.
 - descendant checkpoint는 active handoff lineage를 release boundary까지 이어서 same continuation의 restart 위치를 식별한다. Exact persisted fields와 admission settlement fence는 `04/07`을 따른다.
 - raw HTTP request, `interrupt_id`, checkpoint metadata, registered resume-target metadata는 Product Prompt input이 아니다.
@@ -442,7 +442,7 @@ class TerminalCommitIntentV1:
     terminal_message: TerminalAssistantMessageInputV1
     reason_codes: list[str]
 
-class MultiAgentGraphStateV2:
+class GraphState:
     schema_version: Literal[2]
     run_id: str
     conversation_id: str
@@ -560,7 +560,7 @@ WorkflowSignalV1 = ConfirmationRequiredV1 | RouteReconsiderationRequiredV1 | Ret
 불변조건:
 
 - `RetrievalNeedV1.required_information`은 비어 있지 않은 단일 정보 요구를 표현하고 `reason_codes`는 최소 1개를 가진다. 동일 Signal 안의 Need는 정규화한 `required_information + reason_codes` 기준으로 stable dedup한다.
-- `ContextAdjustmentV1`은 Agent가 생성하는 `WorkflowSignalV1`이 아니라 `run.adjust_context`가 검증해 같은 Run 실행에 한 번만 전달하는 external control projection이다. `EXCLUDE_EVIDENCE`는 05가 소유하는 deterministic stable `segment_id` 중 current Preview membership이 검증된 값만 허용하고 `retrieval_need=null`; Retrieval owner는 handoff payload를 clear하기 전에 이 IDs를 `RetrievalStateV2.exclusion_obligation_segment_ids`에 materialize/checkpoint한다. `RETRIEVE_MORE`는 `excluded_segment_ids=[]`이고 `retrieval_need.reason_codes`에 `USER_CONTEXT_ADJUSTMENT`를 포함한다. Retrieval control patch는 이 need를 `RetrievalStateV2.pending_user_retrieval_need`에 checkpoint-commit하고 새 RetrievalResult revision finalize 시에만 clear한다.
+- `ContextAdjustmentV1`은 Agent가 생성하는 `WorkflowSignalV1`이 아니라 `run.adjust_context`가 검증해 같은 Run 실행에 한 번만 전달하는 external control projection이다. `EXCLUDE_EVIDENCE`는 05가 소유하는 deterministic stable `segment_id` 중 current Preview membership이 검증된 값만 허용하고 `retrieval_need=null`; Retrieval owner는 handoff payload를 clear하기 전에 이 IDs를 `RetrievalState.exclusion_obligation_segment_ids`에 materialize/checkpoint한다. `RETRIEVE_MORE`는 `excluded_segment_ids=[]`이고 `retrieval_need.reason_codes`에 `USER_CONTEXT_ADJUSTMENT`를 포함한다. Retrieval control patch는 이 need를 `RetrievalState.pending_user_retrieval_need`에 checkpoint-commit하고 새 RetrievalResult revision finalize 시에만 clear한다.
 - Supervisor는 Context Adjustment를 Retrieval owner로만 전달한다. 조정된 Retrieval revision이 생기면 `meta.based_on` freshness가 downstream 재실행 범위를 결정하며 Browser/Agent가 stale artifact를 직접 삭제하거나 수정하지 않는다.
 - `RetrievalNeedV1`에는 Connector·Resource 종류·Tool ID·Raw Query·Page Token·MCP Arguments를 넣지 않는다. Retrieval은 현재 active `InputRoutePlanV1.input_routes` 안에서만 Need를 소비하며, 해당 Route로 해결할 수 없거나 새 Route가 필요하면 `RouteReconsiderationRequiredV1`을 사용한다.
 - Work Analysis의 `assess_information_gaps`는 현재 IN Route로 해결 가능한 부족 정보만 `retrieval_needs`로 만들고 `NEEDS_MORE_DATA` 시 `RetrievalRequiredV1`으로 투영한다. Review `RETRIEVE_MORE`는 `EvidenceGapV1.required_information`의 각 항목을 `RetrievalNeedV1` 하나로 투영하고 해당 gap `code`를 `reason_codes`에 보존한다.
@@ -645,7 +645,7 @@ Application-readable current Retrieval revision is 07/04의 `RetrievalHeadV1` ty
 
 ### 2.3-A Agent Artifact가 아닌 Main State control/reference field
 
-`MultiAgentGraphStateV2`의 모든 필드가 Agent-owned business Artifact는 아니다. 다음 필드는 Agent가 임의 작성하는 의미 권위가 아니라 결정적 Runtime/Application의 control 또는 Domain 사실에 대한 reference/projection이다.
+`GraphState`의 모든 필드가 Agent-owned business Artifact는 아니다. 다음 필드는 Agent가 임의 작성하는 의미 권위가 아니라 결정적 Runtime/Application의 control 또는 Domain 사실에 대한 reference/projection이다.
 
 | Main State field | Graph writer / 갱신 경계 | 권위 규칙 |
 | --- | --- | --- |
@@ -1149,7 +1149,7 @@ START
 
 Local State 권위:
 
-- `RetrievalStateV2`의 정확한 schema는 **05 Context·Retrieval**이 소유한다. 06은 이를 다시 class로 정의하지 않는다.
+- `RetrievalState`의 정확한 schema는 **05 Context·Retrieval**이 소유한다. 06은 이를 다시 class로 정의하지 않는다.
 - 반드시 05의 `query_attempts`, `source_statuses`, `availability_results`, read/segment handles, RAG candidates, evidence selection, sufficiency, final result를 그대로 사용한다.
 - raw `user_request`를 Retrieval Local State/Prompt의 별도 semantic authority field로 추가하지 않는다. Retrieval Prompt는 current `RequestIntentV2`를 소비한다.
 
@@ -1157,7 +1157,7 @@ Node 입력 Projection:
 
 - `plan_query` initial: `request_intent + input_routes + retrieval_budget`
 - `plan_query` follow-up: initial projection + `current_round_no + prior QueryAttemptV1 + unresolved SufficiencyIssueV2 + bounded read-result summary`
-- `plan_query` user context adjustment: initial projection + checkpointed `RetrievalStateV2.pending_user_retrieval_need` for `RETRIEVE_MORE`; raw UI request나 already-cleared handoff payload를 다시 읽지 않는다. `EXCLUDE_EVIDENCE`는 Query Planner 입력이 아니라 `select_evidence`의 deterministic exclusion input이다.
+- `plan_query` user context adjustment: initial projection + checkpointed `RetrievalState.pending_user_retrieval_need` for `RETRIEVE_MORE`; raw UI request나 already-cleared handoff payload를 다시 읽지 않는다. `EXCLUDE_EVIDENCE`는 Query Planner 입력이 아니라 `select_evidence`의 deterministic exclusion input이다.
 - `build_query`: `query_plan + input_routes` — deterministic
 - `execute_read`: 검증된 Query + `allowed_read_tool_ids` — deterministic
 - `normalize_segments`: Read Result Handle — deterministic
@@ -1498,14 +1498,13 @@ ABSOLUTE_MAX_LLM_CALLS=24
 READ:
 
 ```
-publish_read_only_plan
-→ claim_read_action
-→ complete_read_action | fail_read_action
-→ finalize_read_action (successful read only)
-→ complete_read_only_run
+InputRoutePlanV1
+→ Retrieval subgraph
+→ ConnectorReadPort
+→ RetrievalResultV1
 ```
 
-READ Action은 Approval·ExecutionAttempt·Verification Row를 만들지 않는다.
+일반 Connector READ는 Retrieval이 소유하며 Action·Approval·ExecutionAttempt·Verification Row를 만들지 않는다. 별도 READ Action lifecycle과 호환 실행 체인은 존재하지 않는다.
 
 WRITE:
 
@@ -1658,7 +1657,7 @@ Repository placement는 16/06의 `NodeRegistry`와 `ResumeTargetRegistry`가 단
 전체 repository/build 순서는 `16 Repository Architecture`의 Design Freeze implementation order를 따른다. 06 안에서는 **선행 Schema/Application operation이 이미 정의되었다는 전제**로 다음 Workflow adapter 순서만 소유한다.
 
 ```text
-1. MultiAgentGraphStateV2 owner fields + typed projections
+1. GraphState owner fields + typed projections
 2. Request Understanding / Tool Routing node adapters
 3. Retrieval node adapters + bounded local loop
 4. Work Analysis atomic node adapters

@@ -1,6 +1,10 @@
 from google_work_agent.adapters.llm.ollama.runtime_status import OllamaLlmRuntimeStatusAdapter
 from google_work_agent.adapters.llm.probes import LoopbackOllamaProbe
-from google_work_agent.ports.llm import ApprovedModelInfo, AvailabilityState, ProbeResult
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    ApprovedModelInfo,
+    AvailabilityState,
+    ProbeResult,
+)
 
 
 class _Probe:

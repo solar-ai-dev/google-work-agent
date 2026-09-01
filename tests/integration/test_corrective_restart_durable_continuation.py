@@ -30,7 +30,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowRecoveryRequest,
     WorkflowResumeRequest,
 )
-from tests.integration.persistence.test_corrective_plan_persistence import (
+from tests.support.corrective_plan_persistence import (
     _aggregate_snapshot,
     _assert_published_snapshot,
     _CorrectivePersistenceHarness,
@@ -107,7 +107,7 @@ def _compile_corrective_persistence_graph(
     runtime: _CorrectivePersistenceHarness,
 ) -> Any:
     def persist_node(state: GraphState) -> dict[str, object]:
-        draft = state["plan_draft"]
+        draft = state["planning_result"]
         assert draft is not None
         _persist(
             runtime,
@@ -150,7 +150,7 @@ def test_restart_after_save_commit_uses_only_durable_materialization(
         domain_database_path,
         fail_publish_once=True,
     )
-    state["plan_draft"] = draft
+    state["planning_result"] = draft
     checkpoint_a = sqlite3.connect(
         checkpoint_database_path,
         check_same_thread=False,

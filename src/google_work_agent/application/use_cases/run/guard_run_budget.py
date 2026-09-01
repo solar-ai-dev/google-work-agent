@@ -354,13 +354,10 @@ def check_llm_call_budget(
     return _allow(budget)
 
 
-def consume_llm_provider_calls(
-    run_budget: object, *, provider_calls_consumed: int = 1
-) -> RunBudgetV2:
+def consume_llm_provider_calls(run_budget: object) -> RunBudgetV2:
     budget = validate_run_budget_v2(run_budget)
-    consumed = _require_int(provider_calls_consumed, "provider_calls_consumed", minimum=1)
     updated = dict(budget)
-    updated["llm_calls_used"] = budget["llm_calls_used"] + consumed
+    updated["llm_calls_used"] = budget["llm_calls_used"] + 1
     return validate_run_budget_v2(updated)
 
 

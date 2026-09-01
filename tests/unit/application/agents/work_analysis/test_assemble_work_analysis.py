@@ -2,8 +2,7 @@ from google_work_agent.application.agents.work_analysis.assemble_work_analysis i
     assemble_work_analysis,
     work_analysis_confirmation_context_hash,
 )
-
-from .conftest import fact
+from tests.support.work_analysis import fact
 
 
 def test_exact_duplicate_defaults_to_not_required_without_llm_policy_authority() -> None:

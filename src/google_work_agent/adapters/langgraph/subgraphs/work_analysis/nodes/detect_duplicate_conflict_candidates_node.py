@@ -5,7 +5,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
 from google_work_agent.application.agents.work_analysis import (
     detect_duplicate_conflict_candidates as duplicate_conflict_detector,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 

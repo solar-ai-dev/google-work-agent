@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from tests.unit.application.use_cases._canonical_owner import assert_owner
 
 from google_work_agent.application.use_cases.action import approve_action
 from google_work_agent.application.use_cases.action.approve_action import (
@@ -122,14 +121,6 @@ def _command(**changes: object) -> ApproveActionCommand:
     }
     values.update(changes)
     return ApproveActionCommand(**values)  # type: ignore[arg-type]
-
-
-def test_canonical_owner() -> None:
-    assert_owner(
-        "google_work_agent.application.use_cases.action.approve_action",
-        ("ApproveActionCommand", "ApproveActionResult", "ApproveActionHandler"),
-        "ApproveActionHandler",
-    )
 
 
 @pytest.mark.parametrize("status", (ActionStatusV1.PROPOSED, ActionStatusV1.MODIFIED))

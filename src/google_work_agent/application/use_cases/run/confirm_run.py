@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal, Protocol, cast
+from typing import Literal, cast
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
@@ -27,6 +27,7 @@ from google_work_agent.application.use_cases.run.policy_confirmation_receipt imp
 from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationCommand,
     ResumeConfirmationHandler,
+    ResumeTargetValidator,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -39,10 +40,6 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     RunExecutionAcceptedV1,
 )
-
-
-class ResumeTargetValidator(Protocol):
-    def validate(self, ref: AgentNodeResumeTargetV2) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,10 +13,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     GoogleWorkspaceErrorCode,
     GoogleWorkspaceGatewayError,
 )
-from google_work_agent.ports.connector.mcp_client_port import (
-    MCPClientPortError,
-    MCPClientPortErrorCode,
-)
 from google_work_agent.ports.system.attachment_staging_port import AttachmentStagingError
 
 
@@ -92,21 +88,4 @@ def normalize_attachment_staging_failure(
         code=ConnectorFailureCode.ATTACHMENT_INVALID,
         detail_code=error.safe_code,
         retryable=False,
-    )
-
-
-def normalize_mcp_transport_failure(error: MCPClientPortError) -> ConnectorOperationFailure:
-    if error.code is MCPClientPortErrorCode.CONFIGURATION_ERROR:
-        detail = str(error)
-        if detail != "GOOGLE_OAUTH_CLIENT_ID_MISSING":
-            detail = "CONNECTOR_CONFIGURATION_INVALID"
-        return ConnectorOperationFailure(
-            code=ConnectorFailureCode.CONFIGURATION_ERROR,
-            detail_code=detail,
-            retryable=False,
-        )
-    return ConnectorOperationFailure(
-        code=ConnectorFailureCode.CONNECTION_UNAVAILABLE,
-        detail_code=f"MCP_{error.code.value}",
-        retryable=True,
     )

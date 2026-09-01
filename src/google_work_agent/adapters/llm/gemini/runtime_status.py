@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
-from google_work_agent.ports.llm import AvailabilityState
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.structured_inference_contracts import AvailabilityState
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,9 +14,9 @@ class GeminiLlmRuntimeStatusAdapter:
     provider: str
     connection: GeminiConnectionService
 
-    def get_status(self, *, api_key: str | None, timeout_seconds: int) -> LlmRuntimeStatusV1:
+    def get_status(self, *, api_key: str | None, timeout_seconds: int) -> LlmProviderRuntimeStatus:
         probe = self.connection.probe(api_key=api_key, timeout_seconds=timeout_seconds)
-        return LlmRuntimeStatusV1(
+        return LlmProviderRuntimeStatus(
             schema_version=1,
             provider=self.provider,
             configured=api_key is not None,

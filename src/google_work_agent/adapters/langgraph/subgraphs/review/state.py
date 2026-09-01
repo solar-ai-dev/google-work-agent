@@ -18,11 +18,7 @@ from google_work_agent.adapters.langgraph.subgraph_state import (
 from google_work_agent.application.agents.planning.contracts.answer_draft import (
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    PlanningResultV2,
-)
+from google_work_agent.application.agents.planning.contracts.planning_result import PlanningResultV2
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
@@ -30,7 +26,6 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
     AcquisitionResultV1,
     EvidenceDraftV1,
     RetrievalResultV1,
-    SourceFetchPlanV1,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -66,7 +61,6 @@ _TYPE_HINT_NAMESPACE = (
     TerminalCommitIntentV1,
     RunInputV1,
     AcquisitionResultV1,
-    SourceFetchPlanV1,
     ScopeExpansionRequiredV1,
     RunBudgetV2,
     PolicyConfirmationReceiptV1,
@@ -86,8 +80,6 @@ class ReviewInputState(AgentSubgraphInputEnvelope, total=False):
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
     planning_result: PlanningResultV2 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
     plan_review: PlanReviewResultV2 | None
     __modify_review_plan_id__: str | None
     __modify_review_version__: int | None
@@ -98,7 +90,6 @@ class ReviewState(GraphState, total=False):
     """Typed local state for the five canonical Review runtime nodes."""
 
     work_analysis: NotRequired[WorkAnalysisResultV2]
-    planning_result: NotRequired[PlanningResultV2 | None]
     evidence: NotRequired[list[EvidenceDraftV1]]
     policy_summary: NotRequired[dict[str, object]]
     confirmation_response: NotRequired[ConfirmationResponseProjectionV1]

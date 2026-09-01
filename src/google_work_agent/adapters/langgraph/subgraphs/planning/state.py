@@ -15,8 +15,7 @@ from google_work_agent.application.agents.planning.contracts.action_plan_draft i
     PlanningActionSeedV1,
 )
 from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
+    PlanningResultV2,
 )
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     ActionObjectiveCandidateV1,
@@ -50,8 +49,7 @@ class PlanningInputState(AgentSubgraphInputEnvelope, total=False):
     tool_route_plan: ToolRoutePlanV2 | None
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
+    planning_result: PlanningResultV2 | None
     plan_review: PlanReviewResultV2 | None
     __modify_review_risks__: dict[str, dict[str, object]] | None
 
@@ -76,7 +74,7 @@ class PlanningLocalState(GraphState):
     __planning_action_seeds__: NotRequired[list[PlanningActionSeedV1]]
     __planning_agent_local__: NotRequired[AgentLocalStateV1]
     __planning_mode__: NotRequired[str]
-    __planning_result__: NotRequired[AnswerDraftV1 | ActionPlanDraftV1 | ActionPlanDraftV2]
+    __planning_result__: NotRequired[PlanningResultV2]
     __planning_retry_confirmation__: NotRequired[bool]
 
 

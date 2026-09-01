@@ -131,16 +131,6 @@ class PromptRuntimeInputContractV1:
             )
 
 
-@dataclass(frozen=True, slots=True)
-class PromptRuntimeInputContractValidator:
-    """Small dispatch-boundary adapter over an already loaded contract."""
-
-    contract: PromptRuntimeInputContractV1
-
-    def validate(self, *, prompt_id: str, prompt_input: Mapping[str, object]) -> None:
-        self.contract.validate_projection(prompt_id, prompt_input)
-
-
 def _find_forbidden_fields(value: object, forbidden: frozenset[str], path: str = "$") -> set[str]:
     violations: set[str] = set()
     if isinstance(value, Mapping):
@@ -166,6 +156,5 @@ __all__ = [
     "REQUIRED_PROMPT_SLOT_IDS",
     "PromptRuntimeInputContractEntryV1",
     "PromptRuntimeInputContractError",
-    "PromptRuntimeInputContractValidator",
     "PromptRuntimeInputContractV1",
 ]

@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from typing import cast
 
 from google_work_agent.application.use_cases.run.run_command_receipts import (
-    finish_json_receipt as _finish_json_receipt,
+    finish_run_command_receipt as _finish_json_receipt,
 )
 from google_work_agent.application.use_cases.run.run_command_receipts import (
-    resolve_existing_receipt as _resolve_existing_receipt,
+    resolve_existing_run_command_receipt as _resolve_existing_receipt,
 )
 from google_work_agent.domain.conversation.model import Conversation as ConversationRecord
 from google_work_agent.domain.results import ResultCode

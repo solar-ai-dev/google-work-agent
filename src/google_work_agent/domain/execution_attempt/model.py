@@ -25,12 +25,6 @@ class ExecutionAttemptCommand(StrEnum):
     RESOLVE_AS_FAILED = "RESOLVE_AS_FAILED"
 
 
-class AttemptOutcome(StrEnum):
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
-    UNKNOWN_RESULT = "UNKNOWN_RESULT"
-
-
 @dataclass(frozen=True, slots=True)
 class ExecutionAttempt:
     id: str

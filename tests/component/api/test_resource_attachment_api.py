@@ -20,7 +20,9 @@ from google_work_agent.api.dependencies.attachments import (
     get_attachment_route_dependencies,
 )
 from google_work_agent.api.routes import attachments
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.attachment.create_staged_attachment import (
     CreateStagedAttachmentHandler,
 )
@@ -29,7 +31,9 @@ from google_work_agent.ports.connector.connector_read_port import (
     ConnectorReadResultV1,
     JsonValue,
 )
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 class _AttachmentRead:

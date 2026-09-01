@@ -2,7 +2,9 @@ from dataclasses import dataclass
 
 import pytest
 
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.plan._write_plan_persistence import (
     validate_write_plan,
 )

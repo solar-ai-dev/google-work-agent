@@ -2,25 +2,21 @@
 
 from base64 import urlsafe_b64encode
 from hashlib import sha256
-from importlib import import_module
 
 import pytest
 
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.attachment.get_attachment import (
     GetAttachmentHandler,
     GetAttachmentQuery,
 )
 from google_work_agent.ports.connector.connector_failure import ConnectorOperationFailure
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1, JsonValue
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.attachment.get_attachment")
-        is not None
-    )
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 class _AttachmentRead:

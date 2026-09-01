@@ -2,7 +2,6 @@
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from importlib import import_module
 from types import SimpleNamespace
 from typing import cast
 
@@ -13,13 +12,6 @@ from google_work_agent.application.use_cases.recovery.project_recovery_options i
     ProjectRecoveryOptionsQueryV1,
 )
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.recovery.project_recovery_options")
-        is not None
-    )
 
 
 @pytest.mark.parametrize(

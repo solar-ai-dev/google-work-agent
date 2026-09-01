@@ -4,16 +4,17 @@ import pytest
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
     CurrentSourceRelationV1,
-    WorkRelationCandidateV1,
+)
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkRelationV1,
 )
 from google_work_agent.application.agents.work_analysis.validate_relations import validate_relations
+from tests.support.work_analysis import fact
 
-from .conftest import fact
 
-
-def _candidate(kind: str = "DUPLICATES") -> WorkRelationCandidateV1:
+def _candidate(kind: str = "DUPLICATES") -> WorkRelationV1:
     return cast(
-        WorkRelationCandidateV1,
+        WorkRelationV1,
         {
             "relation_id": "r1",
             "kind": kind,

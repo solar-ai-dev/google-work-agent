@@ -26,7 +26,7 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
-    legacy_post_call_projection,
+    merge_provider_dispatch_usage,
     provider_dispatch_budget_scope,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
@@ -36,7 +36,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.domain.action.model import EffectType
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     OutputSchemaDefinition,
     PromptReference,
 )
@@ -156,7 +156,7 @@ def determine_io_resources(
             raw,
             request_intent=request_intent,
             request=request,
-        ), legacy_post_call_projection(retry_budget)
+        ), merge_provider_dispatch_usage(retry_budget)
 
 
 def _semantic_candidate(

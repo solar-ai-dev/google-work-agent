@@ -11,7 +11,6 @@ def _guard(**changes: object) -> None:
         "binding_is_current": True,
         "action_statuses": (),
         "attempt_statuses": (),
-        "has_legacy_read_executing": False,
         "delivery_uncertain": False,
         "cancel_intent_active": False,
     }

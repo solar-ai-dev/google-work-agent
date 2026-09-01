@@ -98,8 +98,7 @@ def test_role_input_projection_does_not_expose_foreign_business_artifacts() -> N
         "tool_route_plan",
         "retrieval_result",
         "work_analysis_result",
-        "answer_draft",
-        "plan_draft",
+        "planning_result",
         "plan_review",
     } <= planning_fields
     assert "execution_summary" not in planning_fields
@@ -110,8 +109,7 @@ def test_role_input_projection_does_not_expose_foreign_business_artifacts() -> N
         "tool_route_plan",
         "retrieval_result",
         "work_analysis_result",
-        "answer_draft",
-        "plan_draft",
+        "planning_result",
         "plan_review",
     } <= review_fields
     assert "execution_summary" not in review_fields

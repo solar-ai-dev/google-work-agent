@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 
 def test_signed_registry_loads_exact_google_workspace_tool_set() -> None:

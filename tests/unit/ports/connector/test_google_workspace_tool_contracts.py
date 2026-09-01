@@ -15,7 +15,9 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_r
     validate_tool_input,
     validate_tool_output,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 build_google_workspace_internal_capabilities = (
     project_registry.build_google_workspace_internal_capabilities

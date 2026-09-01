@@ -1,6 +1,6 @@
 """Read the canonical process-local component circuit state."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -21,21 +21,11 @@ from google_work_agent.ports.connector.connector_write_port import (
     ConnectorWritePort,
     ConnectorWriteResultV1,
 )
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-from google_work_agent.ports.llm import (
-    LLMErrorCode,
-    LLMInvocationError,
-)
-from google_work_agent.ports.llm.structured_inference_contracts import (
-    OutputSchemaDefinition,
-    PromptReference,
-)
-from google_work_agent.ports.llm.structured_inference_port import (
-    StructuredInferencePort,
-    StructuredInferenceResultV1,
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
 )
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStatePort,
 )
 
@@ -43,14 +33,14 @@ from google_work_agent.ports.system.component_circuit_state_port import (
 @dataclass(frozen=True, slots=True)
 class CheckComponentCircuitQueryV1:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     now_ms: int
 
 
 @dataclass(frozen=True, slots=True)
 class CheckComponentCircuitResultV1:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     allowed: bool
     state: Literal["CLOSED", "OPEN"]
     retry_at_ms: int | None
@@ -91,7 +81,7 @@ class CircuitProtectedConnectorReadPort(ConnectorReadPort):
         now_ms: Callable[[], int],
     ) -> None:
         self._delegate = delegate
-        self._key = ComponentCircuitKeyV1(1, "CONNECTOR", connector_id, None)
+        self._key = ComponentCircuitKey(1, "CONNECTOR", connector_id, None)
         self._check = check
         self._record = record
         self._now_ms = now_ms
@@ -134,7 +124,7 @@ class CircuitProtectedConnectorWritePort(ConnectorWritePort):
         now_ms: Callable[[], int],
     ) -> None:
         self._delegate = delegate
-        self._key = ComponentCircuitKeyV1(1, "CONNECTOR", connector_id, None)
+        self._key = ComponentCircuitKey(1, "CONNECTOR", connector_id, None)
         self._check = check
         self._record = record
         self._now_ms = now_ms
@@ -165,66 +155,6 @@ class CircuitProtectedConnectorWritePort(ConnectorWritePort):
         return result
 
 
-class CircuitProtectedStructuredInferencePort(StructuredInferencePort):
-    """Apply the canonical circuit gate immediately before every LLM call."""
-
-    def __init__(
-        self,
-        *,
-        delegate: StructuredInferencePort,
-        check: CheckComponentCircuitHandler,
-        record: RecordComponentCallResultHandler,
-        now_ms: Callable[[], int],
-    ) -> None:
-        self._delegate = delegate
-        self._check = check
-        self._record = record
-        self._now_ms = now_ms
-
-    def infer(
-        self,
-        requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
-        prompt_ref: PromptReference,
-        input_projection: Mapping[str, object],
-        output_schema_ref: OutputSchemaDefinition,
-    ) -> StructuredInferenceResultV1:
-        attempted_runtime: Literal["LOCAL_GPU", "API_LLM"] = (
-            "API_LLM" if requested_mode == "API_LLM" else "LOCAL_GPU"
-        )
-        key = _llm_key(attempted_runtime)
-        now_ms = self._now_ms()
-        if not self._check(CheckComponentCircuitQueryV1(1, key, now_ms)).allowed:
-            raise LLMInvocationError(
-                code=(
-                    LLMErrorCode.LOCAL_UNAVAILABLE
-                    if attempted_runtime == "LOCAL_GPU"
-                    else LLMErrorCode.PROVIDER_UNAVAILABLE
-                ),
-                message="component circuit is open",
-            )
-        try:
-            result = self._delegate.infer(
-                requested_mode,
-                prompt_ref,
-                input_projection,
-                output_schema_ref,
-            )
-        except LLMInvocationError as error:
-            self._record(
-                RecordComponentCallResultCommandV1(
-                    1, key, "TECHNICAL_FAILURE", error.code.value, now_ms
-                )
-            )
-            raise
-        success_key = _llm_key(result.actual_runtime)
-        self._record(RecordComponentCallResultCommandV1(1, success_key, "SUCCESS", None, now_ms))
-        return result
-
-
-def _llm_key(runtime: Literal["LOCAL_GPU", "API_LLM"]) -> ComponentCircuitKeyV1:
-    return ComponentCircuitKeyV1(1, "LLM_RUNTIME", None, runtime)
-
-
 _TECHNICAL_CONNECTOR_FAILURES = {
     ConnectorFailureCode.RATE_LIMITED,
     ConnectorFailureCode.UPSTREAM_UNAVAILABLE,
@@ -240,5 +170,4 @@ __all__ = [
     "CheckComponentCircuitResultV1",
     "CircuitProtectedConnectorReadPort",
     "CircuitProtectedConnectorWritePort",
-    "CircuitProtectedStructuredInferencePort",
 ]

@@ -364,15 +364,9 @@ def drain_inflight_executions_to_quiescence(
     raise RuntimeError("inflight execution startup drain did not reach quiescence")
 
 
-ReconcileInflightExecutionsCommandV1 = ReconcileInflightExecutionsCommand
-ReconcileInflightExecutionsResultV1 = ReconcileInflightExecutionsResult
-
-
 __all__ = [
     "ReconcileInflightExecutionsCommand",
-    "ReconcileInflightExecutionsCommandV1",
     "ReconcileInflightExecutionsHandler",
     "ReconcileInflightExecutionsResult",
-    "ReconcileInflightExecutionsResultV1",
     "drain_inflight_executions_to_quiescence",
 ]

@@ -57,7 +57,7 @@ from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     CanonicalDomainValidationService,
 )
 from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.registry.checkpoint_target_resolver import (
     NativeCheckpointTargetResolver,
 )
@@ -105,7 +105,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 from google_work_agent.adapters.readiness.local_service_readiness import (
     LocalServiceReadinessAggregator,
 )
-from google_work_agent.adapters.runtime import FileSettingsStore, SafeModeController
+from google_work_agent.adapters.runtime.safe_mode import SafeModeController
 from google_work_agent.adapters.system.default_browser_launcher import DefaultBrowserLauncherAdapter
 from google_work_agent.adapters.system.filesystem_attachment_staging import (
     ATTACHMENT_STAGING_DIR_ENV,
@@ -117,7 +117,7 @@ from google_work_agent.adapters.system.filesystem_diagnostics import FilesystemD
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,
 )
-from google_work_agent.adapters.system.json_settings import JsonSettingsAdapter
+from google_work_agent.adapters.system.json_settings import FileSettingsStore, JsonSettingsAdapter
 from google_work_agent.adapters.system.memory.run_retrieval_cache import InMemoryRunRetrievalCache
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
 from google_work_agent.adapters.system.process_component_circuit_state import (
@@ -157,14 +157,6 @@ from google_work_agent.application.use_cases.action.calendar_conflict_policy imp
 )
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionHandler,
-)
-from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
-from google_work_agent.application.use_cases.action.complete_read_action import (
-    CompleteReadActionHandler,
-)
-from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
-from google_work_agent.application.use_cases.action.finalize_read_action import (
-    FinalizeReadActionHandler,
 )
 from google_work_agent.application.use_cases.action.modify_action import ModifyActionHandler
 from google_work_agent.application.use_cases.action.prepare_write_retry import (
@@ -268,9 +260,6 @@ from google_work_agent.application.use_cases.llm_credential.store_llm_credential
     StoreLlmCredentialHandler,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
-from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
-    PublishReadOnlyPlanHandler,
-)
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultHandler,
 )
@@ -336,9 +325,6 @@ from google_work_agent.application.use_cases.run.build_terminal_message import (
 )
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunHandler,
-)
-from google_work_agent.application.use_cases.run.complete_read_only_run import (
-    CompleteReadOnlyRunHandler,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunHandler,
@@ -419,22 +405,22 @@ from google_work_agent.ports.connector.connector_write_port import ConnectorWrit
 from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort, MCPClientPortError
 from google_work_agent.ports.connector.oauth_credential_port import (
-    ConnectionMetadataV1,
+    OAuthConnectionMetadata,
     OAuthCredentialPort,
     OAuthEnvironment,
 )
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
+from google_work_agent.ports.llm.llm_runtime_status_port import (
+    LlmProviderRuntimeStatus,
+    LlmRuntimeStatusPort,
+)
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     ApprovedModelInfo,
     LLMErrorCode,
     LLMInvocationError,
     RuntimePolicy,
-)
-from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
-from google_work_agent.ports.llm.llm_runtime_status_port import (
-    LlmRuntimeStatusPort,
-    LlmRuntimeStatusV1,
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -445,7 +431,7 @@ from google_work_agent.ports.system.browser_launcher_port import BrowserLauncher
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.clock_port import ClockPort
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStatePort,
 )
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
@@ -601,11 +587,6 @@ def _build_workflow_application_services(
         now_ms=now_ms,
         message_id_factory=id_factory,
     )
-    complete_read_only_run = CompleteReadOnlyRunHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
-        message_id_factory=id_factory,
-    )
     complete_write_run = CompleteWriteRunHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
@@ -615,27 +596,6 @@ def _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
         message_id_factory=id_factory,
-    )
-    publish_read_plan = PublishReadOnlyPlanHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
-    )
-    claim_read = ClaimReadActionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
-    )
-    complete_read = CompleteReadActionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
-        gateway=connector_reader,
-    )
-    finalize_read = FinalizeReadActionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
-    )
-    fail_read = FailReadActionHandler(
-        unit_of_work_factory=unit_of_work_factory,
-        now_ms=now_ms,
     )
     publish_write_plan = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -707,14 +667,8 @@ def _build_workflow_application_services(
             validate_action_arguments=ValidateActionArgumentsHandler(),
         ),
         complete_answer_only=complete_answer_only,
-        complete_read_only_run=complete_read_only_run,
         complete_write_run=complete_write_run,
         block_run=block_run,
-        publish_read_plan=publish_read_plan,
-        claim_read=claim_read,
-        complete_read=complete_read,
-        finalize_read=finalize_read,
-        fail_read=fail_read,
         publish_write_plan=publish_write_plan,
         build_claim_context=build_claim_context,
         begin_execution_attempt=begin_execution_attempt,
@@ -1667,8 +1621,8 @@ def _close_container(container: ApiContainer) -> None:
 class _UnavailableStartupOAuthStatus:
     """Read-only connector facts available before the production core is bound."""
 
-    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
-        return ConnectionMetadataV1(
+    def get_connection_status(self, connector_id: str) -> OAuthConnectionMetadata:
+        return OAuthConnectionMetadata(
             schema_version=1,
             connector_id=connector_id,
             account_id=None,
@@ -1682,8 +1636,8 @@ class _UnavailableStartupOAuthStatus:
 class _UnavailableStartupLlmStatus:
     """Read-only LLM facts available before the production core is bound."""
 
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
-        return LlmRuntimeStatusV1(
+    def get_status(self, provider: str) -> LlmProviderRuntimeStatus:
+        return LlmProviderRuntimeStatus(
             schema_version=1,
             provider=provider,
             configured=False,
@@ -1995,8 +1949,8 @@ def build_production_runtime(
     structured_inference_router = cast(StructuredInferenceRuntimeRouter, llm_runtime)
     structured_inference_router.checkpoint = checkpoint
 
-    def _llm_circuit_key(runtime: ActualRuntime) -> ComponentCircuitKeyV1:
-        return ComponentCircuitKeyV1(1, "LLM_RUNTIME", None, runtime.value)
+    def _llm_circuit_key(runtime: ActualRuntime) -> ComponentCircuitKey:
+        return ComponentCircuitKey(1, "LLM_RUNTIME", None, runtime.value)
 
     def _check_llm_circuit(runtime: ActualRuntime) -> None:
         key = _llm_circuit_key(runtime)

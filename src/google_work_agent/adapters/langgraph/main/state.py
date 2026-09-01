@@ -16,15 +16,11 @@ from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
     TerminalCommitIntentV1,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.agents.planning.contracts.answer_draft import (
     WorkAnalysisResultV2,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-    PlanningResultV2,
-)
+from google_work_agent.application.agents.planning.contracts.planning_result import PlanningResultV2
 from google_work_agent.application.agents.request_understanding.contracts import (
     request_understanding_output,
 )
@@ -33,11 +29,8 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
-    ContextRetrievalResultV1,
     EvidenceSelectionResultV2,
     RetrievalResultV1,
-    SourceFetchPlanV1,
-    SourcePlanningOutputV1,
     SufficiencyResultV2,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
@@ -58,7 +51,6 @@ from google_work_agent.application.use_cases.run.terminal_contract import (
     FinalizeIntentV1,
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.ports.system.contracts.confirmation import (
     UserInterruptV1,
 )
@@ -75,9 +67,7 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
 
 _TYPE_HINT_NAMESPACE = (
     request_understanding_output.RequestUnderstandingOutputV1,
-    ContextRetrievalResultV1,
     EvidenceSelectionResultV2,
-    SourcePlanningOutputV1,
     SufficiencyResultV2,
     RetrievalRequiredV1,
     RouteReconsiderationRequiredV1,
@@ -85,7 +75,7 @@ _TYPE_HINT_NAMESPACE = (
 
 
 class MultiAgentGraphState(TypedDict):
-    """Version-1 Main graph state retained at its canonical state owner."""
+    """Main graph state retained at its canonical state owner."""
 
     schema_version: int
     run_id: str
@@ -95,12 +85,10 @@ class MultiAgentGraphState(TypedDict):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
-    source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
+    planning_result: PlanningResultV2 | None
     plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
     finalize_intent: FinalizeIntentV1 | None
@@ -118,12 +106,10 @@ class GraphStateUpdateV1(TypedDict, total=False):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
-    source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
+    planning_result: PlanningResultV2 | None
     plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
     finalize_intent: FinalizeIntentV1 | None
@@ -141,10 +127,7 @@ class WorkflowPhase(StrEnum):
     REQUEST_ANALYSIS = "REQUEST_ANALYSIS"
     TOOL_ROUTING = "TOOL_ROUTING"
     WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
-    SOURCE_PLANNING = "SOURCE_PLANNING"
-    API_ACQUISITION = "API_ACQUISITION"
     CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
-    CONTEXT_EVALUATION = "CONTEXT_EVALUATION"
     WORK_ANALYSIS = "WORK_ANALYSIS"
     SOLUTION_PLANNING = "SOLUTION_PLANNING"
     PLAN_REVIEW = "PLAN_REVIEW"
@@ -181,7 +164,6 @@ type WorkflowPhaseV2 = Literal[
     "WAITING_APPROVAL",
     "PREFLIGHT",
     "ACTION_EXECUTION",
-    "READ_EXECUTION",
     "VERIFICATION",
     "RECOVERY",
     "RESPONSE_SYNTHESIS",
@@ -231,12 +213,10 @@ class ParentGraphState(TypedDict):
     request_intent: RequestIntentV2 | None
     tool_route_plan: ToolRoutePlanV2 | None
     workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
-    source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     work_analysis_result: WorkAnalysisResultV2 | None
-    answer_draft: AnswerDraftV1 | None
-    plan_draft: ActionPlanDraftV1 | None
+    planning_result: PlanningResultV2 | None
     plan_review: PlanReviewResultV2 | None
     approved_plan_id: str | None
     execution_summary: ExecutionSummaryV1 | None
@@ -257,15 +237,14 @@ class ParentGraphState(TypedDict):
     __reserved_corrective_plan_id__: NotRequired[str | None]
 
 
-class MultiAgentGraphStateV2(ParentGraphState, total=False):
-    """Canonical Main State plus bounded migration-only control projections."""
+class GraphState(ParentGraphState, total=False):
+    """Canonical Main State plus bounded control projections."""
 
     langgraph_thread_id: Required[str]
     graph_profile: Required[Literal["SINGLE_BASELINE", "THREE_STAGE", "SIX_ROLE_BASELINE"]]
     graph_version: Required[str]
     run_input: Required[RunInputV1]
 
-    planning_result: NotRequired[PlanningResultV2 | None]
     post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
     __v2_revision_mode__: NotRequired[str | None]
     __v2_block_reason__: NotRequired[str | None]
@@ -275,11 +254,6 @@ class MultiAgentGraphStateV2(ParentGraphState, total=False):
     terminal_commit_intent: NotRequired[TerminalCommitIntentV1 | None]
 
 
-GraphState = MultiAgentGraphStateV2
-
-
-ACQUISITION_AGENT_LOCAL_KEY: Final = "__acquisition_agent_local__"
-ACQUISITION_PLANNING_OUTPUT_KEY: Final = "__acquisition_planning_output__"
 CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
 CONTEXT_RAG_CANDIDATES_KEY: Final = "__context_rag_candidates__"
 CONTEXT_SELECTION_OUTPUT_KEY: Final = "__context_selection_output__"
@@ -334,12 +308,10 @@ def initial_graph_state(
         "request_intent": None,
         "tool_route_plan": None,
         "workflow_signal": None,
-        "source_fetch_plans": [],
         "acquisition_result": None,
         "retrieval_result": None,
         "work_analysis_result": None,
-        "answer_draft": None,
-        "plan_draft": None,
+        "planning_result": None,
         "plan_review": None,
         "approved_plan_id": None,
         "execution_summary": None,
@@ -479,19 +451,3 @@ def request_from_run_input_state(state: Mapping[str, object]) -> WorkflowStartRe
         run_budget=dict(run_budget),
         selected_resources=tuple(selected_resources),
     )
-
-
-def _stored_resource_type_for_acquired_resource(
-    *, source: ResourceSource, resource_type: str
-) -> str:
-    valid_pairs = {
-        (ResourceSource.GMAIL, "gmail_thread"),
-        (ResourceSource.GMAIL, "gmail_message"),
-        (ResourceSource.TASKS, "task_list"),
-        (ResourceSource.TASKS, "task"),
-        (ResourceSource.CALENDAR, "calendar"),
-        (ResourceSource.CALENDAR, "calendar_event"),
-    }
-    if (source, resource_type) not in valid_pairs:
-        raise LookupError(f"unsupported acquired resource type: {source.value}/{resource_type}")
-    return resource_type

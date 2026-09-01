@@ -33,9 +33,6 @@ class TerminalAssistantMessageInputV1:
     reason_codes: list[str]
 
 
-BuildTerminalMessageResult = TerminalAssistantMessageInputV1
-
-
 class BuildTerminalMessageHandler:
     """Format a bounded terminal projection without I/O or lifecycle decisions."""
 
@@ -88,7 +85,6 @@ _DEFAULT_TERMINAL_CONTENT: dict[TerminalResultKindV1, str] = {
 __all__ = [
     "BuildTerminalMessageHandler",
     "BuildTerminalMessageQueryV1",
-    "BuildTerminalMessageResult",
     "TerminalAssistantMessageInputV1",
     "TerminalMessageSourceKindV1",
 ]

@@ -7,7 +7,7 @@ from typing import Literal, Protocol
 
 
 @dataclass(frozen=True, slots=True)
-class ComponentCircuitKeyV1:
+class ComponentCircuitKey:
     schema_version: Literal[1]
     kind: Literal["CONNECTOR", "LLM_RUNTIME"]
     connector_id: str | None
@@ -23,13 +23,13 @@ class ComponentCircuitKeyV1:
             and self.llm_runtime in {"API_LLM", "LOCAL_GPU"}
         )
         if self.schema_version != 1 or not (connector_valid or llm_valid):
-            raise ValueError("invalid ComponentCircuitKeyV1 binding")
+            raise ValueError("invalid ComponentCircuitKey binding")
 
 
 @dataclass(frozen=True, slots=True)
 class ComponentCircuitStateV1:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     state: Literal["CLOSED", "OPEN"]
     consecutive_technical_failures: int
     retry_at_ms: int | None
@@ -37,15 +37,13 @@ class ComponentCircuitStateV1:
 
 
 class ComponentCircuitStatePort(Protocol):
-    def get_state(self, key: ComponentCircuitKeyV1) -> ComponentCircuitStateV1: ...
+    def get_state(self, key: ComponentCircuitKey) -> ComponentCircuitStateV1: ...
 
     def record_technical_failure(
-        self, key: ComponentCircuitKeyV1, failure_code: str, now_ms: int
+        self, key: ComponentCircuitKey, failure_code: str, now_ms: int
     ) -> ComponentCircuitStateV1: ...
 
-    def record_success(
-        self, key: ComponentCircuitKeyV1, now_ms: int
-    ) -> ComponentCircuitStateV1: ...
+    def record_success(self, key: ComponentCircuitKey, now_ms: int) -> ComponentCircuitStateV1: ...
 
 
-__all__ = ["ComponentCircuitKeyV1", "ComponentCircuitStatePort", "ComponentCircuitStateV1"]
+__all__ = ["ComponentCircuitKey", "ComponentCircuitStatePort", "ComponentCircuitStateV1"]

@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from google_work_agent.ports.connector.connector_read_port import JsonValue
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 @dataclass(frozen=True, slots=True)

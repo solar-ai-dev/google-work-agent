@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from google_work_agent.ports.llm import OutputSchemaDefinition
+from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="retrieval-query-plan-v2",

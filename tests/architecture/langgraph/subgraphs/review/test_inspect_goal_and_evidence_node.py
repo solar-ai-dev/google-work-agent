@@ -51,14 +51,14 @@ def test_goal_node_projection_and_answer_router_are_exact() -> None:
 
 
 def test_non_active_goal_prompt_fails_before_structured_inference() -> None:
-    class FakeRuntime:
+    class FailingRuntime:
         calls = 0
 
         def invoke_structured(self, **_kwargs: object) -> object:
             self.calls += 1
             raise AssertionError("inactive Prompt must not reach StructuredInferencePort")
 
-    runtime = FakeRuntime()
+    runtime = FailingRuntime()
     graph = ReviewSubgraph(llm_runtime=runtime)  # type: ignore[arg-type]
     invoke = graph.semantic_invoker({"run_id": "run-1"})
 

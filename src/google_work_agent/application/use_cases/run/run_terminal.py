@@ -11,10 +11,8 @@ from google_work_agent.application.use_cases.action.write_persistence import rev
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.terminal_contract import (
     AnalysisResult,
-    ApiAcquisitionResult,
     FinalizeIntent,
     FinalizeIntentV1,
-    PlanningResult,
     ReviewResult,
     validate_finalize_intent_v1,
 )
@@ -58,13 +56,12 @@ def derive_finalize_intent(
     if persisted_intent is not None:
         return validate_finalize_intent_v1(persisted_intent)
 
-    answer_draft = _mapping_or_none(state.get("answer_draft"))
+    planning_result = _mapping_or_none(state.get("planning_result"))
     plan_review = _mapping_or_none(state.get("plan_review"))
     if (
-        answer_draft is not None
-        and answer_draft.get("status") == PlanningResult.ANSWER_ONLY.value
-        and plan_review is not None
-        and plan_review.get("status") == ReviewResult.PASS.value
+        planning_result is not None
+        and planning_result.get("schema_version") == 2
+        and isinstance(planning_result.get("answer"), str)
     ):
         return validate_finalize_intent_v1(
             {
@@ -93,19 +90,6 @@ def derive_finalize_intent(
                 "schema_version": 1,
                 "intent": FinalizeIntent.BLOCKED.value,
                 "reason_code": "PLAN_REVIEW_BLOCK",
-            }
-        )
-
-    acquisition_result = _mapping_or_none(state.get("acquisition_result"))
-    if (
-        acquisition_result is not None
-        and acquisition_result.get("status") == ApiAcquisitionResult.FAILED.value
-    ):
-        return validate_finalize_intent_v1(
-            {
-                "schema_version": 1,
-                "intent": FinalizeIntent.FAILED.value,
-                "reason_code": _acquisition_failure_reason(acquisition_result),
             }
         )
 
@@ -425,17 +409,6 @@ def _mapping_or_none(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
     return cast(dict[str, object], value)
-
-
-def _acquisition_failure_reason(acquisition_result: dict[str, object]) -> str:
-    source_summaries = acquisition_result.get("source_summaries")
-    if isinstance(source_summaries, list):
-        for item in source_summaries:
-            if isinstance(item, dict):
-                error_code = item.get("error_code")
-                if isinstance(error_code, str) and error_code.strip():
-                    return error_code.strip()
-    return "API_ACQUISITION_FAILED"
 
 
 __all__ = [

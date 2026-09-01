@@ -79,12 +79,6 @@ class ToolRouteDisposition(StrEnum):
     BLOCKED = "BLOCKED"
 
 
-def allowed_input_sources(plan: ToolRoutePlanV2) -> frozenset[str]:
-    return frozenset(
-        _resource_source(route["resource_type"]) for route in plan["input_plan"]["input_routes"]
-    )
-
-
 def allowed_read_tool_ids(plan: ToolRoutePlanV2, *, source: str) -> frozenset[str]:
     return frozenset(
         tool_id

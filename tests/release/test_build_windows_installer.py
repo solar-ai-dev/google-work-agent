@@ -11,7 +11,7 @@ from release.generate_release_manifest import ReleaseManifestParameters
 from release.sign_release_artifacts import sign_release_artifacts
 
 from release.profiles import DeploymentProfile
-from tests.release.bundle_fixture import create_bundle_inputs
+from tests.support.bundle_fixture import create_bundle_inputs
 
 
 class _CodeSigner:
@@ -73,7 +73,7 @@ def test_build_installer_consumes_verified_signed_profile_bundle(tmp_path: Path)
             api_contract_version="1",
             mcp_schema_version="2026-08-07.p0",
             policy_version="2026-08-06.p0",
-            database_migration_version="0018",
+            database_migration_version="0001",
         ),
         manifest_signer=manifest_signer,
         embedded_release_public_key_pem=manifest_signer.public_key_pem,
@@ -119,7 +119,7 @@ def test_build_installer_rejects_file_added_after_manifest_signing(tmp_path: Pat
         api_contract_version="1",
         mcp_schema_version="2026-08-07.p0",
         policy_version="2026-08-06.p0",
-        database_migration_version="0018",
+        database_migration_version="0001",
     )
     sign_release_artifacts(
         code_artifacts=code_artifacts,

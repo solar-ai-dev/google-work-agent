@@ -133,7 +133,7 @@ _UNSUPPORTED_TASK_TIME_FIELDS = frozenset(
 def normalize_task_write_arguments(
     tool_name: str, arguments: dict[str, object]
 ) -> dict[str, object]:
-    """Make Task product semantics explicit while preserving legacy provider arguments.
+    """Make current Task product semantics explicit before provider translation.
 
     This runs while a plan is being validated, before its arguments are hashed
     and presented for approval.  ``due`` remains an MCP/Google boundary field;

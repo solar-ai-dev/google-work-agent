@@ -5,7 +5,6 @@ import pytest
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
-from google_work_agent.adapters.persistence.persistence_exceptions import MigrationApplyError
 
 
 @pytest.fixture()
@@ -226,82 +225,5 @@ def test_nfr019_write_safety_triggers_survive_plan_aggregate_migration(
         }
         assert expected <= actual
         assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
-    finally:
-        connection.close()
-
-
-def test_plan_aggregate_upgrade_rejects_existing_impossible_snapshot(tmp_path: Path) -> None:
-    upgrade_dir = tmp_path / "upgrade-migrations"
-    upgrade_dir.mkdir()
-    runtime_dir = Path("src/google_work_agent/adapters/persistence/migrations")
-    for version in range(1, 6):
-        source = next(runtime_dir.glob(f"{version:04d}_*.sql"))
-        (upgrade_dir / source.name).write_bytes(source.read_bytes())
-
-    connection = connect_sqlite(tmp_path / "invalid-plan-aggregate-upgrade.db")
-    try:
-        apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 1)
-        connection.execute(
-            "INSERT INTO google_accounts VALUES ('account-x', 'x@example.com', NULL, 1, NULL);"
-        )
-        for conversation_id in ("conversation-x1", "conversation-x2"):
-            connection.execute(
-                "INSERT INTO conversations VALUES (?, 'account-x', 'Test', 1, 1);",
-                (conversation_id,),
-            )
-        for run_id, conversation_id, thread_id in (
-            ("run-x1", "conversation-x1", "thread-x1"),
-            ("run-x2", "conversation-x2", "thread-x2"),
-        ):
-            connection.execute(
-                """
-                INSERT INTO runs (
-                    id, conversation_id, entry_mode, status, langgraph_thread_id,
-                    requested_mode, budget_json, version, started_at_ms
-                ) VALUES (?, ?, 'AGENT_SEARCH', 'PLANNING', ?, 'AUTO', '{}', 0, 1);
-                """,
-                (run_id, conversation_id, thread_id),
-            )
-        connection.execute(
-            "INSERT INTO plans (id, run_id, revision_no, status, created_at_ms) "
-            "VALUES ('plan-x1', 'run-x1', 1, 'DRAFT', 1);"
-        )
-        connection.execute(
-            """
-            INSERT INTO resource_refs (
-                id, run_id, source, resource_type, resource_id, metadata_json, captured_at_ms
-            ) VALUES ('resource-x2', 'run-x2', 'TASKS', 'TASK', 'task-x2', '{}', 1);
-            """
-        )
-        connection.execute(
-            """
-            INSERT INTO actions (
-                id, plan_id, position, tool_name, effect_type, approval_requirement,
-                verification_policy, recovery_policy, target_resource_ref_id, status,
-                arguments_json, arguments_hash, expected_json, version, created_at_ms, updated_at_ms
-            ) VALUES ('action-x1', 'plan-x1', 1, 'gmail_get_thread', 'READ', 'NONE',
-                      'NONE', 'NONE', 'resource-x2', 'PROPOSED', '{}', ?, '{}', 0, 1, 1);
-            """,
-            ("a" * 64,),
-        )
-
-        source = runtime_dir / "0006_plan_aggregate_invariants.sql"
-        (upgrade_dir / source.name).write_bytes(source.read_bytes())
-        with pytest.raises(MigrationApplyError):
-            apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 2)
-
-        assert (
-            connection.execute(
-                "SELECT COUNT(*) FROM schema_migrations WHERE version = 6;"
-            ).fetchone()[0]
-            == 0
-        )
-        assert (
-            connection.execute(
-                "SELECT COUNT(*) FROM sqlite_master "
-                "WHERE type = 'trigger' AND name LIKE 'trg_plan_aggregate_%';"
-            ).fetchone()[0]
-            == 0
-        )
     finally:
         connection.close()

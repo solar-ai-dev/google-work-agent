@@ -37,7 +37,7 @@ class _FinishReceiptResponse(Protocol):
     def result_code(self) -> str: ...
 
 
-def resolve_json_receipt(
+def resolve_run_command_receipt(
     *,
     receipt: CommandReceiptRecord,
     request_hash: str,
@@ -97,7 +97,7 @@ def resolve_json_receipt(
     return cast(ReceiptResponse, response_type(**payload))
 
 
-def resolve_existing_receipt(
+def resolve_existing_run_command_receipt(
     *,
     unit_of_work: UnitOfWork,
     receipt: CommandReceiptRecord,
@@ -107,10 +107,9 @@ def resolve_existing_receipt(
     action_id: str | None = None,
     now_ms: int,
 ) -> ReceiptResponse:
-    """Thin wrapper shared by every CreateConversation/ResumeRun/
-    ActionMutation caller of the pure resolve_json_receipt above.
+    """Resolve a receipt and record a mismatched replay through one boundary.
 
-    Keeps resolve_json_receipt itself free of side effects; records
+    Keeps resolve_run_command_receipt itself free of side effects and records
     COMMAND_REJECTED_HASH_MISMATCH via the one shared observability boundary
     (write_persistence.emit_command_rejected_hash_mismatch) only for a
     genuine different-hash conflict, never for a same-hash idempotent
@@ -124,14 +123,14 @@ def resolve_existing_receipt(
             action_id=action_id,
             now_ms=now_ms,
         )
-    return resolve_json_receipt(
+    return resolve_run_command_receipt(
         receipt=receipt,
         request_hash=request_hash,
         response_type=response_type,
     )
 
 
-def finish_json_receipt(
+def finish_run_command_receipt(
     unit_of_work: UnitOfWork,
     command_id: str,
     response: _FinishReceiptResponse,

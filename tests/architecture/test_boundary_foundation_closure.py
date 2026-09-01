@@ -4,7 +4,9 @@ import ast
 from pathlib import Path
 
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import dispatch_tool
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 SRC = Path(__file__).parents[2] / "src" / "google_work_agent"
 
@@ -162,7 +164,6 @@ def test_boundary_adapter_packages_do_not_reexport_concrete_owners() -> None:
         "adapters/llm/__init__.py",
         "adapters/llm/gemini/__init__.py",
         "adapters/llm/ollama/__init__.py",
-        "adapters/mcp/__init__.py",
     ):
         module = ast.parse((SRC / relative).read_text(encoding="utf-8"))
         assert not [node for node in module.body if isinstance(node, (ast.Import, ast.ImportFrom))]

@@ -18,7 +18,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     project_registry,
 )
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import MCPArtifactConfig
-from google_work_agent.application.tool_registry import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
 

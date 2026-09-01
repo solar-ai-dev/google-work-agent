@@ -1,7 +1,7 @@
 """Answer-only product core application flow."""
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from json import dumps, loads
 from typing import Literal, cast
 
@@ -251,19 +251,9 @@ class CompleteAnswerOnlyRunHandler:
             and existing_receipt.status is not CommandReceiptStatus.RECEIVED
         ):
             response = _response_from_json(existing_receipt.response_json)
-            if not response.applied or response.result_kind is not None:
-                return response
-            run = unit_of_work.runs.get(command.run_id)
-            if run is None or run.terminal_result_kind is None:
-                raise RuntimeError("legacy terminal receipt has no durable result classification")
-            if run.terminal_result_kind.value not in {"SUCCESS", "PARTIAL"}:
-                raise RuntimeError(
-                    "legacy answer receipt has incompatible terminal result classification"
-                )
-            return replace(
-                response,
-                result_kind=cast(Literal["SUCCESS", "PARTIAL"], run.terminal_result_kind.value),
-            )
+            if response.applied and response.result_kind is None:
+                raise RuntimeError("terminal receipt is missing its result classification")
+            return response
 
         return self._recover_pending_receipt(unit_of_work, command)
 

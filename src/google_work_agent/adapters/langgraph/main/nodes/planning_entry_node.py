@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Protocol
 
-
-class BeginPlanningResult(Protocol):
-    applied: bool
-    current_status: str
+from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningResult
 
 
 def planning_entry_node(

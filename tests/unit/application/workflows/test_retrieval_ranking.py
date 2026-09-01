@@ -3,21 +3,21 @@
 
 from __future__ import annotations
 
-from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections import (
-    rag_candidate_projection,
-)
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     ConstraintV1,
     RequestIntentV2,
 )
-from google_work_agent.application.agents.retrieval.normalize_segments import _SourceSegment
+from google_work_agent.application.agents.retrieval.normalize_segments import SourceSegment
+from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import (
+    RagScoringConfig,
+    rag_retrieve_rerank,
+)
 
-EXACT_RESOURCE_REASON = rag_candidate_projection.EXACT_RESOURCE_REASON
-KEYWORD_MATCH_REASON = rag_candidate_projection.KEYWORD_MATCH_REASON
-RELATED_RESOURCE_REASON = rag_candidate_projection.RELATED_RESOURCE_REASON
-RESOURCE_SELECTED_FORCED_REASON = rag_candidate_projection.RESOURCE_SELECTED_FORCED_REASON
-RagScoringConfig = rag_candidate_projection.RagScoringConfig
-rank_segments = rag_candidate_projection.rank_segments
+EXACT_RESOURCE_REASON = "EXACT_RESOURCE"
+KEYWORD_MATCH_REASON = "KEYWORD_MATCH"
+RELATED_RESOURCE_REASON = "RELATED_RESOURCE"
+RESOURCE_SELECTED_FORCED_REASON = "RESOURCE_SELECTED_FORCED"
+rank_segments = rag_retrieve_rerank
 
 
 def _segment(
@@ -26,8 +26,8 @@ def _segment(
     resource_id: str,
     parent_id: str | None = None,
     text: str = "",
-) -> _SourceSegment:
-    return _SourceSegment(
+) -> SourceSegment:
+    return SourceSegment(
         segment_id=segment_id,
         resource_handle=f"gmail_thread:{resource_id}",
         source="GMAIL",

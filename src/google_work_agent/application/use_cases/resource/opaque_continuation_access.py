@@ -182,7 +182,7 @@ class LocalResourceContinuationStore:
 
 
 class OpaqueConnectorResourceAccess:
-    """Continuation wrapper over narrow canonical resource collaborators."""
+    """Issue and validate local opaque continuations around resource reads."""
 
     def __init__(
         self,

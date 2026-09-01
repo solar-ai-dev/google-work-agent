@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import Any, cast
 
 import pytest
+from tests.support.fakes.llm import FakeStructuredInferencePort
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestGoalCandidateV1,
@@ -14,47 +13,23 @@ from google_work_agent.application.agents.request_understanding.detect_ambiguity
     detect_ambiguity,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
-from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
-
-
-@dataclass
-class FakeLLMRuntime:
-    calls: list[dict[str, object]] = field(default_factory=list)
-
-    def infer(
-        self,
-        requested_mode: RequestedModeV1,
-        prompt_ref: PromptReference,
-        input_projection: Mapping[str, object],
-        output_schema_ref: OutputSchemaDefinition,
-    ) -> StructuredInferenceResultV1:
-        del requested_mode, output_schema_ref
-        self.calls.append({"prompt_ref": prompt_ref, "prompt_input": dict(input_projection)})
-        return StructuredInferenceResultV1(
-            schema_version=1,
-            structured_output={
-                "requires_confirmation": True,
-                "reason_codes": ["MISSING_RECIPIENT"],
-                "missing_fields": ["recipient"],
-            },
-            provider="fake",
-            model="fake",
-            actual_runtime="API_LLM",
-            input_tokens=1,
-            output_tokens=1,
-            latency_ms=1,
-            fallback_reason=None,
-        )
 
 
 def test_detect_ambiguity__canonical_call__owns_independent_ambiguity() -> None:
-    runtime = FakeLLMRuntime()
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "requires_confirmation": True,
+                "reason_codes": ["MISSING_RECIPIENT"],
+                "missing_fields": ["recipient"],
+            }
+        ]
+    )
     request = WorkflowStartRequest(
         run_id="run-1",
         conversation_id="conversation-1",

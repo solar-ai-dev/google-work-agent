@@ -6,11 +6,11 @@ from typing import Literal
 
 from google_work_agent.ports.connector.oauth_credential_port import OAuthCredentialPort
 from google_work_agent.ports.llm.llm_runtime_status_port import (
+    LlmProviderRuntimeStatus,
     LlmRuntimeStatusPort,
-    LlmRuntimeStatusV1,
 )
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStatePort,
 )
 from google_work_agent.ports.system.runtime_mode_port import RequestedRuntimeModeV1, RuntimeModePort
@@ -31,7 +31,7 @@ class _ConnectorRuntimeStatus:
 @dataclass(frozen=True, slots=True)
 class _ComponentCircuitStatus:
     schema_version: Literal[1]
-    key: ComponentCircuitKeyV1
+    key: ComponentCircuitKey
     state: Literal["CLOSED", "OPEN"]
     retry_at_ms: int | None
 
@@ -79,7 +79,7 @@ class GetRuntimeStatusResult:
     schema_version: Literal[1]
     service_instance_id: str
     connectors: tuple[_ConnectorRuntimeStatus, ...]
-    llm_providers: tuple[LlmRuntimeStatusV1, ...]
+    llm_providers: tuple[LlmProviderRuntimeStatus, ...]
     component_circuits: tuple[_ComponentCircuitStatus, ...]
     active_run_budget: _RunBudgetSummary | None
     recovery_required: bool
@@ -160,11 +160,11 @@ class GetRuntimeStatusHandler:
 
     def __call__(self, query: GetRuntimeStatusQuery) -> GetRuntimeStatusResult:
         connector_keys = tuple(
-            ComponentCircuitKeyV1(1, "CONNECTOR", connector_id, None)
+            ComponentCircuitKey(1, "CONNECTOR", connector_id, None)
             for connector_id in query.connector_ids
         )
         llm_keys = tuple(
-            ComponentCircuitKeyV1(1, "LLM_RUNTIME", None, provider)
+            ComponentCircuitKey(1, "LLM_RUNTIME", None, provider)
             for provider in query.llm_providers
         )
         circuit_states = tuple(

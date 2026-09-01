@@ -22,7 +22,7 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingInputState,
     RequestUnderstandingParentOutputState,

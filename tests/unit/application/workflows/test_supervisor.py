@@ -2,7 +2,6 @@ import json
 from typing import Literal, cast
 
 import pytest
-from tests.support.legacy_write.write_actions import WriteActionResponse
 
 from google_work_agent.adapters.langgraph.main.state import (
     GraphStateUpdateV1,
@@ -13,19 +12,19 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorTarget,
     route_supervisor,
 )
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+    PlannedActionV2,
+)
+from google_work_agent.application.agents.planning.contracts.answer_draft import AnswerDraftV2
 from google_work_agent.application.agents.planning.contracts.domain_validation import (
     DomainValidationResult,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionDraftV1,
-    ActionPlanDraftV1,
-    AnswerDraftV1,
-)
+from google_work_agent.application.agents.planning.contracts.planning_result import PlanningResultV2
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    AcquisitionResultV1,
     RetrievalResultV1,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
@@ -35,8 +34,8 @@ from google_work_agent.application.agents.state_artifact import StateArtifactMet
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
 )
-from google_work_agent.application.use_cases.action.read_contracts import (
-    ReadActionCommandResponse,
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteActionResponse,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RETRIEVAL_HEAVY_MAX_LLM_CALLS,
@@ -50,9 +49,6 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 from google_work_agent.application.use_cases.run.run_terminal import derive_finalize_intent
 from google_work_agent.application.use_cases.run.terminal_contract import (
     FinalizeIntent,
-)
-from google_work_agent.ports.system.contracts.confirmation import (
-    validate_user_interrupt_v1,
 )
 
 
@@ -78,37 +74,6 @@ def test_request_complete_routes_to_tool_route() -> None:
     assert decision["state_update"]["request_intent"] == _request_intent()
     assert decision["state_update"]["user_interrupt"] is None
     assert decision["state_update"]["finalize_intent"] is None
-
-
-def test_source_planning_needs_confirmation_routes_to_waiting_confirmation() -> None:
-    state = _state(request_intent=_request_intent(), workflow_phase=WorkflowPhase.SOURCE_PLANNING)
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOURCE_PLANNING,
-        state=state,
-        result={
-            "schema_version": 1,
-            "result": "NEEDS_CONFIRMATION",
-            "source_fetch_plans": [],
-            "clarification": {
-                "schema_version": 1,
-                "question": "Which mailbox should we search?",
-                "reason_code": "QUERY_SCOPE_EXPANSION_REQUIRES_CONFIRMATION",
-                "affected_field_paths": ["semantic_constraints.sources"],
-                "options": [{"option_id": "gmail", "label": "Gmail"}],
-            },
-            "failure": None,
-            "validator_codes": ["SOURCE_PLAN_NEEDS_CONFIRMATION"],
-            "llm_provider_result": {},
-        },
-    )
-
-    user_interrupt = validate_user_interrupt_v1(decision["state_update"]["user_interrupt"])
-
-    assert decision["target"] == SupervisorTarget.WAITING_CONFIRMATION.value
-    assert decision["next_phase"] == WorkflowPhase.WAITING_CONFIRMATION.value
-    assert user_interrupt["origin_target"] == "acquisition.plan_sources"
-    assert user_interrupt["options"][0]["option_id"] == "gmail"
 
 
 def test_tool_route_ready_enters_retrieval_for_initial_query_planning() -> None:
@@ -147,106 +112,6 @@ def test_unknown_tool_route_disposition_fails_closed_to_recovery() -> None:
     assert decision["reason_code"] == "TOOL_ROUTE_CONTRACT_VIOLATION"
 
 
-def test_downstream_route_reconsideration_returns_to_tool_route_owner() -> None:
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOLUTION_PLANNING,
-        state=_state(request_intent=_request_intent()),
-        result={
-            "schema_version": 2,
-            "status": "ROUTE_RECONSIDERATION_REQUIRED",
-            "reason_codes": ["NEW_RESOURCE_ROUTE_REQUIRED"],
-        },
-    )
-
-    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
-    assert decision["state_update"]["workflow_signal"] == {
-        "kind": "ROUTE_RECONSIDERATION_REQUIRED",
-        "reason_codes": ["NEW_RESOURCE_ROUTE_REQUIRED"],
-    }
-
-
-def test_source_planning_no_fetch_needed_skips_acquisition_and_builds_canonical_result() -> None:
-    state = _state(request_intent=_request_intent(), workflow_phase=WorkflowPhase.SOURCE_PLANNING)
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOURCE_PLANNING,
-        state=state,
-        result={
-            "schema_version": 1,
-            "result": "NO_FETCH_NEEDED",
-            "source_fetch_plans": [],
-            "clarification": None,
-            "failure": None,
-            "validator_codes": ["NO_FETCH_NEEDED"],
-            "llm_provider_result": {},
-        },
-    )
-
-    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
-    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
-    assert decision["state_update"]["source_fetch_plans"] == []
-    assert decision["state_update"]["acquisition_result"] is not None
-    assert decision["state_update"]["acquisition_result"]["status"] == "COMPLETE"
-    assert decision["state_update"]["acquisition_result"]["source_summaries"] == []
-
-
-def test_acquisition_complete_routes_to_context_retrieval() -> None:
-    state = _state(workflow_phase=WorkflowPhase.API_ACQUISITION)
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.API_ACQUISITION,
-        state=state,
-        result=_acquisition_result("COMPLETE"),
-    )
-
-    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
-    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
-    assert decision["state_update"]["acquisition_result"] is not None
-    assert decision["state_update"]["acquisition_result"]["status"] == "COMPLETE"
-
-
-def test_acquisition_auth_required_routes_to_reauth_boundary() -> None:
-    state = _state(workflow_phase=WorkflowPhase.API_ACQUISITION)
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.API_ACQUISITION,
-        state=state,
-        result=_acquisition_result("AUTH_REQUIRED"),
-    )
-
-    assert decision["target"] == SupervisorTarget.REAUTH.value
-    assert decision["next_phase"] is None
-    assert decision["state_update"]["finalize_intent"] is None
-    assert decision["state_update"]["acquisition_result"] is not None
-    assert decision["state_update"]["acquisition_result"]["status"] == "AUTH_REQUIRED"
-
-
-def test_context_needs_more_data_routes_to_source_planning_with_budget_update() -> None:
-    state = _state(
-        request_intent=_request_intent(),
-        workflow_phase=WorkflowPhase.CONTEXT_EVALUATION,
-    )
-    with pytest.raises(ValueError, match="bounded local loop"):
-        route_supervisor(
-            phase=WorkflowPhase.CONTEXT_EVALUATION,
-            state=state,
-            result={"disposition": "NEEDS_MORE_DATA", "typed_result": None},
-        )
-
-
-def test_context_needs_confirmation_becomes_user_interrupt() -> None:
-    state = _state(
-        request_intent=_request_intent(),
-        workflow_phase=WorkflowPhase.CONTEXT_EVALUATION,
-    )
-    with pytest.raises(ValueError, match="owner checkpoint"):
-        route_supervisor(
-            phase=WorkflowPhase.CONTEXT_EVALUATION,
-            state=state,
-            result={"disposition": "NEEDS_CONFIRMATION", "typed_result": None},
-        )
-
-
 def test_work_analysis_routing_is_owned_by_canonical_subgraph() -> None:
     state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
 
@@ -258,26 +123,10 @@ def test_work_analysis_routing_is_owned_by_canonical_subgraph() -> None:
         )
 
 
-def test_solution_planning_answer_only_routes_to_review_inspect() -> None:
-    state = _state(workflow_phase=WorkflowPhase.SOLUTION_PLANNING)
-    result = _answer_draft("ANSWER_ONLY")
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOLUTION_PLANNING,
-        state=state,
-        result=result,
-    )
-
-    assert decision["target"] == SupervisorTarget.PLAN_REVIEW_INSPECT.value
-    assert decision["next_phase"] == WorkflowPhase.PLAN_REVIEW.value
-    assert decision["state_update"]["answer_draft"] == result
-    assert decision["state_update"]["plan_draft"] is None
-
-
 def test_review_pass_with_plan_routes_to_domain_validation() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
     )
     result = _review_result("PASS")
 
@@ -292,33 +141,10 @@ def test_review_pass_with_plan_routes_to_domain_validation() -> None:
     assert decision["state_update"]["plan_review"] == result
 
 
-def test_domain_validation_allow_read_skips_approval_and_routes_to_preflight() -> None:
-    state = _state(
-        workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
-        plan_draft=_plan_draft("PLAN_READY"),
-    )
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.DOMAIN_VALIDATION,
-        state=state,
-        result={
-            "schema_version": 1,
-            "result": DomainValidationResult.ALLOW_READ.value,
-            "reason_codes": ["READ_ONLY_PLAN"],
-            "blocked_action_ids": [],
-        },
-    )
-
-    assert decision["target"] == SupervisorTarget.PREFLIGHT.value
-    assert decision["next_phase"] == WorkflowPhase.PREFLIGHT.value
-    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.PREFLIGHT.value
-    assert decision["state_update"]["finalize_intent"] is None
-
-
 def test_domain_validation_require_approval_routes_to_waiting_approval() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
     )
 
     decision = route_supervisor(
@@ -341,7 +167,7 @@ def test_domain_validation_require_approval_routes_to_waiting_approval() -> None
 def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
     )
 
     decision = route_supervisor(
@@ -362,41 +188,10 @@ def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
-def test_preflight_read_claim_routes_to_action_execution() -> None:
-    state = _state(
-        workflow_phase=WorkflowPhase.PREFLIGHT,
-        plan_draft=_plan_draft("PLAN_READY"),
-        approved_plan_id="approved-plan-1",
-    )
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.PREFLIGHT,
-        state=state,
-        result=ReadActionCommandResponse(
-            applied=True,
-            result_code="TRANSITION_APPLIED",
-            action_id="action-read-1",
-            action_status="EXECUTING",
-            action_version=3,
-            next_allowed_commands=("complete_read_action",),
-            plan_completed=False,
-            run_completed=False,
-            partial=False,
-            safe_error_code=None,
-            conflict_detail=None,
-        ),
-    )
-
-    assert decision["target"] == SupervisorTarget.ACTION_EXECUTION.value
-    assert decision["next_phase"] == WorkflowPhase.ACTION_EXECUTION.value
-    assert decision["state_update"]["workflow_phase"] == WorkflowPhase.ACTION_EXECUTION.value
-    assert decision["state_update"]["finalize_intent"] is None
-
-
 def test_preflight_write_claim_routes_to_action_execution() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
         approved_plan_id="approved-plan-1",
     )
 
@@ -427,7 +222,7 @@ def test_preflight_write_claim_routes_to_action_execution() -> None:
 def test_preflight_reauth_required_routes_to_reauth_boundary() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
         approved_plan_id="approved-plan-1",
     )
 
@@ -457,7 +252,7 @@ def test_preflight_reauth_required_routes_to_reauth_boundary() -> None:
 def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
         approved_plan_id="approved-plan-1",
     )
 
@@ -489,7 +284,7 @@ def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
 def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
     result = _review_result("PASS")
 
@@ -512,7 +307,7 @@ def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> No
 def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
 
     decision = route_supervisor(
@@ -536,7 +331,7 @@ def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
     though the planning_revisions_used cap (2) alone would still allow it."""
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
     first = route_supervisor(
         phase=WorkflowPhase.PLAN_REVIEW,
@@ -549,7 +344,7 @@ def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
 
     state_after_revision = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
         retry_budget=cast(RunBudgetV2, first["state_update"]["retry_budget"]),
     )
 
@@ -589,7 +384,7 @@ def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
     )["run_budget"]
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
         retry_budget=restored_budget,
     )
 
@@ -611,7 +406,7 @@ def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
 def test_review_revise_routes_plan_draft_to_revise_plan() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        plan_draft=_plan_draft("PLAN_READY"),
+        planning_result=_plan_draft("PLAN_READY"),
     )
 
     decision = route_supervisor(
@@ -625,31 +420,10 @@ def test_review_revise_routes_plan_draft_to_revise_plan() -> None:
     assert decision["state_update"]["retry_budget"]["planning_revisions_used"] == 1
 
 
-def test_revised_answer_routes_to_single_review_recheck() -> None:
-    state = _state(
-        workflow_phase=WorkflowPhase.SOLUTION_PLANNING,
-        plan_review=_review_result("REVISE"),
-        retry_budget={
-            **build_default_run_budget(),
-            "planning_revisions_used": 1,
-        },
-    )
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOLUTION_PLANNING,
-        state=state,
-        result=_answer_draft("ANSWER_ONLY"),
-    )
-
-    assert decision["target"] == SupervisorTarget.PLAN_REVIEW_RECHECK.value
-    assert decision["next_phase"] == WorkflowPhase.PLAN_REVIEW.value
-    assert decision["state_update"]["retry_budget"]["review_rechecks_used"] == 1
-
-
 def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
         retry_budget={
             **build_default_run_budget(),
             "additional_retrieval_rounds_used": 2,
@@ -692,7 +466,7 @@ def test_review_retrieve_more_with_frozen_route_becomes_retrieval_required() -> 
     ]
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
     state["tool_route_plan"] = plan
 
@@ -717,7 +491,7 @@ def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration
     -> RouteReconsiderationRequiredV1 -> Tool Route, not RetrievalRequiredV1."""
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
     state["tool_route_plan"] = _tool_route_plan()  # input_routes == []
 
@@ -736,32 +510,10 @@ def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration
     assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
 
 
-def test_solution_planning_route_reconsideration_required_routes_to_tool_route() -> None:
-    state = _state(workflow_phase=WorkflowPhase.SOLUTION_PLANNING)
-    result = _answer_draft("ANSWER_ONLY")
-    result["status"] = "ROUTE_RECONSIDERATION_REQUIRED"
-    result["reason_codes"] = ["NEW_RESOURCE_ROUTE_REQUIRED"]
-
-    decision = route_supervisor(
-        phase=WorkflowPhase.SOLUTION_PLANNING,
-        state=state,
-        result=result,
-    )
-
-    assert decision["target"] == SupervisorTarget.TOOL_ROUTE.value
-    assert decision["next_phase"] == WorkflowPhase.TOOL_ROUTING.value
-    signal = decision["state_update"]["workflow_signal"]
-    assert signal is not None
-    assert signal["kind"] == "ROUTE_RECONSIDERATION_REQUIRED"
-    assert signal["reason_codes"] == ["NEW_RESOURCE_ROUTE_REQUIRED"]
-    assert decision["state_update"]["answer_draft"] is None
-    assert decision["state_update"]["plan_draft"] is None
-
-
 def test_review_route_reconsideration_routes_to_tool_route() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
     )
 
     decision = route_supervisor(
@@ -781,7 +533,7 @@ def test_review_route_reconsideration_routes_to_tool_route() -> None:
 def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_present() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
-        answer_draft=_answer_draft("ANSWER_ONLY"),
+        planning_result=_answer_draft("ANSWER_ONLY"),
         retrieval_result=cast(
             RetrievalResultV1,
             {"coverage": "PARTIAL", "evidence_refs": ["evidence-1"]},
@@ -850,10 +602,8 @@ def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
     request_intent: RequestIntentV2 | None = None,
-    acquisition_result: AcquisitionResultV1 | None = None,
     retrieval_result: RetrievalResultV1 | None = None,
-    answer_draft: AnswerDraftV1 | None = None,
-    plan_draft: ActionPlanDraftV1 | None = None,
+    planning_result: PlanningResultV2 | None = None,
     plan_review: PlanReviewResultV2 | None = None,
     approved_plan_id: str | None = None,
     retry_budget: RunBudgetV2 | None = None,
@@ -867,12 +617,10 @@ def _state(
         "request_intent": request_intent,
         "tool_route_plan": None,
         "workflow_signal": None,
-        "source_fetch_plans": [],
-        "acquisition_result": acquisition_result,
+        "acquisition_result": None,
         "retrieval_result": retrieval_result,
         "work_analysis_result": None,
-        "answer_draft": answer_draft,
-        "plan_draft": plan_draft,
+        "planning_result": planning_result,
         "plan_review": plan_review,
         "approved_plan_id": approved_plan_id,
         "finalize_intent": None,
@@ -916,94 +664,38 @@ def _tool_route_plan() -> ToolRoutePlanV2:
     }
 
 
-def _acquisition_result(
-    status: Literal[
-        "COMPLETE",
-        "PARTIAL",
-        "AUTH_REQUIRED",
-        "RATE_LIMITED",
-        "BUDGET_EXHAUSTED",
-        "FAILED",
-    ],
-) -> AcquisitionResultV1:
-    return {
-        "schema_version": 1,
-        "status": status,
-        "resource_handles": [],
-        "source_summaries": [],
-        "missing_slots": [],
-        "remaining_budget": {
-            "sources": 0,
-            "pages": 0,
-            "candidates": 0,
-            "details": 0,
-        },
-    }
-
-
 def _answer_draft(
     status: Literal["ANSWER_ONLY", "NEEDS_CONFIRMATION", "BLOCKED"],
-) -> AnswerDraftV1:
+) -> AnswerDraftV2:
+    del status
     return {
-        "schema_version": 1,
-        "status": status,
+        "schema_version": 2,
+        "meta": {"artifact_id": "answer-1", "revision": 1, "based_on": []},
         "answer": "Here is the answer.",
         "evidence_refs": ["evidence-1"],
-        "resource_refs": [{"resource_handle": "message:1"}],
-        "reason_codes": ["ANSWER_SUPPORTED"] if status == "ANSWER_ONLY" else ["PLANNING_BLOCKED"],
-        "confirmation": (
-            None
-            if status != "NEEDS_CONFIRMATION"
-            else {
-                "question": "Should we include the tentative item?",
-                "reason_code": "ANSWER_SCOPE_CONFIRMATION",
-                "affected_field_paths": ["answer"],
-                "options": [],
-            }
-        ),
-        "blockers": [] if status != "BLOCKED" else ["unsupported"],
     }
 
 
 def _plan_draft(
     status: Literal["PLAN_READY", "NEEDS_CONFIRMATION", "BLOCKED"],
-) -> ActionPlanDraftV1:
+) -> ActionPlanDraftV2:
+    del status
     return {
         "schema_version": 2,
-        "status": status,
-        "plan_id": "plan-1",
-        "summary": "Plan summary",
-        "objective": "Plan objective",
-        "actions": [] if status != "PLAN_READY" else [_action_draft()],
-        "evidence_refs": ["evidence-1"],
-        "resource_refs": [{"resource_handle": "message:1"}],
-        "confirmation": (
-            None
-            if status != "NEEDS_CONFIRMATION"
-            else {
-                "question": "Should this action be approved?",
-                "reason_code": "PLAN_SCOPE_CONFIRMATION",
-                "affected_field_paths": ["actions[0]"],
-                "options": [],
-            }
-        ),
+        "meta": {"artifact_id": "plan-1", "revision": 1, "based_on": []},
+        "actions": [_action_draft()],
     }
 
 
-def _action_draft() -> ActionDraftV1:
+def _action_draft() -> PlannedActionV2:
     return {
-        "schema_version": 2,
         "action_id": "action-1",
-        "position": 1,
-        "effect": "READ",
-        "tool_name": "gmail.read_thread",
-        "arguments": {},
-        "expected": {},
+        "route_id": "route-1",
+        "effect": "CREATE",
+        "tool_id": "tasks_create_task",
+        "arguments": {"task_list_id": "list-1", "payload": {"title": "Follow up"}},
         "evidence_refs": ["evidence-1"],
-        "resource_refs": ["message:1"],
-        "target_resource_ref_id": None,
         "depends_on_action_ids": [],
-        "user_visible_reason": "Need the latest thread.",
     }
 
 

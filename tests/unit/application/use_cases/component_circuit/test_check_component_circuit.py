@@ -7,18 +7,18 @@ from google_work_agent.application.use_cases.component_circuit.check_component_c
     CheckComponentCircuitQueryV1,
 )
 from google_work_agent.ports.system.component_circuit_state_port import (
-    ComponentCircuitKeyV1,
+    ComponentCircuitKey,
     ComponentCircuitStateV1,
 )
 
-KEY = ComponentCircuitKeyV1(1, "CONNECTOR", "google-workspace", None)
+KEY = ComponentCircuitKey(1, "CONNECTOR", "google-workspace", None)
 
 
 @dataclass
 class _StatePort:
     state: ComponentCircuitStateV1
 
-    def get_state(self, key: ComponentCircuitKeyV1) -> ComponentCircuitStateV1:
+    def get_state(self, key: ComponentCircuitKey) -> ComponentCircuitStateV1:
         assert key == KEY
         return self.state
 

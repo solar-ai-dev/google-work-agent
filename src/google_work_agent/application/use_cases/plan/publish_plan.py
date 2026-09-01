@@ -199,7 +199,4 @@ class PublishPlanHandler:
             return response
 
 
-PublishPlanCommand = PublishWritePlanCommand
-PublishPlanResult = PublishWritePlanResponse
-
-__all__ = ["PublishPlanCommand", "PublishPlanResult", "PublishPlanHandler"]
+__all__ = ["PublishPlanHandler"]

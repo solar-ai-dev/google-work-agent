@@ -10,7 +10,7 @@ from google_work_agent.application.agents.tool_routing.select_tool_if_needed imp
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     OutputSchemaDefinition,
     PromptReference,
 )

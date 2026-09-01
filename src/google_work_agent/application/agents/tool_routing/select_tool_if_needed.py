@@ -14,7 +14,7 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     load_prompt_reference,
 )
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
-    legacy_post_call_projection,
+    merge_provider_dispatch_usage,
     provider_dispatch_budget_scope,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     OutputSchemaDefinition,
     PromptReference,
 )
@@ -92,7 +92,7 @@ def select_tool_if_needed(
             result.structured_output, eligible_tool_ids=eligible_tool_ids
         )
         if selected is not None:
-            return selected, legacy_post_call_projection(retry_budget)
+            return selected, merge_provider_dispatch_usage(retry_budget)
         failure_code = "TOOL_SELECTION_INVALID"
         signature = build_semantic_failure_signature_v1(
             node_id="route.select_tool", failure_reason_codes=[failure_code]
@@ -127,7 +127,7 @@ def select_tool_if_needed(
             raise ToolRouteValidationError(
                 "selected tool is not a Registry-eligible candidate after revision"
             )
-        return selected, legacy_post_call_projection(decision["run_budget"])
+        return selected, merge_provider_dispatch_usage(decision["run_budget"])
 
 
 def _validated_selection(value: object, *, eligible_tool_ids: tuple[str, ...]) -> str | None:

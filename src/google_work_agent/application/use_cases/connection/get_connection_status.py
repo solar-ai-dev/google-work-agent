@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 
 from google_work_agent.ports.connector.connected_account_store import ConnectedAccountStore
 from google_work_agent.ports.connector.oauth_credential_port import (
-    ConnectionMetadataV1,
+    OAuthConnectionMetadata,
     OAuthCredentialPort,
 )
 
@@ -18,7 +18,7 @@ class GetConnectionStatusQuery:
 
 @dataclass(frozen=True, slots=True)
 class GetConnectionStatusResult:
-    connection: ConnectionMetadataV1
+    connection: OAuthConnectionMetadata
 
 
 class GetConnectionStatusHandler:

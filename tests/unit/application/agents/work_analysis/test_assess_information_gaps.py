@@ -5,9 +5,8 @@ import pytest
 from google_work_agent.application.agents.work_analysis.assess_information_gaps import (
     assess_information_gaps,
 )
-from google_work_agent.ports.llm import PromptReference
-
-from .conftest import FakeRuntime, fact, intent, prompt_ref
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
+from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, intent, prompt_ref
 
 
 def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() -> None:
@@ -20,7 +19,7 @@ def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() 
         "evidence_refs": ["ev-1"],
         "reason_codes": ["DUE_DATE_MISSING"],
     }
-    runtime = FakeRuntime(output)
+    runtime = WorkAnalysisRuntimeFake(output)
 
     result = assess_information_gaps(
         request_intent=intent(),
@@ -40,7 +39,7 @@ def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() 
 
 
 def test_assess_information_gaps_rejects_unbounded_evidence() -> None:
-    runtime = FakeRuntime(
+    runtime = WorkAnalysisRuntimeFake(
         {
             "disposition": "COMPLETE",
             "ambiguities": [],

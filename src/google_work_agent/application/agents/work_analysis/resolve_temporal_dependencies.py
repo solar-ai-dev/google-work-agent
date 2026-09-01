@@ -5,14 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import cast
 
-from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
-    WorkRelationCandidateV1,
-)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
+    WorkRelationV1,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
@@ -63,7 +64,7 @@ def resolve_temporal_dependencies(
     allowed_evidence_refs: set[str],
     requested_mode: RequestedModeV1,
     confirmation_response: dict[str, object] | None = None,
-) -> list[WorkRelationCandidateV1]:
+) -> list[WorkRelationV1]:
     """Produce temporal/order/dependency candidates without calendar arithmetic."""
     prompt_input: dict[str, object] = {
         "work_facts": [dict(fact) for fact in work_facts],
@@ -105,7 +106,7 @@ def resolve_temporal_dependencies(
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [
-        cast(WorkRelationCandidateV1, dict(item))
+        cast(WorkRelationV1, dict(item))
         for item in cast(list[dict[str, object]], root["relation_candidates"])
     ]
 

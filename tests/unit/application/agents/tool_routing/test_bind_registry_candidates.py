@@ -4,10 +4,10 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 from google_work_agent.application.agents.tool_routing.contracts.semantic_route_candidate import (
     SemanticRouteCandidate,
 )
-from google_work_agent.application.tool_registry import (
-    SignedToolRegistry,
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
 
 

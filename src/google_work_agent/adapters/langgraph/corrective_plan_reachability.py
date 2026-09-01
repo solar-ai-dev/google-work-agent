@@ -10,8 +10,11 @@ from google_work_agent.adapters.langgraph.corrective_plan_persistence import (
     persist_reserved_corrective_write_plan,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
+    RunScopedResourceIdentityReader,
+)
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
 )
 from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanStatusV1
@@ -37,7 +40,8 @@ def persist_reachable_corrective_write_plan(
     runtime: Any,
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
+    resource_identity_reader: RunScopedResourceIdentityReader,
     reserved_plan: PlanRecord,
 ) -> str:
     """Persist corrective work while preserving a production-reachable retry seam.
@@ -51,14 +55,15 @@ def persist_reachable_corrective_write_plan(
         return persist_reserved_corrective_write_plan(
             runtime,
             state=state,
-            plan_draft=plan_draft,
+            plan=plan,
+            resource_identity_reader=resource_identity_reader,
             reserved_plan=reserved_plan,
         )
     except Exception as error:
         disposition = _classify_failure_after_corrective_save(
             runtime,
             state=state,
-            plan_draft=plan_draft,
+            plan=plan,
             reserved_plan=reserved_plan,
         )
         if disposition is _FailureDisposition.ALREADY_PUBLISHED:
@@ -76,7 +81,7 @@ def _classify_failure_after_corrective_save(
     runtime: Any,
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
     reserved_plan: PlanRecord,
 ) -> _FailureDisposition:
     """Classify only states proven from durable Save/Plan/child facts."""
@@ -85,7 +90,7 @@ def _classify_failure_after_corrective_save(
         proof = _build_durable_materialization_proof(
             runtime,
             state=state,
-            plan_draft=plan_draft,
+            plan=plan,
             reserved_plan=reserved_plan,
         )
     except Exception:

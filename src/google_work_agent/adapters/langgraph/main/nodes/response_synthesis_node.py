@@ -14,7 +14,6 @@ from google_work_agent.application.use_cases.run.build_terminal_message import (
 
 type TerminalCommitKindV1 = Literal[
     "COMPLETE_ANSWER_ONLY",
-    "COMPLETE_READ_ONLY",
     "COMPLETE_WRITE",
     "BLOCK_RUN",
     "FINALIZE_CANCEL",
@@ -37,7 +36,6 @@ _TERMINAL_STATUSES = frozenset({"COMPLETED", "BLOCKED", "FAILED", "CANCELLED"})
 _TERMINAL_COMMIT_KINDS = frozenset(
     {
         "COMPLETE_ANSWER_ONLY",
-        "COMPLETE_READ_ONLY",
         "COMPLETE_WRITE",
         "BLOCK_RUN",
         "FINALIZE_CANCEL",
@@ -46,7 +44,6 @@ _TERMINAL_COMMIT_KINDS = frozenset(
         "RECOVERY_FAIL",
     }
 )
-_READ_FINAL_STATUSES = frozenset({"VERIFIED", "FAILED"})
 _WRITE_FINAL_STATUSES = frozenset(
     {
         "VERIFIED",
@@ -150,8 +147,8 @@ def _classify(
     str | None,
     list[str],
 ]:
-    answer_text = _answer_text(state.get("answer_draft"))
-    intent_name, intent_reason, intent_result = _legacy_finalize_fields(finalize_intent)
+    answer_text = _answer_text(state.get("planning_result"))
+    intent_name, intent_reason, intent_result = _finalize_fields(finalize_intent)
     durable_result = terminal_result_kind if isinstance(terminal_result_kind, str) else None
 
     if intent_name == "BLOCKED" or status == "BLOCKED":
@@ -185,15 +182,6 @@ def _classify(
             "PARTIAL" if intent_result == "PARTIAL" or durable_result == "PARTIAL" else "SUCCESS",
         )
         return "COMPLETE_ANSWER_ONLY", "ANSWER_DRAFT", result, answer_text, []
-    if action_effect_types and all(item == "READ" for item in action_effect_types):
-        if not action_statuses or any(item not in _READ_FINAL_STATUSES for item in action_statuses):
-            raise ValueError("READ terminal intent requires only VERIFIED/FAILED actions")
-        result = cast(
-            TerminalResultKindV1,
-            "PARTIAL" if "FAILED" in action_statuses else "SUCCESS",
-        )
-        reasons = ["READ_ACTION_FAILED"] if result == "PARTIAL" else []
-        return "COMPLETE_READ_ONLY", "WRITE_VERIFICATION_SUMMARY", result, None, reasons
     if action_effect_types:
         if not action_statuses or any(
             item not in _WRITE_FINAL_STATUSES for item in action_statuses
@@ -209,7 +197,7 @@ def _classify(
     raise ValueError("current durable facts do not authorize terminal synthesis")
 
 
-def _legacy_finalize_fields(value: object) -> tuple[str | None, str | None, str | None]:
+def _finalize_fields(value: object) -> tuple[str | None, str | None, str | None]:
     if not isinstance(value, Mapping):
         return None, None, None
     intent = value.get("intent")
@@ -225,9 +213,8 @@ def _legacy_finalize_fields(value: object) -> tuple[str | None, str | None, str 
 def _answer_text(value: object) -> str | None:
     if not isinstance(value, Mapping):
         return None
-    is_v1 = value.get("status") == "ANSWER_ONLY"
-    is_v2 = value.get("schema_version") == 2 and isinstance(value.get("meta"), Mapping)
-    if not (is_v1 or is_v2):
+    is_current = value.get("schema_version") == 2 and isinstance(value.get("meta"), Mapping)
+    if not is_current:
         return None
     answer = value.get("answer")
     return answer if isinstance(answer, str) and answer.strip() else None

@@ -10,7 +10,8 @@ from typing import Literal, cast
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     ApprovedModelInfo,
     AvailabilityState,
@@ -30,7 +31,6 @@ from google_work_agent.ports.llm import (
     StructuredLLMProvider,
     StructuredLLMResult,
 )
-from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
@@ -465,7 +465,6 @@ class StructuredInferenceRuntimeRouter:
             structured_output_attempts=attempts,
             provider_request_id=payload.provider_request_id,
             safe_error_code=None,
-            provider_calls_consumed=attempts,
         )
         self.event_recorder.record(
             event_name="LLM_CALL_COMPLETED",

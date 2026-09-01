@@ -13,7 +13,9 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
 from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_registry import (
     google_workspace_tool_contract,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 build_google_workspace_internal_capabilities = (
     project_registry.build_google_workspace_internal_capabilities
@@ -59,7 +61,6 @@ def main() -> None:
                                 "code": "TOOL_REJECTED",
                                 "message": "delivery-certainty-fixture",
                                 "delivery_certainty": certainty,
-                                "dispatch_started": certainty != "NOT_SENT",
                             },
                         }
                     )

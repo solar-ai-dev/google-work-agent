@@ -6,7 +6,7 @@ ROOT = Path("src/google_work_agent")
 def test_workflow_handoff_sql_mutation_is_owned_only_by_canonical_repository() -> None:
     allowed = {
         ROOT / "adapters/persistence/sqlite/repositories/workflow_handoff_repository.py",
-        ROOT / "adapters/persistence/migrations/0009_workflow_handoff_outbox.sql",
+        ROOT / "adapters/persistence/migrations/0001_current_schema.sql",
     }
     offenders: list[Path] = []
     for path in (*ROOT.rglob("*.py"), *ROOT.rglob("*.sql")):
@@ -42,7 +42,7 @@ def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
     sql_owners = {
         ROOT / "adapters/system/sqlite_checkpoint.py",
         ROOT / "adapters/persistence/sqlite/initial_workflow_binding_writer.py",
-        ROOT / "adapters/persistence/migrations/0018_initial_workflow_binding.sql",
+        ROOT / "adapters/persistence/migrations/0001_current_schema.sql",
     }
     offenders: list[Path] = []
 

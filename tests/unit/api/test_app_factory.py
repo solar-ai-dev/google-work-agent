@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
-from tests.support.legacy_write.write_actions import WriteRunResponse
 
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
@@ -15,6 +14,9 @@ from google_work_agent.adapters.readiness.composite import (
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer
+from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
+    WriteRunResponse,
+)
 from google_work_agent.application.use_cases.recovery.project_recovery_options import (
     ProjectRecoveryOptionsResultV1,
 )

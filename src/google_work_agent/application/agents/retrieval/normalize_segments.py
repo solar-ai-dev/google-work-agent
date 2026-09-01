@@ -220,31 +220,18 @@ def _segment_id(identity: SourceSegmentIdentityV1) -> str:
 LiteralSourceKind = Literal["gmail", "tasks", "calendar"]
 
 
-# Preserved context segmentation is owned by normalization.
-
-_SourceSegment = SourceSegment
-
-
-class ContextRetrievalValidationError(ValueError):
-    """Legacy validation error name retained for #114 consumers."""
-
-
-def _segments_from_acquisition(
-    acquisition_result: AcquisitionResultV1,
-    context_budget: ContextBudget,
-) -> list[SourceSegment]:
-    return normalize_segments(acquisition_result, context_budget=context_budget)
+class RetrievalValidationError(ValueError):
+    """Raised when a Retrieval semantic result violates its current contract."""
 
 
 __all__ = [
     "ContextBudget",
-    "ContextRetrievalValidationError",
     "DEFAULT_CONTEXT_BUDGET",
-    "_SourceSegment",
+    "RetrievalValidationError",
+    "SourceSegment",
     "_chunk_text",
     "_estimate_tokens",
     "_resource_text",
-    "_segments_from_acquisition",
     "_strip_email_quote_and_signature",
     "_truncate",
 ]

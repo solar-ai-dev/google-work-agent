@@ -702,54 +702,9 @@ sequenceDiagram
 
 Answer-only Run에는 Plan·Action·Approval·Attempt·Verification Row를 만들지 않는다.
 
-## 10. Legacy/호환 READ-only Plan 실행
+## 10. Connector READ 실행
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant SUP as Supervisor
-    participant APP as Application
-    participant DOM as Domain
-    participant DB as Application UoW · Repository Ports → SQLite Adapter
-    participant MCP as ConnectorReadPort
-    participant G as Google APIs
-    participant API as FastAPI
-    participant FE as React 프런트엔드
-
-    SUP->>APP: publish_read_only_plan<br>Legacy READ Action만 포함
-    APP->>DOM: PublishReadOnlyPlan + Tool·Evidence·Dependency 검증
-    APP->>DB: UoW commit · Receipt·Plan ACTIVE·READ Action PROPOSED 저장<br>Run PLANNING → EXECUTING · 같은 Transaction
-    DB-->>APP: COMMIT · applied=true·ALLOW_READ
-
-    loop 실행 가능한 READ Action
-        APP->>DOM: claim_read_action(expected_version)
-        APP->>DB: UoW commit · PROPOSED → EXECUTING
-        DB-->>APP: COMMIT · applied=true
-        APP->>MCP: 검증된 Read Tool
-        MCP->>G: Google 조회
-        G-->>MCP: Read Result
-        MCP-->>APP: Typed Output
-        alt Output Schema 정상
-            APP->>DOM: complete_read_action
-            APP->>DB: UoW commit · EXECUTING → EXECUTED
-            APP->>APP: 결과를 응답·후속 판단에 반영
-            APP->>DOM: finalize_read_action
-            APP->>DB: UoW commit · EXECUTED → VERIFIED
-        else 복구 불가능한 Read 실패
-            APP->>DOM: fail_read_action
-            APP->>DB: UoW commit · EXECUTING → FAILED
-        end
-    end
-
-    APP->>DOM: CompleteReadOnlyRun(expected_version)
-    APP->>DB: UoW commit · Plan ACTIVE → COMPLETED<br>Run EXECUTING → COMPLETED · final Message/Audit atomic
-    API-->>FE: action_status·completed
-```
-
-- READ `VERIFIED`는 Output Schema Validation과 결과 반영 완료를 의미한다.
-- Write Verification 지표에 포함하지 않는다.
-- Legacy READ 중 Google/MCP가 `AUTH_EXPIRED`를 반환하면 `Run=EXECUTING + current READ Action=EXECUTING + ExecutionAttempt row 없음`을 검증한 뒤 `RequireReauth`가 `MAIN_CONTROL:READ_EXECUTION`을 등록한다. OAuth 완료 후 `ResumeAfterReauth(applied=true)`가 같은 Run/Action/route binding을 검증한 경우에만 **동일 non-mutating READ 호출을 재개**한다. 이 경로에서 Approval/ExecutionAttempt/ConnectorWritePort 생성·호출은 0이다.
-- Legacy READ가 아닌 승인형 Write에서는 `READ_EXECUTION` target을 사용할 수 없다.
+Connector READ는 §6·§7의 Retrieval subgraph 안에서만 실행한다. 별도 READ Plan/Action lifecycle, READ 전용 Domain transition, Approval·ExecutionAttempt·Verification Row는 만들지 않는다. 인증 만료는 동일 Retrieval owner의 checkpoint/resume 계약으로 재개하며 `ConnectorWritePort` 호출은 0이다.
 
 ## 11. WRITE Plan 저장·승인·실행·검증
 

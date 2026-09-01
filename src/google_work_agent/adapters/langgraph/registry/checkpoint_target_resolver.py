@@ -71,12 +71,7 @@ def _project_entry_node_id(runnable: str, phase: str | None) -> str | None:
                     return "request.identify_goal"
                 case "TOOL_ROUTING":
                     return "route.determine_resources"
-                case (
-                    "SOURCE_PLANNING"
-                    | "API_ACQUISITION"
-                    | "CONTEXT_RETRIEVAL"
-                    | "CONTEXT_EVALUATION"
-                ):
+                case "CONTEXT_RETRIEVAL":
                     return "retrieval.plan_query"
                 case "WORK_ANALYSIS":
                     return "analysis.extract_facts"

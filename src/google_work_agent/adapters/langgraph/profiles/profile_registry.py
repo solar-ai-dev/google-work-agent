@@ -21,10 +21,6 @@ class GraphProfile(StrEnum):
     SIX_ROLE_BASELINE = "SIX_ROLE_BASELINE"
 
 
-class PromptArtifactGapError(RuntimeError):
-    """Raised when the selected profile requires an inactive Prompt artifact."""
-
-
 type GraphProfileBuilder = Callable[..., Any]
 
 

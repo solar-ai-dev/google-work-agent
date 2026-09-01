@@ -6,7 +6,7 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     UnroutableSupervisorTargetError,
 )
 from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.registry.node_registry import (
     RUNTIME_NODE_OWNERS,
     NodeRegistry,
@@ -52,18 +52,6 @@ def test_profile_topology_is_preserved(
         ),
         (
             GraphProfile.THREE_STAGE,
-            SupervisorTarget.SOURCE_PLANNING,
-            "context_retriever",
-            "stage_one",
-        ),
-        (
-            GraphProfile.THREE_STAGE,
-            SupervisorTarget.API_ACQUISITION,
-            "context_retriever",
-            "stage_one",
-        ),
-        (
-            GraphProfile.THREE_STAGE,
             SupervisorTarget.PLANNING_REVISE_PLAN,
             "planning_entry",
             "planning_entry",
@@ -73,12 +61,6 @@ def test_profile_topology_is_preserved(
             SupervisorTarget.PLAN_REVIEW_RECHECK,
             "review_entry",
             "review_entry",
-        ),
-        (
-            GraphProfile.SIX_ROLE_BASELINE,
-            SupervisorTarget.API_ACQUISITION,
-            "context_retriever",
-            "context_retriever",
         ),
         (
             GraphProfile.SIX_ROLE_BASELINE,

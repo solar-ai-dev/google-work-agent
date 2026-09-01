@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from tests.unit.application.use_cases._canonical_owner import assert_owner
 
 from google_work_agent.application.use_cases.claim.build_claim_context import ClaimContextV2
 from google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write import (
@@ -28,18 +27,6 @@ from google_work_agent.ports.connector.connector_write_port import ConnectorWrit
 
 _TOOL_ARGUMENTS: dict[str, object] = {"task_list_id": "list-1", "payload": {"title": "Task"}}
 _EXECUTION_ARGUMENTS_HASH = calculate_canonical_json_hash(_TOOL_ARGUMENTS)
-
-
-def test_canonical_owner() -> None:
-    assert_owner(
-        "google_work_agent.application.use_cases.execution_attempt.dispatch_connector_write",
-        (
-            "DispatchConnectorWriteCommandV1",
-            "DispatchConnectorWriteResultV1",
-            "DispatchConnectorWriteHandler",
-        ),
-        "DispatchConnectorWriteHandler",
-    )
 
 
 class _Repository:

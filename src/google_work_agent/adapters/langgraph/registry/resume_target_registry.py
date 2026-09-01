@@ -20,7 +20,6 @@ MAIN_RESUME_STAGES: frozenset[MainResumeStageIdV1] = frozenset(
         "PLANNING_ENTRY",
         "REVIEW_ENTRY",
         "PREFLIGHT",
-        "READ_EXECUTION",
         "VERIFICATION",
         "RECOVERY",
         "CANCEL_RESOLUTION",

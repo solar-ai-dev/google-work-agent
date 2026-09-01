@@ -9,7 +9,7 @@ from release.assemble_application_bundle import assemble_application_bundle
 from release.generate_model_manifest import ApprovedModelEntryV1, generate_model_manifest
 
 from release.profiles import DeploymentProfile
-from tests.release.bundle_fixture import create_bundle_inputs
+from tests.support.bundle_fixture import create_bundle_inputs
 
 
 def test_api_only_bundle_materializes_exact_connector_tool_artifacts(tmp_path: Path) -> None:

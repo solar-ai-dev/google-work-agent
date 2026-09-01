@@ -849,12 +849,6 @@ request_confirmation
 resume_confirmation
 publish_plan
 complete_answer_only_run
-complete_read_only_run
-publish_read_only_plan
-claim_read_action
-complete_read_action
-finalize_read_action
-fail_read_action
 approve_action
 modify_action
 reject_action
@@ -1320,11 +1314,11 @@ class ExecutionReconciliationCandidateV1:
     action_id: str
     run_id: str
 
-class ReconcileInflightExecutionsCommandV1:
+class ReconcileInflightExecutionsCommand:
     schema_version: Literal[1]
     limit: int
 
-class ReconcileInflightExecutionsResultV1:
+class ReconcileInflightExecutionsResult:
     schema_version: Literal[1]
     processed_count: int
     progressed_count: int
@@ -1355,9 +1349,8 @@ class ConnectorReadPort(Protocol):
 - Provider raw response/token은 Connector MCP Server 내부 Adapter에만 존재한다.
 - Gmail/Tasks/Calendar별 capability 이름은 §27의 MCP Tool ID가 canonical name이며 Core Port에 별도 `list_gmail` 같은 두 번째 API vocabulary를 만들지 않는다.
 - 일반 Retrieval 호출은 Action Row를 만들지 않는다.
-- 사용자에게 표시·재개가 필요한 명시적 READ Plan만 READ Action 계약을 사용한다.
-- READ Action은 Approval·ExecutionAttempt·Verification Row를 만들지 않는다.
-- READ Output Schema 실패는 `fail_read_action`으로 `FAILED` 처리한다.
+- Connector READ는 Retrieval 내부에서만 실행하며 Action Row를 만들지 않는다.
+- READ Output Schema 실패는 Retrieval failure/disposition으로 닫고 별도 READ Action lifecycle로 투영하지 않는다.
 
 ## 13. 승인·실행 계약
 
@@ -1392,9 +1385,7 @@ class RecordReviewResultResultV1:
 
 `record_review_result`는 external I/O와 Action/Approval mutation을 하지 않는다. stale Plan/Action version에서는 `applied=false`이며 이전 PASS를 새 revision에 승계하지 않는다.
 
-## 14. Answer-only·Legacy/호환 READ-only 계약
-
-### Answer-only
+## 14. Answer-only 계약
 
 ```
 complete_answer_only_run
@@ -1403,25 +1394,7 @@ ANALYZING | RETRIEVING | PLANNING → COMPLETED
 
 Plan·Action 없이 **final ASSISTANT Message + Run terminal mutation + required Audit**를 같은 Application UoW로 원자 저장한다. Diagnostic Trace와 SSE Projection은 commit 이후 별도 best-effort/post-commit 경계에서 기록·전달하며 terminal transaction의 원자성에 포함하지 않는다.
 
-### Legacy/호환 READ-only Plan
-
-```
-publish_read_only_plan
-Plan DRAFT → ACTIVE
-Run → EXECUTING
-```
-
-Legacy/호환 READ Action 실행:
-
-```
-claim_read_action
-complete_read_action
-finalize_read_action
-fail_read_action
-complete_read_only_run
-```
-
-이 Command들은 기존 Domain 데이터·호환 테스트를 위한 READ Action 계약이다. 현재 Release Graph의 일반 Connector READ는 `InputRoutePlanV1 → Retrieval`이 소유하며, 새 표준 Retrieval-backed Answer/Write 준비 경로가 `publish_read_only_plan` 또는 READ Action Command를 호출하는 근거가 아니다.
+일반 Connector READ는 `InputRoutePlanV1 → Retrieval`이 소유한다. 내부 호환 READ Plan/Action Command 또는 별도 READ lifecycle은 없다.
 
 ## 15. Write 실패·재시도 계약
 

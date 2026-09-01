@@ -7,10 +7,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
-from google_work_agent.application.tool_registry.contracts import SignedToolRegistryEntryV1
 from google_work_agent.application.tool_registry.contracts.signed_tool_registry_entry import (
     RecoveryStrategy,
     RetryClass,
+    SignedToolRegistryEntryV1,
     ToolEffect,
     VerificationStrategy,
 )

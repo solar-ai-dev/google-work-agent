@@ -8,10 +8,10 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
     SemanticRouteCandidate,
 )
 from google_work_agent.application.agents.tool_routing.finalize_route import finalize_route
-from google_work_agent.application.tool_registry import (
-    SignedToolRegistry,
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
 
 

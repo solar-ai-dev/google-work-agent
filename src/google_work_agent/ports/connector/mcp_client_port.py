@@ -83,12 +83,7 @@ class MCPClientPortErrorCode(StrEnum):
 
 
 class MCPClientPortError(RuntimeError):
-    """Transport-level failure with exact delivery certainty.
-
-    ``dispatch_started`` remains as a compatibility projection. New code must
-    preserve ``delivery_certainty`` end-to-end so ``SENT_RESPONSE_LOST`` is not
-    collapsed into the same state as ``MAY_HAVE_BEEN_SENT``.
-    """
+    """Transport-level failure with exact delivery certainty."""
 
     def __init__(
         self,
@@ -96,15 +91,11 @@ class MCPClientPortError(RuntimeError):
         code: MCPClientPortErrorCode,
         message: str,
         delivery_certainty: DeliveryCertainty | None = None,
-        dispatch_started: bool = False,
         request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
-        self.delivery_certainty = delivery_certainty or (
-            DeliveryCertainty.MAY_HAVE_BEEN_SENT if dispatch_started else DeliveryCertainty.NOT_SENT
-        )
-        self.dispatch_started = self.delivery_certainty is not DeliveryCertainty.NOT_SENT
+        self.delivery_certainty = delivery_certainty or DeliveryCertainty.NOT_SENT
         self.request_id = request_id
 
 

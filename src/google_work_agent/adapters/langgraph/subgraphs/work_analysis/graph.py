@@ -29,7 +29,7 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisInputState,
     WorkAnalysisLocalState,
@@ -58,7 +58,7 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,

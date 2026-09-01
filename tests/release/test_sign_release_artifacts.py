@@ -11,7 +11,7 @@ from release.generate_release_manifest import ReleaseManifestParameters
 from release.sign_release_artifacts import sign_release_artifacts
 
 from release.profiles import DeploymentProfile
-from tests.release.bundle_fixture import create_bundle_inputs
+from tests.support.bundle_fixture import create_bundle_inputs
 
 
 class _CodeSigner:
@@ -45,7 +45,7 @@ def _parameters() -> ReleaseManifestParameters:
         api_contract_version="1",
         mcp_schema_version="2026-08-07.p0",
         policy_version="2026-08-06.p0",
-        database_migration_version="0018",
+        database_migration_version="0001",
     )
 
 

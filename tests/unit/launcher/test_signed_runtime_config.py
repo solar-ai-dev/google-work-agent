@@ -26,7 +26,7 @@ def _signed_payload() -> dict[str, object]:
         "api_contract_version": "1",
         "mcp_schema_version": "2026-08-07.p0",
         "policy_version": "2026-08-06.p0",
-        "database_migration_version": "0018",
+        "database_migration_version": "0001",
     }
 
 

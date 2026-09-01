@@ -1,15 +1,8 @@
-"""Canonical Planning persistence boundary over the confirmation runtime.
-
-Tool Route remains the only connector-selection authority.  This runtime
-rejoins frozen route identity to the legacy plan shape and passes connector_id
-explicitly through application persistence DTOs; persistence never infers it
-from source/tool names and uses no ContextVar side channel.
-"""
+"""Persist the canonical Planning artifact through frozen connector routes."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from copy import deepcopy
 from json import dumps
 from typing import TYPE_CHECKING, Any, cast
 
@@ -19,11 +12,16 @@ from google_work_agent.adapters.langgraph.main.state import (
     _require_state_value,
     _resource_handle_for_ref,
 )
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
+    RunScopedResourceIdentityReader,
+    resolve_exact_target_evidence_handle,
+)
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+    PlannedActionV2,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
@@ -32,12 +30,6 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
-)
-from google_work_agent.application.use_cases.action.read_contracts import (
-    PublishReadOnlyPlanCommand,
-    ReadActionDraft,
-    ReadEvidenceDraft,
-    SaveReadOnlyPlanCommand,
 )
 from google_work_agent.application.use_cases.action.task_duplicates import (
     TASK_CREATE_TOOL,
@@ -71,39 +63,10 @@ if TYPE_CHECKING:
     from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-def replace_llm_expected_with_deterministic_projection(
-    plan_draft: ActionPlanDraftV1,
-) -> ActionPlanDraftV1:
-    """Return a defensive plan copy whose write Expected values are code-owned."""
-
-    projected = deepcopy(plan_draft)
-    actions = projected.get("actions")
-    if not isinstance(actions, list):
-        raise ValueError("plan_draft.actions must be a list")
-
-    for index, raw_action in enumerate(actions):
-        if not isinstance(raw_action, dict):
-            raise ValueError(f"plan_draft.actions[{index}] must be an object")
-        tool_name = raw_action.get("tool_name")
-        arguments = raw_action.get("arguments")
-        effect = raw_action.get("effect")
-        if not isinstance(tool_name, str) or not tool_name:
-            raise ValueError(f"plan_draft.actions[{index}].tool_name is required")
-        if not isinstance(arguments, Mapping):
-            raise ValueError(f"plan_draft.actions[{index}].arguments must be an object")
-        if effect == "READ":
-            continue
-        raw_action["expected"] = build_expected_verification_projection(
-            tool_name=tool_name,
-            arguments=cast(Mapping[str, object], arguments),
-        )
-    return cast(ActionPlanDraftV1, projected)
-
-
 def connector_ids_from_frozen_routes(
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
 ) -> dict[str, str]:
     """Join write actions to their frozen OutputToolRouteV1 identities."""
 
@@ -117,15 +80,17 @@ def connector_ids_from_frozen_routes(
     if not isinstance(raw_routes, list):
         raise ValueError("ACTION output_plan.output_routes must be a list")
 
-    write_actions = [action for action in plan_draft["actions"] if action["effect"] != "READ"]
-    if len(write_actions) != len(raw_routes):
+    actions = plan["actions"]
+    if len(actions) != len(raw_routes):
         raise ValueError("write actions must align exactly with frozen output routes")
 
     connector_ids: dict[str, str] = {}
-    for index, (action, raw_route) in enumerate(zip(write_actions, raw_routes, strict=True)):
+    for index, (action, raw_route) in enumerate(zip(actions, raw_routes, strict=True)):
         if not isinstance(raw_route, Mapping):
             raise ValueError(f"output_routes[{index}] must be an object")
-        if action["tool_name"] != raw_route.get("selected_tool_id"):
+        if action["route_id"] != raw_route.get("route_id"):
+            raise ValueError(f"write action route does not match frozen route at index {index}")
+        if action["tool_id"] != raw_route.get("selected_tool_id"):
             raise ValueError(f"write action tool does not match frozen route at index {index}")
         if action["effect"] != raw_route.get("effect"):
             raise ValueError(f"write action effect does not match frozen route at index {index}")
@@ -141,85 +106,42 @@ def connector_ids_from_frozen_routes(
     return connector_ids
 
 
-def target_resource_connector_ids_from_actions(
+def evidence_ids_from_plan(plan: ActionPlanDraftV2) -> list[str]:
+    """Return each linked Evidence id once, preserving Planning order."""
+
+    result: list[str] = []
+    for action in plan["actions"]:
+        for evidence_id in action["evidence_refs"]:
+            if evidence_id not in result:
+                result.append(evidence_id)
+    return result
+
+
+def expected_for_action(action: PlannedActionV2) -> dict[str, object]:
+    return build_expected_verification_projection(
+        tool_name=action["tool_id"],
+        arguments=action["arguments"],
+    )
+
+
+def target_handle_for_action(
     *,
-    plan_draft: ActionPlanDraftV1,
-    action_connector_ids: Mapping[str, str],
-) -> dict[str, str]:
-    """Return the unambiguous connector for each target resource handle."""
-
-    resource_connectors: dict[str, str] = {}
-    for index, action in enumerate(plan_draft["actions"]):
-        if action["effect"] == "READ":
-            continue
-        resource_handle = action.get("target_resource_ref_id")
-        if resource_handle is None:
-            continue
-        if not isinstance(resource_handle, str) or not resource_handle:
-            raise ValueError(f"write action target resource handle is invalid at index {index}")
-        action_id = action["action_id"]
-        connector_id = action_connector_ids.get(action_id)
-        if not isinstance(connector_id, str) or not connector_id:
-            raise ValueError(f"write action connector binding is missing: {action_id}")
-        existing = resource_connectors.get(resource_handle)
-        if existing is not None and existing != connector_id:
-            raise ValueError(
-                "target resource handle maps to multiple connectors; "
-                f"handle={resource_handle!r}, connectors={sorted({existing, connector_id})}"
-            )
-        resource_connectors[resource_handle] = connector_id
-    return resource_connectors
-
-
-def connector_ids_for_read_actions_from_frozen_routes(
-    *,
-    state: GraphState,
-    plan_draft: ActionPlanDraftV1,
-) -> dict[str, str]:
-    """Resolve legacy READ actions from frozen InputToolRouteV1 capabilities."""
-
-    raw_route_plan = state.get("tool_route_plan")
-    if not isinstance(raw_route_plan, Mapping):
-        raise ValueError("read persistence requires frozen tool_route_plan")
-    input_plan = raw_route_plan.get("input_plan")
-    if not isinstance(input_plan, Mapping):
-        raise ValueError("read persistence requires input_plan")
-    raw_routes = input_plan.get("input_routes")
-    if not isinstance(raw_routes, list):
-        raise ValueError("input_plan.input_routes must be a list")
-
-    read_actions = [action for action in plan_draft["actions"] if action["effect"] == "READ"]
-    if not read_actions:
-        raise ValueError("read persistence requires at least one READ action")
-
-    connector_ids: dict[str, str] = {}
-    for action_index, action in enumerate(read_actions):
-        tool_name = action["tool_name"]
-        matching_connectors: set[str] = set()
-        for route_index, raw_route in enumerate(raw_routes):
-            if not isinstance(raw_route, Mapping):
-                raise ValueError(f"input_routes[{route_index}] must be an object")
-            allowed_tools = raw_route.get("allowed_read_tool_ids")
-            if not isinstance(allowed_tools, list):
-                raise ValueError(
-                    f"input_routes[{route_index}].allowed_read_tool_ids must be a list"
-                )
-            if tool_name not in allowed_tools:
-                continue
-            connector_id = raw_route.get("connector_id")
-            if not isinstance(connector_id, str) or not connector_id:
-                raise ValueError(f"input_routes[{route_index}].connector_id is required")
-            matching_connectors.add(connector_id)
-        if len(matching_connectors) != 1:
-            raise ValueError(
-                "read action must map to exactly one frozen connector; "
-                f"tool={tool_name!r}, connectors={sorted(matching_connectors)}"
-            )
-        action_id = action["action_id"]
-        if not action_id:
-            raise ValueError(f"read action id is empty at index {action_index}")
-        connector_ids[action_id] = next(iter(matching_connectors))
-    return connector_ids
+    run_id: str,
+    action: PlannedActionV2,
+    evidence_by_id: Mapping[str, EvidenceDraftV1],
+    resource_identity_reader: RunScopedResourceIdentityReader,
+) -> str | None:
+    if action["effect"] == "CREATE":
+        return None
+    return resolve_exact_target_evidence_handle(
+        tool_id=action["tool_id"],
+        arguments=action["arguments"],
+        evidence_refs=action["evidence_refs"],
+        evidence_by_id=evidence_by_id,
+        run_id=run_id,
+        resource_identity_reader=resource_identity_reader,
+        path=f"ActionPlanDraftV2.actions[{action['action_id']!r}]",
+    )
 
 
 def _connector_id_for_evidence_handle(
@@ -280,8 +202,6 @@ class PlanPersistenceMixin:
         _unit_of_work_factory: Callable[[], UnitOfWork]
         _save_write_plan: Callable[[SaveWritePlanCommand], Any]
         _publish_write_plan: Callable[[PublishWritePlanCommand], Any]
-        _save_read_plan: Callable[[SaveReadOnlyPlanCommand], Any]
-        _publish_read_plan: Callable[[PublishReadOnlyPlanCommand], Any]
         _record_review_result: Callable[[RecordReviewResultCommandV1], Any]
 
         def _current_run_version(self, run_id: str) -> int: ...
@@ -322,26 +242,30 @@ class PlanPersistenceMixin:
             **kwargs,
         )
 
-    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
-        plan_draft = replace_llm_expected_with_deterministic_projection(plan_draft)
-        connector_ids = connector_ids_from_frozen_routes(state=state, plan_draft=plan_draft)
+    def _persist_write_plan(
+        self,
+        state: GraphState,
+        plan: ActionPlanDraftV2,
+        resource_identity_reader: RunScopedResourceIdentityReader,
+    ) -> str:
+        connector_ids = connector_ids_from_frozen_routes(state=state, plan=plan)
         run_id = state["run_id"]
         run_version = self._current_run_version(run_id)
         replan_from_plan_id = state.get("__replan_from_plan_id__")
         revision_no = 1
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
-        action_id_map = {a["action_id"]: a["action_id"] for a in plan_draft["actions"]}
+        plan_id = self._required_string(plan["meta"].get("artifact_id"), "plan artifact_id")
+        action_id_map = {action["action_id"]: action["action_id"] for action in plan["actions"]}
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
-        retrieval_evidence_ids = list(retrieval_result["evidence_refs"])
-        evidence_id_map = {item: item for item in retrieval_evidence_ids}
+        evidence_ids = evidence_ids_from_plan(plan)
+        evidence_id_map = {item: item for item in evidence_ids}
         if replan_from_plan_id is not None:
             plans = self._plans_for_run(run_id)
             if not any(plan.id == replan_from_plan_id for plan in plans):
                 raise LookupError(f"replan source not found: {replan_from_plan_id}")
             revision_no = max(plan.revision_no for plan in plans) + 1
             plan_id = self._id_factory()
-            action_id_map = {a["action_id"]: self._id_factory() for a in plan_draft["actions"]}
-            evidence_id_map = {item: self._id_factory() for item in retrieval_evidence_ids}
+            action_id_map = {action["action_id"]: self._id_factory() for action in plan["actions"]}
+            evidence_id_map = {item: self._id_factory() for item in evidence_ids}
 
         evidence_drafts = {
             item["evidence_id"]: item
@@ -349,6 +273,11 @@ class PlanPersistenceMixin:
                 store=self._evidence_store, run_id=run_id, retrieval_result=retrieval_result
             )
         }
+        missing_evidence = set(evidence_ids) - set(evidence_drafts)
+        if missing_evidence:
+            raise LookupError(
+                "Planning evidence projection is unavailable: " + ",".join(sorted(missing_evidence))
+            )
         acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
         mapped_evidence = tuple(
             WriteEvidenceDraft(
@@ -370,28 +299,34 @@ class PlanPersistenceMixin:
                     acquisition_result=acquisition,
                 ),
             )
-            for evidence_id in retrieval_evidence_ids
+            for evidence_id in evidence_ids
         )
         mapped_actions: list[WriteActionDraft] = []
-        for action in plan_draft["actions"]:
+        for position, action in enumerate(plan["actions"], start=1):
             connector_id = connector_ids[action["action_id"]]
+            target_handle = target_handle_for_action(
+                run_id=run_id,
+                action=action,
+                evidence_by_id=evidence_drafts,
+                resource_identity_reader=resource_identity_reader,
+            )
             target_ref_id = self._resolve_target_resource_ref_for_connector(
                 run_id=run_id,
                 connector_id=connector_id,
-                resource_handle=action.get("target_resource_ref_id"),
+                resource_handle=target_handle,
                 acquisition_result=acquisition,
             )
             mapped_actions.append(
                 WriteActionDraft(
                     action_id=action_id_map[action["action_id"]],
                     connector_id=connector_id,
-                    position=action["position"],
-                    tool_name=action["tool_name"],
+                    position=position,
+                    tool_name=action["tool_id"],
                     arguments=action["arguments"],
-                    expected=action["expected"],
+                    expected=expected_for_action(action),
                     evidence_ids=tuple(evidence_id_map[item] for item in action["evidence_refs"]),
                     depends_on_action_ids=tuple(
-                        action_id_map[item] for item in action.get("depends_on_action_ids", [])
+                        action_id_map[item] for item in action["depends_on_action_ids"]
                     ),
                     target_resource_ref_id=target_ref_id,
                     risk=(
@@ -400,9 +335,9 @@ class PlanPersistenceMixin:
                             acquisition_result=acquisition,
                             checked_at_ms=self._now_ms(),
                         )
-                        if action["tool_name"] == TASK_CREATE_TOOL
+                        if action["tool_id"] == TASK_CREATE_TOOL
                         else self._calendar_plan_risk(state=state, action=action)
-                        if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
+                        if action["tool_id"] in CALENDAR_CONFLICT_TOOLS
                         else {}
                     ),
                 )
@@ -417,7 +352,7 @@ class PlanPersistenceMixin:
                 plan_id=plan_id,
                 run_id=run_id,
                 revision_no=revision_no,
-                summary_text=self._required_string(plan_draft.get("summary"), "summary"),
+                summary_text=self._plan_summary(state),
                 expected_run_version=run_version,
                 actions=tuple(mapped_actions),
                 evidence=mapped_evidence,
@@ -446,95 +381,9 @@ class PlanPersistenceMixin:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
 
-    def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
-        connector_ids = connector_ids_for_read_actions_from_frozen_routes(
-            state=state, plan_draft=plan_draft
-        )
-        run_id = state["run_id"]
-        run_version = self._current_run_version(run_id)
-        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
-        evidence_drafts = {
-            item["evidence_id"]: item
-            for item in resolve_evidence_projection(
-                store=self._evidence_store, run_id=run_id, retrieval_result=retrieval_result
-            )
-        }
-        acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
-        mapped_evidence = tuple(
-            ReadEvidenceDraft(
-                evidence_id=evidence_id,
-                origin_type=EvidenceOriginType.GOOGLE_RESOURCE,
-                kind=evidence_drafts[evidence_id]["kind"],
-                excerpt=evidence_drafts[evidence_id]["excerpt"],
-                locator_json=_current_retrieval_locator(
-                    retrieval_result=retrieval_result,
-                    evidence=evidence_drafts[evidence_id],
-                ),
-                resource_ref_id=self._resolve_target_resource_ref_for_connector(
-                    run_id=run_id,
-                    connector_id=_connector_id_for_evidence_handle(
-                        state=state,
-                        resource_handle=evidence_drafts[evidence_id]["resource_handle"],
-                    ),
-                    resource_handle=evidence_drafts[evidence_id]["resource_handle"],
-                    acquisition_result=acquisition,
-                ),
-            )
-            for evidence_id in retrieval_result["evidence_refs"]
-        )
-        mapped_actions = tuple(
-            ReadActionDraft(
-                action_id=action["action_id"],
-                connector_id=connector_ids[action["action_id"]],
-                position=action["position"],
-                tool_name=action["tool_name"],
-                arguments=action["arguments"],
-                expected=action["expected"],
-                evidence_ids=tuple(action["evidence_refs"]),
-                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
-                target_resource_ref_id=action.get("target_resource_ref_id"),
-            )
-            for action in plan_draft["actions"]
-        )
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
-        review_artifact_id, review_version = self._review_proof_for_persistence(
-            state=state,
-        )
-        save_response = self._save_read_plan(
-            SaveReadOnlyPlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "save_read_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                revision_no=1,
-                summary_text=self._required_string(plan_draft.get("summary"), "summary"),
-                expected_run_version=run_version,
-                actions=mapped_actions,
-                evidence=mapped_evidence,
-                review_version=review_version,
-            )
-        )
-        if not save_response.applied:
-            raise RuntimeError(f"save_read_plan failed: {save_response.result_code}")
-        self._persist_initial_review_pass(
-            plan_id=plan_id,
-            plan_revision_no=1,
-            review_artifact_id=review_artifact_id,
-            review_version=review_version,
-            action_versions={action.action_id: 0 for action in mapped_actions},
-        )
-        publish_response = self._publish_read_plan(
-            PublishReadOnlyPlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "publish_read_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                expected_run_version=save_response.run_version,
-            )
-        )
-        if not publish_response.applied:
-            raise RuntimeError(f"publish_read_plan failed: {publish_response.result_code}")
-        return plan_id
+    def _plan_summary(self, state: GraphState) -> str:
+        request_intent = _require_state_value(state.get("request_intent"), "request_intent")
+        return self._required_string(request_intent.get("goal"), "request_intent.goal")
 
     @staticmethod
     def _review_proof_for_persistence(
@@ -632,8 +481,8 @@ class PlanPersistenceMixin:
 
 __all__ = [
     "PlanPersistenceMixin",
-    "connector_ids_for_read_actions_from_frozen_routes",
     "connector_ids_from_frozen_routes",
-    "replace_llm_expected_with_deterministic_projection",
-    "target_resource_connector_ids_from_actions",
+    "evidence_ids_from_plan",
+    "expected_for_action",
+    "target_handle_for_action",
 ]

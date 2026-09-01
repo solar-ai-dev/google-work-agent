@@ -15,7 +15,6 @@ from google_work_agent.application.use_cases.action.calendar_conflict_policy imp
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_PAGE_SIZE,
-    CALENDAR_CONFLICT_TOOLS,
     calendar_event_candidate,
     calendar_event_candidate_from_values,
     calendar_freebusy_intervals,
@@ -35,8 +34,6 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceType,
     TimeRange,
 )
-
-FEASIBILITY_TOOLS = CALENDAR_CONFLICT_TOOLS
 
 
 class FeasibilityGateway(Protocol):
@@ -459,7 +456,6 @@ def _required_text(value: object, name: str) -> str:
 
 
 __all__ = [
-    "FEASIBILITY_TOOLS",
     "FeasibilityGateway",
     "FeasibilityValidator",
     "approval_feasibility_authority",

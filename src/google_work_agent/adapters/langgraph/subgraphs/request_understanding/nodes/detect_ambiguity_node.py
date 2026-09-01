@@ -10,7 +10,7 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
     detect_ambiguity,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 
 from ..projections.detect_ambiguity_projection import (

@@ -1,55 +1,31 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import Any, cast
+
+from tests.support.fakes.llm import FakeStructuredInferencePort
 
 from google_work_agent.application.agents.request_understanding.identify_goal import identify_goal
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
-from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
     WorkflowStartRequest,
 )
-from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 
-@dataclass
-class FakeLLMRuntime:
-    calls: list[dict[str, object]] = field(default_factory=list)
-
-    def infer(
-        self,
-        requested_mode: RequestedModeV1,
-        prompt_ref: PromptReference,
-        input_projection: Mapping[str, object],
-        output_schema_ref: OutputSchemaDefinition,
-    ) -> StructuredInferenceResultV1:
-        del requested_mode, output_schema_ref
-        self.calls.append({"prompt_ref": prompt_ref, "prompt_input": dict(input_projection)})
-        return StructuredInferenceResultV1(
-            schema_version=1,
-            structured_output={
+def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
                 "goal": "업무 메일 찾기",
                 "completion_conditions": ["관련 메일을 찾는다"],
                 "constraints": [],
                 "requested_effect_hints": ["READ"],
                 "requested_resource_hints": ["GMAIL_THREAD"],
                 "analysis_requirement": "REQUIRED",
-            },
-            provider="fake",
-            model="fake",
-            actual_runtime="API_LLM",
-            input_tokens=1,
-            output_tokens=1,
-            latency_ms=1,
-            fallback_reason=None,
-        )
-
-
-def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> None:
-    runtime = FakeLLMRuntime()
+            }
+        ]
+    )
     request = _request("관련 메일을 찾아줘")
     prompt_ref = _prompt_ref("request_understanding.identify_goal", "identify_goal")
 

@@ -21,12 +21,9 @@ from google_work_agent.adapters.langgraph.main.nodes.retrieval_entry_node import
 from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import (
     review_entry_node,
 )
-
-
-@dataclass
-class _Transition:
-    applied: bool
-    current_status: str
+from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningResult
+from google_work_agent.application.use_cases.run.begin_retrieval import BeginRetrievalResult
+from google_work_agent.application.use_cases.run.start_analysis import StartAnalysisResult
 
 
 @dataclass
@@ -38,7 +35,7 @@ class _RunFacts:
 def test_initialize_projects_start_analysis_without_copying_foreign_state() -> None:
     patch = initialize_node(
         {"run_id": "run-1", "foreign": "keep"},
-        start_analysis=lambda _run_id: _Transition(True, "ANALYZING"),
+        start_analysis=lambda _run_id: StartAnalysisResult(True, "APPLIED", "ANALYZING", 1, ()),
         request_node="request_understanding",
     )
 
@@ -58,7 +55,7 @@ def test_retrieval_entry_requires_frozen_routes_and_routes_registered_subgraph()
     patch = retrieval_entry_node(
         state,
         current_run_status=lambda _run_id: "ANALYZING",
-        begin_retrieval=lambda _run_id: _Transition(True, "RETRIEVING"),
+        begin_retrieval=lambda _run_id: BeginRetrievalResult(True, "APPLIED", "RETRIEVING", 1, ()),
         retrieval_node="context_retriever",
     )
 
@@ -69,7 +66,9 @@ def test_retrieval_entry_requires_frozen_routes_and_routes_registered_subgraph()
         retrieval_entry_node(
             {"run_id": "run-1"},
             current_run_status=lambda _run_id: "ANALYZING",
-            begin_retrieval=lambda _run_id: _Transition(True, "RETRIEVING"),
+            begin_retrieval=lambda _run_id: BeginRetrievalResult(
+                True, "APPLIED", "RETRIEVING", 1, ()
+            ),
             retrieval_node="context_retriever",
         )
 
@@ -78,7 +77,9 @@ def test_planning_entry_fails_closed_on_illegal_durable_status() -> None:
     patch = planning_entry_node(
         {"run_id": "run-1"},
         current_run_status=lambda _run_id: "WAITING_APPROVAL",
-        begin_planning=lambda _run_id: _Transition(False, "WAITING_APPROVAL"),
+        begin_planning=lambda _run_id: BeginPlanningResult(
+            False, "REJECTED", "WAITING_APPROVAL", 1, ()
+        ),
         planning_node="planning",
     )
 

@@ -9,7 +9,7 @@ from google_work_agent.application.use_cases.operational_replay import execute_o
 from google_work_agent.ports.connector.connected_account_store import ConnectedAccountStore
 from google_work_agent.ports.connector.oauth_credential_port import (
     OAuthCredentialPort,
-    RevokeResultV1,
+    OAuthRevokeResult,
 )
 from google_work_agent.ports.system.operational_command_replay_port import (
     OperationalCommandReplayPort,
@@ -25,7 +25,7 @@ class RevokeConnectionCommand:
 
 @dataclass(frozen=True, slots=True)
 class RevokeConnectionResult:
-    revocation: RevokeResultV1
+    revocation: OAuthRevokeResult
     operation_ref: str
     replayed: bool
 
@@ -73,7 +73,7 @@ class RevokeConnectionHandler:
             ):
                 raise LookupError(f"connected account not found: {command.account_id}")
         return RevokeConnectionResult(
-            revocation=RevokeResultV1(**cast(Any, outcome.bounded_result)),
+            revocation=OAuthRevokeResult(**cast(Any, outcome.bounded_result)),
             operation_ref=outcome.operation_ref,
             replayed=outcome.replayed,
         )

@@ -9,18 +9,18 @@ from google_work_agent.application.agents.retrieval.select_evidence import selec
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 
 from ..projections.select_evidence_projection import (
     project_select_evidence_input,
 )
-from ..state import RetrievalStateV2
+from ..state import RetrievalState
 
 
 def select_evidence_node(
-    state: RetrievalStateV2,
+    state: RetrievalState,
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,

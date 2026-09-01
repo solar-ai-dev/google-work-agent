@@ -42,6 +42,7 @@ from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
     StagedAttachmentDescriptorV1,
 )
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 
@@ -100,7 +101,6 @@ GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 GOOGLE_REFRESH_TOKEN_ACCOUNT = "google_workspace"
-GOOGLE_REFRESH_TOKEN_KEY = GOOGLE_REFRESH_TOKEN_ACCOUNT
 REQUIRED_SCOPES = (
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -183,21 +183,17 @@ class _UserInfoIdentityResolution:
 
 
 class _WorkspaceToolError(RuntimeError):
-    """A sanitized Google Workspace tool failure.
+    """A sanitized Google Workspace tool failure with exact delivery certainty."""
 
-    ``dispatch_started`` records whether a real Google API request may have
-    already been sent when this error was raised. It defaults to ``False``
-    because most raise sites (argument validation, claim rejection, missing
-    OAuth connection) run strictly before any Google call. Call sites that
-    raise after invoking ``urlopen`` must pass ``dispatch_started=True`` so
-    the client cannot mistake an ambiguous post-dispatch failure for a
-    provably-not-sent one.
-    """
-
-    def __init__(self, safe_code: str, *, dispatch_started: bool = False) -> None:
+    def __init__(
+        self,
+        safe_code: str,
+        *,
+        delivery_certainty: DeliveryCertainty = DeliveryCertainty.NOT_SENT,
+    ) -> None:
         super().__init__(safe_code)
         self.safe_code = safe_code
-        self.dispatch_started = dispatch_started
+        self.delivery_certainty = delivery_certainty
 
 
 class GoogleWorkspaceCredentialProvider:
@@ -238,7 +234,7 @@ class GoogleWorkspaceCredentialProvider:
                 credential_type="google-oauth",
             )
         )
-        if self.keyring.get(GOOGLE_REFRESH_TOKEN_KEY) is not None:
+        if self.keyring.get(GOOGLE_REFRESH_TOKEN_ACCOUNT) is not None:
             self.connection_state = CredentialState.CONNECTED
 
     def connection_payload(self) -> dict[str, object]:
@@ -274,7 +270,7 @@ class GoogleWorkspaceCredentialProvider:
                         else resolution.email
                     )
                 return
-            refresh_bytes = self.keyring.get(GOOGLE_REFRESH_TOKEN_KEY)
+            refresh_bytes = self.keyring.get(GOOGLE_REFRESH_TOKEN_ACCOUNT)
             refresh_token = None if refresh_bytes is None else refresh_bytes.decode("utf-8")
             if refresh_token is None:
                 self.connection_state = CredentialState.NOT_CONNECTED
@@ -300,11 +296,13 @@ class GoogleWorkspaceCredentialProvider:
                 # credential used by the Workspace read tools.
                 self.account_email = _resolve_account_identity_from_userinfo(access_token).email
             if rotated_refresh_token is not None:
-                self.keyring.put(GOOGLE_REFRESH_TOKEN_KEY, rotated_refresh_token.encode("utf-8"))
+                self.keyring.put(
+                    GOOGLE_REFRESH_TOKEN_ACCOUNT, rotated_refresh_token.encode("utf-8")
+                )
             self.connection_state = CredentialState.CONNECTED
 
     def _recover_identity_after_userinfo_401(self) -> str | None:
-        refresh_bytes = self.keyring.get(GOOGLE_REFRESH_TOKEN_KEY)
+        refresh_bytes = self.keyring.get(GOOGLE_REFRESH_TOKEN_ACCOUNT)
         refresh_token = None if refresh_bytes is None else refresh_bytes.decode("utf-8")
         if refresh_token is None:
             raise _OAuthReauthenticationRequired
@@ -322,7 +320,7 @@ class GoogleWorkspaceCredentialProvider:
         self.access_token = access_token
         self.access_token_expires_at_ms = expires_at_ms
         if rotated_refresh_token is not None:
-            self.keyring.put(GOOGLE_REFRESH_TOKEN_KEY, rotated_refresh_token.encode("utf-8"))
+            self.keyring.put(GOOGLE_REFRESH_TOKEN_ACCOUNT, rotated_refresh_token.encode("utf-8"))
         self.connection_state = CredentialState.CONNECTED
         if refreshed_email is not None:
             return refreshed_email
@@ -402,7 +400,10 @@ def _embed_send_recovery_marker(
     raw_message = cast(dict[str, object], existing.get("message") or {})
     raw_value = _optional_text(raw_message.get("raw"))
     if raw_value is None:
-        raise _WorkspaceToolError("INVALID_MCP_OUTPUT", dispatch_started=True)
+        raise _WorkspaceToolError(
+            "INVALID_MCP_OUTPUT",
+            delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
+        )
     parsed = BytesParser(policy=policy.default).parsebytes(_b64url_decode(raw_value))
     body_text = ""
     if not parsed.is_multipart():
@@ -583,11 +584,6 @@ def _task_write_body(payload: dict[str, object], *, title_required: bool) -> dic
         elif not title_required:
             # An approved update may intentionally remove a prior scheduled date.
             body["due"] = None
-    elif "due" in payload:
-        # Legacy raw Provider-boundary payloads remain compatible.
-        due = _optional_text(payload.get("due"))
-        if due:
-            body["due"] = due
     if "status" in payload:
         status = _optional_text(payload.get("status"))
         if status not in {"needsAction", "completed"}:
@@ -763,12 +759,12 @@ def _google_api_call(
         # A response (even an error one) proves the request reached Google.
         raise _WorkspaceToolError(
             codes.get(error.code, "UPSTREAM_5XX" if error.code >= 500 else "GOOGLE_REQUEST_FAILED"),
-            dispatch_started=True,
+            delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
         ) from error
     except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _WorkspaceToolError(
             "TIMEOUT" if isinstance(error, TimeoutError) else "MCP_UNAVAILABLE",
-            dispatch_started=True,
+            delivery_certainty=DeliveryCertainty.MAY_HAVE_BEEN_SENT,
         ) from error
 
 
@@ -987,13 +983,13 @@ def _control_call(
         return state.connection_payload()
     if method == "google.connection.disconnect":
         operation_ref = str(arguments.get("operation_ref", ""))
-        refresh_bytes = state.keyring.get(GOOGLE_REFRESH_TOKEN_KEY)
+        refresh_bytes = state.keyring.get(GOOGLE_REFRESH_TOKEN_ACCOUNT)
         refresh_token = None if refresh_bytes is None else refresh_bytes.decode("utf-8")
         revoke_succeeded = (
             _revoke_refresh_token(refresh_token) if refresh_token is not None else False
         )
         deleted = refresh_token is not None
-        state.keyring.delete(GOOGLE_REFRESH_TOKEN_KEY)
+        state.keyring.delete(GOOGLE_REFRESH_TOKEN_ACCOUNT)
         state.connection_state = CredentialState.NOT_CONNECTED
         state.access_token = None
         state.access_token_expires_at_ms = 0
@@ -1384,7 +1380,7 @@ class _OAuthCallbackServer:
                         code,
                     )
                     outer._state.keyring.put(
-                        GOOGLE_REFRESH_TOKEN_KEY, refresh_token.encode("utf-8")
+                        GOOGLE_REFRESH_TOKEN_ACCOUNT, refresh_token.encode("utf-8")
                     )
                 except _OAuthExchangeError as error:
                     outer._state.last_oauth_error_code = error.safe_error_code

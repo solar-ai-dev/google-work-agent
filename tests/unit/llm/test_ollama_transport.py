@@ -23,7 +23,7 @@ from google_work_agent.adapters.llm.ollama.structured_inference import (
     OllamaStructuredInferenceAdapter,
 )
 from google_work_agent.adapters.llm.ollama.transport import OllamaHTTPClient
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     AvailabilityState,
     OutputSchemaDefinition,
     PromptReference,

@@ -3,18 +3,6 @@
 from typing import Literal, Required, TypedDict
 
 
-class PromptSelectionKey(TypedDict):
-    """Prompt selection key fields defined by `docs/06-agent-workflow.md` section 7."""
-
-    agent_role: str
-    subgraph_name: str
-    node_name: str
-    node_state: str
-    purpose: str
-    input_schema_version: str
-    output_schema_version: str
-
-
 class PromptRef(TypedDict):
     """Prompt reference fields defined by `docs/06-agent-workflow.md` section 7."""
 
@@ -63,9 +51,6 @@ class LlmProviderResult(_LlmProviderResultRequired, total=False):
     """LLM provider result metadata from `docs/07-tool-mcp-internal-interface.md` section 18."""
 
     fallback_reason: str
-
-
-PROMPT_SELECTION_KEY_FIELDS = frozenset(PromptSelectionKey.__annotations__)
 
 
 PROMPT_REF_FIELDS = frozenset(PromptRef.__annotations__)

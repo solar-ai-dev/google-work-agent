@@ -27,7 +27,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import (
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1
 from google_work_agent.ports.system.backup_port import MaintenanceWindow
-from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitKeyV1
+from google_work_agent.ports.system.component_circuit_state_port import ComponentCircuitKey
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
@@ -112,7 +112,7 @@ def test_retrieval_cache_returns_every_canonical_resolution_status() -> None:
 
 def test_component_circuit_opens_at_threshold_and_success_resets() -> None:
     adapter = ProcessComponentCircuitStateAdapter(failure_threshold=2, open_duration_ms=500)
-    key = ComponentCircuitKeyV1(1, "CONNECTOR", "google_workspace", None)
+    key = ComponentCircuitKey(1, "CONNECTOR", "google_workspace", None)
 
     first = adapter.record_technical_failure(key, "TIMEOUT", 1_000)
     opened = adapter.record_technical_failure(key, "TIMEOUT", 1_100)

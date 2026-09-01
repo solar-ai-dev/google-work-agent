@@ -52,9 +52,6 @@ class CompleteWriteRunCommand:
     expected_version: int
 
 
-CompleteWriteRunResult = RunTransitionResponse
-
-
 _UNRESOLVED_ATTEMPT_STATUSES = frozenset(
     {
         ExecutionAttemptStatusV1.CLAIMED,
@@ -405,5 +402,4 @@ class CompleteWriteRunHandler:
 __all__ = [
     "CompleteWriteRunCommand",
     "CompleteWriteRunHandler",
-    "CompleteWriteRunResult",
 ]

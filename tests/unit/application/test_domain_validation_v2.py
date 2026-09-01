@@ -11,7 +11,7 @@ from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     PolicyOverrideProvenanceDependency,
     build_domain_validation_output_from_v2,
 )
-from google_work_agent.application.tool_registry import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
 from google_work_agent.application.use_cases.action.validate_action_arguments import (

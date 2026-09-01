@@ -33,7 +33,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     consume_llm_provider_calls,
     validate_run_budget_v2,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
 )
@@ -51,13 +51,7 @@ _CURRENT_NOW_MS: ContextVar[Callable[[], int] | None] = ContextVar(
 
 
 def bind_provider_dispatch_budget(run_budget: RunBudgetV2) -> RunBudgetV2:
-    """Bind one mutable RunBudget authority to the current execution context.
-
-    This compatibility helper deliberately does not own lifecycle. Production
-    graph execution is bounded by ``provider_dispatch_execution_scope``;
-    direct callers that bind a budget themselves should prefer
-    ``provider_dispatch_budget_scope`` so reset is guaranteed by ``finally``.
-    """
+    """Bind one mutable RunBudget authority to the current execution context."""
 
     validated = validate_run_budget_v2(run_budget)
     mutable = cast(dict[str, object], run_budget)
@@ -103,20 +97,15 @@ def provider_dispatch_execution_scope(
     guarantee cleanup on success and on any escaping exception.
     """
 
-    if _CURRENT_RUN_BUDGET.get() is not None:
-        # Compatibility cleanup for a process that entered this code with an
-        # older unbounded binding already present. This is reference cleanup,
-        # not numeric accounting and does not create a second authority.
-        _CURRENT_RUN_BUDGET.set(None)
-    token = _CURRENT_RUN_BUDGET.set(None)
-    run_token = _CURRENT_RUN_ID.set(run_id)
-    clock_token = _CURRENT_NOW_MS.set(now_ms)
+    _CURRENT_RUN_BUDGET.set(None)
+    _CURRENT_RUN_ID.set(run_id)
+    _CURRENT_NOW_MS.set(now_ms)
     try:
         yield
     finally:
-        _CURRENT_NOW_MS.reset(clock_token)
-        _CURRENT_RUN_ID.reset(run_token)
-        _CURRENT_RUN_BUDGET.reset(token)
+        _CURRENT_NOW_MS.set(None)
+        _CURRENT_RUN_ID.set(None)
+        _CURRENT_RUN_BUDGET.set(None)
 
 
 def account_provider_dispatch() -> None:
@@ -166,26 +155,6 @@ def merge_provider_dispatch_usage(run_budget: RunBudgetV2) -> RunBudgetV2:
     return cast(RunBudgetV2, validate_run_budget_v2(merged))
 
 
-def legacy_post_call_projection(run_budget: RunBudgetV2) -> RunBudgetV2:
-    """Bridge Tool Route's pre-Wave-1C post-call ``+1`` caller.
-
-    Tool Route still calls the historical deterministic consumer once after a
-    semantic-agent call. Until that caller is retired by its own runtime-cutover
-    work, return a projection whose call count is one below the already-counted
-    dispatch total, so the legacy post-call increment preserves -- rather than
-    duplicates -- the dispatch-authoritative total. No separate counter exists;
-    this projection is derived solely from RunBudgetV2.
-    """
-
-    merged = merge_provider_dispatch_usage(run_budget)
-    used = merged["llm_calls_used"]
-    if used <= 0:
-        return merged
-    projected = dict(merged)
-    projected["llm_calls_used"] = used - 1
-    return cast(RunBudgetV2, validate_run_budget_v2(projected))
-
-
 def current_provider_dispatch_budget() -> RunBudgetV2 | None:
     """Return the bound RunBudget authority itself, never a second counter."""
 
@@ -203,7 +172,6 @@ __all__ = [
     "bind_provider_dispatch_budget",
     "current_provider_dispatch_budget",
     "current_provider_dispatch_run_id",
-    "legacy_post_call_projection",
     "merge_provider_dispatch_usage",
     "provider_dispatch_budget_scope",
     "provider_dispatch_execution_scope",

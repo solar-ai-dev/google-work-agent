@@ -1,6 +1,6 @@
 """THREE_STAGE composition contract."""
 
-from tests.architecture.langgraph.profile_test_support import profile_build_arguments
+from tests.support.langgraph_profile import profile_build_arguments
 
 from google_work_agent.adapters.langgraph.profiles.three_stage import (
     SEMANTIC_OWNER_BINDINGS,

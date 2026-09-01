@@ -1,7 +1,6 @@
 """Canonical typed-contract and behavior gates for dispatch classification."""
 
 from dataclasses import fields
-from importlib import import_module
 
 from google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result import (
     ClassifyDispatchResultHandler,
@@ -12,15 +11,6 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
     DispatchConnectorWriteResultV1,
 )
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module(
-            "google_work_agent.application.use_cases.execution_attempt.classify_dispatch_result"
-        )
-        is not None
-    )
 
 
 def test_exact_canonical_contract_fields() -> None:

@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from google_work_agent.application.use_cases.operational_replay import execute_operational_command
 from google_work_agent.ports.connector.oauth_credential_port import (
-    AuthorizationStartV1,
+    OAuthAuthorizationStart,
     OAuthCredentialPort,
     OAuthEnvironment,
 )
@@ -24,7 +24,7 @@ class StartAuthorizationCommand:
 
 @dataclass(frozen=True, slots=True)
 class StartAuthorizationResult:
-    authorization: AuthorizationStartV1
+    authorization: OAuthAuthorizationStart
     operation_ref: str
     replayed: bool
 
@@ -61,7 +61,7 @@ class StartAuthorizationHandler:
             execute=execute,
         )
         return StartAuthorizationResult(
-            authorization=AuthorizationStartV1(**cast(Any, outcome.bounded_result)),
+            authorization=OAuthAuthorizationStart(**cast(Any, outcome.bounded_result)),
             operation_ref=outcome.operation_ref,
             replayed=outcome.replayed,
         )

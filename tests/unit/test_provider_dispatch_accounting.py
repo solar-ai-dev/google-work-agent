@@ -9,15 +9,13 @@ from google_work_agent.application.prompt_runtime.dispatch_guarded_prompt import
 )
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     current_provider_dispatch_budget,
-    legacy_post_call_projection,
     provider_dispatch_budget_scope,
     provider_dispatch_execution_scope,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
-    consume_llm_provider_calls,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     LLMToolCall,
     OutputSchemaDefinition,
@@ -135,7 +133,7 @@ def _invoke_tool(guarded: PromptInputGuardedProvider) -> None:
     )
 
 
-def _legacy_repair_input() -> dict[str, object]:
+def _repair_input() -> dict[str, object]:
     return {
         "base_projection": {"request_intent": {}},
         "candidate_output": {"bad": True},
@@ -143,8 +141,8 @@ def _legacy_repair_input() -> dict[str, object]:
             "schema_version": 1,
             "failure_id": "repair-1",
             "failure_reason_code": "OUTPUT_SCHEMA_INVALID",
-            "failure_origin": "RUNTIME",
-            "detected_by": "STRUCTURED_OUTPUT_VALIDATOR",
+            "failure_origin": "LLM_OUTPUT",
+            "detected_by": "RUNTIME_SCHEMA_VALIDATOR",
             "runtime_disposition": "RETRYABLE",
             "experiment_disposition": "RUN_REPAIR",
             "affected_field_paths": ["$.bad"],
@@ -197,7 +195,7 @@ def test_failed_primary_plus_successful_fallback_counts_two_dispatches() -> None
     assert budget["llm_calls_used"] == 2
 
 
-def test_schema_repair_success_counts_two_dispatches_and_canonicalizes_failure_record() -> None:
+def test_schema_repair_success_counts_two_dispatches_with_current_failure_record() -> None:
     budget = build_default_run_budget()
     initial = _FakeProvider()
     repair = _FakeProvider()
@@ -207,7 +205,7 @@ def test_schema_repair_success_counts_two_dispatches_and_canonicalizes_failure_r
 
     with provider_dispatch_budget_scope(budget):
         _invoke_structured(initial_guard)
-        _invoke_structured(repair_guard, prompt_input=_legacy_repair_input())
+        _invoke_structured(repair_guard, prompt_input=_repair_input())
 
     assert initial.structured_dispatches == 1
     assert repair.structured_dispatches == 1
@@ -239,7 +237,7 @@ def test_failed_schema_repair_dispatch_counts_two() -> None:
     with provider_dispatch_budget_scope(budget):
         _invoke_structured(initial_guard)
         with pytest.raises(TimeoutError, match="provider timeout"):
-            _invoke_structured(repair_guard, prompt_input=_legacy_repair_input())
+            _invoke_structured(repair_guard, prompt_input=_repair_input())
 
     assert initial.structured_dispatches == 1
     assert repair.structured_dispatches == 1
@@ -319,34 +317,3 @@ def test_execution_scope_clears_budget_after_escaping_provider_error() -> None:
     assert provider.structured_dispatches == 1
     assert budget["llm_calls_used"] == 1
     assert current_provider_dispatch_budget() is None
-
-
-@pytest.mark.parametrize(
-    ("case_name", "dispatches"),
-    [
-        ("initial_only", 1),
-        ("initial_plus_schema_repair", 2),
-        ("initial_plus_semantic_revision", 2),
-        ("initial_plus_repair_plus_semantic_revision_and_repair", 4),
-    ],
-)
-def test_legacy_tool_route_post_call_bridge_preserves_actual_dispatch_count(
-    case_name: str,
-    dispatches: int,
-) -> None:
-    del case_name
-    budget = build_default_run_budget()
-    provider = _FakeProvider()
-    guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
-
-    with provider_dispatch_budget_scope(budget):
-        for _ in range(dispatches):
-            _invoke_structured(guarded)
-        compatibility_projection = legacy_post_call_projection(budget)
-
-    final_budget = consume_llm_provider_calls(
-        compatibility_projection,
-        provider_calls_consumed=1,
-    )
-    assert provider.structured_dispatches == dispatches
-    assert final_budget["llm_calls_used"] == dispatches

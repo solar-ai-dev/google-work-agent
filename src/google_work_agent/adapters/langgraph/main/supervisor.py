@@ -8,8 +8,6 @@ from enum import StrEnum
 from typing import TypedDict, cast
 
 from google_work_agent.adapters.langgraph.main.confirmation_projection import (
-    build_clarification_question_v1,
-    build_solution_planning_clarification_question,
     build_user_interrupt_v1,
     validate_clarification_question_v1,
 )
@@ -22,10 +20,6 @@ from google_work_agent.adapters.langgraph.main.state import (
 from google_work_agent.application.agents.planning.contracts.domain_validation import (
     DomainValidationOutputV1,
     DomainValidationResult,
-)
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
-    AnswerDraftV1,
 )
 from google_work_agent.application.agents.request_understanding.contracts import (
     request_understanding_output,
@@ -41,9 +35,7 @@ from google_work_agent.application.agents.retrieval.assess_sufficiency import (
     decide_insufficient_data,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    AcquisitionResultV1,
     RetrievalResultV1,
-    SourcePlanningOutputV1,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -70,7 +62,6 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 from google_work_agent.application.use_cases.run.terminal_contract import (
     FinalizeIntent,
-    PlanningResult,
     ReviewResult,
     validate_finalize_intent_v1,
 )
@@ -86,34 +77,10 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
 JsonObject = dict[str, object]
 
 
-def _source_planning_clarification(
-    output: SourcePlanningOutputV1, request_intent: RequestIntentV2
-) -> request_understanding_output.ClarificationQuestionV1:
-    raw = output.get("clarification")
-    if not isinstance(raw, Mapping):
-        raise ValueError("source-planning clarification is required")
-    question = raw.get("question")
-    reason_code = raw.get("reason_code")
-    if not isinstance(question, str) or not isinstance(reason_code, str):
-        raise ValueError("source-planning clarification is malformed")
-    affected = raw.get("affected_field_paths", [])
-    options = raw.get("options", [])
-    return build_clarification_question_v1(
-        origin_target="acquisition.plan_sources",
-        question=question,
-        reason_code=reason_code,
-        known_context_summary=request_intent["goal"],
-        affected_field_paths=(list(affected) if isinstance(affected, list) else []),
-        options=(list(options) if isinstance(options, list) else []),
-    )
-
-
 class SupervisorTarget(StrEnum):
     """Deterministic routing targets selected by the Stage 10 supervisor."""
 
     TOOL_ROUTE = "TOOL_ROUTE"
-    SOURCE_PLANNING = "SOURCE_PLANNING"
-    API_ACQUISITION = "API_ACQUISITION"
     CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
     WORK_ANALYSIS = "WORK_ANALYSIS"
     SOLUTION_PLANNING = "SOLUTION_PLANNING"
@@ -180,30 +147,12 @@ def route_supervisor(
             state=state,
             result=cast(ToolRouteResultV1, _require_mapping(result, "result")),
         )
-    if current_phase is WorkflowPhase.SOURCE_PLANNING:
-        return _route_source_planning(
-            state=state,
-            output=cast(SourcePlanningOutputV1, _require_mapping(result, "result")),
-        )
-    if current_phase is WorkflowPhase.API_ACQUISITION:
-        return _route_acquisition_result(
-            state=state, result=cast(AcquisitionResultV1, _require_mapping(result, "result"))
-        )
     if current_phase in {
         WorkflowPhase.CONTEXT_RETRIEVAL,
-        WorkflowPhase.CONTEXT_EVALUATION,
     }:
         return _route_retrieval(
             state=state,
             retrieval_return=cast(RetrievalRouteResultV1, _require_mapping(result, "result")),
-        )
-    if current_phase is WorkflowPhase.SOLUTION_PLANNING:
-        return _route_solution_planning(
-            state=state,
-            result=cast(
-                AnswerDraftV1 | ActionPlanDraftV1,
-                _require_mapping(result, "result"),
-            ),
         )
     if current_phase is WorkflowPhase.PLAN_REVIEW:
         return _route_plan_review(
@@ -246,9 +195,6 @@ def _route_reconsideration(
     status = result.get("disposition", result.get("status", result.get("result")))
     expected = {
         WorkflowPhase.CONTEXT_RETRIEVAL: "ROUTE_RECONSIDERATION_REQUIRED",
-        WorkflowPhase.CONTEXT_EVALUATION: "ROUTE_RECONSIDERATION_REQUIRED",
-        WorkflowPhase.WORK_ANALYSIS: "ROUTE_RECONSIDERATION_REQUIRED",
-        WorkflowPhase.SOLUTION_PLANNING: "ROUTE_RECONSIDERATION_REQUIRED",
         WorkflowPhase.PLAN_REVIEW: "ROUTE_RECONSIDERATION",
     }.get(phase)
     if expected is None or status != expected:
@@ -285,11 +231,9 @@ def _route_reconsideration(
         state_update=_base_state_update(
             WorkflowPhase.TOOL_ROUTING,
             workflow_signal=signal,
-            source_fetch_plans=[],
             acquisition_result=None,
             work_analysis_result=None,
-            answer_draft=None,
-            plan_draft=None,
+            planning_result=None,
             **review_update,
         ),
         reason_code=signal["reason_codes"][0],
@@ -403,88 +347,8 @@ def _route_tool_routing(
     )
 
 
-def _route_source_planning(
-    *,
-    state: MultiAgentGraphState,
-    output: SourcePlanningOutputV1,
-) -> SupervisorDecisionV1:
-    result = str(output["result"])
-    source_fetch_plans = list(output["source_fetch_plans"])
-    if result == "PLAN_READY":
-        return _decision(
-            target=SupervisorTarget.API_ACQUISITION,
-            next_phase=WorkflowPhase.API_ACQUISITION,
-            state_update=_base_state_update(
-                WorkflowPhase.API_ACQUISITION,
-                source_fetch_plans=source_fetch_plans,
-            ),
-            reason_code=result,
-        )
-    if result == "NO_FETCH_NEEDED":
-        return _decision(
-            target=SupervisorTarget.CONTEXT_RETRIEVAL,
-            next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-            state_update=_base_state_update(
-                WorkflowPhase.CONTEXT_RETRIEVAL,
-                source_fetch_plans=source_fetch_plans,
-                acquisition_result=_build_no_fetch_acquisition_result(),
-            ),
-            reason_code=result,
-        )
-    if result == "NEEDS_CONFIRMATION":
-        question = _source_planning_clarification(output, _request_intent_from_state(state))
-        return _decision(
-            target=SupervisorTarget.WAITING_CONFIRMATION,
-            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
-            state_update=_confirmation_state_update(
-                question=question,
-                source_fetch_plans=source_fetch_plans,
-            ),
-            reason_code=question["reason_code"],
-        )
-    return _finalize(
-        state=state,
-        intent=FinalizeIntent.BLOCKED.value,
-        reason_code=_reason_from_failure_mapping(
-            output.get("failure"), default="SOURCE_PLANNING_BLOCKED"
-        ),
-        source_fetch_plans=source_fetch_plans,
-    )
-
-
 def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV2:
     return promote_run_budget_profile(state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY)
-
-
-def _route_acquisition_result(
-    *,
-    state: MultiAgentGraphState,
-    result: AcquisitionResultV1,
-) -> SupervisorDecisionV1:
-    status = str(result["status"])
-    if status in {"COMPLETE", "PARTIAL", "RATE_LIMITED", "BUDGET_EXHAUSTED"}:
-        return _decision(
-            target=SupervisorTarget.CONTEXT_RETRIEVAL,
-            next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-            state_update=_base_state_update(
-                WorkflowPhase.CONTEXT_RETRIEVAL,
-                acquisition_result=result,
-            ),
-            reason_code=status,
-        )
-    if status == "AUTH_REQUIRED":
-        return _decision(
-            target=SupervisorTarget.REAUTH,
-            next_phase=None,
-            state_update=_boundary_state_update(acquisition_result=result),
-            reason_code="AUTH_REQUIRED",
-        )
-    return _finalize(
-        state=state,
-        intent=FinalizeIntent.FAILED.value,
-        reason_code="API_ACQUISITION_FAILED",
-        acquisition_result=result,
-    )
 
 
 def _route_retrieval(
@@ -496,13 +360,9 @@ def _route_retrieval(
     disposition = retrieval_return["disposition"]
     retrieval_result = retrieval_return["typed_result"]
     if disposition in {"SUFFICIENT", "PARTIAL"}:
-        # A frozen tool_route_plan is required to materialize RetrievalResultV1
-        # (Q2-HANDOFF coverage gating); compatibility fixtures without one
-        # still route on disposition alone, same as before this migration --
-        # they simply have no canonical artifact to attach.
-        work_analysis_update: GraphStateUpdateV1 = {}
-        if retrieval_result is not None:
-            work_analysis_update["retrieval_result"] = retrieval_result
+        if retrieval_result is None:
+            raise ValueError("successful Retrieval return requires its typed result")
+        work_analysis_update: GraphStateUpdateV1 = {"retrieval_result": retrieval_result}
         return _decision(
             target=SupervisorTarget.WORK_ANALYSIS,
             next_phase=WorkflowPhase.WORK_ANALYSIS,
@@ -640,50 +500,6 @@ def _route_retrieval_required(
         ),
         reason_code=reason_codes[0],
         budget_decision=budget,
-    )
-
-
-def _route_solution_planning(
-    *,
-    state: MultiAgentGraphState,
-    result: AnswerDraftV1 | ActionPlanDraftV1,
-) -> SupervisorDecisionV1:
-    status = PlanningResult(str(result["status"]))
-    planning_update = _planning_state_update(result)
-    if status in {PlanningResult.ANSWER_ONLY, PlanningResult.PLAN_READY}:
-        if _is_revision_follow_up(state):
-            return _route_review_recheck(
-                state=state,
-                current_update=planning_update,
-            )
-        return _decision(
-            target=SupervisorTarget.PLAN_REVIEW_INSPECT,
-            next_phase=WorkflowPhase.PLAN_REVIEW,
-            state_update=_base_state_update(
-                WorkflowPhase.PLAN_REVIEW,
-                current_update=planning_update,
-            ),
-            reason_code=status.value,
-        )
-    if status is PlanningResult.NEEDS_CONFIRMATION:
-        question = build_solution_planning_clarification_question(
-            result=result,
-            request_intent=_request_intent_from_state(state),
-        )
-        return _decision(
-            target=SupervisorTarget.WAITING_CONFIRMATION,
-            next_phase=WorkflowPhase.WAITING_CONFIRMATION,
-            state_update=_confirmation_state_update(
-                question=question,
-                **planning_update,
-            ),
-            reason_code=question["reason_code"],
-        )
-    return _finalize(
-        state=state,
-        intent=FinalizeIntent.BLOCKED.value,
-        reason_code=_planning_block_reason_code(result),
-        current_update=planning_update,
     )
 
 
@@ -829,13 +645,6 @@ def _route_domain_validation(
     result: DomainValidationOutputV1,
 ) -> SupervisorDecisionV1:
     validation_result = DomainValidationResult(str(result["result"]))
-    if validation_result is DomainValidationResult.ALLOW_READ:
-        return _decision(
-            target=SupervisorTarget.PREFLIGHT,
-            next_phase=WorkflowPhase.PREFLIGHT,
-            state_update=_base_state_update(WorkflowPhase.PREFLIGHT),
-            reason_code=_domain_validation_reason_code(result, default="ALLOW_READ"),
-        )
     if validation_result is DomainValidationResult.REQUIRE_APPROVAL:
         return _decision(
             target=SupervisorTarget.WAITING_APPROVAL,
@@ -847,7 +656,7 @@ def _route_domain_validation(
         state=state,
         intent=FinalizeIntent.BLOCKED.value,
         reason_code=_domain_validation_reason_code(result, default="DOMAIN_VALIDATION_BLOCKED"),
-        plan_draft=state.get("plan_draft"),
+        planning_result=state.get("planning_result"),
         plan_review=state.get("plan_review"),
         work_analysis_result=state.get("work_analysis_result"),
     )
@@ -924,10 +733,10 @@ def _route_additional_acquisition(
             current_update=current_update,
         )
     return _decision(
-        target=SupervisorTarget.SOURCE_PLANNING,
-        next_phase=WorkflowPhase.SOURCE_PLANNING,
+        target=SupervisorTarget.CONTEXT_RETRIEVAL,
+        next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
         state_update=_base_state_update(
-            WorkflowPhase.SOURCE_PLANNING,
+            WorkflowPhase.CONTEXT_RETRIEVAL,
             retry_budget=budget["run_budget"],
             current_update=current_update,
         ),
@@ -1086,32 +895,12 @@ def _review_target_from_state(
             return "ANSWER"
         if isinstance(planning_result.get("actions"), list):
             return "PLAN"
-    if state.get("answer_draft") is not None:
-        return "ANSWER"
-    if state.get("plan_draft") is not None:
-        return "PLAN"
     raise ValueError("Review requires a Planning artifact")
 
 
 def _is_revision_follow_up(state: MultiAgentGraphState) -> bool:
     review = state.get("plan_review")
     return review is not None and review.get("status") == ReviewResult.REVISE.value
-
-
-def _planning_state_update(
-    result: AnswerDraftV1 | ActionPlanDraftV1,
-) -> GraphStateUpdateV1:
-    update: GraphStateUpdateV1 = {
-        "answer_draft": None,
-        "plan_draft": None,
-    }
-    if result["schema_version"] == 1:
-        if PlanningResult(str(result["status"])) is PlanningResult.ANSWER_ONLY:
-            update["answer_draft"] = result
-        return update
-    if PlanningResult(str(result["status"])) is PlanningResult.PLAN_READY:
-        update["plan_draft"] = result
-    return update
 
 
 def _request_invalid_reason_code(
@@ -1139,32 +928,6 @@ def _reason_from_failure_mapping(value: object, *, default: str) -> str:
     if isinstance(reason_code, str) and reason_code:
         return reason_code
     return default
-
-
-def _planning_block_reason_code(result: AnswerDraftV1 | ActionPlanDraftV1) -> str:
-    if result["schema_version"] == 1:
-        reason_codes = result["reason_codes"]
-        if reason_codes:
-            return reason_codes[0]
-        if result["blockers"]:
-            return "PLANNING_BLOCKED"
-    return "PLANNING_BLOCKED"
-
-
-def _build_no_fetch_acquisition_result() -> AcquisitionResultV1:
-    return {
-        "schema_version": 1,
-        "status": "COMPLETE",
-        "resource_handles": [],
-        "source_summaries": [],
-        "missing_slots": [],
-        "remaining_budget": {
-            "sources": 0,
-            "pages": 0,
-            "candidates": 0,
-            "details": 0,
-        },
-    }
 
 
 def _budget_reason_code(budget: BudgetDecisionV1, *, default: str) -> str:

@@ -344,7 +344,7 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
         MainControlNodeBindings,
         WorkflowGraphComposition,
     )
-    from google_work_agent.adapters.langgraph.profiles import GraphProfile
+    from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     try:

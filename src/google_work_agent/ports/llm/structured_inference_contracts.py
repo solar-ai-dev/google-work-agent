@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
@@ -17,11 +17,6 @@ class RequestedRuntimeMode(StrEnum):
 class ActualRuntime(StrEnum):
     API_LLM = "API_LLM"
     LOCAL_GPU = "LOCAL_GPU"
-
-
-class LLMProviderKind(StrEnum):
-    API_PROVIDER = "API_PROVIDER"
-    OLLAMA = "OLLAMA"
 
 
 class LLMCredentialState(StrEnum):
@@ -130,7 +125,6 @@ class StructuredLLMResult:
     structured_output_attempts: int
     provider_request_id: str | None
     safe_error_code: str | None
-    provider_calls_consumed: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,36 +317,6 @@ class SchemaRepairer(Protocol):
         validator_errors: tuple[str, ...],
     ) -> object:
         """Return one repaired candidate output."""
-
-
-class ToolCallSchemaRepairer(Protocol):
-    """Repair boundary for one invalid tool-calling turn.
-
-    Structurally parallel to ``SchemaRepairer``, but the repair call must
-    stay in tool-calling mode (re-invoke ``provider.invoke_tool_call``, not
-    a free-JSON ``invoke_structured``) and the caller's ``mapper`` is applied
-    to the repaired tool call before returning, so the result is already the
-    Node's Typed-Result-shaped candidate -- same as ``SchemaRepairer.repair``.
-    """
-
-    def repair(
-        self,
-        *,
-        provider: ToolCallingLLMProvider,
-        prompt_ref: PromptReference,
-        prompt_input: Mapping[str, object],
-        tools: Sequence[ToolDefinition],
-        mapper: Callable[[ToolCallProviderResponse], object],
-        failed_output: object,
-        output_schema: OutputSchemaDefinition,
-        runtime_policy: RuntimePolicy,
-        api_key: str | None,
-        attempt_no: int,
-        max_attempts: int,
-        failure_reason_code: str,
-        validator_errors: tuple[str, ...],
-    ) -> object:
-        """Return one repaired, already-mapped candidate output."""
 
 
 class OllamaRuntimeProbe(Protocol):

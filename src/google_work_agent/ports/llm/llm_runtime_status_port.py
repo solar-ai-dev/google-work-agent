@@ -5,7 +5,7 @@ from typing import Literal, Protocol
 
 
 @dataclass(frozen=True, slots=True)
-class LlmRuntimeStatusV1:
+class LlmProviderRuntimeStatus:
     schema_version: Literal[1]
     provider: str
     configured: bool
@@ -15,7 +15,7 @@ class LlmRuntimeStatusV1:
 
 
 class LlmRuntimeStatusPort(Protocol):
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1: ...
+    def get_status(self, provider: str) -> LlmProviderRuntimeStatus: ...
 
 
-__all__ = ["LlmRuntimeStatusPort", "LlmRuntimeStatusV1"]
+__all__ = ["LlmProviderRuntimeStatus", "LlmRuntimeStatusPort"]

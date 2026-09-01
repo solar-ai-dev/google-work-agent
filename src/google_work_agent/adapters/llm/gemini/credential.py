@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Literal
 
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
-from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatusV1
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatus
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
 )
@@ -32,7 +32,7 @@ class GeminiLlmCredentialAdapter:
         secret: bytes,
         storage_mode: Literal["KEYRING", "SESSION_ONLY"],
         operation_ref: str,
-    ) -> LlmCredentialStatusV1:
+    ) -> LlmCredentialStatus:
         normalized = secret.strip()
         if not normalized:
             raise ValueError("API key must not be blank")
@@ -51,7 +51,7 @@ class GeminiLlmCredentialAdapter:
         self._operations[operation_ref] = operation
         return self._status(storage_mode, "VALID")
 
-    def delete(self, operation_ref: str) -> LlmCredentialStatusV1:
+    def delete(self, operation_ref: str) -> LlmCredentialStatus:
         operation = ("NOT_CONFIGURED", None, None)
         if self._validate_operation(operation_ref, operation):
             return self.status()
@@ -61,7 +61,7 @@ class GeminiLlmCredentialAdapter:
         self._operations[operation_ref] = operation
         return self._status(None, "NOT_CONFIGURED")
 
-    def status(self) -> LlmCredentialStatusV1:
+    def status(self) -> LlmCredentialStatus:
         if self.session_store.get(self._key) is not None:
             return self._status("SESSION_ONLY", "VALID")
         if self.keyring_store is None:
@@ -110,8 +110,8 @@ class GeminiLlmCredentialAdapter:
         self,
         storage_mode: Literal["KEYRING", "SESSION_ONLY"] | None,
         validation_status: Literal["VALID", "INVALID", "UNAVAILABLE", "NOT_CONFIGURED"],
-    ) -> LlmCredentialStatusV1:
-        return LlmCredentialStatusV1(
+    ) -> LlmCredentialStatus:
+        return LlmCredentialStatus(
             schema_version=1,
             provider=self.provider,
             configured=validation_status == "VALID",

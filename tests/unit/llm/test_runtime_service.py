@@ -29,11 +29,10 @@ from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import Llm
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
 )
-from google_work_agent.adapters.runtime import AppSettings
 from google_work_agent.application.use_cases.run.project_external_llm_transfer_scope import (
     ProjectExternalLlmTransferScopeQueryV1,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
@@ -45,6 +44,7 @@ from google_work_agent.ports.llm import (
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
+from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(

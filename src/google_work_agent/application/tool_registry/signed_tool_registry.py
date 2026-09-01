@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 
-from google_work_agent.application.tool_registry.contracts import SignedToolRegistryEntryV1
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.application.tool_registry.contracts.signed_tool_registry_entry import (
+    SignedToolRegistryEntryV1,
+)
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 from google_work_agent.ports.connector.mcp_client_port import MCPToolDescriptorV1
 
 DEFAULT_POLICY_VERSION = "2026-08-06.p0"

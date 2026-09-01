@@ -10,8 +10,8 @@ from typing import Any, cast
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.application.use_cases.run.run_command_receipts import (
-    finish_json_receipt,
-    resolve_existing_receipt,
+    finish_run_command_receipt,
+    resolve_existing_run_command_receipt,
 )
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -134,7 +134,7 @@ class _ResumePersistence:
             if existing is not None:
                 replay_response = cast(
                     _ResumePersistenceResult,
-                    resolve_existing_receipt(
+                    resolve_existing_run_command_receipt(
                         unit_of_work=unit_of_work,
                         receipt=existing,
                         request_hash=command.request_hash,
@@ -235,7 +235,7 @@ class _ResumePersistence:
                 )
                 if response.should_enqueue:
                     self._stage_resume_handoff(unit_of_work, command)
-            finish_json_receipt(
+            finish_run_command_receipt(
                 unit_of_work, command.command_id, response, response.run_version, now_ms
             )
             unit_of_work.commit()

@@ -18,7 +18,7 @@ def test_local_capable_fails_closed_without_model_manifest() -> None:
     paths = profile.required_files + (
         "runtime/python312.dll",
         "schemas/openapi-v1.json",
-        "migrations/0001_initial.sql",
+        "migrations/0001_current_schema.sql",
     )
 
     with pytest.raises(ValueError, match="LOCAL_CAPABLE requires"):

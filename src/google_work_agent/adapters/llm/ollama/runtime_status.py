@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
     AvailabilityState,
     OllamaRuntimeProbe,
 )
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,9 +21,9 @@ class OllamaLlmRuntimeStatusAdapter:
         *,
         endpoint: str | None,
         model: ApprovedModelInfo | None,
-    ) -> LlmRuntimeStatusV1:
+    ) -> LlmProviderRuntimeStatus:
         if endpoint is None or model is None:
-            return LlmRuntimeStatusV1(
+            return LlmProviderRuntimeStatus(
                 schema_version=1,
                 provider="ollama",
                 configured=False,
@@ -32,7 +32,7 @@ class OllamaLlmRuntimeStatusAdapter:
                 error_code="LOCAL_RUNTIME_NOT_CONFIGURED",
             )
         result = self.probe.probe(endpoint=endpoint, approved_model=model)
-        return LlmRuntimeStatusV1(
+        return LlmProviderRuntimeStatus(
             schema_version=1,
             provider="ollama",
             configured=True,

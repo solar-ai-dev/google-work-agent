@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from evaluation.projections.build_current_projections import _project_case
 from pydantic import ValidationError
-from tests.evaluation.conftest import make_case
+from tests.support.evaluation_case import make_case
 
 
 def test_e2e_projection_is_closed_self_contained_and_gold_free_at_product_boundary() -> None:

@@ -1,15 +1,6 @@
 """Resource-reference domain model."""
 
 from dataclasses import dataclass
-from enum import StrEnum
-
-
-class ResourceSource(StrEnum):
-    """Legacy READ/UI projection only; never part of durable ResourceRef identity."""
-
-    GMAIL = "GMAIL"
-    TASKS = "TASKS"
-    CALENDAR = "CALENDAR"
 
 
 @dataclass(frozen=True, slots=True)

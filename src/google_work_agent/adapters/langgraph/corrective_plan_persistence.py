@@ -8,19 +8,23 @@ from typing import Any, cast
 
 from google_work_agent.adapters.langgraph.main.plan_persistence import (
     connector_ids_from_frozen_routes,
-    replace_llm_expected_with_deterministic_projection,
-    target_resource_connector_ids_from_actions,
+    evidence_ids_from_plan,
+    expected_for_action,
+    target_handle_for_action,
 )
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _require_state_value,
-    _resource_handle_for_ref,
+)
+from google_work_agent.adapters.langgraph.main.validate_planning_output import (
+    RunScopedResourceIdentityReader,
+    required_target_identity,
 )
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     resolve_evidence_projection,
 )
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
 )
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
@@ -64,7 +68,8 @@ def persist_reserved_corrective_write_plan(
     runtime: Any,
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
+    resource_identity_reader: RunScopedResourceIdentityReader,
     reserved_plan: PlanRecord,
 ) -> str:
     """Materialize or continue one Domain-reserved corrective revision safely.
@@ -92,7 +97,7 @@ def persist_reserved_corrective_write_plan(
         action_id_map,
         evidence_id_map,
     ) = _candidate_identity_maps(
-        plan_draft=plan_draft,
+        plan=plan,
         reserved_plan=reserved_plan,
     )
 
@@ -148,7 +153,7 @@ def persist_reserved_corrective_write_plan(
         return _continue_durable_corrective_write_plan(
             runtime,
             state=state,
-            plan_draft=plan_draft,
+            plan=plan,
             reserved_plan=reserved_plan,
         )
 
@@ -156,17 +161,12 @@ def persist_reserved_corrective_write_plan(
     # Evidence from current-run memory or resolve a target through acquisition.
     logical_connector_ids = connector_ids_from_frozen_routes(
         state=state,
-        plan_draft=deterministic_plan,
+        plan=deterministic_plan,
     )
     persisted_connector_ids = {
         action_id_map[action_id]: logical_connector_ids[action_id]
         for action_id in logical_action_ids
     }
-    target_resource_connector_ids_from_actions(
-        plan_draft=deterministic_plan,
-        action_connector_ids=logical_connector_ids,
-    )
-
     retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
     evidence_drafts = {
         item["evidence_id"]: item
@@ -182,19 +182,25 @@ def persist_reserved_corrective_write_plan(
             "corrective evidence projection is unavailable: " + ",".join(sorted(missing_evidence))
         )
 
-    target_resource_ids = {
-        action["action_id"]: runtime._resolve_target_resource_ref_for_connector(
+    acquisition_result = _require_state_value(state["acquisition_result"], "acquisition_result")
+    target_resource_ids: dict[str, str | None] = {}
+    for action in deterministic_plan["actions"]:
+        target_handle = target_handle_for_action(
             run_id=run_id,
-            connector_id=logical_connector_ids[action["action_id"]],
-            resource_handle=action.get("target_resource_ref_id"),
-            acquisition_result=_require_state_value(
-                state["acquisition_result"], "acquisition_result"
-            ),
+            action=action,
+            evidence_by_id=evidence_drafts,
+            resource_identity_reader=resource_identity_reader,
         )
-        for action in deterministic_plan["actions"]
-    }
+        target_resource_ids[action["action_id"]] = (
+            runtime._resolve_target_resource_ref_for_connector(
+                run_id=run_id,
+                connector_id=logical_connector_ids[action["action_id"]],
+                resource_handle=target_handle,
+                acquisition_result=acquisition_result,
+            )
+        )
 
-    summary_text = runtime._required_string(deterministic_plan.get("summary"), "summary")
+    summary_text = _plan_summary(state)
     materialization_projection = _candidate_materialization_projection(
         reserved_plan=reserved_plan,
         summary_text=summary_text,
@@ -226,10 +232,10 @@ def persist_reserved_corrective_write_plan(
         WriteActionDraft(
             action_id=action_id_map[action["action_id"]],
             connector_id=logical_connector_ids[action["action_id"]],
-            position=action["position"],
-            tool_name=action["tool_name"],
+            position=position,
+            tool_name=action["tool_id"],
             arguments=action["arguments"],
-            expected=action["expected"],
+            expected=expected_for_action(action),
             evidence_ids=tuple(evidence_id_map[item] for item in action["evidence_refs"]),
             depends_on_action_ids=tuple(
                 action_id_map[item] for item in action.get("depends_on_action_ids", [])
@@ -243,13 +249,13 @@ def persist_reserved_corrective_write_plan(
                     ),
                     checked_at_ms=runtime._now_ms(),
                 )
-                if action["tool_name"] == TASK_CREATE_TOOL
+                if action["tool_id"] == TASK_CREATE_TOOL
                 else runtime._calendar_plan_risk(state=state, action=action)
-                if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
+                if action["tool_id"] in CALENDAR_CONFLICT_TOOLS
                 else {}
             ),
         )
-        for action in deterministic_plan["actions"]
+        for position, action in enumerate(deterministic_plan["actions"], start=1)
     )
 
     save_response = runtime._save_write_plan(
@@ -275,7 +281,7 @@ def persist_reserved_corrective_write_plan(
     return _continue_durable_corrective_write_plan(
         runtime,
         state=state,
-        plan_draft=plan_draft,
+        plan=plan,
         reserved_plan=reserved_plan,
     )
 
@@ -284,13 +290,13 @@ def _continue_durable_corrective_write_plan(
     runtime: Any,
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
     reserved_plan: PlanRecord,
 ) -> str:
     proof = _build_durable_materialization_proof(
         runtime,
         state=state,
-        plan_draft=plan_draft,
+        plan=plan,
         reserved_plan=reserved_plan,
     )
 
@@ -340,7 +346,7 @@ def _build_durable_materialization_proof(
     runtime: Any,
     *,
     state: GraphState,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
     reserved_plan: PlanRecord,
 ) -> dict[str, Any]:
     """Prove a committed corrective materialization without transient retrieval data."""
@@ -356,14 +362,14 @@ def _build_durable_materialization_proof(
         action_id_map,
         evidence_id_map,
     ) = _candidate_identity_maps(
-        plan_draft=plan_draft,
+        plan=plan,
         reserved_plan=reserved_plan,
     )
     logical_connector_ids = connector_ids_from_frozen_routes(
         state=state,
-        plan_draft=deterministic_plan,
+        plan=deterministic_plan,
     )
-    summary_text = runtime._required_string(deterministic_plan.get("summary"), "summary")
+    summary_text = _plan_summary(state)
 
     with runtime._unit_of_work_factory() as unit_of_work:
         current_run = unit_of_work.runs.get(run_id)
@@ -415,10 +421,11 @@ def _build_durable_materialization_proof(
 
             target_id = persisted_action.target_resource_ref_id
             target_resource_ids[logical_action_id] = target_id
-            candidate_target = candidate.get("target_resource_ref_id")
-            if target_id is None:
-                if candidate_target is not None:
-                    raise ValueError("persisted corrective target ResourceRef drifted")
+            if candidate["effect"] == "CREATE":
+                if target_id is not None:
+                    raise ValueError("CREATE corrective Action cannot own a target ResourceRef")
+            elif target_id is None:
+                raise ValueError("existing-resource corrective Action requires a target")
             else:
                 resource_ref = unit_of_work.resource_refs.get(target_id)
                 if resource_ref is None or resource_ref.run_id != run_id:
@@ -427,14 +434,17 @@ def _build_durable_materialization_proof(
                     )
                 if resource_ref.connector_id != actual_connector_id:
                     raise ValueError("persisted corrective target ResourceRef connector drifted")
-                durable_handles = {
-                    resource_ref.id,
-                    _resource_handle_for_ref(resource_ref),
-                }
-                if candidate_target not in durable_handles:
-                    raise ValueError(
-                        "checkpoint candidate target does not match persisted ResourceRef"
-                    )
+                resource_type, resource_id, parent_id = required_target_identity(
+                    tool_id=candidate["tool_id"],
+                    arguments=candidate["arguments"],
+                    path=f"corrective Action {logical_action_id}",
+                )
+                if (
+                    resource_ref.resource_type != resource_type
+                    or resource_ref.resource_id != resource_id
+                    or resource_ref.parent_resource_id != parent_id
+                ):
+                    raise ValueError("persisted corrective target identity drifted")
 
             expected_evidence_ids = {evidence_id_map[item] for item in candidate["evidence_refs"]}
             linked_evidence = unit_of_work.evidence.list_for_action(persisted_action.id)
@@ -575,30 +585,22 @@ def _corrective_review_input(state: GraphState) -> tuple[int, str]:
 
 def _candidate_identity_maps(
     *,
-    plan_draft: ActionPlanDraftV1,
+    plan: ActionPlanDraftV2,
     reserved_plan: PlanRecord,
 ) -> tuple[
-    ActionPlanDraftV1,
+    ActionPlanDraftV2,
     list[str],
     list[str],
     dict[str, str],
     dict[str, str],
 ]:
-    deterministic_plan = replace_llm_expected_with_deterministic_projection(plan_draft)
+    deterministic_plan = plan
     logical_action_ids = [action["action_id"] for action in deterministic_plan["actions"]]
-    logical_evidence_ids = list(deterministic_plan["evidence_refs"])
+    logical_evidence_ids = evidence_ids_from_plan(deterministic_plan)
     if len(set(logical_action_ids)) != len(logical_action_ids):
         raise ValueError("corrective plan contains duplicate logical Action ids")
     if len(set(logical_evidence_ids)) != len(logical_evidence_ids):
         raise ValueError("corrective plan contains duplicate logical Evidence ids")
-    linked_evidence_ids = {
-        evidence_id
-        for action in deterministic_plan["actions"]
-        for evidence_id in action["evidence_refs"]
-    }
-    if linked_evidence_ids != set(logical_evidence_ids):
-        raise ValueError("corrective plan evidence_refs must equal the linked Evidence set")
-
     action_id_map = {
         action_id: _corrective_child_id(
             kind="action",
@@ -630,6 +632,14 @@ def _candidate_identity_maps(
     )
 
 
+def _plan_summary(state: GraphState) -> str:
+    request_intent = _require_state_value(state.get("request_intent"), "request_intent")
+    goal = request_intent.get("goal")
+    if not isinstance(goal, str) or not goal:
+        raise ValueError("corrective Planning requires request_intent.goal")
+    return goal
+
+
 def _corrective_child_id(*, kind: str, plan_id: str, logical_id: str) -> str:
     return sha256(
         f"google-work-agent:corrective:{kind}:{plan_id}:{logical_id}".encode()
@@ -644,7 +654,7 @@ def _candidate_materialization_projection(
     *,
     reserved_plan: PlanRecord,
     summary_text: str,
-    deterministic_plan: ActionPlanDraftV1,
+    deterministic_plan: ActionPlanDraftV2,
     action_id_map: dict[str, str],
     evidence_id_map: dict[str, str],
     evidence_drafts: dict[str, Any],
@@ -663,19 +673,19 @@ def _candidate_materialization_projection(
                 else dumps(evidence_drafts[evidence_id]["locator"], sort_keys=True)
             ),
         }
-        for evidence_id in deterministic_plan["evidence_refs"]
+        for evidence_id in evidence_ids_from_plan(deterministic_plan)
     ]
     action_projection = []
-    for action in deterministic_plan["actions"]:
+    for position, action in enumerate(deterministic_plan["actions"], start=1):
         persisted_action_id = action_id_map[action["action_id"]]
         action_projection.append(
             {
                 "logical_action_id": action["action_id"],
                 "persisted_action_id": persisted_action_id,
-                "position": action["position"],
-                "tool_name": action["tool_name"],
+                "position": position,
+                "tool_name": action["tool_id"],
                 "arguments_hash": calculate_canonical_json_hash(action["arguments"]),
-                "expected_json": canonicalize_json_value(action["expected"]),
+                "expected_json": canonicalize_json_value(expected_for_action(action)),
                 "evidence_ids": [evidence_id_map[item] for item in action["evidence_refs"]],
                 "depends_on_action_ids": [
                     action_id_map[item] for item in action.get("depends_on_action_ids", [])
@@ -753,7 +763,7 @@ def _validate_persisted_materialization(
     run_id: str,
     plan: PlanRecord,
     summary_text: str,
-    deterministic_plan: ActionPlanDraftV1,
+    deterministic_plan: ActionPlanDraftV2,
     action_id_map: dict[str, str],
     evidence_id_map: dict[str, str],
     evidence_drafts: dict[str, Any],
@@ -783,7 +793,7 @@ def _validate_persisted_materialization(
     for persisted_action in persisted_actions:
         candidate = expected_actions[persisted_action.id]
         entry = registry.get_required(
-            persisted_connector_ids[persisted_action.id], candidate["tool_name"]
+            persisted_connector_ids[persisted_action.id], candidate["tool_id"]
         )
         expected_dependencies = tuple(
             action_id_map[item] for item in candidate.get("depends_on_action_ids", [])
@@ -791,8 +801,8 @@ def _validate_persisted_materialization(
         action_evidence_ids = tuple(evidence_id_map[item] for item in candidate["evidence_refs"])
         if (
             persisted_action.plan_id != plan.id
-            or persisted_action.position != candidate["position"]
-            or persisted_action.tool_name != candidate["tool_name"]
+            or persisted_action.position != deterministic_plan["actions"].index(candidate) + 1
+            or persisted_action.tool_name != candidate["tool_id"]
             or persisted_action.effect_type != entry.effect_type.value
             or persisted_action.approval_requirement != entry.approval_requirement.value
             or persisted_action.verification_policy != entry.verification_policy.value
@@ -804,7 +814,8 @@ def _validate_persisted_materialization(
             or persisted_action.arguments_hash
             != calculate_canonical_json_hash(candidate["arguments"])
             or persisted_action.arguments_json != canonicalize_json_value(candidate["arguments"])
-            or persisted_action.expected_json != canonicalize_json_value(candidate["expected"])
+            or persisted_action.expected_json
+            != canonicalize_json_value(expected_for_action(candidate))
             or persisted_action.connector_id != persisted_connector_ids[persisted_action.id]
             or set(persisted_dependencies.get(persisted_action.id, ()))
             != set(expected_dependencies)

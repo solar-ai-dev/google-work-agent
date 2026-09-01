@@ -26,10 +26,16 @@ def _gmail_get_attachment(
     )
     raw_value = workspace_support._optional_text(payload.get("data"))
     if raw_value is None:
-        raise workspace_support._WorkspaceToolError("INVALID_MCP_OUTPUT", dispatch_started=True)
+        raise workspace_support._WorkspaceToolError(
+            "INVALID_MCP_OUTPUT",
+            delivery_certainty=workspace_support.DeliveryCertainty.MAY_HAVE_BEEN_SENT,
+        )
     data = workspace_support._b64url_decode(raw_value)
     if len(data) > workspace_support.MAX_ATTACHMENT_READ_BYTES:
-        raise workspace_support._WorkspaceToolError("ATTACHMENT_TOO_LARGE", dispatch_started=True)
+        raise workspace_support._WorkspaceToolError(
+            "ATTACHMENT_TOO_LARGE",
+            delivery_certainty=workspace_support.DeliveryCertainty.MAY_HAVE_BEEN_SENT,
+        )
     return {
         "message_id": message_id,
         "attachment_id": attachment_id,

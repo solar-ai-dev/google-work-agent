@@ -8,7 +8,7 @@ from typing import Any, cast
 from langgraph.types import Command
 
 from google_work_agent.adapters.langgraph.main.state import GraphState
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     provider_dispatch_execution_scope,
 )

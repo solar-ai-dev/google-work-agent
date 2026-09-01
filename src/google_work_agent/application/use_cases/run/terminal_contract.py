@@ -4,41 +4,11 @@ from enum import StrEnum
 from typing import Literal, NotRequired, Required, TypedDict, cast
 
 
-class ApiPlanningResult(StrEnum):
-    """API planning node results."""
-
-    PLAN_READY = "PLAN_READY"
-    NO_FETCH_NEEDED = "NO_FETCH_NEEDED"
-    NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
-    BLOCKED = "BLOCKED"
-
-
-class ApiAcquisitionResult(StrEnum):
-    """API acquisition node results."""
-
-    COMPLETE = "COMPLETE"
-    PARTIAL = "PARTIAL"
-    AUTH_REQUIRED = "AUTH_REQUIRED"
-    RATE_LIMITED = "RATE_LIMITED"
-    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
-    FAILED = "FAILED"
-
-
 class AnalysisResult(StrEnum):
     """Analysis node results."""
 
     COMPLETE = "COMPLETE"
     NEEDS_MORE_DATA = "NEEDS_MORE_DATA"
-    NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
-    ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
-    BLOCKED = "BLOCKED"
-
-
-class PlanningResult(StrEnum):
-    """Planning node results."""
-
-    ANSWER_ONLY = "ANSWER_ONLY"
-    PLAN_READY = "PLAN_READY"
     NEEDS_CONFIRMATION = "NEEDS_CONFIRMATION"
     ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     BLOCKED = "BLOCKED"

@@ -3,9 +3,8 @@ from typing import cast
 import pytest
 
 from google_work_agent.application.agents.work_analysis.extract_work_facts import extract_work_facts
-from google_work_agent.ports.llm import PromptReference
-
-from .conftest import FakeRuntime, prompt_ref
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
+from tests.support.work_analysis import WorkAnalysisRuntimeFake, prompt_ref
 
 
 def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
@@ -21,7 +20,7 @@ def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
             }
         ]
     }
-    runtime = FakeRuntime(output)
+    runtime = WorkAnalysisRuntimeFake(output)
     result = extract_work_facts(
         semantic_input={"user_request": "submit", "request_intent": {}, "evidence": []},
         llm_runtime=runtime,
@@ -37,7 +36,7 @@ def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
 
 
 def test_extract_work_facts_rejects_old_or_stale_schema() -> None:
-    runtime = FakeRuntime(
+    runtime = WorkAnalysisRuntimeFake(
         {
             "fact_candidates": [
                 {"fact_id": "f1", "fact_type": "TASK", "value": "x", "evidence_refs": ["stale"]}

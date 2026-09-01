@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from json import JSONDecodeError, loads
 
@@ -113,24 +112,6 @@ def build_approval_source_snapshot(
     if resource_ref.parent_resource_id is not None:
         snapshot["parent_id"] = resource_ref.parent_resource_id
     return snapshot
-
-
-def merge_approval_snapshot_metadata(
-    source_snapshot: Mapping[str, object],
-    *metadata_snapshots: Mapping[str, object],
-) -> dict[str, object]:
-    """Merge policy metadata without allowing it to replace resource authority."""
-
-    merged = dict(source_snapshot)
-    for metadata in metadata_snapshots:
-        collision = _RESOURCE_AUTHORITY_FIELDS.intersection(metadata)
-        if collision:
-            names = ", ".join(sorted(collision))
-            raise PolicyViolationError(
-                f"approval metadata cannot overwrite source resource authority: {names}"
-            )
-        merged.update(metadata)
-    return merged
 
 
 def _required_text(value: object, field_name: str) -> str:

@@ -1,7 +1,6 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
 from collections.abc import Callable
-from importlib import import_module
 from pathlib import Path
 from typing import cast
 
@@ -31,10 +30,6 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionBindingV1,
     WorkflowHandoffStageV1,
 )
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert import_module("google_work_agent.application.use_cases.run.request_cancel") is not None
 
 
 def test_bootstrap_cancel_supersedes_unadmitted_start_then_uses_graphless_resolution(

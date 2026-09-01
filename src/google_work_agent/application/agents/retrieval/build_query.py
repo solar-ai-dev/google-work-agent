@@ -186,8 +186,6 @@ def _query_identity(
 
 # Preserved attempt construction is owned by this query-building operation.
 
-QueryAttempt = QueryAttemptV1
-
 RETRIEVAL_CONFIG_VERSION = "deterministic-retrieval-v2"
 SCORE_CONFIG_VERSION = "lexical-score-v1"
 THRESHOLD_CONFIG_VERSION = "selection-threshold-v1"
@@ -256,4 +254,4 @@ def followup_planner_projection(
     }
 
 
-__all__ = ["QueryAttempt", "build_query_attempt", "followup_planner_projection"]
+__all__ = ["build_query_attempt", "followup_planner_projection"]

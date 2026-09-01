@@ -35,7 +35,7 @@ from google_work_agent.application.use_cases.llm_credential.get_llm_credential_s
 from google_work_agent.application.use_cases.llm_credential.store_llm_credential import (
     StoreLlmCredentialHandler,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     CredentialStorageMode,
 )
 from google_work_agent.ports.system.api_access_port import (
@@ -46,14 +46,6 @@ from google_work_agent.ports.system.api_access_port import (
 from google_work_agent.ports.system.launcher_probe_port import LauncherProbeDecision
 from google_work_agent.ports.system.readiness_port import ReadinessReport, ReadinessState
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
-
-
-class _CoordinatorStub:
-    def start(self) -> None:
-        return None
-
-    def stop(self) -> None:
-        return None
 
 
 def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter:

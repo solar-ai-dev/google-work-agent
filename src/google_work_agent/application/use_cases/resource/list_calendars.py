@@ -32,7 +32,7 @@ class ListCalendarsQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class CalendarContainerItemV1:
+class CalendarContainerItem:
     schema_version: int
     calendar_id: str
     title: str
@@ -40,9 +40,9 @@ class CalendarContainerItemV1:
 
 
 @dataclass(frozen=True, slots=True)
-class CalendarContainerListResponseV1:
+class ListCalendarsResult:
     schema_version: int
-    items: tuple[CalendarContainerItemV1, ...]
+    items: tuple[CalendarContainerItem, ...]
     next_page_token: str | None
 
 
@@ -58,7 +58,7 @@ class ListCalendarsHandler:
         self._registry = registry
         self._continuation_store = continuation_store
 
-    def __call__(self, query: ListCalendarsQuery) -> CalendarContainerListResponseV1:
+    def __call__(self, query: ListCalendarsQuery) -> ListCalendarsResult:
         if not 1 <= query.page_size <= 100:
             raise ValueError("page_size must be in 1..100")
         scope = (query.session_digest, query.account_id, "calendars", str(query.page_size))
@@ -86,10 +86,10 @@ class ListCalendarsHandler:
                 provider_page_token=result.next_page_token,
             )
         )
-        return CalendarContainerListResponseV1(1, items, next_page_token)
+        return ListCalendarsResult(1, items, next_page_token)
 
 
-def _calendar_item(value: JsonValue) -> CalendarContainerItemV1:
+def _calendar_item(value: JsonValue) -> CalendarContainerItem:
     if not isinstance(value, dict):
         raise _malformed_response()
     resource_id = value.get("resource_id")
@@ -100,7 +100,7 @@ def _calendar_item(value: JsonValue) -> CalendarContainerItemV1:
     primary = payload.get("primary", False)
     if not isinstance(title, str) or not title or not isinstance(primary, bool):
         raise _malformed_response()
-    return CalendarContainerItemV1(1, resource_id, title, primary)
+    return CalendarContainerItem(1, resource_id, title, primary)
 
 
 def _malformed_response() -> ConnectorOperationFailure:
@@ -111,8 +111,8 @@ def _malformed_response() -> ConnectorOperationFailure:
 
 
 __all__ = [
-    "CalendarContainerItemV1",
-    "CalendarContainerListResponseV1",
+    "CalendarContainerItem",
+    "ListCalendarsResult",
     "ListCalendarsHandler",
     "ListCalendarsQuery",
 ]

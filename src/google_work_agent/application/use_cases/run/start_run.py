@@ -25,7 +25,6 @@ from google_work_agent.domain.command_receipt.model import CommandReceipt as Com
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.message.model import Message as MessageRecord
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run, RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.model import RunCreate as RunCreateRecord
@@ -55,18 +54,18 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 from google_work_agent.ports.system.settings_port import SettingsViewV1
 
 _REGISTRY_RESOURCE_SOURCES = {
-    "gmail_thread": ResourceSource.GMAIL,
-    "gmail_message": ResourceSource.GMAIL,
-    "gmail_draft": ResourceSource.GMAIL,
-    "task_list": ResourceSource.TASKS,
-    "task": ResourceSource.TASKS,
-    "calendar": ResourceSource.CALENDAR,
-    "calendar_event": ResourceSource.CALENDAR,
-    "calendar_freebusy": ResourceSource.CALENDAR,
+    "gmail_thread": "GMAIL",
+    "gmail_message": "GMAIL",
+    "gmail_draft": "GMAIL",
+    "task_list": "TASKS",
+    "task": "TASKS",
+    "calendar": "CALENDAR",
+    "calendar_event": "CALENDAR",
+    "calendar_freebusy": "CALENDAR",
 }
 
 
-def _resource_source(resource_type: str) -> ResourceSource:
+def _resource_source(resource_type: str) -> str:
     try:
         return _REGISTRY_RESOURCE_SOURCES[resource_type]
     except KeyError as error:
@@ -384,7 +383,7 @@ class StartRunHandler:
             )
             selected.append(
                 SelectedResourceRef(
-                    source=source.value,
+                    source=source,
                     resource_type=persisted.resource_type,
                     resource_id=persisted.resource_id,
                     parent_resource_id=persisted.parent_resource_id,

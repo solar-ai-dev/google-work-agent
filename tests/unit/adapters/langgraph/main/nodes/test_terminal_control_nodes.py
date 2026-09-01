@@ -5,13 +5,11 @@ import pytest
 from google_work_agent.adapters.langgraph.main.nodes.finalize_node import finalize_node
 from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node import (
     TerminalCommitIntentV1,
-    response_synthesis_node,
 )
 from google_work_agent.adapters.langgraph.main.nodes.terminal_commit_node import (
     terminal_commit_node,
 )
 from google_work_agent.application.use_cases.run.build_terminal_message import (
-    BuildTerminalMessageHandler,
     TerminalAssistantMessageInputV1,
 )
 
@@ -29,25 +27,6 @@ def _intent(kind: str = "COMPLETE_WRITE") -> TerminalCommitIntentV1:
             "reason_codes": ["WRITE_VERIFIED"],
         },
     )
-
-
-def test_response_synthesis_builds_read_intent_from_durable_action_facts() -> None:
-    patch = response_synthesis_node(
-        {"run_id": "run-1"},
-        read_terminal_facts=lambda _run_id: {
-            "status": "VERIFYING",
-            "version": 4,
-            "terminal_result_kind": None,
-            "action_statuses": ["VERIFIED", "FAILED"],
-            "action_effect_types": ["READ", "READ"],
-        },
-        build_terminal_message=BuildTerminalMessageHandler(),
-    )
-
-    intent = cast(TerminalCommitIntentV1, patch["terminal_commit_intent"])
-    assert intent["kind"] == "COMPLETE_READ_ONLY"
-    assert intent["terminal_message"].result_kind == "PARTIAL"
-    assert patch["__target__"] == "terminal_commit"
 
 
 def test_terminal_commit_dispatches_exactly_one_handler_then_verifies_truth() -> None:
@@ -75,7 +54,6 @@ def test_terminal_commit_dispatches_exactly_one_handler_then_verifies_truth() ->
         {"run_id": "run-1", "terminal_commit_intent": _intent()},
         read_terminal_facts=lambda _run_id: facts,
         complete_answer_only=unexpected,
-        complete_read_only=unexpected,
         complete_write=complete_write,
         block_run=unexpected,
         finalize_cancel=unexpected,
@@ -103,7 +81,6 @@ def test_terminal_commit_replay_verifies_without_duplicate_dispatch() -> None:
             "final_message_count": 1,
         },
         complete_answer_only=unexpected,
-        complete_read_only=unexpected,
         complete_write=unexpected,
         block_run=unexpected,
         finalize_cancel=unexpected,
@@ -120,7 +97,6 @@ def test_terminal_commit_unknown_kind_fails_closed() -> None:
             {"run_id": "run-1", "terminal_commit_intent": _intent("UNKNOWN")},
             read_terminal_facts=lambda _run_id: {},
             complete_answer_only=lambda *_args: None,
-            complete_read_only=lambda *_args: None,
             complete_write=lambda *_args: None,
             block_run=lambda *_args: None,
             finalize_cancel=lambda *_args: None,

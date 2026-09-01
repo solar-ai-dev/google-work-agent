@@ -82,7 +82,6 @@ from google_work_agent.adapters.langgraph.main.state import (
     _acquired_resource_by_handle,
     _require_state_value,
     _resource_handle_for_ref,
-    _stored_resource_type_for_acquired_resource,
     initial_graph_state,
     request_from_state,
 )
@@ -132,14 +131,11 @@ from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
 from google_work_agent.adapters.system.memory.run_retrieval_cache import (
     InMemoryRunRetrievalCache,
 )
+from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
+    ActionPlanDraftV2,
+)
 from google_work_agent.application.agents.planning.contracts.domain_validation import (
     DomainValidationResult,
-)
-from google_work_agent.application.agents.planning.contracts.planning_result import (
-    ActionPlanDraftV1,
-)
-from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    AcquisitionResultV1,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
@@ -149,27 +145,12 @@ from google_work_agent.application.use_cases.action.calendar_conflict_policy imp
     CalendarWorkHours,
 )
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
-    CALENDAR_CONFLICT_TOOLS,
     evidence_calendar_conflict_risk,
 )
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionCommand,
 )
 from google_work_agent.application.use_cases.action.feasibility import evidence_feasibility_risk
-from google_work_agent.application.use_cases.action.read_contracts import (
-    ClaimReadActionCommand,
-    CompleteReadActionCommand,
-    FailReadActionCommand,
-    FinalizeReadActionCommand,
-    PublishReadOnlyPlanCommand,
-    ReadActionDraft,
-    ReadEvidenceDraft,
-    SaveReadOnlyPlanCommand,
-)
-from google_work_agent.application.use_cases.action.task_duplicates import (
-    TASK_CREATE_TOOL,
-    evidence_duplicate_risk,
-)
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionCommandV1,
 )
@@ -186,27 +167,15 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.application.use_cases.plan.project_dependencies import (
     project_dependency_ids,
 )
-from google_work_agent.application.use_cases.plan.project_planning_output import (
-    project_action_plan_v2_for_persistence,
-)
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultCommandV1,
     ReviewDispositionV1,
-)
-from google_work_agent.application.use_cases.plan.write_plan_contracts import (
-    PublishWritePlanCommand,
-    SaveWritePlanCommand,
-    WriteActionDraft,
-    WriteEvidenceDraft,
 )
 from google_work_agent.application.use_cases.recovery.resolve_recovery import (
     ResolveRecoveryCommandV1,
 )
 from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
-)
-from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    persist_registered_resource_ref,
 )
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
@@ -222,9 +191,6 @@ from google_work_agent.application.use_cases.run.block_run import (
 )
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
-)
-from google_work_agent.application.use_cases.run.complete_read_only_run import (
-    CompleteReadOnlyRunCommand,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
@@ -258,7 +224,6 @@ from google_work_agent.application.use_cases.trace_event.emit_trace_event import
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.execution_attempt.model import (
     ExecutionAttempt as ExecutionAttemptRecord,
 )
@@ -267,10 +232,12 @@ from google_work_agent.domain.plan.model import Plan as PlanRecord
 from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
-from google_work_agent.domain.resource_ref.model import ResourceSource
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
-from google_work_agent.ports.llm import LLMErrorCode, LLMInvocationError
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    LLMErrorCode,
+    LLMInvocationError,
+)
 from google_work_agent.ports.persistence.execution_attempt_repository import active_attempt_tuple
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork as CanonicalUnitOfWork
@@ -317,30 +284,40 @@ class _ResourceIdentityProjection:
         }
 
 
-def _legacy_connector_identity_unavailable() -> str:
-    """Fail closed when the legacy base lacks frozen Tool Route connector identity.
-
-    Production uses ``canonical_planning_runtime.LangGraphWorkflowRuntime``, whose
-    persistence overrides join every action/resource to an explicit frozen route.
-    The legacy base must never invent a connector or fall back to Google Workspace.
-    """
-
-    raise RuntimeError(
-        "legacy LangGraph runtime cannot persist connector-aware DTOs without "
-        "frozen Tool Route connector identity; use canonical planning runtime"
-    )
-
-
 class _CloseableCheckpoint(Protocol):
     def close(self) -> None: ...
 
 
-class WorkflowRuntimeCore:
+class _WorkflowRuntimeComposition:
     """LangGraph runtime with selectable Stage 18 graph profiles."""
 
     if TYPE_CHECKING:
         _has_persisted_cancel_intent: Callable[[str], bool]
         discard_run_transients: Callable[[str], None]
+
+        def _confirm_request_understanding_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
+
+        def _confirm_tool_route_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
+
+        def _confirm_context_retrieval_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
+
+        def _confirm_work_analysis_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
+
+        def _confirm_planning_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
+
+        def _confirm_review_inline(
+            self, state: GraphState
+        ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]: ...
 
     def __init__(
         self,
@@ -408,16 +385,8 @@ class WorkflowRuntimeCore:
         self._evidence_store = RunScopedEvidenceStore()
         self._canonical_domain_validation = services.domain_validation
         self._complete_answer_only = services.complete_answer_only
-        self._complete_read_only_run = services.complete_read_only_run
         self._complete_write_run = services.complete_write_run
         self._block_run = services.block_run
-        self._publish_read_plan = services.publish_read_plan
-        self._save_read_plan = self._publish_read_plan.save
-        self._claim_read = services.claim_read
-        self._complete_read = services.complete_read
-        self._execute_read = self._complete_read.execute
-        self._finalize_read = services.finalize_read
-        self._fail_read = services.fail_read
         self._publish_write_plan = services.publish_write_plan
         self._save_write_plan = self._publish_write_plan.save
         self._build_claim_context = services.build_claim_context
@@ -474,7 +443,6 @@ class WorkflowRuntimeCore:
             should_stop_for_cancel=self._should_stop_for_cancel,
             list_actions=self._list_actions,
             has_independent_executable_action=self._has_independent_executable_action,
-            execute_read_only_plan=self._execute_read_only_plan,
             execution_phase=self._write_execution_phase,
             has_persisted_cancel_intent=self._has_persisted_cancel_intent,
         )
@@ -550,7 +518,7 @@ class WorkflowRuntimeCore:
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,
             evidence_store=self._evidence_store,
-            confirm_inline=self._confirm_review_inline,
+            confirm_inline=cast(Any, self._confirm_review_inline),
             resume_target_registry=self._resume_target_registry,
         ).build()
         self._three_stage_one_subgraph: Any = None
@@ -637,7 +605,6 @@ class WorkflowRuntimeCore:
     def control_resume_node(self, stage_id: str) -> str:
         """Resolve a registered external-control stage to this profile's native node."""
         exact_control = {
-            "READ_EXECUTION": "action_execution",
             "VERIFICATION": "verification",
             "RECOVERY": "recovery",
             "CANCEL_RESOLUTION": "cancel_resolution",
@@ -815,7 +782,6 @@ class WorkflowRuntimeCore:
                 terminal_commit_node,
                 read_terminal_facts=self._read_terminal_facts,
                 complete_answer_only=self._terminal_complete_answer_only,
-                complete_read_only=self._terminal_complete_read_only,
                 complete_write=self._terminal_complete_write,
                 block_run=self._terminal_block_run,
                 finalize_cancel=self._terminal_finalize_cancel,
@@ -894,23 +860,6 @@ class WorkflowRuntimeCore:
                     Literal["SUCCESS", "PARTIAL"],
                     intent["terminal_message"].result_kind,
                 ),
-            )
-        )
-
-    def _terminal_complete_read_only(
-        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
-    ) -> object:
-        run_id = cast(str, state["run_id"])
-        facts = self._read_terminal_facts(run_id)
-        plan_id = self._required_string(facts.get("plan_id"), "plan_id")
-        payload = self._terminal_command_payload(run_id, intent)
-        return self._complete_read_only_run(
-            CompleteReadOnlyRunCommand(
-                command_id=self._terminal_command_id(payload),
-                request_hash=calculate_canonical_json_hash(payload),
-                run_id=run_id,
-                plan_id=plan_id,
-                expected_version=intent["expected_run_version"],
             )
         )
 
@@ -1169,6 +1118,7 @@ class WorkflowRuntimeCore:
                     captured_at_ms=self._now_ms(),
                 )
             plan_review = _require_state_value(typed_state.get("plan_review"), "plan_review")
+            resource_identity_reader = _ResourceIdentityProjection(resource_refs)
             result = self._canonical_domain_validation(
                 run_id=run_id,
                 planning_result=cast(Any, planning_result),
@@ -1176,24 +1126,8 @@ class WorkflowRuntimeCore:
                 work_analysis_result=typed_state.get("work_analysis_result"),
                 evidence_drafts=evidence_drafts,
                 policy_confirmation_receipts=typed_state.get("policy_confirmation_receipts", []),
-                resource_identity_reader=_ResourceIdentityProjection(resource_refs),
+                resource_identity_reader=resource_identity_reader,
             )
-            if result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
-                plan_draft = project_action_plan_v2_for_persistence(
-                    run_id=run_id,
-                    request_intent=_require_state_value(
-                        typed_state.get("request_intent"), "request_intent"
-                    ),
-                    plan=cast(Any, planning_result),
-                    tool_route_plan=_require_state_value(
-                        typed_state.get("tool_route_plan"), "tool_route_plan"
-                    ),
-                    evidence_drafts=evidence_drafts,
-                    resource_refs_by_handle=resource_refs,
-                )
-                typed_state = cast(GraphState, {**typed_state, "plan_draft": plan_draft})
-            else:
-                plan_draft = cast(ActionPlanDraftV1, typed_state.get("plan_draft") or {})
         else:
             raise ValueError(
                 "DOMAIN_VALIDATION requires canonical PlanningResultV2; "
@@ -1228,19 +1162,15 @@ class WorkflowRuntimeCore:
                     "approved_plan_id": typed_state["__modify_review_plan_id__"],
                 }
         elif result["result"] == DomainValidationResult.REQUIRE_APPROVAL.value:
-            plan_id = self._persist_write_plan(typed_state, plan_draft)
+            plan_id = cast(PlanPersistenceMixin, self)._persist_write_plan(
+                typed_state,
+                cast(ActionPlanDraftV2, planning_result),
+                resource_identity_reader,
+            )
             decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
                 **decision["state_update"],
                 "approved_plan_id": plan_id,
-            }
-        elif result["result"] == DomainValidationResult.ALLOW_READ.value:
-            plan_id = self._persist_read_plan(typed_state, plan_draft)
-            decision["target"] = SupervisorTarget.PREFLIGHT.value
-            decision["state_update"] = {
-                **decision["state_update"],
-                "approved_plan_id": plan_id,
-                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
             }
         merged = self._merge_decision(
             typed_state,
@@ -1250,72 +1180,6 @@ class WorkflowRuntimeCore:
         return cast(
             GraphState,
             {key: value for key, value in merged.items() if original_state.get(key) != value},
-        )
-
-    def _confirm_request_understanding_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime``, the
-        only subclass production ever constructs. This legacy base has no
-        nested-subgraph interrupt/ResumeConfirmation implementation of its
-        own -- kept here (rather than omitted) only so the type is visible on
-        this class and a direct construction of the legacy runtime fails
-        loudly instead of hitting an ``AttributeError`` deep inside a
-        LangGraph node replay.
-        """
-        raise NotImplementedError(
-            "Request Understanding nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _confirm_tool_route_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "Tool Route nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _confirm_context_retrieval_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "Retrieval nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _confirm_work_analysis_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "Work Analysis nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _confirm_planning_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "Planning nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
-        )
-
-    def _confirm_review_inline(
-        self, state: GraphState
-    ) -> tuple[ConfirmationResponseProjectionV1 | None, dict[str, object] | None]:
-        """Overridden by ``canonical_runtime.LangGraphWorkflowRuntime`` -- see
-        ``_confirm_request_understanding_inline`` above for the rationale."""
-        raise NotImplementedError(
-            "Review nested confirmation resume requires "
-            "adapters.langgraph.canonical_runtime.LangGraphWorkflowRuntime"
         )
 
     def _waiting_approval_node(self, state: GraphState) -> GraphState:
@@ -1396,19 +1260,26 @@ class WorkflowRuntimeCore:
                 "__workflow_control__": _workflow_control("MODIFY_REVIEW_BUDGET_EXHAUSTED"),
             }
 
-        draft = deepcopy(_require_state_value(state["plan_draft"], "plan_draft"))
-        persisted = {action.id: action for action in actions}
-        for action_draft in draft["actions"]:
-            action = persisted.get(action_draft["action_id"])
-            if action is None:
-                raise LookupError(f"persisted action not found: {action_draft['action_id']}")
+        draft = deepcopy(
+            cast(
+                ActionPlanDraftV2,
+                _require_state_value(state["planning_result"], "planning_result"),
+            )
+        )
+        draft_actions = draft.get("actions")
+        ordered_actions = sorted(actions, key=lambda item: item.position)
+        if not isinstance(draft_actions, list) or len(draft_actions) != len(ordered_actions):
+            raise ValueError("persisted Plan no longer matches the Planning artifact")
+        for action_draft, action in zip(draft_actions, ordered_actions, strict=True):
+            if action_draft.get("tool_id") != action.tool_name:
+                raise ValueError("persisted Action tool no longer matches Planning")
+            action_draft["action_id"] = action.id
             action_draft["arguments"] = cast(dict[str, object], loads(action.arguments_json))
-            action_draft["expected"] = cast(dict[str, object], loads(action.expected_json))
             action_draft["depends_on_action_ids"] = list(dependencies[action.id])
 
         return {
             **state,
-            "plan_draft": draft,
+            "planning_result": draft,
             "plan_review": None,
             "approved_plan_id": plan_id,
             "__modify_review_plan_id__": plan_id,
@@ -1694,115 +1565,6 @@ class WorkflowRuntimeCore:
     def _is_profile_compatible(self, state: GraphState) -> bool:
         return self._invocation.is_profile_compatible(state)
 
-    def _persist_write_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
-        connector_id = _legacy_connector_identity_unavailable()
-        run_id = state["run_id"]
-        run_version = self._current_run_version(run_id)
-        replan_from_plan_id = state.get("__replan_from_plan_id__")
-        revision_no = 1
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
-        action_id_map = {
-            action["action_id"]: action["action_id"] for action in plan_draft["actions"]
-        }
-        evidence_id_map = {evidence_id: evidence_id for evidence_id in plan_draft["evidence_refs"]}
-        if replan_from_plan_id is not None:
-            plans = self._plans_for_run(run_id)
-            if not any(plan.id == replan_from_plan_id for plan in plans):
-                raise LookupError(f"replan source not found: {replan_from_plan_id}")
-            revision_no = max(plan.revision_no for plan in plans) + 1
-            plan_id = self._id_factory()
-            action_id_map = {
-                action["action_id"]: self._id_factory() for action in plan_draft["actions"]
-            }
-            evidence_id_map = {
-                evidence_id: self._id_factory() for evidence_id in plan_draft["evidence_refs"]
-            }
-        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
-        evidence_drafts = {
-            item["evidence_id"]: item
-            for item in resolve_evidence_projection(
-                store=self._evidence_store,
-                run_id=run_id,
-                retrieval_result=retrieval_result,
-            )
-        }
-        mapped_evidence = []
-        for evidence_id in plan_draft["evidence_refs"]:
-            item = evidence_drafts[evidence_id]
-            mapped_evidence.append(
-                WriteEvidenceDraft(
-                    evidence_id=evidence_id_map[evidence_id],
-                    origin_type=EvidenceOriginType.DERIVED,
-                    kind=item["kind"],
-                    excerpt=item["excerpt"],
-                    locator_json=None
-                    if item.get("locator") is None
-                    else dumps(item["locator"], sort_keys=True),
-                )
-            )
-        mapped_actions = tuple(
-            WriteActionDraft(
-                action_id=action_id_map[action["action_id"]],
-                connector_id=connector_id,
-                position=action["position"],
-                tool_name=action["tool_name"],
-                arguments=action["arguments"],
-                expected=action["expected"],
-                evidence_ids=tuple(evidence_id_map[item] for item in action["evidence_refs"]),
-                depends_on_action_ids=tuple(
-                    action_id_map[item] for item in action.get("depends_on_action_ids", [])
-                ),
-                target_resource_ref_id=self._resolve_target_resource_ref_id(
-                    run_id=run_id,
-                    resource_handle=action.get("target_resource_ref_id"),
-                    acquisition_result=_require_state_value(
-                        state["acquisition_result"], "acquisition_result"
-                    ),
-                ),
-                risk=(
-                    evidence_duplicate_risk(
-                        arguments=action["arguments"],
-                        acquisition_result=_require_state_value(
-                            state["acquisition_result"], "acquisition_result"
-                        ),
-                        checked_at_ms=self._now_ms(),
-                    )
-                    if action["tool_name"] == TASK_CREATE_TOOL
-                    else self._calendar_plan_risk(state=state, action=action)
-                    if action["tool_name"] in CALENDAR_CONFLICT_TOOLS
-                    else {}
-                ),
-            )
-            for action in plan_draft["actions"]
-        )
-        save_response = self._save_write_plan(
-            SaveWritePlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "save_write_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                revision_no=revision_no,
-                summary_text=self._required_string(plan_draft.get("summary"), "summary"),
-                expected_run_version=run_version,
-                actions=mapped_actions,
-                evidence=tuple(mapped_evidence),
-            )
-        )
-        if not save_response.applied:
-            raise RuntimeError(f"save_write_plan failed: {save_response.result_code}")
-        publish_response = self._publish_write_plan(
-            PublishWritePlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "publish_write_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                expected_run_version=save_response.run_version,
-            )
-        )
-        if not publish_response.applied:
-            raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
-        return plan_id
-
     def _calendar_plan_risk(self, *, state: GraphState, action: Any) -> dict[str, object]:
         arguments = cast(dict[str, object], action["arguments"])
         acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
@@ -1821,220 +1583,6 @@ class WorkflowRuntimeCore:
             work_hours=self._work_hours_provider(),
         )
         return {**conflict, **feasibility}
-
-    def _resolve_target_resource_ref_id(
-        self,
-        *,
-        run_id: str,
-        resource_handle: str | None,
-        acquisition_result: AcquisitionResultV1,
-    ) -> str | None:
-        if resource_handle is None:
-            return None
-        with self._unit_of_work_factory() as unit_of_work:
-            existing = unit_of_work.resource_refs.get(resource_handle)
-            if existing is not None:
-                return existing.id
-            for resource_ref in unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000):
-                if resource_handle == _resource_handle_for_ref(resource_ref):
-                    return resource_ref.id
-            resource = _acquired_resource_by_handle(
-                acquisition_result=acquisition_result,
-                resource_handle=resource_handle,
-            )
-            if resource is None:
-                raise LookupError(
-                    f"target resource handle was not acquired for this run: {resource_handle}"
-                )
-            connector_id = _legacy_connector_identity_unavailable()
-            source = ResourceSource(str(resource["source"]))
-            resource_type = _stored_resource_type_for_acquired_resource(
-                source=source,
-                resource_type=str(resource["resource_type"]),
-            )
-            payload = cast(dict[str, object], resource["payload"])
-            resource_ref = ResourceRefRecord(
-                id=f"resource-ref-{run_id}-{resource_handle.replace(':', '-')}",
-                run_id=run_id,
-                connector_id=connector_id,
-                resource_type=resource_type,
-                resource_id=str(resource["resource_id"]),
-                parent_resource_id=cast(str | None, resource.get("parent_id")),
-                canonical_url=None,
-                title=str(
-                    payload.get("subject") or payload.get("title") or resource["resource_id"]
-                )[:200],
-                event_time_ms=None,
-                version_token=cast(str | None, resource.get("version")),
-                metadata_json=dumps(payload, sort_keys=True),
-                captured_at_ms=self._now_ms(),
-            )
-            persisted = persist_registered_resource_ref(unit_of_work, resource_ref)
-            unit_of_work.commit()
-            return persisted.id
-
-    def _persist_read_plan(self, state: GraphState, plan_draft: ActionPlanDraftV1) -> str:
-        connector_id = _legacy_connector_identity_unavailable()
-        run_id = state["run_id"]
-        run_version = self._current_run_version(run_id)
-        retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
-        evidence_drafts = {
-            item["evidence_id"]: item
-            for item in resolve_evidence_projection(
-                store=self._evidence_store,
-                run_id=run_id,
-                retrieval_result=retrieval_result,
-            )
-        }
-        mapped_evidence = []
-        for evidence_id in plan_draft["evidence_refs"]:
-            item = evidence_drafts[evidence_id]
-            mapped_evidence.append(
-                ReadEvidenceDraft(
-                    evidence_id=evidence_id,
-                    origin_type=EvidenceOriginType.DERIVED,
-                    kind=item["kind"],
-                    excerpt=item["excerpt"],
-                    locator_json=None
-                    if item.get("locator") is None
-                    else dumps(item["locator"], sort_keys=True),
-                )
-            )
-        mapped_actions = tuple(
-            ReadActionDraft(
-                action_id=action["action_id"],
-                connector_id=connector_id,
-                position=action["position"],
-                tool_name=action["tool_name"],
-                arguments=action["arguments"],
-                expected=action["expected"],
-                evidence_ids=tuple(action["evidence_refs"]),
-                depends_on_action_ids=tuple(action.get("depends_on_action_ids", [])),
-                target_resource_ref_id=action.get("target_resource_ref_id"),
-            )
-            for action in plan_draft["actions"]
-        )
-        plan_id = self._required_string(plan_draft.get("plan_id"), "plan_id")
-        save_response = self._save_read_plan(
-            SaveReadOnlyPlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "save_read_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                revision_no=1,
-                summary_text=self._required_string(plan_draft.get("summary"), "summary"),
-                expected_run_version=run_version,
-                actions=mapped_actions,
-                evidence=tuple(mapped_evidence),
-            )
-        )
-        if not save_response.applied:
-            raise RuntimeError(f"save_read_plan failed: {save_response.result_code}")
-        publish_response = self._publish_read_plan(
-            PublishReadOnlyPlanCommand(
-                command_id=self._id_factory(),
-                request_hash=self._request_hash({"kind": "publish_read_plan", "plan_id": plan_id}),
-                plan_id=plan_id,
-                run_id=run_id,
-                expected_run_version=save_response.run_version,
-            )
-        )
-        if not publish_response.applied:
-            raise RuntimeError(f"publish_read_plan failed: {publish_response.result_code}")
-        return plan_id
-
-    def _execute_read_only_plan(
-        self,
-        state: GraphState,
-        plan_id: str,
-        actions: tuple[ActionRecord, ...],
-    ) -> GraphState:
-        verification_statuses: list[str] = []
-        for action in actions:
-            if action.status in {
-                ActionStatusV1.VERIFIED.value,
-                ActionStatusV1.FAILED.value,
-                ActionStatusV1.BLOCKED.value,
-                ActionStatusV1.DEPENDENCY_BLOCKED.value,
-                ActionStatusV1.REJECTED.value,
-                ActionStatusV1.EXPIRED.value,
-                ActionStatusV1.MISMATCH.value,
-            }:
-                verification_statuses.append(action.status)
-                continue
-            if action.status not in {
-                ActionStatusV1.PROPOSED.value,
-                ActionStatusV1.EXECUTING.value,
-            }:
-                continue
-            action_version = action.version
-            if action.status == ActionStatusV1.PROPOSED.value:
-                claimed = self._claim_read(
-                    ClaimReadActionCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "claim_read", "action_id": action.id}
-                        ),
-                        action_id=action.id,
-                        expected_version=action.version,
-                    )
-                )
-                if not claimed.applied:
-                    continue
-                action_version = claimed.action_version
-            try:
-                executed = self._execute_read(action_id=action.id)
-            except GoogleWorkspaceGatewayError as error:
-                failed = self._fail_read(
-                    FailReadActionCommand(
-                        command_id=self._id_factory(),
-                        request_hash=self._request_hash(
-                            {"kind": "fail_read", "action_id": action.id}
-                        ),
-                        action_id=action.id,
-                        expected_version=action_version,
-                        safe_error_code=error.code.value,
-                        retryable=False,
-                        safe_error_detail=str(error),
-                    )
-                )
-                verification_statuses.append(failed.action_status)
-                continue
-            completed = self._complete_read(
-                CompleteReadActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "complete_read", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    expected_version=action_version,
-                    output_json=executed.output_json,
-                    resource_refs=executed.resource_refs,
-                    evidence=executed.evidence,
-                )
-            )
-            finalized = self._finalize_read(
-                FinalizeReadActionCommand(
-                    command_id=self._id_factory(),
-                    request_hash=self._request_hash(
-                        {"kind": "finalize_read", "action_id": action.id}
-                    ),
-                    action_id=action.id,
-                    expected_version=completed.action_version,
-                )
-            )
-            verification_statuses.append(finalized.action_status)
-        return {
-            **state,
-            "__target__": "response_synthesis",
-            "__logical_target__": "response_synthesis",
-            "workflow_phase": WorkflowPhase.VERIFICATION.value,
-            "__workflow_control__": _workflow_control(
-                "READ_EXECUTED",
-                plan_id=plan_id,
-                action_statuses=verification_statuses,
-            ),
-        }
 
     def _start_analysis_for_main(self, run_id: str) -> Any:
         return self._apply_run_transition(run_id, "start_analysis")
@@ -2270,20 +1818,7 @@ class WorkflowRuntimeCore:
         if action is None:
             return False
         if action.effect_type == "READ":
-            failed = self._fail_read(
-                FailReadActionCommand(
-                    command_id=f"system:cancel-resolution:read:{action.id}:{action.version}",
-                    request_hash=calculate_canonical_json_hash(
-                        {"action_id": action.id, "expected_version": action.version}
-                    ),
-                    action_id=action.id,
-                    expected_version=action.version,
-                    safe_error_code="CANCEL_REQUESTED",
-                    retryable=False,
-                    safe_error_detail="cancel intent forbids a new legacy READ dispatch",
-                )
-            )
-            return bool(failed.applied)
+            raise RuntimeError("current Plan cannot contain a READ Action")
         attempt = self._latest_attempt(action_id)
         if attempt.status is not ExecutionAttemptStatusV1.CLAIMED:
             return False
@@ -2495,7 +2030,7 @@ class LangGraphWorkflowRuntime(
     ResponseSynthesisMixin,
     PlanPersistenceMixin,
     ConfirmationControllerMixin,
-    WorkflowRuntimeCore,
+    _WorkflowRuntimeComposition,
 ):
     """Single concrete production authority for the LangGraph workflow."""
 

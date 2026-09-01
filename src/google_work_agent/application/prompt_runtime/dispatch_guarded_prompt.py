@@ -7,9 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
-    FAILURE_RECORD_FIELDS,
     FailureRecordValidationError,
-    build_failure_record_v1,
     validate_failure_record_v1,
 )
 from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input_contract import (
@@ -18,7 +16,7 @@ from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
     account_provider_dispatch,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     LLMErrorCode,
     LLMInvocationError,
@@ -68,12 +66,11 @@ class PromptInputGuardedProvider:
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ProviderResponsePayload:
-        normalized_input = _canonical_prompt_input(prompt_input)
-        self._validate(prompt_ref=prompt_ref, prompt_input=normalized_input)
+        self._validate(prompt_ref=prompt_ref, prompt_input=prompt_input)
         account_provider_dispatch()
         return self.delegate.invoke_structured(
             prompt_ref=prompt_ref,
-            prompt_input=normalized_input,
+            prompt_input=prompt_input,
             output_schema=output_schema,
             runtime_policy=runtime_policy,
             api_key=api_key,
@@ -88,8 +85,7 @@ class PromptInputGuardedProvider:
         runtime_policy: RuntimePolicy,
         api_key: str | None,
     ) -> ToolCallProviderResponse:
-        normalized_input = _canonical_prompt_input(prompt_input)
-        self._validate(prompt_ref=prompt_ref, prompt_input=normalized_input)
+        self._validate(prompt_ref=prompt_ref, prompt_input=prompt_input)
         delegate = self.delegate
         if not callable(getattr(delegate, "invoke_tool_call", None)):
             raise LLMInvocationError(
@@ -99,7 +95,7 @@ class PromptInputGuardedProvider:
         account_provider_dispatch()
         return cast(ToolCallingLLMProvider, delegate).invoke_tool_call(
             prompt_ref=prompt_ref,
-            prompt_input=normalized_input,
+            prompt_input=prompt_input,
             tools=tools,
             runtime_policy=runtime_policy,
             api_key=api_key,
@@ -153,50 +149,6 @@ def _base_projection_for_validation(
         raise PromptRuntimeInputContractError("semantic revision base_projection must be an object")
     validate_failure_record_v1(prompt_input["failure_record"])
     return base_projection
-
-
-def _canonical_prompt_input(prompt_input: Mapping[str, object]) -> Mapping[str, object]:
-    """Normalize the already-3-root Generic Repair envelope to FailureRecordV1.
-
-    IMP-138's outer contract is unchanged. Historical Generic Schema Repair
-    already emitted the exact nine FailureRecord field names but used two
-    pre-v1.26 enum spellings (``RUNTIME`` and
-    ``STRUCTURED_OUTPUT_VALIDATOR``). Only that exact legacy shape is
-    normalized. The exact repair/revision envelope is assembly metadata: its
-    base projection remains subject to the unchanged Product Prompt input
-    contract, while FailureRecordV1 carries bounded allowed-change paths.
-    """
-
-    raw = prompt_input.get("failure_record")
-    if not isinstance(raw, Mapping) or set(raw) != FAILURE_RECORD_FIELDS:
-        return prompt_input
-    if raw.get("failure_origin") != "RUNTIME" or raw.get("detected_by") != (
-        "STRUCTURED_OUTPUT_VALIDATOR"
-    ):
-        return prompt_input
-    failure_id = raw.get("failure_id")
-    reason_code = raw.get("failure_reason_code")
-    runtime_disposition = raw.get("runtime_disposition")
-    experiment_disposition = raw.get("experiment_disposition")
-    affected_paths = raw.get("affected_field_paths")
-    evidence_refs = raw.get("evidence_refs")
-    if not isinstance(failure_id, str) or not isinstance(reason_code, str):
-        return prompt_input
-    if runtime_disposition != "RETRYABLE" or experiment_disposition != "RUN_REPAIR":
-        return prompt_input
-    if not isinstance(affected_paths, list) or not isinstance(evidence_refs, list):
-        return prompt_input
-    canonical = build_failure_record_v1(
-        failure_id=failure_id,
-        failure_reason_code=reason_code,
-        failure_origin="LLM_OUTPUT",
-        detected_by="RUNTIME_SCHEMA_VALIDATOR",
-        runtime_disposition="RETRYABLE",
-        experiment_disposition="RUN_REPAIR",
-        affected_field_paths=affected_paths,
-        evidence_refs=evidence_refs,
-    )
-    return {**prompt_input, "failure_record": canonical}
 
 
 __all__ = ["PromptInputGuardedProvider"]

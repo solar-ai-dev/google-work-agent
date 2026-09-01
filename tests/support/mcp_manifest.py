@@ -1,7 +1,9 @@
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     build_manifest_payload_for_descriptors,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 
 def build_manifest_payload() -> dict[str, object]:

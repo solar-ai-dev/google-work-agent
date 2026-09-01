@@ -18,7 +18,9 @@ from google_work_agent.adapters.connectors.runtime.load_installed_connector_mani
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     build_manifest_payload_for_descriptors,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from release.generate_model_manifest import ModelManifestV1
 from release.profiles import DeploymentProfile, ReleaseArtifactProfile
 from release.profiles.api_only import build_api_only_profile

@@ -19,7 +19,7 @@ from google_work_agent.adapters.llm.runtime.llm_credential_router import (
 )
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
-from google_work_agent.adapters.runtime import SafeModeController
+from google_work_agent.adapters.runtime.safe_mode import SafeModeController
 from google_work_agent.api.app import create_app
 from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
 from google_work_agent.api.container import ApiContainer

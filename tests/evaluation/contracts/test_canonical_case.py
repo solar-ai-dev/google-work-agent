@@ -5,7 +5,7 @@ import json
 import pytest
 from evaluation.contracts.canonical_case import CanonicalCaseV7
 from pydantic import ValidationError
-from tests.evaluation.conftest import make_case
+from tests.support.evaluation_case import make_case
 
 
 def test_canonical_case_round_trip_and_hash_are_stable() -> None:

@@ -11,7 +11,6 @@ _SAFE = frozenset(
         RunStatusV1.RETRIEVING,
         RunStatusV1.PLANNING,
         RunStatusV1.WAITING_APPROVAL,
-        RunStatusV1.EXECUTING,
         RunStatusV1.VERIFYING,
         RunStatusV1.CANCEL_REQUESTED,
         RunStatusV1.RECOVERY_REQUIRED,
@@ -28,7 +27,6 @@ def guard_resume_after_reauth(
     binding_is_current: bool,
     action_statuses: tuple[ActionStatusV1, ...],
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
-    has_legacy_read_executing: bool,
     delivery_uncertain: bool,
     cancel_intent_active: bool,
 ) -> None:
@@ -43,7 +41,6 @@ def guard_resume_after_reauth(
         binding_is_current=binding_is_current,
         action_statuses=action_statuses,
         attempt_statuses=attempt_statuses,
-        has_legacy_read_executing=has_legacy_read_executing,
         delivery_uncertain=delivery_uncertain,
         cancel_intent_active=cancel_intent_active,
     )

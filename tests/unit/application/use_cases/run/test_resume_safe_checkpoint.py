@@ -1,6 +1,5 @@
 """Canonical safe-checkpoint replay and mismatch recovery proof."""
 
-from importlib import import_module
 from pathlib import Path
 from typing import TypedDict
 
@@ -27,13 +26,6 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
 )
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.run.resume_safe_checkpoint")
-        is not None
-    )
 
 
 class _State(TypedDict):

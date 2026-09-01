@@ -1,7 +1,6 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
 from dataclasses import asdict
-from importlib import import_module
 from json import dumps
 from pathlib import Path
 
@@ -22,10 +21,6 @@ from google_work_agent.application.use_cases.run.resume_confirmation import (
     ResumeConfirmationResult,
 )
 from google_work_agent.domain.results import ResultCode
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert import_module("google_work_agent.application.use_cases.run.confirm_run") is not None
 
 
 def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> None:

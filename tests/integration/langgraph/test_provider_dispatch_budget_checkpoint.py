@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_default_run_budget,
     consume_llm_provider_calls,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     OutputSchemaDefinition,
     PromptReference,
@@ -133,10 +133,9 @@ def test_handled_primary_timeout_fallback_budget_survives_sqlite_checkpoint_reop
     primary = PromptInputGuardedProvider(primary_provider, _NoopValidator())
     fallback = PromptInputGuardedProvider(fallback_provider, _NoopValidator())
 
-    initial_budget = consume_llm_provider_calls(
-        build_default_run_budget(),
-        provider_calls_consumed=3,
-    )
+    initial_budget = build_default_run_budget()
+    for _ in range(3):
+        initial_budget = consume_llm_provider_calls(initial_budget)
     config = {"configurable": {"thread_id": "provider-budget-thread"}}
 
     connection = sqlite3.connect(checkpoint_path, check_same_thread=False)

@@ -89,7 +89,7 @@ def test_top_level_experiments_and_old_product_evaluation_authorities_are_absent
     assert not (
         PRODUCTION_ROOT / "application" / "orchestration" / "controlled_post_retrieval_profile.py"
     ).exists()
-    assert (EVALUATION_ROOT / "compat" / "controlled_post_retrieval.py").is_file()
+    assert list((EVALUATION_ROOT / "compat").rglob("*.py")) == []
     assert (EVALUATION_ROOT / "compat" / "experiments").is_dir()
 
 

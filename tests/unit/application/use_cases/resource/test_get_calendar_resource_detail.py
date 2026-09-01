@@ -1,8 +1,8 @@
 """Calendar resource-detail contract tests."""
 
-from importlib import import_module
-
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.resource.get_calendar_resource_detail import (
     GetCalendarResourceDetailHandler,
     GetCalendarResourceDetailQuery,
@@ -15,16 +15,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1, JsonValue
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module(
-            "google_work_agent.application.use_cases.resource.get_calendar_resource_detail"
-        )
-        is not None
-    )
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 class _CalendarRead:

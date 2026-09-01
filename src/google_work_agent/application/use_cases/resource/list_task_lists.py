@@ -32,16 +32,16 @@ class ListTaskListsQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class TaskListContainerItemV1:
+class TaskListContainerItem:
     schema_version: int
     tasklist_id: str
     title: str
 
 
 @dataclass(frozen=True, slots=True)
-class TaskListContainerListResponseV1:
+class ListTaskListsResult:
     schema_version: int
-    items: tuple[TaskListContainerItemV1, ...]
+    items: tuple[TaskListContainerItem, ...]
     next_page_token: str | None
 
 
@@ -57,7 +57,7 @@ class ListTaskListsHandler:
         self._registry = registry
         self._continuation_store = continuation_store
 
-    def __call__(self, query: ListTaskListsQuery) -> TaskListContainerListResponseV1:
+    def __call__(self, query: ListTaskListsQuery) -> ListTaskListsResult:
         if not 1 <= query.page_size <= 100:
             raise ValueError("page_size must be in 1..100")
         scope = (query.session_digest, query.account_id, "task-lists", str(query.page_size))
@@ -85,10 +85,10 @@ class ListTaskListsHandler:
                 provider_page_token=result.next_page_token,
             )
         )
-        return TaskListContainerListResponseV1(1, items, next_page_token)
+        return ListTaskListsResult(1, items, next_page_token)
 
 
-def _task_list_item(value: JsonValue) -> TaskListContainerItemV1:
+def _task_list_item(value: JsonValue) -> TaskListContainerItem:
     if not isinstance(value, dict):
         raise _malformed_response()
     resource_id = value.get("resource_id")
@@ -98,7 +98,7 @@ def _task_list_item(value: JsonValue) -> TaskListContainerItemV1:
     title = payload.get("title")
     if not isinstance(title, str) or not title:
         raise _malformed_response()
-    return TaskListContainerItemV1(1, resource_id, title)
+    return TaskListContainerItem(1, resource_id, title)
 
 
 def _malformed_response() -> ConnectorOperationFailure:
@@ -111,6 +111,6 @@ def _malformed_response() -> ConnectorOperationFailure:
 __all__ = [
     "ListTaskListsHandler",
     "ListTaskListsQuery",
-    "TaskListContainerItemV1",
-    "TaskListContainerListResponseV1",
+    "ListTaskListsResult",
+    "TaskListContainerItem",
 ]

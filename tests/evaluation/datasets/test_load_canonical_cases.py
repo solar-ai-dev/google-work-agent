@@ -9,7 +9,7 @@ from evaluation.datasets.load_canonical_cases import (
     CanonicalCaseDatasetError,
     load_canonical_cases,
 )
-from tests.evaluation.conftest import make_case
+from tests.support.evaluation_case import make_case
 
 
 def test_current_canonical_cases_are_exact_deterministic_92_case_set() -> None:

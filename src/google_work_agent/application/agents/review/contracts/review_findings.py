@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal, Protocol, TypedDict, cast
 
-from google_work_agent.ports.llm import OutputSchemaDefinition
+from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 ReviewDimensionIdV1 = Literal[
     "review.inspect_goal_and_evidence",

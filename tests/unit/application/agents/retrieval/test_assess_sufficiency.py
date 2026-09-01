@@ -2,7 +2,7 @@ from collections import deque
 from dataclasses import replace
 from typing import cast
 
-from tests.unit.application.workflows.test_context_retrieval import (
+from tests.support.context_retrieval import (
     SUFFICIENCY_PROMPT_REF,
     FakeLLMRuntime,
     _acquisition_result,

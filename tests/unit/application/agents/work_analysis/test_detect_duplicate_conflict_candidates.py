@@ -1,8 +1,7 @@
 from google_work_agent.application.agents.work_analysis import (
     detect_duplicate_conflict_candidates,
 )
-
-from .conftest import FakeRuntime, fact, prompt_ref
+from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
 
 def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
@@ -22,7 +21,7 @@ def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
         entity_relations=[],
         evidence=[],
         source_state={},
-        llm_runtime=FakeRuntime(output),
+        llm_runtime=WorkAnalysisRuntimeFake(output),
         prompt_ref=prompt_ref(
             "work_analysis.detect_duplicate_conflict_candidates",
             "detect_duplicate_conflict_candidates",

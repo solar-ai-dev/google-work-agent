@@ -16,9 +16,7 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     RetrievalQueryPlanV2,
-)
-from google_work_agent.application.agents.retrieval.contracts.query_plan import (
-    SourceFetchPlanV1 as V2SourceFetchPlanV1,
+    SourceFetchPlanV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
@@ -27,7 +25,6 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
     EvidenceSelectionResultV2,
     RetrievalResultV1,
     RetrievalSourceStatusV1,
-    SourceFetchPlanV1,
     SufficiencyResultV2,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
@@ -52,7 +49,6 @@ class ContextRetrievalInputState(AgentSubgraphInputEnvelope, total=False):
     workflow_signal: (
         ScopeExpansionRequiredV1 | RouteReconsiderationRequiredV1 | RetrievalRequiredV1 | None
     )
-    source_fetch_plans: list[SourceFetchPlanV1]
     acquisition_result: AcquisitionResultV1 | None
     retrieval_result: RetrievalResultV1 | None
     exclusion_obligation_segment_ids: list[str]
@@ -76,6 +72,7 @@ class ContextRetrievalLocalState(GraphState):
     evidence_drafts: NotRequired[list[EvidenceDraftV1]]
     llm_provider_result: NotRequired[dict[str, object] | None]
     query_plan: NotRequired[RetrievalQueryPlanV2 | None]
+    source_fetch_plans: NotRequired[list[SourceFetchPlanV1]]
     segments: NotRequired[list[str]]
     ranked_segments: NotRequired[list[RagCandidateV1]]
     availability_results: NotRequired[list[AvailableIntervalV1]]
@@ -89,14 +86,14 @@ class ContextRetrievalLocalState(GraphState):
     __context_segment_handles__: NotRequired[list[str]]
     __context_query_attempts__: NotRequired[list[QueryAttemptV1]]
     __context_followup_planner_input__: NotRequired[dict[str, object]]
-    __context_canonical_plans__: NotRequired[dict[str, V2SourceFetchPlanV1]]
+    __context_canonical_plans__: NotRequired[dict[str, SourceFetchPlanV1]]
     __context_followup_operation__: NotRequired[str]
     __context_next_page_handles__: NotRequired[dict[str, str]]
     __context_detail_candidates__: NotRequired[dict[str, str]]
     __context_retrieval_retry_confirmation__: NotRequired[bool]
 
 
-class RetrievalStateV2(TypedDict, total=False):
+class RetrievalState(TypedDict, total=False):
     """The exact 05-owned Retrieval-local semantic state."""
 
     request_intent: RequestIntentV2
@@ -116,11 +113,8 @@ class RetrievalStateV2(TypedDict, total=False):
     final_result: RetrievalResultV1 | None
 
 
-RetrievalState = RetrievalStateV2
-
 __all__ = [
     "ContextRetrievalInputState",
     "ContextRetrievalLocalState",
     "RetrievalState",
-    "RetrievalStateV2",
 ]

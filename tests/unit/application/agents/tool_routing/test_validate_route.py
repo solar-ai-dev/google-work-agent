@@ -16,10 +16,10 @@ from google_work_agent.application.agents.tool_routing.validate_route import (
     ToolRouteValidationError,
     validate_route,
 )
-from google_work_agent.application.tool_registry import (
-    SignedToolRegistry,
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
 
 

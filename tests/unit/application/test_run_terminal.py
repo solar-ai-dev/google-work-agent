@@ -19,12 +19,10 @@ def _state(**overrides: object) -> dict[str, object]:
         "thread_id": "thread-1",
         "workflow_phase": "REQUEST_ANALYSIS",
         "request_intent": {"goal": {"summary": "Find the task status."}},
-        "source_fetch_plans": [],
         "acquisition_result": None,
         "context_result": None,
         "analysis_result": None,
-        "answer_draft": None,
-        "plan_draft": None,
+        "planning_result": None,
         "plan_review": None,
         "approved_plan_id": None,
         "execution_summary": None,
@@ -83,33 +81,16 @@ def test_derive_finalize_intent_keeps_technical_failure_in_persisted_handoff() -
     }
 
 
-def test_derive_finalize_intent_completes_answer_only_review_pass_from_state_only() -> None:
+def test_derive_finalize_intent_completes_current_answer_from_state_only() -> None:
     intent = derive_finalize_intent(
         state=_checkpoint_roundtrip(
             _state(
                 workflow_phase="PLAN_REVIEW",
-                answer_draft={
-                    "schema_version": 1,
-                    "status": "ANSWER_ONLY",
+                planning_result={
+                    "schema_version": 2,
+                    "meta": {"artifact_id": "answer-1", "revision": 1, "based_on": []},
                     "answer": "Done",
                     "evidence_refs": [],
-                    "resource_refs": [],
-                    "reason_codes": [],
-                    "confirmation": None,
-                    "blockers": [],
-                    "llm_provider_result": {},
-                },
-                plan_review={
-                    "schema_version": 1,
-                    "status": "PASS",
-                    "summary": "Looks good",
-                    "issues": [],
-                    "reason_codes": [],
-                    "evidence_refs": [],
-                    "resource_refs": [],
-                    "confirmation": None,
-                    "blockers": [],
-                    "additional_acquisition_request": None,
                 },
             )
         )
@@ -121,60 +102,6 @@ def test_derive_finalize_intent_completes_answer_only_review_pass_from_state_onl
         "reason_code": "ANSWER_ONLY_REVIEW_PASS",
         "result_kind": None,
     }
-
-
-def test_derive_finalize_intent_fails_acquisition_from_state_only() -> None:
-    intent = derive_finalize_intent(
-        state=_checkpoint_roundtrip(
-            _state(
-                workflow_phase="API_ACQUISITION",
-                acquisition_result={
-                    "schema_version": 1,
-                    "status": "FAILED",
-                    "resource_handles": [],
-                    "source_summaries": [
-                        {
-                            "schema_version": 1,
-                            "source": "GMAIL",
-                            "status": "FAILED",
-                            "required": True,
-                            "error_code": "QUERY_PROVIDER_FAILED",
-                            "resource_count": 0,
-                            "resource_handles": [],
-                            "resources": [],
-                        }
-                    ],
-                    "missing_slots": ["GMAIL:QUERY_PROVIDER_FAILED"],
-                    "remaining_budget": {"sources": 2, "pages": 2, "candidates": 20, "details": 10},
-                },
-            )
-        )
-    )
-
-    assert intent == {
-        "schema_version": 1,
-        "intent": "FAILED",
-        "reason_code": "QUERY_PROVIDER_FAILED",
-        "result_kind": None,
-    }
-
-
-def test_derive_finalize_intent_returns_none_for_auth_boundary() -> None:
-    intent = derive_finalize_intent(
-        state=_state(
-            workflow_phase="API_ACQUISITION",
-            acquisition_result={
-                "schema_version": 1,
-                "status": "AUTH_REQUIRED",
-                "resource_handles": [],
-                "source_summaries": [],
-                "missing_slots": ["GMAIL:AUTH_EXPIRED"],
-                "remaining_budget": {"sources": 2, "pages": 2, "candidates": 20, "details": 10},
-            },
-        )
-    )
-
-    assert intent is None
 
 
 def test_derive_finalize_intent_does_not_use_trace_context_as_terminal_authority() -> None:

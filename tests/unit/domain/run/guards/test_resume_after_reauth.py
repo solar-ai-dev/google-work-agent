@@ -13,7 +13,6 @@ def _guard(current_status: RunStatusV1, *, resume_status: RunStatusV1) -> None:
         binding_is_current=True,
         action_statuses=(),
         attempt_statuses=(),
-        has_legacy_read_executing=False,
         delivery_uncertain=False,
         cancel_intent_active=False,
     )

@@ -21,9 +21,9 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     RESUME_CONTRACT_VERSION,
 )
 from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
     MultiAgentGraphState,
-    MultiAgentGraphStateV2,
     WorkflowPhase,
     request_from_state,
 )
@@ -31,7 +31,7 @@ from google_work_agent.adapters.langgraph.main.supervisor import (
     SupervisorDecisionV1,
     route_supervisor,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
 )
@@ -72,7 +72,10 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.llm.structured_inference_port import (
     StructuredInferencePort,
     StructuredInferenceResultV1,
@@ -186,7 +189,7 @@ class ReviewSubgraph:
             StateGraph(
                 ReviewState,
                 input_schema=ReviewInputState,
-                output_schema=MultiAgentGraphStateV2,
+                output_schema=GraphState,
             )
             if self._is_production_integration
             else StateGraph(ReviewState)
@@ -357,9 +360,7 @@ class ReviewSubgraph:
         result = cast(ReviewState, {**working, **patch})
         if self._is_production_integration:
             consumed = len(results)
-            result["retry_budget"] = consume_llm_call_budget(
-                cast(Any, original), provider_calls_consumed=consumed
-            )
+            result["retry_budget"] = consume_llm_call_budget(cast(Any, original))
             assert self._graph_profile is not None
             result["trace_context"] = merge_trace_context(
                 original,
@@ -403,8 +404,6 @@ class ReviewSubgraph:
             )
         working["prompt_context"] = context
         raw_planning_result: object = state.get("planning_result")
-        if not isinstance(raw_planning_result, Mapping):
-            raw_planning_result = state.get("plan_draft") or state.get("answer_draft")
         if not isinstance(raw_planning_result, Mapping):
             raise ValueError("Review requires a validated Planning artifact")
         planning_result = cast(Mapping[str, object], raw_planning_result)

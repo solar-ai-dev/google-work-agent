@@ -3,17 +3,15 @@ from typing import TypedDict
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisLocalState,
 )
-from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
-    WorkRelationCandidateV1,
-)
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkFactV1,
+    WorkRelationV1,
 )
 
 
 class DetectDuplicateConflictCandidatesInput(TypedDict):
     work_facts: list[WorkFactV1]
-    entity_relations: list[WorkRelationCandidateV1]
+    entity_relations: list[WorkRelationV1]
     evidence: list[dict[str, object]]
     source_state: dict[str, object]
     allowed_evidence_refs: set[str]

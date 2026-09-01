@@ -43,4 +43,4 @@ Architecture-27 also contains non-canonical rationale/archive material in its pu
 
 ## Migration mirror rule
 
-The supplied repository baseline currently contains executable migrations `0001` through `0008`. Architecture-27 additionally specifies `0009_workflow_handoff_outbox.sql` as a required repository implementation target. No executable `0009` artifact exists in the supplied original `/docs` or the inspected production migration directory, so this documentation tree does **not** fabricate one. See [`database/README.md`](database/README.md).
+The undeployed Product uses one fresh-install schema, `0001_current_schema.sql`. The documentation mirror is byte-identical to the production artifact; historical upgrade sources remain in Git history. See [`database/README.md`](database/README.md).

@@ -3,8 +3,7 @@ import pytest
 from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import (
     resolve_temporal_dependencies,
 )
-
-from .conftest import FakeRuntime, fact, prompt_ref
+from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
 
 def test_temporal_dependency_preserves_candidate_boundary() -> None:
@@ -23,7 +22,7 @@ def test_temporal_dependency_preserves_candidate_boundary() -> None:
         work_facts=[fact("f1"), fact("f2", "DEADLINE")],
         evidence=[],
         availability_results=[],
-        llm_runtime=FakeRuntime(output),
+        llm_runtime=WorkAnalysisRuntimeFake(output),
         prompt_ref=prompt_ref(
             "work_analysis.resolve_temporal_dependencies", "resolve_temporal_dependencies"
         ),
@@ -50,7 +49,7 @@ def test_temporal_dependency_rejects_unknown_kind() -> None:
             work_facts=[fact("f1"), fact("f2")],
             evidence=[],
             availability_results=[],
-            llm_runtime=FakeRuntime(output),
+            llm_runtime=WorkAnalysisRuntimeFake(output),
             prompt_ref=prompt_ref(
                 "work_analysis.resolve_temporal_dependencies", "resolve_temporal_dependencies"
             ),

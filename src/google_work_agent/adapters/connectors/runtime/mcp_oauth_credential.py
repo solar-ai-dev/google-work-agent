@@ -7,10 +7,10 @@ from google_work_agent.adapters.connectors.runtime.connector_runtime_registry im
 )
 from google_work_agent.ports.connector.mcp_client_port import JsonValue, MCPClientPort
 from google_work_agent.ports.connector.oauth_credential_port import (
-    AuthorizationStartV1,
-    ConnectionMetadataV1,
+    OAuthAuthorizationStart,
+    OAuthConnectionMetadata,
     OAuthEnvironment,
-    RevokeResultV1,
+    OAuthRevokeResult,
 )
 from google_work_agent.ports.system.contracts.operational_command_replay import (
     OperationalReconcileResultV1,
@@ -35,7 +35,7 @@ class McpOAuthCredentialAdapter:
         environment: OAuthEnvironment,
         requested_scopes: tuple[str, ...],
         operation_ref: str,
-    ) -> AuthorizationStartV1:
+    ) -> OAuthAuthorizationStart:
         _require_connector_id(connector_id)
         if not requested_scopes or any(not scope.strip() for scope in requested_scopes):
             raise ValueError("requested_scopes must contain nonblank values")
@@ -49,7 +49,7 @@ class McpOAuthCredentialAdapter:
                 "operation_ref": operation_ref,
             },
         )
-        return AuthorizationStartV1(
+        return OAuthAuthorizationStart(
             schema_version=1,
             authorization_url=str(payload["authorization_url"]),
             callback_id=str(payload["flow_id"]),
@@ -76,7 +76,7 @@ class McpOAuthCredentialAdapter:
         )
         return str(payload["access_context_handle"])
 
-    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1:
+    def get_connection_status(self, connector_id: str) -> OAuthConnectionMetadata:
         _require_connector_id(connector_id)
         return self._status(
             connector_id,
@@ -88,7 +88,7 @@ class McpOAuthCredentialAdapter:
         connector_id: str,
         account_id: str,
         operation_ref: str,
-    ) -> RevokeResultV1:
+    ) -> OAuthRevokeResult:
         _require_connector_id(connector_id)
         _require_account_id(account_id)
         _require_operation_ref(operation_ref)
@@ -97,7 +97,7 @@ class McpOAuthCredentialAdapter:
             "google.connection.disconnect",
             {"account_id": account_id, "operation_ref": operation_ref},
         )
-        return RevokeResultV1(
+        return OAuthRevokeResult(
             schema_version=1,
             revocation_attempted=bool(payload["revoke_attempted"]),
             local_credential_deleted=bool(payload["credential_deleted"]),
@@ -134,7 +134,7 @@ class McpOAuthCredentialAdapter:
         return cast(dict[str, JsonValue], response.payload)
 
     @staticmethod
-    def _status(connector_id: str, payload: dict[str, JsonValue]) -> ConnectionMetadataV1:
+    def _status(connector_id: str, payload: dict[str, JsonValue]) -> OAuthConnectionMetadata:
         raw_state = str(payload["credential_state"])
         status: Literal[
             "CONNECTING", "CONNECTED", "DISCONNECTED", "REAUTH_REQUIRED", "UNAVAILABLE"
@@ -147,7 +147,7 @@ class McpOAuthCredentialAdapter:
             if raw_state in {"KEYRING_UNAVAILABLE", "ERROR"}
             else "DISCONNECTED"
         )
-        return ConnectionMetadataV1(
+        return OAuthConnectionMetadata(
             schema_version=1,
             connector_id=connector_id,
             account_id=None,

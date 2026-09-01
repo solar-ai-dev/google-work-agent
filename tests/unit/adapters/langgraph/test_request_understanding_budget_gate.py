@@ -13,7 +13,7 @@ from typing import Any, Literal, cast
 
 import pytest
 
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.graph import (
     RequestUnderstandingSubgraph,
 )
@@ -25,7 +25,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     NORMAL_MAX_LLM_CALLS,
     build_default_run_budget,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,

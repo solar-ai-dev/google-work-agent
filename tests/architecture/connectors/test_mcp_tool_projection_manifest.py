@@ -2,7 +2,9 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_r
     project_registry,
     registry_manifest_hash,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 
 def test_mcp_projection_is_exact_signed_registry_subset() -> None:

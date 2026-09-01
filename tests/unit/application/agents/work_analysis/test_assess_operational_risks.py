@@ -3,8 +3,7 @@ import pytest
 from google_work_agent.application.agents.work_analysis.assess_operational_risks import (
     assess_operational_risks,
 )
-
-from .conftest import FakeRuntime, fact, intent, prompt_ref
+from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, intent, prompt_ref
 
 
 def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
@@ -21,7 +20,7 @@ def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
         "action_necessity_reason": "REQUEST_REQUIRES_ACTION",
         "evidence_refs": ["ev-1"],
     }
-    runtime = FakeRuntime(output)
+    runtime = WorkAnalysisRuntimeFake(output)
 
     result = assess_operational_risks(
         request_intent=intent(),
@@ -38,7 +37,7 @@ def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
 
 
 def test_assess_operational_risks_rejects_legacy_severity() -> None:
-    runtime = FakeRuntime(
+    runtime = WorkAnalysisRuntimeFake(
         {
             "risks": [
                 {

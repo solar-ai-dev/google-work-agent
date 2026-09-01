@@ -18,7 +18,7 @@ def test_api_only_rejects_local_model_manifest() -> None:
     paths = profile.required_files + (
         "runtime/python312.dll",
         "schemas/openapi-v1.json",
-        "migrations/0001_initial.sql",
+        "migrations/0001_current_schema.sql",
         "manifests/model-manifest-v1.json",
     )
 

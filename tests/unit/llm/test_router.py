@@ -3,7 +3,7 @@ from tests.support.fakes import approved_model
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
 )
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     AvailabilityState,
     HardwareCapability,

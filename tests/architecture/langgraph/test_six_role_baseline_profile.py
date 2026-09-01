@@ -1,6 +1,6 @@
 """SIX_ROLE_BASELINE composition contract."""
 
-from tests.architecture.langgraph.profile_test_support import profile_build_arguments
+from tests.support.langgraph_profile import profile_build_arguments
 
 from google_work_agent.adapters.langgraph.profiles.six_role_baseline import (
     SEMANTIC_OWNER_BINDINGS,

@@ -1,6 +1,5 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
-from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -16,13 +15,6 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
     CreateStagedAttachmentHandler,
 )
 from google_work_agent.ports.connector.connector_failure import ConnectorOperationFailure
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.attachment.create_staged_attachment")
-        is not None
-    )
 
 
 def test_staging_replays_same_explicit_command_without_duplicate_artifact(tmp_path: Path) -> None:

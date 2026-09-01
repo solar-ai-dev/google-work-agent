@@ -13,10 +13,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.agents.tool_routing.select_tool_if_needed import (
     select_tool_if_needed,
 )
-from google_work_agent.application.use_cases.run.guard_run_budget import (
-    consume_llm_provider_calls,
-)
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -59,7 +56,6 @@ def select_tool_if_needed_node(
                 prompt_ref=prompt_ref,
                 confirmation_response=confirmation_response,
             )
-            retry_budget = consume_llm_provider_calls(retry_budget)
             reason_code = "LLM_SELECTED_FROM_BOUND_REGISTRY_CANDIDATES"
         selected.append(
             {

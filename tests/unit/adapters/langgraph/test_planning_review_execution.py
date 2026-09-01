@@ -79,7 +79,7 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
     )
     assert result["planning_disposition"] == "ANSWER"
     assert result["answer_outline"] == {"sections": ["summary"], "evidence_refs": ["e1"]}
-    assert result["answer_draft"] == {
+    assert result["final_result"] == {
         "schema_version": 2,
         "answer": "done",
         "evidence_refs": ["e1"],

@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
-from typing import Protocol
 
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
+from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetValidator
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceipt, CommandReceiptStatus
@@ -22,11 +22,6 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
     SemanticAgentOwnerIdV1,
 )
-
-
-class ResumeTargetValidator(Protocol):
-    def validate(self, ref: AgentNodeResumeTargetV2) -> None: ...
-
 
 _UNRESOLVED = frozenset(
     {

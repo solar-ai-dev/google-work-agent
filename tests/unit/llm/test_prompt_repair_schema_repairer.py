@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.support.fakes import FakeAPIProviderTransport
-from tests.support.prompt_manifests import (
-    canonical_prompt_manifest_path,
-    write_runtime_active_manifest,
+from tests.support.canonical_prompt_runtime import (
+    activate_prompt_slot,
+    copy_prompt_runtime_artifacts,
 )
+from tests.support.fakes import FakeAPIProviderTransport
 
 from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiStructuredInferenceAdapter,
@@ -18,8 +18,12 @@ from google_work_agent.adapters.llm.gemini.structured_inference import (
 from google_work_agent.adapters.llm.runtime.prompt_repair_schema_repairer import (
     PromptRepairSchemaRepairer,
 )
-from google_work_agent.application.prompt_runtime.prompt_registry import load_prompt_reference
-from google_work_agent.ports.llm import (
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PromptRegistry,
+    default_prompt_manifest_path,
+    load_prompt_reference,
+)
+from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
     OutputSchemaDefinition,
@@ -28,19 +32,6 @@ from google_work_agent.ports.llm import (
     RuntimePolicy,
 )
 
-ANALYZE_PROMPT_REF = PromptReference(
-    prompt_bundle_version="agent-r4-v0.1-baseline",
-    prompt_id="work_analysis.analyze",
-    prompt_version="v0.1",
-    content_hash="hash",
-    agent_role="work_analysis",
-    subgraph_name="work_analysis",
-    node_name="analyze",
-    node_state="BASELINE",
-    purpose="analyze",
-    input_schema_version="agent-node-input-v0.1",
-    output_schema_version="agent-node-output-v0.1",
-)
 OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="1",
     json_schema={
@@ -52,6 +43,12 @@ OUTPUT_SCHEMA = OutputSchemaDefinition(
 )
 
 
+def _active_manifest(tmp_path: Path) -> Path:
+    manifest_path, _ = copy_prompt_runtime_artifacts(tmp_path)
+    activate_prompt_slot(manifest_path, "planning.compose_answer")
+    return manifest_path
+
+
 def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceAdapter:
     return GeminiStructuredInferenceAdapter(
         provider_name="generic-api", transport=transport, model="m"
@@ -61,7 +58,7 @@ def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceA
 def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     tmp_path: Path,
 ) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["work_analysis.analyze"])
+    manifest_path = _active_manifest(tmp_path)
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -74,7 +71,7 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
         )
     )
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
-    active_prompt_ref = load_prompt_reference("work_analysis.analyze", manifest_path)
+    active_prompt_ref = load_prompt_reference("planning.compose_answer", manifest_path)
 
     result = repairer.repair(
         provider=_provider(transport),
@@ -93,7 +90,7 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     assert result == {"answer": "fixed"}
     assert len(transport.invocations) == 1
     call = transport.invocations[0]
-    assert call["prompt_id"] == "work_analysis.analyze"
+    assert call["prompt_id"] == "planning.compose_answer"
     repair_input = cast(dict[str, object], call["prompt_input"])
     # 15 section 9.2 / prompt-runtime-input-contract-v1.json: exactly
     # base_projection + candidate_output + failure_record at root -- no
@@ -105,11 +102,11 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     failure_record = cast(dict[str, object], repair_input["failure_record"])
     assert failure_record["failure_reason_code"] == "OUTPUT_SCHEMA_INVALID"
     assert failure_record["affected_field_paths"] == ["$.answer"]
-    assert failure_record["failure_id"] == "work_analysis.analyze:1"
+    assert failure_record["failure_id"] == "planning.compose_answer:1"
 
 
 def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
-    manifest_path = write_runtime_active_manifest(tmp_path, prompt_ids=["work_analysis.analyze"])
+    manifest_path = _active_manifest(tmp_path)
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -122,7 +119,7 @@ def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
         )
     )
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
-    active_prompt_ref = load_prompt_reference("work_analysis.analyze", manifest_path)
+    active_prompt_ref = load_prompt_reference("planning.compose_answer", manifest_path)
 
     repairer.repair(
         provider=_provider(transport),
@@ -138,18 +135,19 @@ def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
         validator_errors=("$.answer must be string",),
     )
 
-    assert transport.invocations[0]["prompt_id"] == "work_analysis.analyze"
+    assert transport.invocations[0]["prompt_id"] == "planning.compose_answer"
 
 
 def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:
     """The DRAFT base source must remain unavailable to Product repair."""
     transport = FakeAPIProviderTransport()
-    repairer = PromptRepairSchemaRepairer(manifest_path=canonical_prompt_manifest_path())
+    repairer = PromptRepairSchemaRepairer(manifest_path=default_prompt_manifest_path())
+    draft_prompt_ref = PromptRegistry().lookup_for_evaluation("planning.compose_answer")
 
     with pytest.raises(LLMInvocationError) as excinfo:
         repairer.repair(
             provider=_provider(transport),
-            prompt_ref=ANALYZE_PROMPT_REF,
+            prompt_ref=draft_prompt_ref,
             prompt_input={},
             failed_output={"answer": 1},
             output_schema=OUTPUT_SCHEMA,
@@ -165,7 +163,7 @@ def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:
 
 
 def test_repair_fails_closed_when_base_slot_does_not_exist(tmp_path: Path) -> None:
-    manifest_path = canonical_prompt_manifest_path()
+    manifest_path = default_prompt_manifest_path()
     transport = FakeAPIProviderTransport()
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
     no_sibling_ref = PromptReference(

@@ -1,11 +1,12 @@
 """Exact ownership smoke gate for the canonical Application module."""
 
 from collections.abc import Callable, Iterator
-from importlib import import_module
 
 import pytest
 
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.resource.list_calendars import (
     ListCalendarsHandler,
     ListCalendarsQuery,
@@ -15,13 +16,9 @@ from google_work_agent.application.use_cases.resource.opaque_continuation_access
 )
 from google_work_agent.ports.connector.connector_failure import ConnectorOperationFailure
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadResultV1, JsonValue
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
-
-
-def test_canonical_application_owner_is_importable() -> None:
-    assert (
-        import_module("google_work_agent.application.use_cases.resource.list_calendars") is not None
-    )
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 class _CalendarListRead:

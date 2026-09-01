@@ -117,7 +117,7 @@ class DeliveryCertainty(StrEnum):
 
 
 class GoogleWorkspaceGatewayError(RuntimeError):
-    """Compatibility error value; it is not an integration authority."""
+    """Delivery-aware Google Workspace connector failure."""
 
     def __init__(
         self,

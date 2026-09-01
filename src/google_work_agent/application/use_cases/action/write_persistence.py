@@ -263,13 +263,6 @@ def has_unresolved_unknown_result(unit_of_work: UnitOfWork, plan_id: str) -> boo
     return False
 
 
-def require_latest_plan_for_run(unit_of_work: UnitOfWork, run_id: str) -> PlanRecord:
-    plans = current_plan_tuple(unit_of_work.plans, run_id)
-    if not plans:
-        raise LookupError(f"plan not found for run: {run_id}")
-    return plans[-1]
-
-
 def require_action(unit_of_work: UnitOfWork, action_id: str) -> ActionRecord:
     action = unit_of_work.actions.get(action_id)
     if action is None:
@@ -447,45 +440,6 @@ def resolve_existing_run_receipt(
             receipt=receipt, request_hash=request_hash, response_type=WriteRunResponse
         ),
     )
-
-
-def resolve_snapshot_fallback_resource_id(
-    unit_of_work: UnitOfWork,
-    *,
-    action: ActionRecord,
-    resource_ref_id: str | None,
-) -> str | None:
-    arguments = loads(action.arguments_json)
-    if action.tool_name in {"gmail_create_draft", "gmail_update_draft"}:
-        return (
-            None
-            if arguments.get("draft_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
-    if action.tool_name in {"tasks_create_task", "tasks_update_task"}:
-        return (
-            None
-            if arguments.get("task_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
-    if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
-        return (
-            None
-            if arguments.get("event_id") is not None
-            else resource_id_from_ref(unit_of_work, resource_ref_id)
-        )
-    if action.tool_name == "gmail_send":
-        return resource_id_from_ref(unit_of_work, resource_ref_id)
-    return None
-
-
-def resource_id_from_ref(unit_of_work: UnitOfWork, resource_ref_id: str | None) -> str:
-    if resource_ref_id is None:
-        raise LookupError("result_resource_ref_id is required for verification")
-    resource_ref = unit_of_work.resource_refs.get(resource_ref_id)
-    if resource_ref is None:
-        raise LookupError(f"resource ref not found: {resource_ref_id}")
-    return resource_ref.resource_id
 
 
 def upsert_resource_ref(

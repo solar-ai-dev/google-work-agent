@@ -9,7 +9,7 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     PlanningAnswerConfirmationV1,
     PlanningSemanticInvoker,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition
+from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.outline_answer"
 

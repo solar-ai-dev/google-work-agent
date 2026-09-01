@@ -5,7 +5,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
 from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import (
     resolve_temporal_dependencies,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
 

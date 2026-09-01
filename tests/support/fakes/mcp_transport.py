@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.connector.mcp_client_port import (
     MCPClientPortError,
     MCPClientPortErrorCode,
@@ -28,7 +29,7 @@ class QueuedMCPFailure:
 
     code: MCPClientPortErrorCode
     message: str
-    dispatch_started: bool = False
+    delivery_certainty: DeliveryCertainty = DeliveryCertainty.NOT_SENT
 
 
 class FakeMCPClientPort:
@@ -70,7 +71,7 @@ class FakeMCPClientPort:
             raise MCPClientPortError(
                 code=failure.code,
                 message=failure.message,
-                dispatch_started=failure.dispatch_started,
+                delivery_certainty=failure.delivery_certainty,
                 request_id=request_id,
             )
         if not self._responses:
@@ -86,7 +87,7 @@ class FakeMCPClientPort:
             raise MCPClientPortError(
                 code=failure.code,
                 message=failure.message,
-                dispatch_started=failure.dispatch_started,
+                delivery_certainty=failure.delivery_certainty,
                 request_id=request_id,
             )
         if not self._control_responses:

@@ -24,7 +24,7 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
     SufficiencyResultV2,
 )
 from google_work_agent.application.agents.retrieval.normalize_segments import (
-    ContextRetrievalValidationError,
+    RetrievalValidationError,
 )
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
@@ -35,9 +35,11 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     MAX_ADDITIONAL_ACQUISITIONS,
     RunBudgetV2,
-    build_default_run_budget,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition, PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -328,10 +330,6 @@ def budget_state_prompt_projection(retry_budget: RunBudgetV2) -> dict[str, objec
     }
 
 
-def default_run_budget() -> RunBudgetV2:
-    return build_default_run_budget()
-
-
 def validate_sufficiency_result_v2(value: object) -> SufficiencyResultV2:
     """sufficiency-result-v2.schema.json (docs/05-context-retrieval.md SS5.7/
     SS19.1). issues[] follows the Canonical SufficiencyIssue shape
@@ -342,10 +340,10 @@ def validate_sufficiency_result_v2(value: object) -> SufficiencyResultV2:
     _require_exact_keys(root, "$", {"schema_version", "status", "issues"})
     schema_version = _require_int(root, "schema_version", "$")
     if schema_version != 2:
-        raise ContextRetrievalValidationError("$.schema_version must be 2")
+        raise RetrievalValidationError("$.schema_version must be 2")
     status = _require_string(root, "status", "$")
     if status not in _CONTEXT_RESULT_VALUES:
-        raise ContextRetrievalValidationError("$.status is invalid")
+        raise RetrievalValidationError("$.status is invalid")
     issues = [
         _validate_sufficiency_issue(item, f"$.issues[{index}]")
         for index, item in enumerate(_require_list(root["issues"], "$.issues"))
@@ -366,16 +364,16 @@ def _validate_sufficiency_issue(value: object, path: str) -> SufficiencyIssueV2:
     )
     issue_type = _require_string(issue, "issue_type", path)
     if issue_type not in _ISSUE_TYPE_VALUES:
-        raise ContextRetrievalValidationError(f"{path}.issue_type is invalid")
+        raise RetrievalValidationError(f"{path}.issue_type is invalid")
     resolution_source = _require_string(issue, "resolution_source", path)
     if resolution_source not in _RESOLUTION_SOURCE_VALUES:
-        raise ContextRetrievalValidationError(f"{path}.resolution_source is invalid")
+        raise RetrievalValidationError(f"{path}.resolution_source is invalid")
     required = issue.get("required")
     if not isinstance(required, bool):
-        raise ContextRetrievalValidationError(f"{path}.required must be boolean")
+        raise RetrievalValidationError(f"{path}.required must be boolean")
     safety_critical = issue.get("safety_critical")
     if not isinstance(safety_critical, bool):
-        raise ContextRetrievalValidationError(f"{path}.safety_critical must be boolean")
+        raise RetrievalValidationError(f"{path}.safety_critical must be boolean")
     return {
         "slot": _require_string(issue, "slot", path),
         "issue_type": cast(SufficiencyIssueTypeValue, issue_type),
@@ -451,11 +449,8 @@ def missing_information_projection(
     projection boundary -- deliberately not the same type as SufficiencyIssue
     (docs/05 SS19.1): SufficiencyIssue is Retrieval's own internal judgment
     input to the SS19.2 deterministic Guard, MissingInformationV1 is the
-    Parent-facing handoff shape. Wiring this into RetrievalResultV1 itself
-    (renaming ContextRetrievalResultV1's fields, adding retrieval_rounds/
-    coverage/source_statuses) is Q2-E scope; this only prepares the
-    conversion so ContextRetrievalResultV1.missing_slots/sufficiency stay
-    correct without collapsing the two types together."""
+    Parent-facing handoff shape. The projection keeps those two contracts
+    separate without introducing a second Retrieval result authority."""
     return [
         {
             "code": issue["slot"],
@@ -466,34 +461,10 @@ def missing_information_projection(
     ]
 
 
-def sufficiency_ambiguity_projection(
-    sufficiency_result: SufficiencyResultV2,
-) -> dict[str, object] | None:
-    """No structured ambiguity object exists on SufficiencyResultV2 (docs/05
-    section 19 keeps Retrieval NEEDS_CONFIRMATION issues separate from
-    Request Understanding's own RequestIntentV2.ambiguity -- item 19 of the
-    Q2-D scope). This reconstructs only the minimal shape
-    the deterministic confirmation projection requires, from the first
-    USER-resolution_source issue."""
-    if sufficiency_result["status"] != "NEEDS_CONFIRMATION":
-        return None
-    for issue in sufficiency_result["issues"]:
-        if issue["resolution_source"] == "USER":
-            return {
-                "question": _issue_description(issue),
-                "reason_code": issue["slot"],
-                "affected_field_paths": [],
-                "options": [],
-            }
-    return None
-
-
 # Shared with the other agent workflow modules; see _schema_support module docstring.
-_require_mapping = partial(_schema.require_mapping, error_cls=ContextRetrievalValidationError)
-_require_exact_keys = partial(_schema.require_exact_keys, error_cls=ContextRetrievalValidationError)
-_require_int = partial(_schema.require_int, error_cls=ContextRetrievalValidationError)
-_require_string = partial(_schema.require_string, error_cls=ContextRetrievalValidationError)
-_require_string_list = partial(
-    _schema.require_string_list, error_cls=ContextRetrievalValidationError
-)
-_require_list = partial(_schema.require_list, error_cls=ContextRetrievalValidationError)
+_require_mapping = partial(_schema.require_mapping, error_cls=RetrievalValidationError)
+_require_exact_keys = partial(_schema.require_exact_keys, error_cls=RetrievalValidationError)
+_require_int = partial(_schema.require_int, error_cls=RetrievalValidationError)
+_require_string = partial(_schema.require_string, error_cls=RetrievalValidationError)
+_require_string_list = partial(_schema.require_string_list, error_cls=RetrievalValidationError)
+_require_list = partial(_schema.require_list, error_cls=RetrievalValidationError)

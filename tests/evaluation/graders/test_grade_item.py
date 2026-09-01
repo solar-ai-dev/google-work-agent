@@ -7,7 +7,7 @@ from evaluation.contracts.canonical_case import CanonicalCaseV7, EndStateGoldV1
 from evaluation.contracts.e2e_projection import E2EProjectionV5
 from evaluation.graders.grade_item import GraderDispatchError, grade_item
 from evaluation.projections.build_current_projections import _project_case
-from tests.evaluation.conftest import make_case
+from tests.support.evaluation_case import make_case
 
 
 def _evidence(*, changed: bool = False) -> dict[str, object]:

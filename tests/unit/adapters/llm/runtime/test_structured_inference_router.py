@@ -8,8 +8,9 @@ from tests.support.external_llm_scope import ExternalScopeCheckpoint
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
 )
-from google_work_agent.adapters.runtime import AppSettings
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatus
+from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     ApprovedModelInfo,
     LLMErrorCode,
@@ -19,11 +20,10 @@ from google_work_agent.ports.llm import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
-from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatusV1
-from google_work_agent.ports.llm.llm_runtime_status_port import LlmRuntimeStatusV1
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
+from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT = PromptReference(
@@ -63,16 +63,16 @@ class _Provider:
 
 
 class _Status:
-    def get_status(self, provider: str) -> LlmRuntimeStatusV1:
-        return LlmRuntimeStatusV1(1, provider, True, "READY", "model", None)
+    def get_status(self, provider: str) -> LlmProviderRuntimeStatus:
+        return LlmProviderRuntimeStatus(1, provider, True, "READY", "model", None)
 
     def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
         return ApprovedModelInfo(model_id, "OLLAMA", "1", "1")
 
 
 class _Credential:
-    def get_credential_status(self, provider: str) -> LlmCredentialStatusV1:
-        return LlmCredentialStatusV1(1, provider, True, "KEYRING", "VALID")
+    def get_credential_status(self, provider: str) -> LlmCredentialStatus:
+        return LlmCredentialStatus(1, provider, True, "KEYRING", "VALID")
 
     def read_secret(self, provider: str) -> bytes:
         del provider

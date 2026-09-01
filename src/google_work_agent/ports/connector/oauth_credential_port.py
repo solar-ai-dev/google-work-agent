@@ -18,14 +18,14 @@ class OAuthEnvironment(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class AuthorizationStartV1:
+class OAuthAuthorizationStart:
     schema_version: Literal[1]
     authorization_url: str
     callback_id: str
 
 
 @dataclass(frozen=True, slots=True)
-class ConnectionMetadataV1:
+class OAuthConnectionMetadata:
     schema_version: Literal[1]
     connector_id: str
     account_id: str | None
@@ -38,7 +38,7 @@ class ConnectionMetadataV1:
 
 
 @dataclass(frozen=True, slots=True)
-class RevokeResultV1:
+class OAuthRevokeResult:
     schema_version: Literal[1]
     revocation_attempted: bool
     local_credential_deleted: bool
@@ -52,7 +52,7 @@ class OAuthCredentialPort(Protocol):
         environment: OAuthEnvironment,
         requested_scopes: tuple[str, ...],
         operation_ref: str,
-    ) -> AuthorizationStartV1: ...
+    ) -> OAuthAuthorizationStart: ...
 
     def reconcile_authorization_start(
         self, connector_id: str, operation_ref: str
@@ -60,11 +60,11 @@ class OAuthCredentialPort(Protocol):
 
     def refresh_access(self, connector_id: str, account_id: str) -> AccessContextHandle: ...
 
-    def get_connection_status(self, connector_id: str) -> ConnectionMetadataV1: ...
+    def get_connection_status(self, connector_id: str) -> OAuthConnectionMetadata: ...
 
     def revoke_connection(
         self, connector_id: str, account_id: str, operation_ref: str
-    ) -> RevokeResultV1: ...
+    ) -> OAuthRevokeResult: ...
 
     def reconcile_revoke_connection(
         self, connector_id: str, account_id: str, operation_ref: str
@@ -73,9 +73,9 @@ class OAuthCredentialPort(Protocol):
 
 __all__ = [
     "AccessContextHandle",
-    "AuthorizationStartV1",
-    "ConnectionMetadataV1",
+    "OAuthAuthorizationStart",
+    "OAuthConnectionMetadata",
     "OAuthCredentialPort",
     "OAuthEnvironment",
-    "RevokeResultV1",
+    "OAuthRevokeResult",
 ]

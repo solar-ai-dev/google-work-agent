@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from evaluation.contracts.product_episode_projection import ProductEpisodeE2EProjectionV1
 from pydantic import ValidationError
-from tests.evaluation.conftest import make_episode
+from tests.support.evaluation_case import make_episode
 
 
 def test_product_episode_keeps_decision_script_outside_product_input() -> None:

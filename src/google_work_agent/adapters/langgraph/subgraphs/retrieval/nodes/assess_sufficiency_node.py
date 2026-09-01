@@ -11,7 +11,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
 )
-from google_work_agent.ports.llm import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.confirmation import (
     ConfirmationResponseProjectionV1,
@@ -21,11 +21,11 @@ from google_work_agent.ports.system.contracts.workflow_handoff import RequestedM
 from ..projections.assess_sufficiency_projection import (
     project_assess_sufficiency_input,
 )
-from ..state import RetrievalStateV2
+from ..state import RetrievalState
 
 
 def assess_sufficiency_node(
-    state: RetrievalStateV2,
+    state: RetrievalState,
     *,
     llm_runtime: StructuredInferencePort,
     prompt_ref: PromptReference,

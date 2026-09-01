@@ -112,7 +112,7 @@ def run_server(
                     "error": _error_payload(
                         code="TOOL_REJECTED",
                         message=error.safe_code,
-                        certainty=_legacy_error_delivery_certainty(error),
+                        certainty=error.delivery_certainty,
                     ),
                 }
             )
@@ -150,26 +150,7 @@ def _error_payload(
         "code": code,
         "message": message,
         "delivery_certainty": certainty.value,
-        "dispatch_started": certainty is not DeliveryCertainty.NOT_SENT,
     }
-
-
-def _legacy_error_delivery_certainty(
-    error: workspace_tools._WorkspaceToolError,
-) -> DeliveryCertainty:
-    explicit = getattr(error, "delivery_certainty", None)
-    if isinstance(explicit, DeliveryCertainty):
-        return explicit
-    if isinstance(explicit, str):
-        try:
-            return DeliveryCertainty(explicit)
-        except ValueError:
-            pass
-    return (
-        DeliveryCertainty.MAY_HAVE_BEEN_SENT
-        if error.dispatch_started
-        else DeliveryCertainty.NOT_SENT
-    )
 
 
 def _dispatch(

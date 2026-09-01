@@ -1,6 +1,8 @@
 import pytest
 
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 
 
 def _binding(**overrides: object) -> ValidatedConnectorToolBindingV1:

@@ -8,7 +8,7 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     ActionObjectiveCandidateV1,
     PlanningSemanticInvoker,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition
+from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.draft_action_objective_per_output_route"
 

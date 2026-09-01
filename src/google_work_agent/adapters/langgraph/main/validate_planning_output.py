@@ -96,7 +96,7 @@ class PolicyOverrideProvenanceDependency(RuntimeError):
 
 
 class CanonicalDomainValidationService:
-    """Validate V2 artifacts without reintroducing legacy plan authority."""
+    """Validate current Planning artifacts before Domain persistence."""
 
     def __init__(
         self,
@@ -394,7 +394,7 @@ def _validate_action(
         raise CanonicalDomainValidationError(f"{path}.depends_on_action_ids contains duplicates")
 
     if effect in {EffectType.UPDATE.value, EffectType.DELETE.value} or tool_id == "gmail_send":
-        _require_exact_target_evidence(
+        resolve_exact_target_evidence_handle(
             tool_id=tool_id,
             arguments=arguments,
             evidence_refs=evidence_refs,
@@ -415,7 +415,7 @@ def _validate_action(
     }
 
 
-def _require_exact_target_evidence(
+def resolve_exact_target_evidence_handle(
     *,
     tool_id: str,
     arguments: Mapping[str, object],
@@ -424,19 +424,13 @@ def _require_exact_target_evidence(
     run_id: str,
     resource_identity_reader: RunScopedResourceIdentityReader,
     path: str,
-) -> None:
-    binding = _TARGET_BINDINGS.get(tool_id)
-    if binding is None:
-        raise CanonicalDomainValidationError(
-            f"{path} has no deterministic target binding for existing-resource write"
-        )
-    resource_type, target_field, parent_field = binding
-    target_id = _text(arguments.get(target_field), f"{path}.arguments.{target_field}")
-    parent_id = (
-        None
-        if parent_field is None
-        else _text(arguments.get(parent_field), f"{path}.arguments.{parent_field}")
+) -> str:
+    resource_type, target_id, parent_id = required_target_identity(
+        tool_id=tool_id,
+        arguments=arguments,
+        path=path,
     )
+    parent_field = _TARGET_BINDINGS[tool_id][2]
 
     target_handles: set[str] = set()
     for evidence_ref in evidence_refs:
@@ -462,6 +456,28 @@ def _require_exact_target_evidence(
         raise CanonicalDomainValidationError(
             f"{path} target must resolve through evidence to exactly one current-run resource"
         )
+    return next(iter(target_handles))
+
+
+def required_target_identity(
+    *,
+    tool_id: str,
+    arguments: Mapping[str, object],
+    path: str,
+) -> tuple[str, str, str | None]:
+    binding = _TARGET_BINDINGS.get(tool_id)
+    if binding is None:
+        raise CanonicalDomainValidationError(
+            f"{path} has no deterministic target binding for existing-resource write"
+        )
+    resource_type, target_field, parent_field = binding
+    target_id = _text(arguments.get(target_field), f"{path}.arguments.{target_field}")
+    parent_id = (
+        None
+        if parent_field is None
+        else _text(arguments.get(parent_field), f"{path}.arguments.{parent_field}")
+    )
+    return resource_type, target_id, parent_id
 
 
 def _validate_action_collection(actions: Sequence[PlannedActionV2]) -> None:
@@ -581,5 +597,7 @@ __all__ = [
     "PolicyOverrideProvenanceDependency",
     "RunScopedResourceIdentityReader",
     "build_domain_validation_output_from_v2",
+    "required_target_identity",
+    "resolve_exact_target_evidence_handle",
     "validate_action_plan_draft_v2_for_domain",
 ]

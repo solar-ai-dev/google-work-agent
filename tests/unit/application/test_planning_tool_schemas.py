@@ -9,7 +9,7 @@ from google_work_agent.application.agents.planning.contracts.planning_tool_schem
 from google_work_agent.application.agents.planning.resolve_default_container import (
     PlanningArgumentBindingError,
 )
-from google_work_agent.application.tool_registry import (
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
 from google_work_agent.domain.action.model import EffectType

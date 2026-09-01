@@ -18,7 +18,7 @@ from google_work_agent.application.use_cases.action.validate_action_arguments im
     ValidateActionArgumentsHandler,
     ValidateActionArgumentsQueryV1,
 )
-from google_work_agent.ports.llm import OutputSchemaDefinition
+from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.compose_arguments_per_output_route"
 

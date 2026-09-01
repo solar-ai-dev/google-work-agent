@@ -10,7 +10,9 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
     coarse_resource_category,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
-from google_work_agent.ports.connector.contracts import ValidatedConnectorToolBindingV1
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 from google_work_agent.ports.system.run_retrieval_cache_port import (
     RunRetrievalCacheEntryV1,
     RunRetrievalCachePort,

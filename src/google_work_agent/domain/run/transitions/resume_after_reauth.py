@@ -15,7 +15,6 @@ def transition_resume_after_reauth(
     binding_is_current: bool,
     action_statuses: tuple[ActionStatusV1, ...],
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
-    has_legacy_read_executing: bool,
     delivery_uncertain: bool,
     cancel_intent_active: bool,
 ) -> RunStatusV1:
@@ -27,7 +26,6 @@ def transition_resume_after_reauth(
         binding_is_current=binding_is_current,
         action_statuses=action_statuses,
         attempt_statuses=attempt_statuses,
-        has_legacy_read_executing=has_legacy_read_executing,
         delivery_uncertain=delivery_uncertain,
         cancel_intent_active=cancel_intent_active,
     )

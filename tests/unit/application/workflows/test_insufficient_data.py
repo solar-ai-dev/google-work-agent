@@ -1,6 +1,6 @@
 import pytest
 
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.agents.retrieval.assess_sufficiency import (
     InsufficientDataContext,
     InsufficientDataDisposition,

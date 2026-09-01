@@ -6,7 +6,7 @@ from evaluation.contracts.e2e_projection import E2EProjectionV5
 from evaluation.contracts.product_episode_projection import ProductEpisodeE2EProjectionV1
 from evaluation.datasets.load_canonical_cases import load_canonical_cases
 from evaluation.projections.build_current_projections import build_current_projections
-from tests.evaluation.conftest import make_case, make_episode
+from tests.support.evaluation_case import make_case, make_episode
 
 
 def test_projection_builder_writes_exact_deterministic_gold_isolated_files(

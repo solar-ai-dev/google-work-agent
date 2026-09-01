@@ -16,7 +16,7 @@ from evaluation.runner.run_experiment import (
     run_experiment,
 )
 from pydantic import JsonValue
-from tests.evaluation.conftest import make_case, make_episode
+from tests.support.evaluation_case import make_case, make_episode
 
 
 def _config(

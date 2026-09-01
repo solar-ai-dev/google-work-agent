@@ -187,10 +187,7 @@ class ResumeCheckpointMixin:
             return None
         target_by_phase = {
             WorkflowPhase.TOOL_ROUTING.value: SupervisorTarget.TOOL_ROUTE,
-            WorkflowPhase.SOURCE_PLANNING.value: SupervisorTarget.SOURCE_PLANNING,
-            WorkflowPhase.API_ACQUISITION.value: SupervisorTarget.API_ACQUISITION,
             WorkflowPhase.CONTEXT_RETRIEVAL.value: SupervisorTarget.CONTEXT_RETRIEVAL,
-            WorkflowPhase.CONTEXT_EVALUATION.value: SupervisorTarget.CONTEXT_RETRIEVAL,
             WorkflowPhase.WORK_ANALYSIS.value: SupervisorTarget.WORK_ANALYSIS,
             WorkflowPhase.SOLUTION_PLANNING.value: SupervisorTarget.SOLUTION_PLANNING,
             WorkflowPhase.PLAN_REVIEW.value: SupervisorTarget.PLAN_REVIEW_INSPECT,

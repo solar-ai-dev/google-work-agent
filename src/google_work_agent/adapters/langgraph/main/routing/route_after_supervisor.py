@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
 RESPONSE_SYNTHESIS_TARGET = "RESPONSE_SYNTHESIS"
@@ -68,12 +68,6 @@ _PROFILE_ROUTES = {
     GraphProfile.SINGLE_BASELINE: {
         **_COMMON_ROUTES,
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "single_workflow"),
-        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation(
-            "context_retriever", "single_workflow"
-        ),
-        SupervisorTarget.API_ACQUISITION.value: RouteTranslation(
-            "context_retriever", "single_workflow"
-        ),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
         ),
@@ -97,8 +91,6 @@ _PROFILE_ROUTES = {
     GraphProfile.THREE_STAGE: {
         **_COMMON_ROUTES,
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "stage_one"),
-        SupervisorTarget.SOURCE_PLANNING.value: RouteTranslation("context_retriever", "stage_one"),
-        SupervisorTarget.API_ACQUISITION.value: RouteTranslation("context_retriever", "stage_one"),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
         ),
@@ -122,13 +114,6 @@ _PROFILE_ROUTES = {
     GraphProfile.SIX_ROLE_BASELINE: {
         **_COMMON_ROUTES,
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "tool_route"),
-        **{
-            target.value: RouteTranslation("context_retriever", "context_retriever")
-            for target in (
-                SupervisorTarget.SOURCE_PLANNING,
-                SupervisorTarget.API_ACQUISITION,
-            )
-        },
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
         ),

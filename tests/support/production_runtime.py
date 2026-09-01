@@ -3,7 +3,7 @@
 import secrets
 from pathlib import Path
 
-from google_work_agent.adapters.runtime import SafeModeController
+from google_work_agent.adapters.runtime.safe_mode import SafeModeController
 from google_work_agent.api.composition import build_production_runtime
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment

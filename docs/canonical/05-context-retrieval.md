@@ -46,7 +46,7 @@ Main Graph에는 Query 후보·Page Token·전체 후보·RAG score를 올리지
 ## 4. Retrieval Subgraph State
 
 ```python
-class RetrievalStateV2:
+class RetrievalState:
     request_intent: RequestIntentV2
     input_route_ref: StateArtifactRefV1
     input_routes: list[InputToolRouteV1]
@@ -94,7 +94,7 @@ RETRIEVING checkpoint load
 - raw `next_page_token`과 prior memory-only cache는 복원하지 않는다. Provider 데이터가 restart 사이에 바뀌면 새 조회 결과가 current revision의 authority가 된다.
 - `RunRetrievalCacheResolveResultV1.status=FOUND|EXHAUSTED`는 모두 **현재 handle entry와 run/route/query binding이 유효함**을 뜻하므로 resume prerequisite를 충족하고 cache restart를 만들지 않는다. `EXHAUSTED`는 `entry.continuation_exhausted=true`인 유효 read-result이며 `NEXT_PAGE`만 Provider 호출 전 `NO_MORE_PAGE`로 종료한다. `MISSING|CROSS_RUN|BINDING_MISMATCH`만 cache-loss restart 대상이다.
 - `RunBudgetV2`의 이미 소비된 LLM/read/page/detail counter는 reset하지 않는다. restart가 새 outbound call을 만들면 일반 budget으로 추가 소비하며 hard cap을 넘기지 않는다.
-- `EXCLUDE_EVIDENCE` control이 적용되면 handoff payload clear 전에 stable IDs를 `RetrievalStateV2.exclusion_obligation_segment_ids`에 checkpoint-commit한다. `RETRIEVE_MORE`는 같은 control-patch checkpoint에 `ContextAdjustmentV1.retrieval_need`를 `RetrievalStateV2.pending_user_retrieval_need`로 materialize한다. 이후 cache가 유실되거나 handoff가 이미 CONSUMED여도 fresh retrieval은 exclusion obligation과 pending need를 그대로 사용한다. `pending_user_retrieval_need`는 새 Retrieval revision finalize 전에는 clear하지 않는다.
+- `EXCLUDE_EVIDENCE` control이 적용되면 handoff payload clear 전에 stable IDs를 `RetrievalState.exclusion_obligation_segment_ids`에 checkpoint-commit한다. `RETRIEVE_MORE`는 같은 control-patch checkpoint에 `ContextAdjustmentV1.retrieval_need`를 `RetrievalState.pending_user_retrieval_need`로 materialize한다. 이후 cache가 유실되거나 handoff가 이미 CONSUMED여도 fresh retrieval은 exclusion obligation과 pending need를 그대로 사용한다. `pending_user_retrieval_need`는 새 Retrieval revision finalize 전에는 clear하지 않는다.
 - Retrieval-dependent checkpoint를 commit할 때 checkpointer adapter는 Local State의 현재 handle dependency를 `GraphCheckpointEnvelopeV1.retrieval_cache_requirements: list[RetrievalCacheRequirementV1]`로 bounded projection한다. Application은 opaque `checkpoint_blob`을 열지 않고 이 metadata만 검사한다. handle dependency가 끝난 checkpoint는 빈 list를 저장하며 Confirmation/Reauth가 Retrieval-local continuation으로 복귀하는 동안에는 requirement를 유지한다.
 - Confirmation/Reauth suspend 중 process-memory cache가 사라졌다면 해당 owner resume 전에 같은 handle validation을 수행하고, Retrieval local state가 필요한 target이면 위 RETRIEVAL_ENTRY restart로 정상화한다.
 - `RETRIEVAL_CACHE_RESTART` handoff trigger는 `system:retrieval-cache-restart:<run_id>:<checkpoint_generation>` 하나다. staging 전 `WorkflowHandoffRepository.get_by_trigger_command_id(trigger)`로 existing PENDING/DISPATCHED/CONSUMED row를 먼저 resolve하며, 같은 trigger에 두 번째 handoff/control을 만들지 않는다. HTTP command replay 계약을 이 system trigger에 적용하지는 않는다.
@@ -103,7 +103,7 @@ RETRIEVING checkpoint load
 
 ### 4.2 Exclusion obligation checkpoint lifetime
 
-`EXCLUDE_EVIDENCE`는 one-shot handoff payload 자체를 장기 authority로 사용하지 않는다. Application이 current Preview membership과 `expected_retrieval_revision`을 검증한 뒤 stable `segment_id`를 `RetrievalStateV2.exclusion_obligation_segment_ids`에 materialize하고, **handoff payload clear보다 먼저 checkpoint-commit**한다.
+`EXCLUDE_EVIDENCE`는 one-shot handoff payload 자체를 장기 authority로 사용하지 않는다. Application이 current Preview membership과 `expected_retrieval_revision`을 검증한 뒤 stable `segment_id`를 `RetrievalState.exclusion_obligation_segment_ids`에 materialize하고, **handoff payload clear보다 먼저 checkpoint-commit**한다.
 
 - 이 obligation은 해당 same-Run Retrieval lineage가 새 `RetrievalResultV1`을 finalize할 때까지 crash-safe하게 유지한다.
 - cache-loss fresh Retrieval은 checkpoint-local `exclusion_obligation_segment_ids`와 current `RetrievalResultV1.excluded_segment_ids`를 합쳐 `select_evidence`에 적용한다.
@@ -113,7 +113,7 @@ RETRIEVING checkpoint load
 
 ### 4.3 RETRIEVE_MORE obligation checkpoint lifetime
 
-`RETRIEVE_MORE`는 one-shot handoff payload를 Query Planner까지 직접 들고 가지 않는다. control patch가 `ContextAdjustmentV1.retrieval_need`를 `RetrievalStateV2.pending_user_retrieval_need`에 checkpoint-commit한 뒤에만 handoff payload를 clear한다.
+`RETRIEVE_MORE`는 one-shot handoff payload를 Query Planner까지 직접 들고 가지 않는다. control patch가 `ContextAdjustmentV1.retrieval_need`를 `RetrievalState.pending_user_retrieval_need`에 checkpoint-commit한 뒤에만 handoff payload를 clear한다.
 
 - `retrieval.plan_query`의 user-context-adjustment projection은 raw `ContextAdjustmentV1`이 아니라 `pending_user_retrieval_need`를 읽는다.
 - Query/Page/Detail self-loop, Confirmation/Reauth suspend, process-memory cache loss, `RETRIEVAL_CACHE_RESTART`, current-route 실패 후 Route reconsideration/re-entry에서도 같은 need를 보존한다.
@@ -487,7 +487,7 @@ class RetrievalResultV1:
     retrieval_rounds: int
 ```
 
-`RetrievalResultV1.excluded_segment_ids`는 current Retrieval lineage의 stable segment exclusion obligation을 공식 artifact로 보존한다. `finalize_retrieval`은 `EvidenceSelectionResultV2.excluded_segment_ids + RetrievalStateV2.exclusion_obligation_segment_ids`를 stable dedup하여 기록한다. `RetrievalResultV1`은 다음 Work Analysis 또는 Planning이 소비할 최소 공식 Handoff다. 복수 IN Route에서는 `source_statuses`가 각 Source의 확인 성공·부분 성공·실패·미시도를 보존해야 하며, downstream은 전체 `coverage`만 보고 모든 Source를 확인했다고 추론하지 않는다. `NEEDS_MORE_DATA`, `NEEDS_CONFIRMATION`, `ROUTE_RECONSIDERATION_REQUIRED`, `BLOCKED`는 `RetrievalResultV1`의 상태값이 아니라 `SubgraphReturnV2.disposition`과 Typed `WorkflowSignalV1`로 전달한다. 이미 확보한 Evidence가 독립적으로 유효하면 `coverage=PARTIAL` 결과와 redirection signal을 함께 반환할 수 있다.
+`RetrievalResultV1.excluded_segment_ids`는 current Retrieval lineage의 stable segment exclusion obligation을 공식 artifact로 보존한다. `finalize_retrieval`은 `EvidenceSelectionResultV2.excluded_segment_ids + RetrievalState.exclusion_obligation_segment_ids`를 stable dedup하여 기록한다. `RetrievalResultV1`은 다음 Work Analysis 또는 Planning이 소비할 최소 공식 Handoff다. 복수 IN Route에서는 `source_statuses`가 각 Source의 확인 성공·부분 성공·실패·미시도를 보존해야 하며, downstream은 전체 `coverage`만 보고 모든 Source를 확인했다고 추론하지 않는다. `NEEDS_MORE_DATA`, `NEEDS_CONFIRMATION`, `ROUTE_RECONSIDERATION_REQUIRED`, `BLOCKED`는 `RetrievalResultV1`의 상태값이 아니라 `SubgraphReturnV2.disposition`과 Typed `WorkflowSignalV1`로 전달한다. 이미 확보한 Evidence가 독립적으로 유효하면 `coverage=PARTIAL` 결과와 redirection signal을 함께 반환할 수 있다.
 
 ## 7. 진입 방식
 

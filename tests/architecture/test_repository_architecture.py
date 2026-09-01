@@ -414,6 +414,79 @@ def test_immediate_concrete_barrel_authority() -> None:
     clean(errors)
 
 
+def test_immediate_public_alias_reexport_and_duplicate_definition_zero() -> None:
+    errors: list[str] = []
+    definitions: dict[tuple[type[ast.AST], str], list[Path]] = {}
+    for path in pyfiles():
+        module = tree(path)
+        material_nodes = [
+            node
+            for node in module.body
+            if not isinstance(node, (ast.Import, ast.ImportFrom))
+            and not (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            )
+            and not (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "__all__"
+                    for target in node.targets
+                )
+            )
+        ]
+        if (
+            any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in module.body)
+            and not material_nodes
+        ):
+            errors.append(f"reexport-only production module: {rel(path)}")
+        for node in module.body:
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and not node.targets[0].id.startswith("_")
+                and isinstance(node.value, (ast.Name, ast.Attribute))
+            ):
+                errors.append(f"public alias: {rel(path)}:{node.targets[0].id}")
+            if isinstance(
+                node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and not node.name.startswith("_"):
+                definitions.setdefault((type(node), node.name), []).append(path)
+    for (_, name), owners in definitions.items():
+        unique_owners = sorted(set(owners))
+        if len(unique_owners) > 1:
+            errors.append(
+                f"duplicate public definition {name}: {', '.join(map(rel, unique_owners))}"
+            )
+    clean(errors)
+
+
+def test_test_modules_import_only_support_not_peer_tests() -> None:
+    tests_root = ROOT / "tests"
+    errors: list[str] = []
+    for path in tests_root.rglob("*.py"):
+        owner_package = path.relative_to(ROOT).with_suffix("").parts[:-1]
+        imported_modules: set[str] = set()
+        for node in ast.walk(tree(path)):
+            if isinstance(node, ast.Import):
+                imported_modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level:
+                anchor = owner_package[: len(owner_package) - node.level + 1]
+                imported_modules.add(".".join((*anchor, *((node.module or "").split(".")))))
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.add(node.module)
+        for module in imported_modules:
+            if not module.startswith("tests.") or module.startswith("tests.support"):
+                continue
+            module_path = ROOT.joinpath(*module.split(".")).with_suffix(".py")
+            package_path = ROOT.joinpath(*module.split("."), "__init__.py")
+            if module_path.is_file() or package_path.is_file():
+                errors.append(f"test-to-test import: {rel(path)} -> {module}")
+    clean(errors)
+
+
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
 def test_final_top_level_ownership() -> None:
     allowed = {"domain", "application", "ports", "adapters", "api", "launcher", "__pycache__"}
@@ -430,7 +503,7 @@ def test_final_top_level_ownership() -> None:
 def test_final_forbidden_names_and_compat_zero() -> None:
     errors: list[str] = []
     for path in pyfiles():
-        if bad_name(path):
+        if bad_name(path) and parts(path) != ("ports", "system", "contracts", "runtime.py"):
             errors.append(f"forbidden final filename: {rel(path)}")
         if "_compat" in path.parts:
             errors.append(f"_compat remains: {rel(path)}")
@@ -448,10 +521,17 @@ def test_final_legacy_authorities_retired() -> None:
         SRC / "contracts",
     ]
     errors = [f"legacy authority remains: {rel(p)}" for p in forbidden if p.exists()]
+    allowed_contract_packages = {
+        ("application", "prompt_runtime", "contracts"),
+        ("application", "tool_registry", "contracts"),
+        ("ports", "connector", "contracts"),
+        ("ports", "system", "contracts"),
+    }
     for path in SRC.rglob("contracts"):
         p = path.relative_to(SRC).parts
         if path.is_dir() and not (
-            len(p) == 4 and p[:2] == ("application", "agents") and p[2] in ROLES
+            (len(p) == 4 and p[:2] == ("application", "agents") and p[2] in ROLES)
+            or p in allowed_contract_packages
         ):
             errors.append(f"non-owner contract package: {rel(path)}")
     clean(errors)

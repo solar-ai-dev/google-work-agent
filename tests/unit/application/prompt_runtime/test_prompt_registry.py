@@ -22,7 +22,6 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     PromptRegistryError,
     PromptSelectionKey,
     default_prompt_manifest_path,
-    load_prompt_reference,
 )
 
 CANONICAL_ACTIVATION_STATUSES = frozenset(
@@ -164,11 +163,6 @@ def test_prompt_registry_rejects_source_hash_drift(tmp_path: Path) -> None:
 
     with pytest.raises(PromptRegistryError, match="source hash mismatch"):
         PromptRegistry(manifest_path, contract_path)
-
-
-def test_predecessor_caller_slot_keeps_product_runtime_inactive() -> None:
-    with pytest.raises(InactivePromptArtifactError, match="not represented"):
-        load_prompt_reference("request_understanding.classify")
 
 
 def test_prompt_registry_rejects_duplicate_json_field(tmp_path: Path) -> None:

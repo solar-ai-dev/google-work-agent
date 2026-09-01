@@ -1,4 +1,6 @@
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 
 
 def test_signed_manifest_matches_current_canonical_google_workspace_rows() -> None:

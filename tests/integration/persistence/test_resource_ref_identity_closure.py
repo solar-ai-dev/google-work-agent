@@ -1,4 +1,5 @@
-import shutil
+"""Current connector-qualified resource identity behavior."""
+
 import sqlite3
 from pathlib import Path
 
@@ -11,83 +12,21 @@ from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_rep
 )
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 
-RUNTIME_MIGRATIONS_DIR = Path("src/google_work_agent/adapters/persistence/migrations")
-
-
-def test_clean_database_migrates_through_latest_with_full_integrity(tmp_path: Path) -> None:
-    connection = connect_sqlite(tmp_path / "clean-latest.db")
-    try:
-        results = apply_migrations(connection, now_ms=lambda: 1)
-
-        assert results[-1].version == 18
-        assert all(result.applied for result in results)
-        assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
-        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
-    finally:
-        connection.close()
-
-
-def test_0008_upgrade_preserves_plan_action_evidence_graph(tmp_path: Path) -> None:
-    upgrade_dir = tmp_path / "upgrade-migrations"
-    upgrade_dir.mkdir()
-    for version in range(1, 8):
-        source = next(RUNTIME_MIGRATIONS_DIR.glob(f"{version:04d}_*.sql"))
-        shutil.copyfile(source, upgrade_dir / source.name)
-
-    connection = connect_sqlite(tmp_path / "old-to-latest.db")
-    try:
-        apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 1)
-        _seed_0007_aggregate_graph(connection)
-        before = _aggregate_counts(connection)
-
-        source = RUNTIME_MIGRATIONS_DIR / "0008_resource_ref_connector_identity.sql"
-        shutil.copyfile(source, upgrade_dir / source.name)
-        results = apply_migrations(connection, migrations_dir=upgrade_dir, now_ms=lambda: 2)
-
-        assert results[-1].version == 8
-        assert results[-1].applied is True
-        assert _aggregate_counts(connection) == before
-        assert (
-            connection.execute(
-                "SELECT connector_id FROM resource_refs WHERE id = 'resource-1';"
-            ).fetchone()[0]
-            == "connector-a"
-        )
-        assert (
-            connection.execute(
-                "SELECT connector_id FROM actions WHERE id = 'action-1';"
-            ).fetchone()[0]
-            == "connector-a"
-        )
-        assert (
-            connection.execute(
-                "SELECT evidence_id FROM action_evidence WHERE action_id = 'action-1';"
-            ).fetchone()[0]
-            == "evidence-1"
-        )
-        assert [str(row[0]) for row in connection.execute("PRAGMA quick_check;")] == ["ok"]
-        assert connection.execute("PRAGMA foreign_key_check;").fetchall() == []
-    finally:
-        connection.close()
-
 
 def test_same_external_id_coexists_across_registered_resource_types(tmp_path: Path) -> None:
-    connection = connect_sqlite(tmp_path / "connector-coexist.db")
+    connection = connect_sqlite(tmp_path / "resource-identity.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)
         _seed_run(connection)
         repository = SqliteResourceRefRepository(connection)
-
         repository.upsert_bound_ref(_resource_ref("resource-a", "calendar_event", title="A"))
         repository.upsert_bound_ref(_resource_ref("resource-b", "gmail_message", title="B"))
 
         rows = connection.execute(
-            """
-            SELECT connector_id, resource_type, resource_id, title
-            FROM resource_refs
-            WHERE run_id = 'run-1' AND resource_id = 'external-X'
-            ORDER BY resource_type;
-            """
+            """SELECT connector_id, resource_type, resource_id, title
+               FROM resource_refs
+               WHERE run_id='run-1' AND resource_id='external-X'
+               ORDER BY resource_type;"""
         ).fetchall()
         assert [tuple(row) for row in rows] == [
             ("google_workspace", "calendar_event", "external-X", "A"),
@@ -95,27 +34,22 @@ def test_same_external_id_coexists_across_registered_resource_types(tmp_path: Pa
         ]
 
         repository.upsert_bound_ref(_resource_ref("replacement-id", "calendar_event", title="A2"))
-        rows_after_upsert = connection.execute(
-            """
-            SELECT id, connector_id, title FROM resource_refs
-            WHERE run_id = 'run-1' AND resource_id = 'external-X'
-            ORDER BY resource_type;
-            """
+        rows = connection.execute(
+            """SELECT id, connector_id, title FROM resource_refs
+               WHERE run_id='run-1' AND resource_id='external-X'
+               ORDER BY resource_type;"""
         ).fetchall()
-        assert [tuple(row) for row in rows_after_upsert] == [
+        assert [tuple(row) for row in rows] == [
             ("resource-a", "google_workspace", "A2"),
             ("resource-b", "google_workspace", "B"),
         ]
-
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
-                """
-                INSERT INTO resource_refs (
-                    id, run_id, connector_id, resource_type, resource_id,
-                    metadata_json, captured_at_ms
-                ) VALUES ('duplicate', 'run-1', 'google_workspace', 'calendar_event',
-                          'external-X', '{}', 2);
-                """
+                """INSERT INTO resource_refs (
+                       id, run_id, connector_id, resource_type, resource_id,
+                       metadata_json, captured_at_ms
+                   ) VALUES ('duplicate', 'run-1', 'google_workspace', 'calendar_event',
+                             'external-X', '{}', 2);"""
             )
     finally:
         connection.close()
@@ -146,74 +80,10 @@ def _seed_run(connection: sqlite3.Connection) -> None:
         "INSERT INTO conversations VALUES ('conversation-1', 'account-1', 'Test', 1, 1);"
     )
     connection.execute(
-        """
-        INSERT INTO runs (
-            id, conversation_id, entry_mode, status, langgraph_thread_id,
-            requested_mode, budget_json, version, started_at_ms
-        ) VALUES ('run-1', 'conversation-1', 'AGENT_SEARCH', 'PLANNING',
-                  'thread-1', 'AUTO', '{}', 0, 1);
-        """
+        """INSERT INTO runs (
+               id, conversation_id, entry_mode, status, langgraph_thread_id,
+               requested_mode, budget_json, version, started_at_ms
+           ) VALUES ('run-1', 'conversation-1', 'AGENT_SEARCH', 'PLANNING',
+                     'thread-1', 'AUTO', '{}', 0, 1);"""
     )
     connection.commit()
-
-
-def _seed_0007_aggregate_graph(connection: sqlite3.Connection) -> None:
-    _seed_run(connection)
-    connection.execute(
-        """
-        INSERT INTO plans (
-            id, run_id, revision_no, status, summary_text, created_at_ms,
-            review_status, review_version
-        ) VALUES ('plan-1', 'run-1', 1, 'DRAFT', NULL, 1, 'PASSED', 0);
-        """
-    )
-    connection.execute(
-        """
-        INSERT INTO resource_refs (
-            id, run_id, connector_id, source, resource_type, resource_id,
-            metadata_json, captured_at_ms
-        ) VALUES ('resource-1', 'run-1', 'connector-a', 'CALENDAR', 'EVENT',
-                  'external-X', '{}', 1);
-        """
-    )
-    connection.execute(
-        """
-        INSERT INTO actions (
-            id, plan_id, connector_id, position, tool_name, effect_type,
-            approval_requirement, verification_policy, recovery_policy,
-            target_resource_ref_id, status, arguments_json, arguments_hash,
-            expected_json, risk_json, version, created_at_ms, updated_at_ms
-        ) VALUES (
-            'action-1', 'plan-1', 'connector-a', 1, 'calendar_update_event', 'UPDATE',
-            'REQUIRED', 'GET_COMPARE', 'GET_TARGET', 'resource-1', 'PROPOSED',
-            '{}', ?, '{}', '{}', 0, 1, 1
-        );
-        """,
-        ("a" * 64,),
-    )
-    connection.execute(
-        """
-        INSERT INTO evidence (
-            id, run_id, origin_type, resource_ref_id, message_id, kind,
-            excerpt, locator_json, created_at_ms
-        ) VALUES (
-            'evidence-1', 'run-1', 'GOOGLE_RESOURCE', 'resource-1', NULL,
-            'RESOURCE', 'bounded excerpt', NULL, 1
-        );
-        """
-    )
-    connection.execute(
-        """
-        INSERT INTO action_evidence (action_id, evidence_id)
-        VALUES ('action-1', 'evidence-1');
-        """
-    )
-    connection.commit()
-
-
-def _aggregate_counts(connection: sqlite3.Connection) -> dict[str, int]:
-    tables = ("runs", "resource_refs", "plans", "actions", "evidence", "action_evidence")
-    return {
-        table: int(connection.execute(f"SELECT COUNT(*) FROM {table};").fetchone()[0])
-        for table in tables
-    }

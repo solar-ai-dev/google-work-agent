@@ -50,9 +50,6 @@ class FinalizeCancelCommand:
     expected_run_version: int
 
 
-FinalizeCancelResult = WriteRunResponse
-
-
 class FinalizeCancelHandler:
     """Finalize durable cancel intent after all child facts are settled."""
 
@@ -71,7 +68,7 @@ class FinalizeCancelHandler:
         self._message_id_factory = message_id_factory or (lambda: str(uuid4()))
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
-    def __call__(self, command: FinalizeCancelCommand) -> FinalizeCancelResult:
+    def __call__(self, command: FinalizeCancelCommand) -> WriteRunResponse:
         terminal_result_kinds: tuple[Literal["PARTIAL", "CANCELLED"], ...] = (
             "PARTIAL",
             "CANCELLED",
@@ -410,4 +407,4 @@ def _finalize_transition(
     return apply
 
 
-__all__ = ["FinalizeCancelCommand", "FinalizeCancelHandler", "FinalizeCancelResult"]
+__all__ = ["FinalizeCancelCommand", "FinalizeCancelHandler"]

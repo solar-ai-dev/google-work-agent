@@ -38,7 +38,6 @@ class WriteExecutionNode:
         should_stop_for_cancel: Callable[[str], bool],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
         has_independent_executable_action: Callable[[str, str], bool],
-        execute_read_only_plan: Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState],
         execution_phase: WriteExecutionStructuralDriver,
         has_persisted_cancel_intent: Callable[[str], bool],
     ) -> None:
@@ -47,7 +46,6 @@ class WriteExecutionNode:
         self._should_stop_for_cancel = should_stop_for_cancel
         self._list_actions = list_actions
         self._has_independent_executable_action = has_independent_executable_action
-        self._execute_read_only_plan = execute_read_only_plan
         self._execution_phase = execution_phase
         self._has_persisted_cancel_intent = has_persisted_cancel_intent
 
@@ -57,12 +55,6 @@ class WriteExecutionNode:
         run_id = cast(str, state["run_id"])
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
-        if actions and all(action.effect_type == "READ" for action in actions):
-            return {
-                "__target__": "action_execution",
-                "__logical_target__": "action_execution",
-                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
-            }
         action = next(
             (item for item in actions if item.status == ActionStatusV1.APPROVED.value),
             None,
@@ -103,9 +95,6 @@ class WriteExecutionNode:
             return self._cancelled_state(state=state, plan_id="", verification_statuses=[])
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
-        if actions and all(action.effect_type == "READ" for action in actions):
-            return self._execute_read_only_plan(state, plan_id, actions)
-
         verification_statuses: list[str] = []
         for action in actions:
             state_update = self._execute_action(

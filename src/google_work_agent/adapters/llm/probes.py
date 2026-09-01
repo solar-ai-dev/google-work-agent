@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from google_work_agent.adapters.llm.ollama.transport import OllamaTransport
-from google_work_agent.ports.llm import (
+from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
     AvailabilityState,
     OllamaRuntimeProbe,

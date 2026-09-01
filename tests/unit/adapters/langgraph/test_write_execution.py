@@ -28,7 +28,6 @@ def _failed_node(*, independent_action_remains: bool) -> WriteExecutionNode:
         has_independent_executable_action=(
             lambda _plan_id, _failed_action_id: independent_action_remains
         ),
-        execute_read_only_plan=lambda state, _plan_id, _actions: state,
         execution_phase=cast(Any, phase),
         has_persisted_cancel_intent=lambda _run_id: False,
     )

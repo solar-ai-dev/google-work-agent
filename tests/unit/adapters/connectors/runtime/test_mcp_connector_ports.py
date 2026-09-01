@@ -12,7 +12,9 @@ from google_work_agent.adapters.connectors.runtime.mcp_connector_read import Mcp
 from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
     McpConnectorWriteAdapter,
 )
-from google_work_agent.application.tool_registry import load_signed_tool_registry
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.ports.connector.mcp_client_port import (
     MCPRestartResultV1,
     MCPRuntimeMetadata,

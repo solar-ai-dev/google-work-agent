@@ -5,11 +5,11 @@ from typing import get_type_hints
 from google_work_agent.adapters.langgraph.main import state as state_module
 from google_work_agent.adapters.langgraph.main.state import (
     ExecutionSummaryV1,
-    MultiAgentGraphStateV2,
+    GraphState,
     VerificationSummaryV1,
     initial_graph_state,
 )
-from google_work_agent.adapters.langgraph.profiles import GraphProfile
+from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCorrelationContext,
@@ -18,7 +18,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 
 
 def test_main_state_has_exact_v2_owner_and_no_retrieval_scratch_fields() -> None:
-    fields = set(get_type_hints(MultiAgentGraphStateV2))
+    fields = set(get_type_hints(GraphState))
 
     assert not hasattr(state_module, "ProductionGraphStateV2")
     assert {"graph_profile", "graph_version", "langgraph_thread_id", "run_input"} <= fields

@@ -22,6 +22,7 @@ from google_work_agent.adapters.system.filesystem_attachment_staging import (
     FilesystemAttachmentStagingAdapter,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.system.attachment_staging_port import (
     StagedAttachmentDescriptorV1,
 )
@@ -250,7 +251,7 @@ def test_gmail_create_draft_rejects_missing_staged_attachment(
         )
 
     assert exc_info.value.safe_code == "ATTACHMENT_STAGING_MISSING"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
@@ -292,7 +293,7 @@ def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
         )
 
     assert exc_info.value.safe_code == "ATTACHMENT_HASH_MISMATCH"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_gmail_create_draft_rejects_expired_staged_attachment(
@@ -332,7 +333,7 @@ def test_gmail_create_draft_rejects_expired_staged_attachment(
         )
 
     assert exc_info.value.safe_code == "ATTACHMENT_STAGING_EXPIRED"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
@@ -367,7 +368,7 @@ def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
         )
 
     assert exc_info.value.safe_code == "ATTACHMENT_STAGING_UNAVAILABLE"
-    assert exc_info.value.dispatch_started is False
+    assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
 def test_gmail_create_draft_without_attachments_key_never_touches_staging(

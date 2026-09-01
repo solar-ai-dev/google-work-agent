@@ -1,12 +1,9 @@
 """Retrieval planning, local evidence, and parent-result contracts."""
 
 from enum import StrEnum
-from typing import Literal, NotRequired, Required, TypedDict
+from typing import Literal, Required, TypedDict
 
 from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
-from google_work_agent.ports.system.contracts.additional_acquisition import (
-    AdditionalAcquisitionRequestV1,
-)
 
 
 class ContextResult(StrEnum):
@@ -18,24 +15,6 @@ class ContextResult(StrEnum):
     ROUTE_RECONSIDERATION_REQUIRED = "ROUTE_RECONSIDERATION_REQUIRED"
     PARTIAL = "PARTIAL"
     BLOCKED = "BLOCKED"
-
-
-SourceName = Literal["GMAIL", "TASKS", "CALENDAR"]
-
-
-CalendarReadMode = Literal["EVENTS_ONLY", "EVENTS_AND_FREEBUSY"]
-
-
-TemporalRelation = Literal["RELATIVE", "ABSOLUTE"]
-
-
-RelativeUnit = Literal["DAY", "WEEK"]
-
-
-Weekday = Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-
-
-Daypart = Literal["MORNING", "AFTERNOON", "EVENING"]
 
 
 ContextStatusValue = Literal[
@@ -57,42 +36,6 @@ SufficiencyResolutionSourceValue = Literal["USER", "GOOGLE", "POLICY", "ROUTE"]
 MissingInformationRequiredForValue = Literal[
     "RETRIEVAL", "ANALYSIS", "PLANNING", "USER_CONFIRMATION"
 ]
-
-
-class TemporalQueryV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    relation: TemporalRelation
-    relative_unit: RelativeUnit | None
-    relative_offset: int | None
-    weekday: Weekday | None
-    daypart: Daypart | None
-    absolute_start: str | None
-    absolute_end: str | None
-
-
-class SourceFetchPlanV1(TypedDict):
-    schema_version: Required[Literal[2]]
-    source: SourceName
-    priority: int
-    reason_codes: list[str]
-    constraints: dict[str, object]
-    page_size: int
-    max_pages: int
-    max_candidates: int
-    detail_limit: int
-    required: bool
-    calendar_read_mode: CalendarReadMode | None
-    temporal_query: TemporalQueryV1 | None
-
-
-class SourcePlanningOutputV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    result: Literal["PLAN_READY", "NO_FETCH_NEEDED", "NEEDS_CONFIRMATION", "BLOCKED"]
-    source_fetch_plans: list[SourceFetchPlanV1]
-    clarification: dict[str, object] | None
-    failure: dict[str, object] | None
-    validator_codes: list[str]
-    llm_provider_result: dict[str, object]
 
 
 class AcquisitionResultV1(TypedDict):
@@ -125,19 +68,6 @@ class ContextBundleV1(TypedDict):
     normalized_context: list[dict[str, object]]
     missing_information: list[str]
     ambiguity: dict[str, object] | None
-
-
-class ContextRetrievalResultV1(TypedDict):
-    schema_version: Required[Literal[1]]
-    status: ContextStatusValue
-    context_bundle: ContextBundleV1
-    evidence_drafts: list[EvidenceDraftV1]
-    selected_segment_ids: list[str]
-    excluded_resource_handles: list[str]
-    missing_slots: list[str]
-    additional_acquisition_request: AdditionalAcquisitionRequestV1 | None
-    sufficiency: dict[str, object]
-    llm_provider_result: NotRequired[dict[str, object]]
 
 
 class EvidenceRoleDraftV2(TypedDict):

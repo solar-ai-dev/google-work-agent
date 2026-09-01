@@ -14,8 +14,8 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     ContextBudget,
     _chunk_text,
     _estimate_tokens,
-    _segments_from_acquisition,
     _strip_email_quote_and_signature,
+    normalize_segments,
 )
 
 DEFAULT_BUDGET = ContextBudget()
@@ -212,7 +212,7 @@ def test_long_gmail_message_becomes_multiple_ordered_segments_with_chunk_locator
     long_body = " ".join(f"word{i}" for i in range(word_count))
     acquisition_result = _acquisition_result_with_gmail_message(body=long_body)
 
-    segments = _segments_from_acquisition(acquisition_result, DEFAULT_BUDGET)
+    segments = normalize_segments(acquisition_result, context_budget=DEFAULT_BUDGET)
 
     assert 1 < len(segments) < DEFAULT_BUDGET.max_segments
     for index, segment in enumerate(segments):
@@ -233,7 +233,7 @@ def test_very_long_gmail_message_segments_are_bounded_by_max_segments() -> None:
     long_body = " ".join(f"word{i}" for i in range(2000))
     acquisition_result = _acquisition_result_with_gmail_message(body=long_body)
 
-    segments = _segments_from_acquisition(acquisition_result, DEFAULT_BUDGET)
+    segments = normalize_segments(acquisition_result, context_budget=DEFAULT_BUDGET)
 
     assert len(segments) == DEFAULT_BUDGET.max_segments
     chunk_count = segments[0].locator["chunk_count"]
@@ -244,7 +244,7 @@ def test_very_long_gmail_message_segments_are_bounded_by_max_segments() -> None:
 def test_short_gmail_message_stays_a_single_segment() -> None:
     acquisition_result = _acquisition_result_with_gmail_message(body="짧은 본문입니다.")
 
-    segments = _segments_from_acquisition(acquisition_result, DEFAULT_BUDGET)
+    segments = normalize_segments(acquisition_result, context_budget=DEFAULT_BUDGET)
 
     assert len(segments) == 1
     assert segments[0].locator["chunk_index"] == 0
@@ -255,7 +255,7 @@ def test_gmail_quoted_reply_is_removed_before_chunking() -> None:
     body = "실제 본문입니다.\nOn Mon, Aug 10, 2026 at 9:00 AM wrote:\n> 인용된 예전 메일"
     acquisition_result = _acquisition_result_with_gmail_message(body=body)
 
-    segments = _segments_from_acquisition(acquisition_result, DEFAULT_BUDGET)
+    segments = normalize_segments(acquisition_result, context_budget=DEFAULT_BUDGET)
 
     assert len(segments) == 1
     assert "실제 본문입니다." in segments[0].text
