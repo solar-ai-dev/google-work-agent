@@ -19,6 +19,7 @@ from google_work_agent.adapters.llm.gemini.structured_inference import (
 from google_work_agent.adapters.llm.runtime.prompt_repair_schema_repairer import (
     PromptRepairSchemaRepairer,
 )
+from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PromptRegistry,
     default_prompt_manifest_path,
@@ -73,11 +74,17 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     )
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
     active_prompt_ref = load_prompt_reference("planning.compose_answer", manifest_path)
+    base_projection: dict[str, object] = {
+        "user_request": "summarize",
+        "request_intent": {"goal": "summary"},
+        "answer_outline": {"sections": ["summary"]},
+        "evidence": [],
+    }
 
     result = repairer.repair(
         provider=_provider(transport),
         prompt_ref=active_prompt_ref,
-        prompt_input={"topic": "hello"},
+        prompt_input=base_projection,
         failed_output={"answer": 123},
         output_schema=OUTPUT_SCHEMA,
         runtime_policy=RuntimePolicy(),
@@ -98,12 +105,21 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     # legacy original_input/previous_output/validator_errors/
     # changed_fields_allowed/attempt_no/schema_version root fields.
     assert set(repair_input) == {"base_projection", "candidate_output", "failure_record"}
-    assert repair_input["base_projection"] == {"topic": "hello"}
+    assert repair_input["base_projection"] == base_projection
     assert repair_input["candidate_output"] == {"answer": 123}
     failure_record = cast(dict[str, object], repair_input["failure_record"])
     assert failure_record["failure_reason_code"] == "OUTPUT_SCHEMA_INVALID"
+    assert failure_record["failure_origin"] == "LLM_OUTPUT"
+    assert failure_record["detected_by"] == "RUNTIME_SCHEMA_VALIDATOR"
     assert failure_record["affected_field_paths"] == ["$.answer"]
     assert failure_record["failure_id"] == "planning.compose_answer:1"
+    assembled = assemble_prompt(
+        active_prompt_ref,
+        repair_input,
+        registry=PromptRegistry(manifest_path),
+    )
+    assert "Bounded failure instruction" in assembled
+    assert '"failure_reason_code":"OUTPUT_SCHEMA_INVALID"' in assembled
 
 
 def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:

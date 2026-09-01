@@ -8,6 +8,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
@@ -102,17 +105,15 @@ def _build_repair_input(
     return {
         "base_projection": dict(prompt_input),
         "candidate_output": failed_output,
-        "failure_record": {
-            "schema_version": 1,
-            "failure_id": f"{prompt_ref.prompt_id}:{attempt_no}",
-            "failure_reason_code": failure_reason_code,
-            "failure_origin": "RUNTIME",
-            "detected_by": "STRUCTURED_OUTPUT_VALIDATOR",
-            "runtime_disposition": "RETRYABLE",
-            "experiment_disposition": "RUN_REPAIR",
-            "affected_field_paths": affected_field_paths,
-            "evidence_refs": [],
-        },
+        "failure_record": build_failure_record_v1(
+            failure_id=f"{prompt_ref.prompt_id}:{attempt_no}",
+            failure_reason_code=failure_reason_code,
+            failure_origin="LLM_OUTPUT",
+            detected_by="RUNTIME_SCHEMA_VALIDATOR",
+            runtime_disposition="RETRYABLE",
+            experiment_disposition="RUN_REPAIR",
+            affected_field_paths=affected_field_paths,
+        ),
     }
 
 
