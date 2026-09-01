@@ -2341,11 +2341,7 @@ def build_production_runtime(
             resume_target = binding.resume_target
             if resume_target is None:
                 raise ValueError("RESUME admission requires a registered target")
-            goto_node = (
-                workflow_runtime.control_resume_node(resume_target.stage_id)
-                if resume_target.kind == "MAIN_CONTROL"
-                else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id)
-            )
+            goto_node = _native_resume_node(resume_target)
             if handoff.control is None:
                 checkpoint_control.materialize_resume_target(materialized, goto_node=goto_node)
             else:
@@ -2362,6 +2358,13 @@ def build_production_runtime(
         if materialized is None:
             raise RuntimeError("admission did not materialize a native checkpoint")
         return materialized
+
+    def _native_resume_node(resume_target: RegisteredResumeTargetRefV2) -> str:
+        return (
+            workflow_runtime.control_resume_node(resume_target.stage_id)
+            if resume_target.kind == "MAIN_CONTROL"
+            else workflow_runtime.agent_resume_node(resume_target.semantic_owner_id)
+        )
 
     def _invoke_semantic_owner(
         admission: WorkflowExecutionAdmissionV1, handoff: WorkflowHandoffV1
@@ -2404,16 +2407,16 @@ def build_production_runtime(
                 if binding.execution_kind == "START":
                     result = workflow_runtime.start(_start_request(admission))
                 else:
-                    # CONSUMED_CONTINUATION_RECOVERY is a crash-recovery
-                    # re-submission of an *already-consumed* handoff -- its
-                    # in-memory `handoff` object (fetched before consumption
-                    # in BackgroundRunExecutorAdapter._consume) still carries
-                    # the original one-shot control_kind/control, but that
-                    # payload was already applied once and must never be
-                    # replayed. Recovery resumes solely from the checkpoint-
-                    # derived binding.resume_target (CheckpointEffectiveBindingResolver),
-                    # never by re-reading the handoff's original control.
-                    resume_kind = "CONSUMED_CONTINUATION_RECOVERY"
+                    # Crash recovery must never replay an already-consumed
+                    # one-shot control. A normal handoff, however, has just
+                    # settled its durable materialization and must now execute
+                    # that exact target/control against the compiled graph.
+                    is_normal_handoff = admission.submission_kind == "NORMAL_HANDOFF"
+                    resume_kind = (
+                        "NORMAL_HANDOFF"
+                        if is_normal_handoff
+                        else "CONSUMED_CONTINUATION_RECOVERY"
+                    )
                     resume_payload: dict[str, Any] = {}
                     result = workflow_runtime.resume(
                         WorkflowResumeRequest(
@@ -2422,6 +2425,10 @@ def build_production_runtime(
                             resume_kind=resume_kind,
                             resume_payload=resume_payload,
                             correlation=correlation,
+                            normal_handoff_target_node=(
+                                _native_resume_node(target) if is_normal_handoff else None
+                            ),
+                            normal_handoff_control=(handoff.control if is_normal_handoff else None),
                         )
                     )
         except Exception as error:

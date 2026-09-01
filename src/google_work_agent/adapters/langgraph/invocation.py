@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from langgraph.types import Command
 
+from google_work_agent.adapters.langgraph.checkpoint_control import native_resume_command
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
@@ -113,6 +114,28 @@ class WorkflowInvocationCoordinator:
                     outcome=WorkflowOutcome.DOMAIN_CHECKPOINT_CONFLICT,
                     payload={"graph_profile": self._graph_profile.value},
                 )
+            if request.resume_kind == "NORMAL_HANDOFF":
+                target_node = request.normal_handoff_target_node
+                if not target_node:
+                    raise ValueError("NORMAL_HANDOFF requires a materialized target node")
+                command = native_resume_command(
+                    request.normal_handoff_control,
+                    goto_node=target_node,
+                )
+                returned = self._graph.invoke(command, config=config)
+                if request.normal_handoff_control is None or (
+                    request.normal_handoff_control.kind != "CONFIRMATION_RESPONSE"
+                ):
+                    self._commit_pushed_owner_result(
+                        config=config,
+                        snapshot=snapshot,
+                        owner_node=target_node,
+                        returned=returned,
+                    )
+                return self.result_from_thread(
+                    workflow_key=request.workflow_key,
+                    run_id=request.run_id,
+                )
             if request.resume_kind == "CONSUMED_CONTINUATION_RECOVERY":
                 if snapshot.next:
                     pending_owner = (
@@ -121,26 +144,13 @@ class WorkflowInvocationCoordinator:
                         else None
                     )
                     returned = self._graph.invoke(None, config=config)
-                    advanced = self._graph.get_state(config)
-                    # A checkpoint-level Command(goto=...) materialized by an
-                    # external handoff executes the selected owner as a PUSH
-                    # task. LangGraph can return that task's state without
-                    # committing a descendant checkpoint/conditional edge.
-                    # Materialize the returned owner patch exactly once, then
-                    # continue from its registered edge. This never re-runs
-                    # PREFLIGHT (and therefore never creates a second Claim).
-                    if (
-                        advanced.config == snapshot.config
-                        and pending_owner is not None
-                        and isinstance(returned, Mapping)
-                        and returned.get("__target__") != pending_owner
-                    ):
-                        self._graph.update_state(
-                            config,
-                            dict(returned),
-                            as_node=pending_owner,
+                    if pending_owner is not None:
+                        self._commit_pushed_owner_result(
+                            config=config,
+                            snapshot=snapshot,
+                            owner_node=pending_owner,
+                            returned=returned,
                         )
-                        self._graph.invoke(None, config=config)
                 else:
                     continuation = self._continue_from_domain_facts(
                         values=cast(GraphState, snapshot.values),
@@ -193,6 +203,24 @@ class WorkflowInvocationCoordinator:
                 workflow_key=request.workflow_key,
                 run_id=request.run_id,
             )
+
+    def _commit_pushed_owner_result(
+        self,
+        *,
+        config: dict[str, object],
+        snapshot: Any,
+        owner_node: str,
+        returned: object,
+    ) -> None:
+        """Commit a PUSH task result when LangGraph returns it without a child checkpoint."""
+        advanced = self._graph.get_state(config)
+        if (
+            advanced.config == snapshot.config
+            and isinstance(returned, Mapping)
+            and returned.get("__target__") != owner_node
+        ):
+            self._graph.update_state(config, dict(returned), as_node=owner_node)
+            self._graph.invoke(None, config=config)
 
     def request_cancel(self, request: WorkflowCancelRequest) -> WorkflowInvocationResult:
         with self._cancel_signal_lock:

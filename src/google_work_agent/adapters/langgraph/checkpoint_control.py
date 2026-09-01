@@ -42,7 +42,7 @@ class LangGraphCheckpointControlAdapter:
         if control.kind != "CONFIRMATION_RESPONSE" and not goto_node:
             raise ValueError(f"{control.kind} requires a concrete runnable node")
         self._assert_exact_checkpoint(checkpoint)
-        writes = _control_writes(control, goto_node=goto_node)
+        writes = _command_writes(native_resume_command(control, goto_node=goto_node))
         self._store_idempotent(checkpoint, writes)
         if not self.contains_control(checkpoint, control, goto_node=goto_node):
             raise ValueError("workflow control was not durably materialized")
@@ -58,7 +58,9 @@ class LangGraphCheckpointControlAdapter:
         pending = self._pending_null_writes(checkpoint)
         return all(
             pending.get(channel) == value
-            for channel, value in _control_writes(control, goto_node=goto_node)
+            for channel, value in _command_writes(
+                native_resume_command(control, goto_node=goto_node)
+            )
         )
 
     def materialize_resume_target(
@@ -67,10 +69,7 @@ class LangGraphCheckpointControlAdapter:
         if not goto_node:
             raise ValueError("resume target node is required")
         self._assert_exact_checkpoint(checkpoint)
-        writes = [
-            (str(channel), value)
-            for _task_id, channel, value in map_command(Command(goto=goto_node))
-        ]
+        writes = _command_writes(native_resume_command(None, goto_node=goto_node))
         self._store_idempotent(checkpoint, writes)
 
     def _store_idempotent(
@@ -121,13 +120,18 @@ class LangGraphCheckpointControlAdapter:
         }
 
 
-def _control_writes(
-    control: WorkflowControlEnvelopeV1,
+def native_resume_command(
+    control: WorkflowControlEnvelopeV1 | None,
     *,
     goto_node: str | None,
-) -> list[tuple[str, object]]:
+) -> Command[str]:
+    """Build the single native command used by materialization and live resume."""
+    if control is None:
+        if not goto_node:
+            raise ValueError("resume target node is required")
+        return cast(Command[str], Command(goto=goto_node))
     if control.kind == "CONFIRMATION_RESPONSE":
-        command = cast(
+        return cast(
             Command[str],
             Command(
                 resume={
@@ -171,14 +175,17 @@ def _control_writes(
                 update["pending_user_retrieval_need"] = dict(retrieval_need)
             else:
                 raise ValueError("unknown context adjustment kind")
-        command = cast(
+        return cast(
             Command[str],
             Command(goto=goto_node, update=update) if goto_node else Command(update=update),
         )
+
+
+def _command_writes(command: Command[str]) -> list[tuple[str, object]]:
     writes = list(map_command(command))
     if any(task_id != NULL_TASK_ID for task_id, _, _ in writes):
         raise AssertionError("workflow control writes must be checkpoint-level writes")
     return [(str(channel), value) for _, channel, value in writes]
 
 
-__all__ = ["LangGraphCheckpointControlAdapter"]
+__all__ = ["LangGraphCheckpointControlAdapter", "native_resume_command"]

@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
+from google_work_agent.ports.system.contracts.workflow_handoff import (
+    WorkflowControlEnvelopeV1,
+)
+
 type JsonValue = Any
 
 
@@ -66,6 +70,8 @@ class WorkflowResumeRequest:
     resume_kind: str
     resume_payload: dict[str, JsonValue]
     correlation: WorkflowCorrelationContext
+    normal_handoff_target_node: str | None = None
+    normal_handoff_control: WorkflowControlEnvelopeV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
