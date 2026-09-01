@@ -35,6 +35,7 @@ from evaluation.projections.build_current_projections import (
     E2E_PROJECTION_FILENAME,
 )
 from evaluation.reporting.write_results import EvaluationResultSetV1, write_results
+from evaluation.runner.verify_product_identity import verify_product_identity
 from evaluation.targets.main_profile_product_target import execute_main_profile_product_target
 from evaluation.targets.node_product_target import execute_node_product_target
 from evaluation.targets.subgraph_product_target import execute_subgraph_product_target
@@ -96,6 +97,9 @@ def run_experiment(
     dataset_hash = _file_hash(cases_path)
     projection_hash = _file_hash(projections_path)
     scoring = load_scoring_contract()
+    verified_product = (
+        None if config.runtime_mode == "RUNNER_MECHANICS_TEST" else verify_product_identity(config)
+    )
     if (
         config.runtime_mode != "RUNNER_MECHANICS_TEST"
         and config.fixture_snapshot_hash != current_fixture_root_hash(fixture_root)
@@ -133,7 +137,11 @@ def run_experiment(
                     "model_id": config.model_id,
                     "graph_version": config.graph_version,
                     "projection_hash": projection.stable_hash(),
-                    "product_commit_sha": config.product_commit_sha,
+                    "product_commit_sha": (
+                        config.product_commit_sha
+                        if verified_product is None
+                        else verified_product.product_commit_sha
+                    ),
                 }
             )
             try:
@@ -160,12 +168,15 @@ def run_experiment(
                 ):
                     raise ExperimentRunError("observed.durable_effects must be an object array")
                 fixture_environment = FixtureEnvironment(fixture)
+                initial_fixture = fixture_environment.snapshot()
                 replayed = fixture_environment.replay(
                     cast(list[Mapping[str, object]], durable_effects)
                 )
                 evaluator_evidence = {
                     "initial_fixture_hash": fixture_environment.initial_hash,
                     "replayed_final_fixture_hash": _stable_json_hash(replayed),
+                    "initial_fixture": initial_fixture,
+                    "replayed_final_fixture": replayed,
                 }
                 item_usage = _read_usage(observed)
                 usage = _add_usage(usage, item_usage)
@@ -267,7 +278,14 @@ def run_experiment(
             "seed": config.seed,
             "partition": config.partition,
             "candidate_config_hash": candidate_hash,
-            "product_commit_sha": config.product_commit_sha,
+            "product_commit_sha": (
+                config.product_commit_sha
+                if verified_product is None
+                else verified_product.product_commit_sha
+            ),
+            "product_tree_hash": (
+                None if verified_product is None else verified_product.product_tree_hash
+            ),
             "dataset_hash": dataset_hash,
             "dataset_version": config.dataset_version,
             "projection_hash": projection_hash,
@@ -288,7 +306,11 @@ def run_experiment(
             "hardware_profile": config.hardware_profile,
             "target_kind": config.target.target_kind,
             "target_id": config.target.target_id,
-            "target_symbol": f"{resolved_target.module}:{resolved_target.symbol}",
+            "target_symbol": (
+                f"{resolved_target.module}:{resolved_target.symbol}"
+                if verified_product is None
+                else verified_product.target_symbol
+            ),
             "upstream_mode": config.upstream_mode,
             "trial_count": config.trial_count,
             "scoring_contract_version": cast(JsonValue, scoring["schema_version"]),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from evaluation.runner.run_experiment import (
     ExperimentRunError,
     _call_with_timeout,
     run_experiment,
+)
+from evaluation.runner.verify_product_identity import (
+    ProductIdentityError,
+    verify_product_identity,
 )
 from pydantic import JsonValue
 from tests.support.evaluation_case import make_case, make_episode
@@ -287,3 +292,64 @@ def test_product_target_timeout_fails_closed_without_waiting_for_completion() ->
         _call_with_timeout(slow_product, timeout_seconds=0.01)
 
     assert time.monotonic() - started_at < 0.15
+
+
+def test_product_preflight_independently_verifies_git_tree_callable_and_prompt() -> None:
+    commit_sha = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    config = _config().model_copy(
+        update={
+            "runtime_mode": "SYNTHETIC_FIXTURE",
+            "product_commit_sha": commit_sha,
+            "prompt_id": "retrieval.plan_query",
+            "prompt_bundle_version": "canonical-prompt-runtime-v1",
+        }
+    )
+
+    identity = verify_product_identity(config)
+
+    assert identity.product_commit_sha == commit_sha
+    assert len(identity.product_tree_hash) == 40
+    assert identity.target_symbol.endswith(":plan_query_node")
+
+
+def test_product_preflight_rejects_self_supplied_mismatched_identity() -> None:
+    previous_product_commit = subprocess.run(
+        ("git", "rev-parse", "HEAD^"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    config = _config().model_copy(
+        update={
+            "runtime_mode": "SYNTHETIC_FIXTURE",
+            "product_commit_sha": previous_product_commit,
+            "prompt_id": "retrieval.plan_query",
+            "prompt_bundle_version": "canonical-prompt-runtime-v1",
+        }
+    )
+
+    with pytest.raises(ProductIdentityError, match="does not match"):
+        verify_product_identity(config)
+
+    current_commit = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    wrong_prompt = config.model_copy(
+        update={
+            "product_commit_sha": current_commit,
+            "prompt_bundle_version": "caller-supplied-bundle",
+        }
+    )
+    with pytest.raises(ProductIdentityError, match="Prompt bundle"):
+        verify_product_identity(wrong_prompt)

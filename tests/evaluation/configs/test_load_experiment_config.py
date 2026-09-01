@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from evaluation.configs.load_experiment_config import load_experiment_config
 from evaluation.fixtures.load_current_fixture import current_fixture_root_hash
+from evaluation.runner.verify_product_identity import verify_product_identity
 
 
 def test_current_corrective_config_is_strict_and_target_bound() -> None:
@@ -14,6 +15,9 @@ def test_current_corrective_config_is_strict_and_target_bound() -> None:
     assert config.grader_version == "0.5"
     assert config.adoption_criteria["automated_release"] is False
     assert config.fixture_snapshot_hash == current_fixture_root_hash()
+    identity = verify_product_identity(config)
+    assert identity.product_commit_sha == config.product_commit_sha
+    assert identity.prompt_bundle_version == config.prompt_bundle_version
 
 
 def test_config_rejects_unknown_fields(tmp_path: Path) -> None:

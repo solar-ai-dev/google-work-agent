@@ -5,13 +5,13 @@
   "hypothesis": "The exact compiled Product profile remains observable without evaluator metadata leakage.",
   "independent_variable": "graph_profile",
   "fixed_variables": {
-    "prompt_activation": "DRAFT",
+    "prompt_activation": "RUNTIME_ACTIVE",
     "human_review": "PENDING"
   },
   "dataset_version": "dataset-v7-corrective-165",
   "projection_version": "e2e-v5-split-neutral",
   "fixture_snapshot_hash": "976e9777932067495790ecc844cd37279e2bfce4981f5722827d65a813997dfd",
-  "candidate_config_hash": "68c762cfa851f1e5c97f453f67ed2b15fe09ddade89685c5f0301d3aa3472693",
+  "candidate_config_hash": "5d3d96ec42e2753bd5af6f57c1bca0c28256b3cdf8f2a5a4e579057e6e058993",
   "graph_version": "canonical-main-graph",
   "prompt_id": "canonical-prompt-runtime-v1",
   "prompt_bundle_version": "canonical-prompt-runtime-v1",
@@ -50,12 +50,12 @@
   "candidate_config": {
     "candidate_id": "evaluation-corrective-165",
     "model_id": "deterministic-test-double",
-    "prompt_activation": "DRAFT"
+    "prompt_activation": "RUNTIME_ACTIVE"
   },
   "config_diff": {
     "graph_profile": "single_baseline"
   },
-  "product_commit_sha": "9bde45d95f71046eaaeac4499482fc2429c43878",
+  "product_commit_sha": "ba6ce026a1295207ab843d7201023b6c9ce12f93",
   "budgets": {
     "schema_version": 1,
     "max_evaluation_items": 60,
