@@ -93,7 +93,7 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
 )
 from google_work_agent.adapters.persistence.connection import connect_sqlite
-from google_work_agent.adapters.persistence.migration import apply_migrations
+from google_work_agent.adapters.persistence.migration import apply_migrations, discover_migrations
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationError
 from google_work_agent.adapters.persistence.sqlite.connected_account_store import (
     sqlite_connected_account_store_factory,
@@ -123,12 +123,12 @@ from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySs
 from google_work_agent.adapters.system.process_component_circuit_state import (
     ProcessComponentCircuitStateAdapter,
 )
+from google_work_agent.adapters.system.process_maintenance_gate import (
+    ProcessMaintenanceGateAdapter,
+)
 from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
-from google_work_agent.adapters.system.static_maintenance_gate import (
-    StaticMaintenanceGateAdapter,
-)
 from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.adapters.system.uuid4 import Uuid4Adapter
 from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
@@ -736,7 +736,6 @@ def _build_workflow_application_services(
             connector_read=connector_reader.connector_reader,
             tool_registry=tool_catalog,
             unit_of_work_factory=unit_of_work_factory,
-            now_ms=now_ms,
             resolve_resource_ref=resolve_resource_ref,
         ),
         store_verification=StoreVerificationHandler(
@@ -1464,6 +1463,16 @@ class CoreInitializationError(RuntimeError):
         self.safe_code = safe_code
 
 
+@dataclass(frozen=True, slots=True)
+class SafeModeRecoveryBindings:
+    """Bounded operational handlers available while the Product core is offline."""
+
+    list_backups_handler: ListBackupsHandler
+    create_backup_handler: CreateBackupHandler
+    restore_backup_handler: RestoreBackupHandler
+    request_shutdown_handler: RequestShutdownHandler
+
+
 class _BootReadinessAggregator(ReadinessAggregator):
     """Expose initialization state without making liveness depend on core startup."""
 
@@ -1474,6 +1483,7 @@ class _BootReadinessAggregator(ReadinessAggregator):
 
     def bind(self, delegate: ReadinessAggregator) -> None:
         self._delegate = delegate
+        self._failure_code = None
 
     def fail(self, code: str) -> None:
         self._failure_code = code
@@ -1520,9 +1530,12 @@ class DeferredApiContainer:
         deployment_profile: str = "LOCAL_CAPABLE",
         frontend_site: Any | None = None,
         core_builder: Callable[..., ApiContainer],
+        recovery_builder: Callable[[Callable[[], bool]], SafeModeRecoveryBindings] | None = None,
     ) -> None:
         self._core: ApiContainer | None = None
         self._core_builder = core_builder
+        self._recovery_builder = recovery_builder
+        self._event_loop: asyncio.AbstractEventLoop | None = None
         self._closed = False
         self.safe_mode_controller = SafeModeController()
         self.core_initialization_in_progress = True
@@ -1569,6 +1582,12 @@ class DeferredApiContainer:
             safe_mode=lambda: self.safe_mode_controller.snapshot().enabled,
         )
         self.update_runtime_mode_handler = None
+        self.get_settings_handler = None
+        self.update_settings_handler = None
+        self.list_backups_handler: Any = None
+        self.create_backup_handler: Any = None
+        self.restore_backup_handler: Any = None
+        self.request_shutdown_handler: Any = None
         self._bootstrap_secret = bootstrap_secret
         self._bootstrap_grant_store = InMemoryBootstrapGrantStore()
         self._session_manager = InMemoryLocalSessionManager()
@@ -1602,6 +1621,7 @@ class DeferredApiContainer:
         )
 
     async def _initialize(self) -> None:
+        self._event_loop = asyncio.get_running_loop()
         worker = asyncio.create_task(
             asyncio.to_thread(
                 self._core_builder,
@@ -1623,11 +1643,13 @@ class DeferredApiContainer:
             self.core_initialization_in_progress = False
             self.safe_mode_controller.enable(error.safe_code)
             self.readiness_aggregator.fail(error.safe_code)
+            self._bind_safe_mode_recovery()
             return
         except Exception:
             self.core_initialization_in_progress = False
             self.safe_mode_controller.enable("CORE_INITIALIZATION_FAILED")
             self.readiness_aggregator.fail("CORE_INITIALIZATION_FAILED")
+            self._bind_safe_mode_recovery()
             return
         if self._closed:
             _close_container(core)
@@ -1640,12 +1662,68 @@ class DeferredApiContainer:
             self.core_initialization_in_progress = False
             self.safe_mode_controller.enable("CORE_STARTUP_RECONCILIATION_FAILED")
             self.readiness_aggregator.fail("CORE_STARTUP_RECONCILIATION_FAILED")
+            self._bind_safe_mode_recovery()
             return
         self._core = core
         self.readiness_aggregator.bind(core.readiness_aggregator)
         self.current_account_id_provider = core.current_account_id_provider
         self.core_initialization_in_progress = False
         self.safe_mode_controller.disable()
+
+    def _bind_safe_mode_recovery(self) -> None:
+        if self._recovery_builder is None:
+            return
+        bindings = self._recovery_builder(self._retry_core_after_restore)
+        self.list_backups_handler = bindings.list_backups_handler
+        self.create_backup_handler = bindings.create_backup_handler
+        self.restore_backup_handler = bindings.restore_backup_handler
+        self.request_shutdown_handler = bindings.request_shutdown_handler
+
+    def _retry_core_after_restore(self) -> bool:
+        if self._event_loop is None or self._closed:
+            return False
+        future = asyncio.run_coroutine_threadsafe(
+            self._recover_core_after_restore(), self._event_loop
+        )
+        try:
+            return future.result(timeout=60)
+        except Exception:
+            return False
+
+    async def _recover_core_after_restore(self) -> bool:
+        self.core_initialization_in_progress = True
+        previous_reasons = self.safe_mode_controller.snapshot().reason_codes
+        self.safe_mode_controller.disable()
+        core: ApiContainer | None = None
+        try:
+            core = await asyncio.to_thread(
+                self._core_builder,
+                host=self.local_bind_host,
+                port=self.local_bind_port,
+                bootstrap_secret=self._bootstrap_secret,
+                service_instance_id=self.service_instance_id,
+                safe_mode_controller=self.safe_mode_controller,
+            )
+            for callback in core.startup_callbacks:
+                await callback()
+            if core.readiness_aggregator.evaluate().state is not ReadinessState.READY:
+                _close_container(core)
+                self.core_initialization_in_progress = False
+                self.safe_mode_controller.enable(*previous_reasons)
+                return False
+        except Exception:
+            if core is not None:
+                _close_container(core)
+            self.core_initialization_in_progress = False
+            self.safe_mode_controller.enable(*previous_reasons)
+            return False
+        assert core is not None
+        self._core = core
+        self.readiness_aggregator.bind(core.readiness_aggregator)
+        self.current_account_id_provider = core.current_account_id_provider
+        self.core_initialization_in_progress = False
+        self.safe_mode_controller.disable()
+        return True
 
     def close(self) -> None:
         if self._closed:
@@ -1730,6 +1808,51 @@ class _ShutdownComponent:
         self.invalidate_sessions()
 
 
+def build_safe_mode_recovery_bindings(
+    *,
+    runtime_root: Path,
+    release_version: str,
+    retry_core_after_restore: Callable[[], bool],
+    request_process_exit: Callable[[], None],
+) -> SafeModeRecoveryBindings:
+    """Compose restore/shutdown only after normal core startup has failed."""
+
+    root = runtime_root.resolve()
+    clock = SystemClockAdapter()
+    replay = FilesystemOperationalCommandReplayAdapter(root / "operational-command-replay")
+    migration_version = f"{discover_migrations()[-1].version:04d}"
+    maintenance_gate = ProcessMaintenanceGateAdapter(has_active_write=lambda: False)
+    backups = FilesystemBackupAdapter(
+        database_path=root / "data" / "google_work_agent.db",
+        backups_dir=root / "backups",
+        clock=clock,
+        maintenance_gate=maintenance_gate,
+        release_version=release_version,
+        domain_contract_version="1",
+        schema_version=migration_version,
+        supported_restore_schema_versions=("0018", migration_version),
+        post_restore_readiness=retry_core_after_restore,
+    )
+    shutdown = ProcessShutdownAdapter(
+        command_gate=_ShutdownComponent(),
+        coordinator=_ShutdownComponent(),
+        workflow_runtime=_ShutdownComponent(),
+        observability=_ShutdownComponent(),
+        persistence=_ShutdownComponent(),
+        mcp_transport=_ShutdownComponent(),
+        sessions=_ShutdownComponent(),
+        clock=clock,
+        marker_path=root / "shutdown" / "request.json",
+        request_process_exit=request_process_exit,
+    )
+    return SafeModeRecoveryBindings(
+        list_backups_handler=ListBackupsHandler(backups),
+        create_backup_handler=CreateBackupHandler(backups=backups, replay=replay),
+        restore_backup_handler=RestoreBackupHandler(backups=backups, replay=replay),
+        request_shutdown_handler=RequestShutdownHandler(shutdown=shutdown, replay=replay),
+    )
+
+
 class _PromptInactiveWorkflowRuntime:
     """Safe placeholder: workflows cannot execute until prompts are approved."""
 
@@ -1784,6 +1907,7 @@ def build_production_runtime(
     keyring_store: SecretStorePort | None = None,
     verified_release_files: tuple[_VerifiedReleaseFile, ...] = (),
     code_signature_verified_paths: frozenset[str] = frozenset(),
+    request_process_exit: Callable[[], None] | None = None,
 ) -> ApiContainer:
     """Assemble the local service from authenticated or explicit development inputs."""
 
@@ -1835,13 +1959,18 @@ def build_production_runtime(
     operational_replay = FilesystemOperationalCommandReplayAdapter(
         root / "operational-command-replay"
     )
+    actual_database_migration_version = "0000"
     try:
         with connect_sqlite(database_path) as connection:
             migration_results = apply_migrations(connection, now_ms=clock.now_ms)
-        if configuration_source == "SIGNED_RELEASE_MANIFEST":
-            actual_version = f"{migration_results[-1].version:04d}" if migration_results else "0000"
-            if database_migration_version != actual_version:
-                raise CoreInitializationError("MIGRATION_VERSION_MISMATCH")
+        actual_database_migration_version = (
+            f"{migration_results[-1].version:04d}" if migration_results else "0000"
+        )
+        if (
+            configuration_source == "SIGNED_RELEASE_MANIFEST"
+            and database_migration_version != actual_database_migration_version
+        ):
+            raise CoreInitializationError("MIGRATION_VERSION_MISMATCH")
     except (sqlite3.Error, MigrationError) as error:
         raise CoreInitializationError("MIGRATION_FAILED") from error
 
@@ -1943,15 +2072,6 @@ def build_production_runtime(
     )
     check_component_circuit = CheckComponentCircuitHandler(component_circuits)
     record_component_call_result = RecordComponentCallResultHandler(component_circuits)
-    backup_adapter = FilesystemBackupAdapter(
-        database_path=database_path,
-        backups_dir=root / "backups",
-        clock=clock,
-        maintenance_gate=StaticMaintenanceGateAdapter(),
-        release_version=release_version,
-        domain_contract_version="1",
-        schema_version=database_migration_version,
-    )
     diagnostics_adapter = FilesystemDiagnosticsAdapter(
         collect_snapshot=lambda: {
             "release_version": release_version,
@@ -2413,6 +2533,20 @@ def build_production_runtime(
         sessions=_ShutdownComponent(invalidate_sessions=session_manager.invalidate_all),
         clock=clock,
         marker_path=root / "shutdown" / "request.json",
+        request_process_exit=request_process_exit,
+    )
+    maintenance_gate = ProcessMaintenanceGateAdapter(
+        has_active_write=production_runtime.workflow_execution.has_active_runs
+    )
+    backup_adapter = FilesystemBackupAdapter(
+        database_path=database_path,
+        backups_dir=root / "backups",
+        clock=clock,
+        maintenance_gate=maintenance_gate,
+        release_version=release_version,
+        domain_contract_version="1",
+        schema_version=actual_database_migration_version,
+        supported_restore_schema_versions=("0018", actual_database_migration_version),
     )
 
     resource_continuations = LocalResourceContinuationStore(now_ms=clock.now_ms)

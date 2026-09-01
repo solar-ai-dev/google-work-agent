@@ -21,8 +21,17 @@ from google_work_agent.adapters.llm.runtime.llm_credential_router import (
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.runtime.safe_mode import SafeModeController
+from google_work_agent.adapters.system.filesystem_backup import FilesystemBackupAdapter
+from google_work_agent.adapters.system.process_maintenance_gate import (
+    ProcessMaintenanceGateAdapter,
+)
+from google_work_agent.adapters.system.system_clock import SystemClockAdapter
 from google_work_agent.api.app import create_app
-from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
+from google_work_agent.api.composition import (
+    CoreInitializationError,
+    DeferredApiContainer,
+    build_safe_mode_recovery_bindings,
+)
 from google_work_agent.api.container import ApiContainer
 
 
@@ -217,6 +226,95 @@ def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_o
         "initial-drain-and-live-start",
         "runtime-stop",
     ]
+
+
+def test_safe_mode_restore_migrates_then_rebinds_ready_core(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    database_path = runtime_root / "data" / "google_work_agent.db"
+    database_path.parent.mkdir(parents=True)
+    connection = connect_sqlite(database_path)
+    try:
+        apply_migrations(connection, now_ms=lambda: 1)
+        connection.execute(
+            "INSERT INTO google_accounts (id, email, display_name, connected_at_ms) "
+            "VALUES ('account-restored', 'restored@example.com', 'Restored', 1);"
+        )
+    finally:
+        connection.close()
+    backup_adapter = FilesystemBackupAdapter(
+        database_path=database_path,
+        backups_dir=runtime_root / "backups",
+        clock=SystemClockAdapter(),
+        maintenance_gate=ProcessMaintenanceGateAdapter(has_active_write=lambda: False),
+        release_version="test",
+        domain_contract_version="1",
+        schema_version="0019",
+    )
+    backup = backup_adapter.create_backup("seed-safe-mode-restore")
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute(
+            "UPDATE schema_migrations SET checksum=? WHERE version=1;", ("0" * 64,)
+        )
+    finally:
+        connection.close()
+    attempts = 0
+
+    def core_builder(**kwargs: object) -> ApiContainer:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise CoreInitializationError("MIGRATION_FAILED")
+        return build_container(
+            runtime_root=runtime_root,
+            mcp_module_name="tests.fakes.google_workspace_mcp_server",
+            keyring_store=SessionMemorySecretStore(),
+            **kwargs,
+        )
+
+    container = DeferredApiContainer(
+        host="127.0.0.1",
+        port=8000,
+        service_instance_id="svc-startup",
+        bootstrap_secret="bootstrap-secret",
+        core_builder=core_builder,
+        recovery_builder=lambda retry: build_safe_mode_recovery_bindings(
+            runtime_root=runtime_root,
+            release_version="test",
+            retry_core_after_restore=retry,
+            request_process_exit=lambda: None,
+        ),
+    )
+    container.client_address_resolver = lambda _request: "127.0.0.1"
+    with TestClient(create_app(cast(ApiContainer, container))) as client:
+        headers = _headers()
+        _bootstrap(client, headers)
+        assert client.get("/health/ready", headers=headers).json()["status"] == "SAFE_MODE"
+
+        response = client.post(
+            "/api/v1/restore",
+            headers={**headers, "x-api-contract-version": "1"},
+            json={
+                "schema_version": 1,
+                "command_id": "restore-command-1",
+                "backup_ref": backup.backup_ref,
+            },
+        )
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["status"] == "RESTORED"
+        assert client.get("/health/ready", headers=headers).json()["status"] == "READY"
+        blocked = client.post(
+            "/api/v1/restore",
+            headers={**headers, "x-api-contract-version": "1"},
+            json={
+                "schema_version": 1,
+                "command_id": "restore-command-2",
+                "backup_ref": backup.backup_ref,
+            },
+        )
+        assert blocked.status_code == 409
+        assert blocked.json()["detail_code"] == "RESTORE_REQUIRES_SAFE_MODE"
 
 
 def _shell(*, core_builder: Callable[..., ApiContainer]) -> DeferredApiContainer:

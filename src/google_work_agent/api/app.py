@@ -4,7 +4,7 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 
@@ -15,6 +15,7 @@ from google_work_agent.api.composition import (
     DeferredApiContainer,
     ProductionRuntimeConfig,
     build_production_runtime,
+    build_safe_mode_recovery_bindings,
 )
 from google_work_agent.api.container import ApiContainer
 from google_work_agent.api.errors.error_response import install_error_response_handlers
@@ -54,6 +55,7 @@ def create_app(
     port: int = 8000,
     bootstrap_secret: str | None = None,
     service_instance_id: str | None = None,
+    request_process_exit: Callable[[], None] | None = None,
 ) -> FastAPI:
     if container is None:
         if production_config is None or bootstrap_secret is None or service_instance_id is None:
@@ -91,6 +93,7 @@ def create_app(
                 keyring_store=production_config.keyring_store,
                 verified_release_files=production_config.verified_release_files,
                 code_signature_verified_paths=(production_config.code_signature_verified_paths),
+                request_process_exit=request_process_exit,
             )
 
         container = cast(
@@ -106,6 +109,12 @@ def create_app(
                 deployment_profile=production_config.deployment_profile,
                 frontend_site=production_config.verified_frontend_site(),
                 core_builder=build_core,
+                recovery_builder=lambda retry: build_safe_mode_recovery_bindings(
+                    runtime_root=production_config.runtime_root,
+                    release_version=production_config.release_version,
+                    retry_core_after_restore=retry,
+                    request_process_exit=request_process_exit or (lambda: None),
+                ),
             ),
         )
     LocalBindPolicy(host=container.local_bind_host, port=container.local_bind_port).validate()
@@ -188,14 +197,21 @@ def _run_installed_service(
 
         from uvicorn import Config, Server
 
+        server_holder: list[Any] = []
+
+        def request_process_exit() -> None:
+            if server_holder:
+                server_holder[0].should_exit = True
+
         application = create_app(
             production_config=production_config,
             host=arguments.host,
             port=arguments.port,
             bootstrap_secret=bootstrap_secret,
             service_instance_id=service_instance_id,
+            request_process_exit=request_process_exit,
         )
-        Server(
+        server = Server(
             Config(
                 application,
                 host=arguments.host,
@@ -205,7 +221,9 @@ def _run_installed_service(
                 server_header=False,
                 date_header=False,
             )
-        ).run()
+        )
+        server_holder.append(server)
+        server.run()
         return 0
     except Exception as error:
         candidate_code = getattr(error, "safe_code", None)

@@ -43,6 +43,9 @@ def create_bundle_inputs(
     (directories["migrations"] / "0001_current_schema.sql").write_text(
         "SELECT 1;", encoding="utf-8"
     )
+    (directories["migrations"] / "0019_legacy_v18_adoption.sql").write_text(
+        "SELECT 1;", encoding="utf-8"
+    )
     (directories["uninstaller-dist"] / "GoogleWorkAgentCredentialCleanup.exe").write_bytes(
         b"credential-cleanup"
     )

@@ -18,6 +18,71 @@ from google_work_agent.adapters.persistence.persistence_exceptions import (
 
 _MIGRATION_FILENAME = re.compile(r"^(?P<version>[0-9]{4})_(?P<name>[A-Za-z0-9_]+)\.sql$")
 _MIGRATIONS_PACKAGE = "google_work_agent.adapters.persistence.migrations"
+_SUPPORTED_LEGACY_V18 = {
+    1: ("initial", "77386baca1badadd6a79860823250836f7a6464e7f01bd865c3a84af094aa928"),
+    2: (
+        "action_effect_send_delete",
+        "0cbd43fbaa351b19540128f860c4e88e827b263329b102cbe9016c1190145624",
+    ),
+    3: ("action_cancelled", "d56a55a7fd4f5cec5d34705bf1cb09c218d22b762956b38af79a983faa033403"),
+    4: ("plan_review_gate", "d12a4fc67101c3d14ff0ec57175c9d19ba765fe0eab41e0d5b3875b48b388f95"),
+    5: (
+        "cross_aggregate_invariants",
+        "ff2508e23c238a1b7bb3ec604031f7598cceff2285378767b61651590f5b109b",
+    ),
+    6: (
+        "plan_aggregate_invariants",
+        "dec3bc8f018f7b4997e27dd6c45b25788c59279ea7717a3e0ae6c84d57caefd2",
+    ),
+    7: (
+        "connector_neutral_persistence",
+        "a9ea291c71d1c7ee1bdf07d31dd1a7b06a919c184cfd2e9dfa1f110fdf55bde8",
+    ),
+    8: (
+        "resource_ref_connector_identity",
+        "f45da38077393a0073eae6414e76c2f03cd24f85db35b08b386d71541fe538c6",
+    ),
+    9: (
+        "workflow_handoff_outbox",
+        "6188c6868c98c019b545fa89a4dc7f6772d02f6e626ce0ba38bf1cd7b635103b",
+    ),
+    10: (
+        "plan_review_disposition",
+        "df069780c8398b6811a43e3e457586606f0e529b4e7270f2d22a9650ed512358",
+    ),
+    11: (
+        "recovery_context",
+        "6ea69233b063b24946d04946c17ba19db0cabc0ebce9aba8fa2b2cfc3830a843",
+    ),
+    12: (
+        "recovery_context_currentness",
+        "4ec30705a9049deebd3b9132f5f3fde69854bb295e79c646e102c04e0b4f3b6b",
+    ),
+    13: (
+        "resource_ref_registry_type",
+        "45fd1a32daea1e95429639d7f7755305479ac4bd917a7534c1c29eb51efd53c1",
+    ),
+    14: (
+        "run_terminal_result_kind",
+        "35b77895f5d5507bf2ed5e261437293ccdaf88b181ba3db76b62016c8b1f523f",
+    ),
+    15: (
+        "canonical_final_defense",
+        "3f95d2d3831b2de071efc2fc09a134c93caf7216d617977cf493fa55e2b21460",
+    ),
+    16: (
+        "persistence_final_defense",
+        "412481bf20945555e935d21d95011e5823136e8930495b623a5888bd0a126c3f",
+    ),
+    17: (
+        "recovery_context_reason_matrix",
+        "250514cd7b5ef8f70065b7d288b2d25a716eda731babe4301278e63006b6f7aa",
+    ),
+    18: (
+        "initial_workflow_binding",
+        "d3aaaef9da63c2d0e89edc7ca67936d0ef06c0ea1744d257a79335598e33e4ec",
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,12 +181,14 @@ def apply_migrations(
     clock = now_ms or _system_now_ms
     migrations = discover_migrations(migrations_dir)
     applied = _read_applied_migrations(connection)
+    supported_legacy_v18 = migrations_dir is None and _is_supported_legacy_v18(applied)
     results: list[MigrationResult] = []
 
     for migration in migrations:
         applied_row = applied.get(migration.version)
         if applied_row is not None:
-            _validate_applied_migration(migration, applied_row)
+            if not (supported_legacy_v18 and migration.version == 1):
+                _validate_applied_migration(migration, applied_row)
             results.append(
                 MigrationResult(
                     version=migration.version,
@@ -146,6 +213,13 @@ def apply_migrations(
 
     verify_startup_database_integrity(connection)
     return tuple(results)
+
+
+def _is_supported_legacy_v18(applied: dict[int, tuple[str, str]]) -> bool:
+    """Recognize only the exact last supported pre-squash installed baseline."""
+
+    legacy_rows = {version: value for version, value in applied.items() if version <= 18}
+    return legacy_rows == _SUPPORTED_LEGACY_V18 and set(applied).issubset({*range(1, 19), 19})
 
 
 def verify_startup_database_integrity(connection: sqlite3.Connection) -> None:

@@ -7,11 +7,13 @@ import json
 import os
 import shutil
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from google_work_agent.adapters.persistence.connection import connect_sqlite
+from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.ports.system.backup_port import (
     BackupMetadataV1,
     MaintenanceGate,
@@ -38,6 +40,8 @@ class FilesystemBackupAdapter:
         release_version: str,
         domain_contract_version: str,
         schema_version: str,
+        supported_restore_schema_versions: tuple[str, ...] | None = None,
+        post_restore_readiness: Callable[[], bool] | None = None,
     ) -> None:
         self._database_path = database_path
         self._backups_dir = backups_dir
@@ -46,16 +50,26 @@ class FilesystemBackupAdapter:
         self._release_version = release_version
         self._domain_contract_version = domain_contract_version
         self._schema_version = schema_version
+        self._supported_restore_schema_versions = frozenset(
+            supported_restore_schema_versions or (schema_version,)
+        )
+        self._post_restore_readiness = post_restore_readiness or (lambda: True)
 
     def create_backup(self, operation_ref: str) -> BackupMetadataV1:
         result = self._create_backup_record(operation_ref)
         return _metadata(result.backup)
 
-    def _create_backup_record(self, operation_ref: str) -> BackupCreateResult:
+    def _create_backup_record(
+        self, operation_ref: str, *, allow_restore_running: bool = False
+    ) -> BackupCreateResult:
         if not operation_ref.strip():
             raise ValueError("operation_ref is required")
         window = self._maintenance_gate.snapshot()
-        if window.has_active_write or window.migration_running or window.restore_running:
+        if (
+            window.has_active_write
+            or window.migration_running
+            or (window.restore_running and not allow_restore_running)
+        ):
             raise ValueError("maintenance window does not allow backup")
         self._backups_dir.mkdir(parents=True, exist_ok=True)
         backup_id = hashlib.sha256(operation_ref.encode("utf-8")).hexdigest()[:32]
@@ -190,50 +204,46 @@ class FilesystemBackupAdapter:
         manifest = _manifest_from_path(manifest_path)
         if _sha256_file(backup_path) != manifest.backup_sha256:
             return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_HASH_MISMATCH")
-        if manifest.database_schema_version != self._schema_version:
+        if manifest.database_schema_version not in self._supported_restore_schema_versions:
             return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_SCHEMA_MISMATCH")
-        window = self._maintenance_gate.snapshot()
-        if window.has_active_write or window.migration_running or window.restore_running:
+        if not self._maintenance_gate.try_begin_restore():
             return RestoreResultV1(1, backup_ref, "REJECTED", "RESTORE_WINDOW_UNAVAILABLE")
-        connection = sqlite3.connect(str(backup_path))
         try:
-            if _pragma_single_value(connection, "PRAGMA quick_check;") != "ok":
-                return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_INVALID")
-            if connection.execute("PRAGMA foreign_key_check;").fetchone() is not None:
-                return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_INVALID")
+            connection = sqlite3.connect(str(backup_path))
+            try:
+                if _pragma_single_value(connection, "PRAGMA quick_check;") != "ok":
+                    return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_INVALID")
+                if connection.execute("PRAGMA foreign_key_check;").fetchone() is not None:
+                    return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_INVALID")
+            finally:
+                connection.close()
+            _write_restore_marker(marker, operation_ref, backup_ref, "ACCEPTED")
+            self._create_backup_record(f"pre-restore:{operation_ref}", allow_restore_running=True)
+            temp_path = self._database_path.with_name(f".{self._database_path.name}.restore.tmp")
+            shutil.copy2(backup_path, temp_path)
+            try:
+                migrated = connect_sqlite(temp_path)
+                try:
+                    results = apply_migrations(migrated, now_ms=self._clock.now_ms)
+                    actual_version = f"{results[-1].version:04d}" if results else "0000"
+                    if actual_version != self._schema_version:
+                        return RestoreResultV1(
+                            1, backup_ref, "REJECTED", "BACKUP_MIGRATION_VERSION_MISMATCH"
+                        )
+                finally:
+                    migrated.close()
+                with temp_path.open("rb+") as stream:
+                    os.fsync(stream.fileno())
+                os.replace(temp_path, self._database_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            _write_restore_marker(marker, operation_ref, backup_ref, "MIGRATED")
+            if not self._post_restore_readiness():
+                return RestoreResultV1(1, backup_ref, "REJECTED", "POST_RESTORE_READINESS_FAILED")
+            _write_restore_marker(marker, operation_ref, backup_ref, "COMPLETED")
+            return RestoreResultV1(1, backup_ref, "RESTORED", None)
         finally:
-            connection.close()
-        _atomic_write(
-            marker,
-            json.dumps(
-                {
-                    "operation_ref": operation_ref,
-                    "backup_ref": backup_ref,
-                    "status": "ACCEPTED",
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8"),
-        )
-        self._create_backup_record(f"pre-restore:{operation_ref}")
-        temp_path = self._database_path.with_name(f".{self._database_path.name}.restore.tmp")
-        shutil.copy2(backup_path, temp_path)
-        with temp_path.open("rb+") as stream:
-            os.fsync(stream.fileno())
-        os.replace(temp_path, self._database_path)
-        _atomic_write(
-            marker,
-            json.dumps(
-                {
-                    "operation_ref": operation_ref,
-                    "backup_ref": backup_ref,
-                    "status": "COMPLETED",
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8"),
-        )
-        return RestoreResultV1(1, backup_ref, "RESTORED", None)
+            self._maintenance_gate.end_restore()
 
     def reconcile_restore(
         self, backup_ref: str, operation_ref: str
@@ -322,3 +332,18 @@ def _atomic_write(path: Path, data: bytes) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temp_path, path)
+
+
+def _write_restore_marker(path: Path, operation_ref: str, backup_ref: str, status: str) -> None:
+    _atomic_write(
+        path,
+        json.dumps(
+            {
+                "operation_ref": operation_ref,
+                "backup_ref": backup_ref,
+                "status": status,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8"),
+    )

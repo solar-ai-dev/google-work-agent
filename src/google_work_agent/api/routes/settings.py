@@ -11,6 +11,7 @@ from google_work_agent.api.dependencies.access_control import enforce_access
 from google_work_agent.api.dependencies.contract_version import (
     enforce_supported_api_contract_version,
 )
+from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.dependencies.runtime_operation import enforce_runtime_operation
 from google_work_agent.api.dependencies.settings import SettingsRouteDependency
 from google_work_agent.api.errors.api_request_error import ApiRequestError
@@ -171,6 +172,14 @@ def restore_backup(
     x_api_contract_version: str | None = Header(default=None),
 ) -> RestorePlanResponse:
     _contract(request, dependencies, x_api_contract_version, "RESTORE")
+    safe_mode = get_api_container(request).safe_mode_controller
+    if safe_mode is None or not safe_mode.snapshot().enabled:
+        _raise_invalid_argument(
+            request,
+            "restore requires the offline Safe Mode core",
+            "RESTORE_REQUIRES_SAFE_MODE",
+            status_code=409,
+        )
     handler = dependencies.restore_backup_handler
     if not isinstance(handler, RestoreBackupHandler):
         _raise_service_unavailable(request, "BACKUP_RESTORE_UNAVAILABLE")

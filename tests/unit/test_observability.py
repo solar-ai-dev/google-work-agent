@@ -9,9 +9,6 @@ import pytest
 from google_work_agent.adapters.system.sanitized_jsonl_log import (
     SanitizedJsonlLogSink,
 )
-from google_work_agent.adapters.system.static_maintenance_gate import (
-    StaticMaintenanceGateAdapter,
-)
 from google_work_agent.ports.system.contracts.observability import (
     EventCategory,
     EventValidationError,
@@ -195,15 +192,3 @@ def test_jsonl_sink_rotates_and_applies_retention(tmp_path: Path) -> None:
         )
     )
     assert old_file.exists() is False
-
-
-def test_static_maintenance_gate_reports_flags() -> None:
-    snapshot = StaticMaintenanceGateAdapter(
-        has_active_write=True,
-        migration_running=False,
-        restore_running=True,
-    ).snapshot()
-
-    assert snapshot.has_active_write is True
-    assert snapshot.migration_running is False
-    assert snapshot.restore_running is True

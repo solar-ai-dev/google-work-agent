@@ -19,6 +19,9 @@ from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySs
 from google_work_agent.adapters.system.process_component_circuit_state import (
     ProcessComponentCircuitStateAdapter,
 )
+from google_work_agent.adapters.system.process_maintenance_gate import (
+    ProcessMaintenanceGateAdapter,
+)
 from google_work_agent.adapters.system.process_runtime_mode import ProcessRuntimeModeAdapter
 from google_work_agent.adapters.system.process_shutdown import ProcessShutdownAdapter
 from google_work_agent.adapters.system.sqlite_checkpoint import (
@@ -43,10 +46,21 @@ class _Clock:
         return self.value
 
 
-@dataclass(frozen=True)
+@dataclass
 class _MaintenanceGate:
+    restore_running: bool = False
+
     def snapshot(self) -> MaintenanceWindow:
-        return MaintenanceWindow(False, False, False)
+        return MaintenanceWindow(False, False, self.restore_running)
+
+    def try_begin_restore(self) -> bool:
+        if self.restore_running:
+            return False
+        self.restore_running = True
+        return True
+
+    def end_restore(self) -> None:
+        self.restore_running = False
 
 
 @dataclass
@@ -182,7 +196,8 @@ def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_pat
         maintenance_gate=_MaintenanceGate(),
         release_version="test",
         domain_contract_version="test",
-        schema_version="test",
+        schema_version="0019",
+        supported_restore_schema_versions=("0018", "0019"),
     )
 
     backup = adapter.create_backup("backup-op-1")
@@ -202,6 +217,19 @@ def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_pat
         assert connection.execute("SELECT value FROM sample").fetchone()[0] == "original"
     finally:
         connection.close()
+
+
+def test_process_maintenance_gate_consumes_live_state_and_serializes_restore() -> None:
+    active = False
+    gate = ProcessMaintenanceGateAdapter(has_active_write=lambda: active)
+
+    assert gate.try_begin_restore() is True
+    assert gate.snapshot().restore_running is True
+    assert gate.try_begin_restore() is False
+    gate.end_restore()
+    active = True
+    assert gate.try_begin_restore() is False
+    assert gate.snapshot().has_active_write is True
 
 
 def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path: Path) -> None:

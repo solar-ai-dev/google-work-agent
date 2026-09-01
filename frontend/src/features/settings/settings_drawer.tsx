@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import { DiagnosticsPanel, type RuntimeSummary } from "../diagnostics";
-import { createBackup, listBackups, requestShutdown, restoreBackup, type BackupMetadata } from "./api/backup_operations";
+import { createBackup, listBackups, requestShutdown, type BackupMetadata } from "./api/backup_operations";
 import { listCalendars, listTaskLists } from "../resource_browser/api/list_resources";
 import type { CalendarContainer, TaskListContainer } from "../../api/contract";
 import { disconnectGoogle, getGoogleConnection, startGoogleConnection, type GoogleConnection } from "./api/google_connection_operations";
@@ -27,8 +27,6 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
   const [calendars, setCalendars] = useState<CalendarContainer[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
-  const [restoreRef, setRestoreRef] = useState("");
-  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const commandIds = useRef(new Map<string, string>());
@@ -106,23 +104,6 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
     onClose();
   }
 
-  async function restoreSelected(): Promise<void> {
-    if (!restoreRef) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await restoreBackup(commandIdFor(`backup:restore:${restoreRef}`), restoreRef);
-      if (result.status !== "RESTORED") throw new Error(result.detail_code ?? "Restore rejected");
-      commandIds.current.delete(`backup:restore:${restoreRef}`);
-      setMessage("복원 처리가 끝났습니다. Migration·재시작 준비 상태를 다시 확인합니다.");
-      await Promise.allSettled([load(), onOperationalStateChanged()]);
-    } catch (error) {
-      setMessage(errorMessage(error, "복원을 완료하지 못했습니다."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function shutdownService(): Promise<void> {
     setBusy(true);
     setMessage(null);
@@ -178,11 +159,8 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
           <label>API key<input type="password" autoComplete="off" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
           <div className="button-row"><button type="button" className="button-primary" disabled={busy || !apiKey.trim()} onClick={() => void run("credential:store", async (id) => { await storeLlmCredential(id, apiKey, storageMode); }, "자격증명을 저장했습니다.", true)}>API 키 저장</button><button type="button" className="button-danger" disabled={busy} onClick={() => void run("credential:delete", async (id) => { await deleteLlmCredential(id); }, "자격증명을 삭제했습니다.", true)}>API 키 삭제</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void load()}>연결 테스트</button></div>
         </section>
-        <section className="info-card" aria-label="백업 및 복원">
-          <strong>백업 및 복원</strong><button type="button" className="button-secondary" disabled={busy} onClick={() => void run("backup:create", async (id) => { await createBackup(id); }, "백업을 만들었습니다.")}>백업 만들기</button>
-          <select aria-label="복원할 백업" value={restoreRef} onChange={(e) => { setRestoreRef(e.target.value); setRestoreConfirmed(false); }}><option value="">백업 선택</option>{backups.map((item) => <option key={item.backup_ref} value={item.backup_ref}>{new Date(item.created_at_ms).toLocaleString("ko-KR")} · {item.size_bytes} bytes</option>)}</select>
-          <label><input type="checkbox" checked={restoreConfirmed} onChange={(e) => setRestoreConfirmed(e.target.checked)} />선택한 백업으로 복원함을 확인합니다.</label>
-          <button type="button" className="button-danger" disabled={busy || !restoreRef || !restoreConfirmed} onClick={() => void restoreSelected()}>복원</button>
+        <section className="info-card" aria-label="백업">
+          <strong>백업</strong><p>보관된 백업 {backups.length}개 · 복원은 Safe Mode에서만 수행합니다.</p><button type="button" className="button-secondary" disabled={busy} onClick={() => void run("backup:create", async (id) => { await createBackup(id); }, "백업을 만들었습니다.")}>백업 만들기</button>
         </section>
         <section className="info-card" aria-label="서비스 제어"><strong>서비스 제어</strong><button type="button" className="button-danger" disabled={busy} onClick={() => void shutdownService()}>안전하게 종료</button></section>
         <DiagnosticsPanel runtime={runtime} onRefresh={onOperationalStateChanged} />

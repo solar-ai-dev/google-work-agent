@@ -53,18 +53,26 @@ test("loads protected state only after readiness and compatible bootstrap", asyn
 
 test("exposes restore and graceful shutdown while readiness is in Safe Mode", async () => {
   vi.mocked(api.getLive).mockResolvedValue({ api_contract_version: "1" } as never);
-  vi.mocked(api.getReady).mockResolvedValue({ status: "SAFE_MODE", api_contract_version: "1", checks: [{ name: "migration", state: "SAFE_MODE", detail: "MIGRATION_FAILED" }] } as never);
+  vi.mocked(api.getReady)
+    .mockResolvedValueOnce({ status: "SAFE_MODE", api_contract_version: "1", checks: [{ name: "migration", state: "SAFE_MODE", detail: "MIGRATION_FAILED" }] } as never)
+    .mockResolvedValueOnce({ status: "READY", api_contract_version: "1", checks: [] } as never);
+  vi.mocked(runtimeApi.getRuntime).mockResolvedValue({} as never);
+  vi.mocked(googleApi.getGoogleConnection).mockResolvedValue({ connection_status: "DISCONNECTED" } as never);
+  vi.mocked(settingsApi.getSettings).mockResolvedValue({ timezone: "Asia/Seoul", default_calendar_id: "primary", default_tasklist_id: "@default" } as never);
+  vi.mocked(googleApi.getCurrentGoogleAccount).mockResolvedValue({ account: null } as never);
   vi.mocked(backupApi.listBackups).mockResolvedValue({ schema_version: 1, items: [{ schema_version: 1, backup_ref: "backup-opaque", created_at_ms: 1, size_bytes: 100, manifest_hash: "a".repeat(64) }] });
   vi.mocked(backupApi.restoreBackup).mockResolvedValue({ schema_version: 1, backup_ref: "backup-opaque", status: "RESTORED", detail_code: null });
   vi.mocked(backupApi.requestShutdown).mockResolvedValue({ schema_version: 1, accepted: true });
 
   render(<StartupFlow>{() => <p>workspace</p>}</StartupFlow>);
   expect(await screen.findByRole("heading", { name: "Google Work Agent Safe Mode" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "안전하게 종료" }));
+  await waitFor(() => expect(backupApi.requestShutdown).toHaveBeenCalledOnce());
+  expect(await screen.findByRole("option", { name: /100 bytes/ })).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "복원할 백업" }), "backup-opaque");
   await userEvent.click(screen.getByRole("checkbox"));
   await userEvent.click(screen.getByRole("button", { name: "복원 처리" }));
   await waitFor(() => expect(backupApi.restoreBackup).toHaveBeenCalledWith(expect.any(String), "backup-opaque"));
-  expect(screen.getByRole("status")).toHaveTextContent("Migration·재시작·준비 상태");
-  await userEvent.click(screen.getByRole("button", { name: "안전하게 종료" }));
-  await waitFor(() => expect(backupApi.requestShutdown).toHaveBeenCalledOnce());
+  expect(await screen.findByText("workspace")).toBeInTheDocument();
+  expect(api.getReady).toHaveBeenCalledTimes(2);
 });

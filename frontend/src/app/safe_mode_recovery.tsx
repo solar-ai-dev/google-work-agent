@@ -44,7 +44,8 @@ export function SafeModeRecovery({ reason, onRetry }: Props): JSX.Element {
       const result = await restoreBackup(commandIdFor(operation), backupRef);
       if (result.status !== "RESTORED") throw new Error(result.detail_code ?? "Restore rejected");
       commandIds.current.delete(operation);
-      setMessage("복원 처리가 접수되었습니다. Migration·재시작·준비 상태가 완료됐는지 다시 확인하세요.");
+      setMessage("복원·Migration·준비 상태 확인이 완료되었습니다.");
+      onRetry();
     } catch (error) {
       setMessage(errorMessage(error, "복원 처리를 완료하지 못했습니다."));
     } finally {

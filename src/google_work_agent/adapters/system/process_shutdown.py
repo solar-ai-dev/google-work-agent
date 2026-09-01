@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -51,6 +52,7 @@ class ProcessShutdownAdapter:
         clock: ClockPort,
         marker_path: Path,
         timeout_seconds: float = 30.0,
+        request_process_exit: Callable[[], None] | None = None,
     ) -> None:
         self._command_gate = command_gate
         self._coordinator = coordinator
@@ -62,6 +64,7 @@ class ProcessShutdownAdapter:
         self._clock = clock
         self._marker_path = marker_path
         self._timeout_seconds = timeout_seconds
+        self._request_process_exit = request_process_exit or (lambda: None)
 
     def request_shutdown(self, operation_ref: str) -> ShutdownAcceptedV1:
         if not operation_ref.strip():
@@ -114,6 +117,8 @@ class ProcessShutdownAdapter:
                 sort_keys=True,
             ).encode("utf-8"),
         )
+        if status == "COMPLETED":
+            self._request_process_exit()
         return ShutdownAcceptedV1(schema_version=1, accepted=True)
 
     def reconcile_shutdown(self, operation_ref: str) -> OperationalReconcileResultV1:

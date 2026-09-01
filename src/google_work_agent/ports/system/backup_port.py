@@ -33,9 +33,13 @@ class MaintenanceWindow:
 
 
 class MaintenanceGate(Protocol):
-    """Dependency-only backup/restore admission snapshot."""
+    """Live process-lifecycle admission authority for backup and restore."""
 
     def snapshot(self) -> MaintenanceWindow: ...
+
+    def try_begin_restore(self) -> bool: ...
+
+    def end_restore(self) -> None: ...
 
 
 class BackupPort(Protocol):
