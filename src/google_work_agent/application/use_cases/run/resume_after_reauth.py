@@ -22,7 +22,7 @@ from google_work_agent.application.use_cases.run.resume_confirmation import (
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
 )
-from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import CommandResult, ResultCode
@@ -167,6 +167,11 @@ class ResumeAfterReauthHandler:
         )
         action_statuses = tuple(ActionStatusV1(action.status) for action in actions)
         attempt_statuses = tuple(attempt.status for attempt in attempts)
+        has_legacy_read_executing = any(
+            EffectType(action.effect_type) is EffectType.READ
+            and ActionStatusV1(action.status) is ActionStatusV1.EXECUTING
+            for action in actions
+        )
         delivery_uncertain = any(
             ActionStatusV1(action.status)
             in {ActionStatusV1.EXECUTING, ActionStatusV1.UNKNOWN_RESULT}
@@ -190,6 +195,7 @@ class ResumeAfterReauthHandler:
                 attempt_statuses=attempt_statuses,
                 delivery_uncertain=delivery_uncertain,
                 cancel_intent_active=_has_cancel_intent(unit_of_work, run.id),
+                has_legacy_read_executing=has_legacy_read_executing,
             )
         except RunTransitionRejected:
             return self._require_recovery(

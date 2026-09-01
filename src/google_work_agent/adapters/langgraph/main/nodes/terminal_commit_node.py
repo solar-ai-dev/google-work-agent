@@ -19,6 +19,7 @@ def terminal_commit_node(
     *,
     read_terminal_facts: Callable[[str], Mapping[str, object]],
     complete_answer_only: TerminalHandler,
+    complete_read_only: TerminalHandler,
     complete_write: TerminalHandler,
     block_run: TerminalHandler,
     finalize_cancel: TerminalHandler,
@@ -36,6 +37,7 @@ def terminal_commit_node(
     else:
         handler = {
             "COMPLETE_ANSWER_ONLY": complete_answer_only,
+            "COMPLETE_READ_ONLY": complete_read_only,
             "COMPLETE_WRITE": complete_write,
             "BLOCK_RUN": block_run,
             "FINALIZE_CANCEL": finalize_cancel,

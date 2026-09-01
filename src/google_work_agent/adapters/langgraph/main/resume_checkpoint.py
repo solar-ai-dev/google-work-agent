@@ -183,6 +183,8 @@ class ResumeCheckpointMixin:
             return self._topology[0]
         if phase == WorkflowPhase.VERIFICATION.value:
             return "verification"
+        if phase == WorkflowPhase.READ_EXECUTION.value:
+            return "action_execution"
         if phase == WorkflowPhase.ACTION_EXECUTION.value:
             return None
         target_by_phase = {

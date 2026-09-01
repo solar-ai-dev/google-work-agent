@@ -16,6 +16,7 @@ def transition_require_reauth(
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
     delivery_uncertain: bool,
     cancel_intent_active: bool,
+    has_legacy_read_executing: bool = False,
 ) -> RunStatusV1:
     """Return the next Run status after enforcing the canonical guard."""
     guard_require_reauth(
@@ -27,5 +28,6 @@ def transition_require_reauth(
         attempt_statuses=attempt_statuses,
         delivery_uncertain=delivery_uncertain,
         cancel_intent_active=cancel_intent_active,
+        has_legacy_read_executing=has_legacy_read_executing,
     )
     return RunStatusV1.REAUTH_REQUIRED

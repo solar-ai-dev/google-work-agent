@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
-from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.results import ResultCode
@@ -160,6 +160,11 @@ class RequireReauthHandler:
                     ),
                     cancel_intent_active=has_durable_cancel_intent(
                         unit_of_work.command_receipts, run.id
+                    ),
+                    has_legacy_read_executing=any(
+                        EffectType(action.effect_type) is EffectType.READ
+                        and ActionStatusV1(action.status) is ActionStatusV1.EXECUTING
+                        for action in actions
                     ),
                 )
             except RunTransitionRejected as error:

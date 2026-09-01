@@ -14,6 +14,7 @@ from google_work_agent.application.use_cases.run.build_terminal_message import (
 
 type TerminalCommitKindV1 = Literal[
     "COMPLETE_ANSWER_ONLY",
+    "COMPLETE_READ_ONLY",
     "COMPLETE_WRITE",
     "BLOCK_RUN",
     "FINALIZE_CANCEL",
@@ -36,6 +37,7 @@ _TERMINAL_STATUSES = frozenset({"COMPLETED", "BLOCKED", "FAILED", "CANCELLED"})
 _TERMINAL_COMMIT_KINDS = frozenset(
     {
         "COMPLETE_ANSWER_ONLY",
+        "COMPLETE_READ_ONLY",
         "COMPLETE_WRITE",
         "BLOCK_RUN",
         "FINALIZE_CANCEL",
@@ -53,6 +55,7 @@ _WRITE_FINAL_STATUSES = frozenset(
         "BLOCKED",
     }
 )
+_READ_FINAL_STATUSES = frozenset({"VERIFIED", "FAILED"})
 
 
 def response_synthesis_node(
@@ -182,6 +185,15 @@ def _classify(
             "PARTIAL" if intent_result == "PARTIAL" or durable_result == "PARTIAL" else "SUCCESS",
         )
         return "COMPLETE_ANSWER_ONLY", "ANSWER_DRAFT", result, answer_text, []
+    if action_effect_types and all(item == "READ" for item in action_effect_types):
+        if not action_statuses or any(item not in _READ_FINAL_STATUSES for item in action_statuses):
+            raise ValueError("READ terminal intent requires only VERIFIED/FAILED actions")
+        result = cast(
+            TerminalResultKindV1,
+            "PARTIAL" if "FAILED" in action_statuses else "SUCCESS",
+        )
+        reasons = ["READ_ACTION_FAILED"] if result == "PARTIAL" else []
+        return "COMPLETE_READ_ONLY", "WRITE_VERIFICATION_SUMMARY", result, None, reasons
     if action_effect_types:
         if not action_statuses or any(
             item not in _WRITE_FINAL_STATUSES for item in action_statuses

@@ -17,6 +17,7 @@ def transition_resume_after_reauth(
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
     delivery_uncertain: bool,
     cancel_intent_active: bool,
+    has_legacy_read_executing: bool = False,
 ) -> RunStatusV1:
     guard_resume_after_reauth(
         current_status,
@@ -28,5 +29,6 @@ def transition_resume_after_reauth(
         attempt_statuses=attempt_statuses,
         delivery_uncertain=delivery_uncertain,
         cancel_intent_active=cancel_intent_active,
+        has_legacy_read_executing=has_legacy_read_executing,
     )
     return resume_status

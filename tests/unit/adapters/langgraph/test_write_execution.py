@@ -1,12 +1,18 @@
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
+from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.langgraph.write_execution import WriteExecutionNode
 from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionDisposition,
     WriteExecutionPhaseResult,
 )
 from google_work_agent.domain.action.model import Action, ActionStatusV1
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceErrorCode,
+    GoogleWorkspaceGatewayError,
+)
 
 
 def _failed_node(*, independent_action_remains: bool) -> WriteExecutionNode:
@@ -108,3 +114,114 @@ def test_not_sent_failure_suspends_when_no_independent_action_remains() -> None:
     assert workflow_control is not None
     assert execution_summary["routing_outcome"] == "FAILED"
     assert workflow_control["reason"] == "FAILED_RETRY_OR_CANCEL_REQUIRED"
+
+
+def test_read_plan_uses_legacy_read_authority_without_write_driver() -> None:
+    calls: list[str] = []
+    read_action = replace(
+        _action(),
+        effect_type="READ",
+        status=ActionStatusV1.PROPOSED.value,
+    )
+    phase = SimpleNamespace(
+        execute_claimed=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("READ must not enter Write execution")
+        )
+    )
+    node = WriteExecutionNode(
+        id_factory=lambda: "id-1",
+        request_hash=lambda _payload: "hash",
+        should_stop_for_cancel=lambda _run_id: False,
+        list_actions=lambda _plan_id: (read_action,),
+        has_independent_executable_action=lambda _plan_id, _action_id: False,
+        execution_phase=cast(Any, phase),
+        has_persisted_cancel_intent=lambda _run_id: False,
+        execute_read_only_plan=lambda state, plan_id, actions: cast(
+            Any,
+            {
+                **state,
+                "__target__": "response_synthesis",
+                "plan_id": plan_id,
+                "action_ids": [action.id for action in actions],
+            },
+        ),
+    )
+    state = cast(
+        Any,
+        {
+            "run_id": "run-1",
+            "approved_plan_id": "plan-1",
+        },
+    )
+
+    result = node(state)
+
+    calls.append(cast(str, result["__target__"]))
+    assert calls == ["response_synthesis"]
+    assert result["plan_id"] == "plan-1"
+    assert result["action_ids"] == ["action-1"]
+
+
+def test_cancelled_read_plan_stops_before_read_or_write_execution() -> None:
+    read_called = False
+    read_action = replace(_action(), effect_type="READ")
+
+    def execute_read(*_args: object) -> Any:
+        nonlocal read_called
+        read_called = True
+        return {}
+
+    node = WriteExecutionNode(
+        id_factory=lambda: "id-1",
+        request_hash=lambda _payload: "hash",
+        should_stop_for_cancel=lambda _run_id: True,
+        list_actions=lambda _plan_id: (read_action,),
+        has_independent_executable_action=lambda _plan_id, _action_id: False,
+        execution_phase=cast(Any, SimpleNamespace()),
+        has_persisted_cancel_intent=lambda _run_id: True,
+        execute_read_only_plan=execute_read,
+    )
+
+    result = node(cast(Any, {"run_id": "run-1", "approved_plan_id": "plan-1"}))
+
+    assert result["__target__"] == "cancel_resolution"
+    assert read_called is False
+
+
+def test_read_gateway_failure_is_settled_before_terminal_projection() -> None:
+    failed_commands: list[object] = []
+    proposed = replace(
+        _action(),
+        effect_type="READ",
+        status=ActionStatusV1.PROPOSED.value,
+        version=0,
+    )
+    failed = replace(proposed, status=ActionStatusV1.FAILED.value, version=2)
+    runtime = SimpleNamespace(
+        _should_stop_for_cancel=lambda _run_id: False,
+        _id_factory=lambda: "command-1",
+        _request_hash=lambda _payload: "hash",
+        _claim_read=lambda _command: SimpleNamespace(applied=True, action_version=1),
+        _execute_read=lambda **_kwargs: (_ for _ in ()).throw(
+            GoogleWorkspaceGatewayError(
+                code=GoogleWorkspaceErrorCode.TIMEOUT,
+                message="read timeout",
+                delivered=False,
+                mutated=False,
+            )
+        ),
+        _fail_read=lambda command: failed_commands.append(command),
+        _complete_read=lambda _command: None,
+        _finalize_read=lambda _command: None,
+        _list_actions=lambda _plan_id: (failed,),
+    )
+
+    result = LangGraphWorkflowRuntime._execute_read_only_plan(
+        cast(Any, runtime),
+        cast(Any, {"run_id": "run-1"}),
+        "plan-1",
+        (proposed,),
+    )
+
+    assert len(failed_commands) == 1
+    assert result["__target__"] == "response_synthesis"

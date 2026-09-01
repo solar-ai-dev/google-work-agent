@@ -151,6 +151,12 @@ from google_work_agent.application.use_cases.action.cancel_pending_action import
     CancelPendingActionCommand,
 )
 from google_work_agent.application.use_cases.action.feasibility import evidence_feasibility_risk
+from google_work_agent.application.use_cases.action.read_contracts import (
+    ClaimReadActionCommand,
+    CompleteReadActionCommand,
+    FailReadActionCommand,
+    FinalizeReadActionCommand,
+)
 from google_work_agent.application.use_cases.execution_attempt.abort_claimed_execution import (
     AbortClaimedExecutionCommandV1,
 )
@@ -191,6 +197,9 @@ from google_work_agent.application.use_cases.run.block_run import (
 )
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
+)
+from google_work_agent.application.use_cases.run.complete_read_only_run import (
+    CompleteReadOnlyRunCommand,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunCommand,
@@ -385,8 +394,16 @@ class _WorkflowRuntimeComposition:
         self._evidence_store = RunScopedEvidenceStore()
         self._canonical_domain_validation = services.domain_validation
         self._complete_answer_only = services.complete_answer_only
+        self._complete_read_only_run = services.complete_read_only_run
         self._complete_write_run = services.complete_write_run
         self._block_run = services.block_run
+        self._publish_read_plan = services.publish_read_plan
+        self._save_read_plan = self._publish_read_plan.save
+        self._claim_read = services.claim_read
+        self._complete_read = services.complete_read
+        self._execute_read = self._complete_read.execute
+        self._finalize_read = services.finalize_read
+        self._fail_read = services.fail_read
         self._publish_write_plan = services.publish_write_plan
         self._save_write_plan = self._publish_write_plan.save
         self._build_claim_context = services.build_claim_context
@@ -443,6 +460,7 @@ class _WorkflowRuntimeComposition:
             should_stop_for_cancel=self._should_stop_for_cancel,
             list_actions=self._list_actions,
             has_independent_executable_action=self._has_independent_executable_action,
+            execute_read_only_plan=self._execute_read_only_plan,
             execution_phase=self._write_execution_phase,
             has_persisted_cancel_intent=self._has_persisted_cancel_intent,
         )
@@ -605,6 +623,7 @@ class _WorkflowRuntimeComposition:
     def control_resume_node(self, stage_id: str) -> str:
         """Resolve a registered external-control stage to this profile's native node."""
         exact_control = {
+            "READ_EXECUTION": "action_execution",
             "VERIFICATION": "verification",
             "RECOVERY": "recovery",
             "CANCEL_RESOLUTION": "cancel_resolution",
@@ -782,6 +801,7 @@ class _WorkflowRuntimeComposition:
                 terminal_commit_node,
                 read_terminal_facts=self._read_terminal_facts,
                 complete_answer_only=self._terminal_complete_answer_only,
+                complete_read_only=self._terminal_complete_read_only,
                 complete_write=self._terminal_complete_write,
                 block_run=self._terminal_block_run,
                 finalize_cancel=self._terminal_finalize_cancel,
@@ -860,6 +880,23 @@ class _WorkflowRuntimeComposition:
                     Literal["SUCCESS", "PARTIAL"],
                     intent["terminal_message"].result_kind,
                 ),
+            )
+        )
+
+    def _terminal_complete_read_only(
+        self, state: Mapping[str, object], intent: TerminalCommitIntentV1
+    ) -> object:
+        run_id = cast(str, state["run_id"])
+        facts = self._read_terminal_facts(run_id)
+        plan_id = self._required_string(facts.get("plan_id"), "plan_id")
+        payload = self._terminal_command_payload(run_id, intent)
+        return self._complete_read_only_run(
+            CompleteReadOnlyRunCommand(
+                command_id=self._terminal_command_id(payload),
+                request_hash=calculate_canonical_json_hash(payload),
+                run_id=run_id,
+                plan_id=plan_id,
+                expected_version=intent["expected_run_version"],
             )
         )
 
@@ -1741,6 +1778,125 @@ class _WorkflowRuntimeComposition:
                 sorted(unit_of_work.actions.list_for_plan(plan_id), key=lambda item: item.position)
             )
 
+    def _execute_read_only_plan(
+        self,
+        state: GraphState,
+        plan_id: str,
+        actions: tuple[ActionRecord, ...],
+    ) -> GraphState:
+        """Execute the persisted compatibility READ lifecycle without Write facts."""
+
+        run_id = cast(str, state["run_id"])
+        for action in actions:
+            if action.status in {
+                ActionStatusV1.VERIFIED.value,
+                ActionStatusV1.FAILED.value,
+            }:
+                continue
+            if self._should_stop_for_cancel(run_id):
+                return cast(
+                    GraphState,
+                    {
+                        **state,
+                        "__target__": "cancel_resolution",
+                        "__logical_target__": "cancel_resolution",
+                        "workflow_phase": "CANCEL_RESOLUTION",
+                    },
+                )
+            action_version = action.version
+            if action.status == ActionStatusV1.PROPOSED.value:
+                claimed = self._claim_read(
+                    ClaimReadActionCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "claim_read", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        expected_version=action.version,
+                    )
+                )
+                if not claimed.applied:
+                    continue
+                action_version = claimed.action_version
+            elif action.status != ActionStatusV1.EXECUTING.value:
+                raise RuntimeError(f"legacy READ action has invalid status: {action.status}")
+            try:
+                executed = self._execute_read(action_id=action.id)
+            except GoogleWorkspaceGatewayError as error:
+                self._fail_read(
+                    FailReadActionCommand(
+                        command_id=self._id_factory(),
+                        request_hash=self._request_hash(
+                            {"kind": "fail_read", "action_id": action.id}
+                        ),
+                        action_id=action.id,
+                        expected_version=action_version,
+                        safe_error_code=error.code.value,
+                        retryable=False,
+                        safe_error_detail=str(error),
+                    )
+                )
+                continue
+            completed = self._complete_read(
+                CompleteReadActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "complete_read", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    expected_version=action_version,
+                    output_json=executed.output_json,
+                    resource_refs=executed.resource_refs,
+                    evidence=executed.evidence,
+                )
+            )
+            if not completed.applied:
+                raise RuntimeError(f"complete legacy READ failed: {completed.result_code}")
+            finalized = self._finalize_read(
+                FinalizeReadActionCommand(
+                    command_id=self._id_factory(),
+                    request_hash=self._request_hash(
+                        {"kind": "finalize_read", "action_id": action.id}
+                    ),
+                    action_id=action.id,
+                    expected_version=completed.action_version,
+                )
+            )
+            if not finalized.applied:
+                raise RuntimeError(f"finalize legacy READ failed: {finalized.result_code}")
+        current_actions = self._list_actions(plan_id)
+        if any(
+            action.status
+            not in {
+                ActionStatusV1.VERIFIED.value,
+                ActionStatusV1.FAILED.value,
+            }
+            for action in current_actions
+        ):
+            return cast(
+                GraphState,
+                {
+                    **state,
+                    "__target__": "domain_reconcile",
+                    "__logical_target__": "domain_reconcile",
+                    "workflow_phase": WorkflowPhase.READ_EXECUTION.value,
+                },
+            )
+        return cast(
+            GraphState,
+            {
+                **state,
+                "__target__": "response_synthesis",
+                "__logical_target__": "response_synthesis",
+                "workflow_phase": WorkflowPhase.RESPONSE_SYNTHESIS.value,
+                "__workflow_control__": _workflow_control(
+                    "READ_RUN_COMPLETABLE",
+                    plan_id=plan_id,
+                    action_statuses=[action.status for action in current_actions],
+                ),
+            },
+        )
+
     def _has_independent_executable_action(self, plan_id: str, failed_action_id: str) -> bool:
         with self._unit_of_work_factory() as unit_of_work:
             return any(
@@ -1818,7 +1974,20 @@ class _WorkflowRuntimeComposition:
         if action is None:
             return False
         if action.effect_type == "READ":
-            raise RuntimeError("current Plan cannot contain a READ Action")
+            failed = self._fail_read(
+                FailReadActionCommand(
+                    command_id=f"system:cancel-resolution:read:{action.id}:{action.version}",
+                    request_hash=calculate_canonical_json_hash(
+                        {"action_id": action.id, "expected_version": action.version}
+                    ),
+                    action_id=action.id,
+                    expected_version=action.version,
+                    safe_error_code="CANCEL_REQUESTED",
+                    retryable=False,
+                    safe_error_detail="cancel intent forbids a new legacy READ dispatch",
+                )
+            )
+            return bool(failed.applied)
         attempt = self._latest_attempt(action_id)
         if attempt.status is not ExecutionAttemptStatusV1.CLAIMED:
             return False

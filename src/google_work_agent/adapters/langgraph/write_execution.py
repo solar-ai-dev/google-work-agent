@@ -40,12 +40,16 @@ class WriteExecutionNode:
         has_independent_executable_action: Callable[[str, str], bool],
         execution_phase: WriteExecutionStructuralDriver,
         has_persisted_cancel_intent: Callable[[str], bool],
+        execute_read_only_plan: (
+            Callable[[GraphState, str, tuple[ActionRecord, ...]], GraphState] | None
+        ) = None,
     ) -> None:
         self._id_factory = id_factory
         self._request_hash = request_hash
         self._should_stop_for_cancel = should_stop_for_cancel
         self._list_actions = list_actions
         self._has_independent_executable_action = has_independent_executable_action
+        self._execute_read_only_plan = execute_read_only_plan
         self._execution_phase = execution_phase
         self._has_persisted_cancel_intent = has_persisted_cancel_intent
 
@@ -95,6 +99,12 @@ class WriteExecutionNode:
             return self._cancelled_state(state=state, plan_id="", verification_statuses=[])
         plan_id = self._required_string(state.get("approved_plan_id"), "approved_plan_id")
         actions = self._list_actions(plan_id)
+        if actions and all(action.effect_type == "READ" for action in actions):
+            if self._execute_read_only_plan is None:
+                raise RuntimeError("legacy READ execution authority is not configured")
+            return self._execute_read_only_plan(state, plan_id, actions)
+        if any(action.effect_type == "READ" for action in actions):
+            raise RuntimeError("a Plan cannot mix legacy READ and approval-gated Write actions")
         verification_statuses: list[str] = []
         for action in actions:
             state_update = self._execute_action(

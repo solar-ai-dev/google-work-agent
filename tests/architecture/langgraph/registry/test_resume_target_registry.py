@@ -59,6 +59,7 @@ def test_main_resume_stage_registry_is_closed_and_rejects_stale_version() -> Non
         "PLANNING_ENTRY",
         "REVIEW_ENTRY",
         "PREFLIGHT",
+        "READ_EXECUTION",
         "VERIFICATION",
         "RECOVERY",
         "CANCEL_RESOLUTION",

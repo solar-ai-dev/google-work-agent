@@ -18,8 +18,14 @@ class WorkflowApplicationServices:
     request_confirmation: Any
     domain_validation: Any
     complete_answer_only: Any
+    complete_read_only_run: Any
     complete_write_run: Any
     block_run: Any
+    publish_read_plan: Any
+    claim_read: Any
+    complete_read: Any
+    finalize_read: Any
+    fail_read: Any
     publish_write_plan: Any
     build_claim_context: Any
     begin_execution_attempt: Any

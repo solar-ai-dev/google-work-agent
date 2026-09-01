@@ -2,7 +2,8 @@ from threading import Lock
 from typing import cast
 
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
-from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.resume_checkpoint import ResumeCheckpointMixin
+from google_work_agent.adapters.langgraph.main.state import GraphState, WorkflowPhase
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.domain.run.model import RunStatusV1
 
@@ -132,3 +133,14 @@ def test_startup_recovery_does_not_resume_preclaim_reauth_checkpoint() -> None:
 
     assert result is None
     assert calls == []
+
+
+def test_read_execution_checkpoint_resumes_at_action_execution() -> None:
+    runtime = cast(ResumeCheckpointMixin, object.__new__(ResumeCheckpointMixin))
+    runtime._topology = ("request_understanding",)
+
+    target = runtime._reauth_continuation_target(
+        cast(GraphState, {"workflow_phase": WorkflowPhase.READ_EXECUTION.value})
+    )
+
+    assert target == "action_execution"

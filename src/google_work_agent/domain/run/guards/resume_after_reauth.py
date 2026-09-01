@@ -11,6 +11,7 @@ _SAFE = frozenset(
         RunStatusV1.RETRIEVING,
         RunStatusV1.PLANNING,
         RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.EXECUTING,
         RunStatusV1.VERIFYING,
         RunStatusV1.CANCEL_REQUESTED,
         RunStatusV1.RECOVERY_REQUIRED,
@@ -29,6 +30,7 @@ def guard_resume_after_reauth(
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
     delivery_uncertain: bool,
     cancel_intent_active: bool,
+    has_legacy_read_executing: bool = False,
 ) -> None:
     if current_status is not RunStatusV1.REAUTH_REQUIRED:
         raise RunTransitionRejected("resume_after_reauth requires REAUTH_REQUIRED")
@@ -43,4 +45,5 @@ def guard_resume_after_reauth(
         attempt_statuses=attempt_statuses,
         delivery_uncertain=delivery_uncertain,
         cancel_intent_active=cancel_intent_active,
+        has_legacy_read_executing=has_legacy_read_executing,
     )

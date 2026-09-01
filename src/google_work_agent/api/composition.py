@@ -158,6 +158,14 @@ from google_work_agent.application.use_cases.action.calendar_conflict_policy imp
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionHandler,
 )
+from google_work_agent.application.use_cases.action.claim_read_action import ClaimReadActionHandler
+from google_work_agent.application.use_cases.action.complete_read_action import (
+    CompleteReadActionHandler,
+)
+from google_work_agent.application.use_cases.action.fail_read_action import FailReadActionHandler
+from google_work_agent.application.use_cases.action.finalize_read_action import (
+    FinalizeReadActionHandler,
+)
 from google_work_agent.application.use_cases.action.modify_action import ModifyActionHandler
 from google_work_agent.application.use_cases.action.prepare_write_retry import (
     PrepareWriteRetryHandler,
@@ -260,6 +268,9 @@ from google_work_agent.application.use_cases.llm_credential.store_llm_credential
     StoreLlmCredentialHandler,
 )
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
+from google_work_agent.application.use_cases.plan.publish_read_only_plan import (
+    PublishReadOnlyPlanHandler,
+)
 from google_work_agent.application.use_cases.plan.record_review_result import (
     RecordReviewResultHandler,
 )
@@ -325,6 +336,9 @@ from google_work_agent.application.use_cases.run.build_terminal_message import (
 )
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunHandler,
+)
+from google_work_agent.application.use_cases.run.complete_read_only_run import (
+    CompleteReadOnlyRunHandler,
 )
 from google_work_agent.application.use_cases.run.complete_write_run import (
     CompleteWriteRunHandler,
@@ -587,6 +601,11 @@ def _build_workflow_application_services(
         now_ms=now_ms,
         message_id_factory=id_factory,
     )
+    complete_read_only_run = CompleteReadOnlyRunHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+        message_id_factory=id_factory,
+    )
     complete_write_run = CompleteWriteRunHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
@@ -596,6 +615,27 @@ def _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
         message_id_factory=id_factory,
+    )
+    publish_read_plan = PublishReadOnlyPlanHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+    )
+    claim_read = ClaimReadActionHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+    )
+    complete_read = CompleteReadActionHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+        gateway=connector_reader,
+    )
+    finalize_read = FinalizeReadActionHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
+    )
+    fail_read = FailReadActionHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=now_ms,
     )
     publish_write_plan = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -667,8 +707,14 @@ def _build_workflow_application_services(
             validate_action_arguments=ValidateActionArgumentsHandler(),
         ),
         complete_answer_only=complete_answer_only,
+        complete_read_only_run=complete_read_only_run,
         complete_write_run=complete_write_run,
         block_run=block_run,
+        publish_read_plan=publish_read_plan,
+        claim_read=claim_read,
+        complete_read=complete_read,
+        finalize_read=finalize_read,
+        fail_read=fail_read,
         publish_write_plan=publish_write_plan,
         build_claim_context=build_claim_context,
         begin_execution_attempt=begin_execution_attempt,

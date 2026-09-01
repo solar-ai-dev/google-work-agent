@@ -32,6 +32,8 @@ def domain_reconcile_node(
     commands = frozenset(facts.next_allowed_commands)
     if facts.status == "WAITING_APPROVAL":
         return _route_patch("waiting_approval", "PREFLIGHT")
+    if facts.status == "EXECUTING":
+        return _route_patch("action_execution", "READ_EXECUTION")
     if facts.status == "RECOVERY_REQUIRED" or "RESOLVE_RECOVERY" in commands:
         return _route_patch("recovery", "RECOVERY")
     if facts.status in _TERMINAL_STATUSES:

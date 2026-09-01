@@ -10,6 +10,7 @@ _ALLOWED = frozenset(
         RunStatusV1.RETRIEVING,
         RunStatusV1.PLANNING,
         RunStatusV1.WAITING_APPROVAL,
+        RunStatusV1.EXECUTING,
         RunStatusV1.VERIFYING,
         RunStatusV1.RECOVERY_REQUIRED,
         RunStatusV1.CANCEL_REQUESTED,
@@ -27,6 +28,7 @@ def guard_require_reauth(
     attempt_statuses: tuple[ExecutionAttemptStatusV1, ...],
     delivery_uncertain: bool,
     cancel_intent_active: bool,
+    has_legacy_read_executing: bool = False,
 ) -> None:
     """Reject a require reauth request from an invalid Run status."""
     require_status(current_status, _ALLOWED, "require_reauth")
@@ -67,6 +69,15 @@ def guard_require_reauth(
             or cancel_intent_active
         ):
             raise RunTransitionRejected("PREFLIGHT reauth requires zero dispatched Write fact")
+        return
+    if target_stage == "READ_EXECUTION":
+        if (
+            current_status is not RunStatusV1.EXECUTING
+            or not has_legacy_read_executing
+            or attempt_statuses
+            or cancel_intent_active
+        ):
+            raise RunTransitionRejected("READ_EXECUTION reauth requires safe Legacy READ facts")
         return
     if target_stage == "VERIFICATION":
         has_post_dispatch = any(

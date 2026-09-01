@@ -29,6 +29,7 @@ type MainResumeStageIdV1 = Literal[
     "PLANNING_ENTRY",
     "REVIEW_ENTRY",
     "PREFLIGHT",
+    "READ_EXECUTION",
     "VERIFICATION",
     "RECOVERY",
     "CANCEL_RESOLUTION",

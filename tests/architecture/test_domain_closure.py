@@ -45,6 +45,7 @@ TRANSITION_AUTHORITIES = {
     "run.request_confirmation",
     "run.resume_confirmation",
     "run.complete_answer_only_run",
+    "run.complete_read_only_run",
     "run.block_run",
     "run.begin_verification",
     "run.complete_write_run",
@@ -53,9 +54,14 @@ TRANSITION_AUTHORITIES = {
     "run.require_reauth",
     "run.resume_after_reauth",
     "plan.publish_plan",
+    "plan.publish_read_only_plan",
     "recovery.require_recovery",
     "recovery.resolve_recovery",
     "action.approve_action",
+    "action.claim_read_action",
+    "action.complete_read_action",
+    "action.fail_read_action",
+    "action.finalize_read_action",
     "action.modify_action",
     "action.reject_action",
     "action.cancel_pending_action",
@@ -76,7 +82,11 @@ TRANSITION_AUTHORITIES = {
 GUARD_AUTHORITIES = {
     "action.approve_action",
     "action.cancel_pending_action",
+    "action.claim_read_action",
+    "action.complete_read_action",
     "action.current_plan_authority",
+    "action.fail_read_action",
+    "action.finalize_read_action",
     "action.modify_action",
     "action.prepare_write_retry",
     "action.refresh_expired_action",
@@ -91,6 +101,7 @@ GUARD_AUTHORITIES = {
     "execution_attempt.resolve_as_failed",
     "execution_attempt.store_success",
     "plan.publish_plan",
+    "plan.publish_read_only_plan",
     "recovery.require_recovery",
     "recovery.resolve_recovery",
     "run.begin_planning",
@@ -98,6 +109,7 @@ GUARD_AUTHORITIES = {
     "run.begin_verification",
     "run.block_run",
     "run.complete_answer_only_run",
+    "run.complete_read_only_run",
     "run.complete_write_run",
     "run.finalize_cancel",
     "run.request_cancel",
@@ -112,6 +124,7 @@ GUARD_AUTHORITIES = {
 
 APPLICATION_OWNER_AUTHORITIES = {
     "run.complete_answer_only_run": "CompleteAnswerOnlyRunHandler",
+    "run.complete_read_only_run": "CompleteReadOnlyRunHandler",
     "run.begin_verification": "BeginVerificationHandler",
     "run.complete_write_run": "CompleteWriteRunHandler",
     "run.finalize_cancel": "FinalizeCancelHandler",
@@ -119,7 +132,12 @@ APPLICATION_OWNER_AUTHORITIES = {
     "run.resume_after_reauth": "ResumeAfterReauthHandler",
     "run.block_run": "BlockRunHandler",
     "plan.publish_plan": "PublishPlanHandler",
+    "plan.publish_read_only_plan": "PublishReadOnlyPlanHandler",
     "action.approve_action": "ApproveActionHandler",
+    "action.claim_read_action": "ClaimReadActionHandler",
+    "action.complete_read_action": "CompleteReadActionHandler",
+    "action.fail_read_action": "FailReadActionHandler",
+    "action.finalize_read_action": "FinalizeReadActionHandler",
     "action.modify_action": "ModifyActionHandler",
     "action.reject_action": "RejectActionHandler",
     "action.cancel_pending_action": "CancelPendingActionHandler",
@@ -217,7 +235,7 @@ def test_exact_transition_tree_has_current_mirrored_operations() -> None:
         for path in DOMAIN.glob("*/transitions/*.py")
         if path.name not in {"__init__.py", "decision.py"}
     )
-    assert len(sources) == 33
+    assert len(sources) == 39
     actual_authorities = {
         ".".join(path.relative_to(DOMAIN).with_suffix("").parts).replace(".transitions.", ".")
         for path in sources
@@ -227,7 +245,7 @@ def test_exact_transition_tree_has_current_mirrored_operations() -> None:
 
 def test_required_guard_tree_has_exact_current_owners() -> None:
     sources = sorted(path for path in DOMAIN.glob("*/guards/*.py") if path.name != "__init__.py")
-    assert len(sources) == 34
+    assert len(sources) == 40
     actual_authorities = {
         ".".join(path.relative_to(DOMAIN).with_suffix("").parts).replace(".guards.", ".")
         for path in sources
@@ -242,7 +260,7 @@ def test_formal_domain_ledger_universe_is_current_exact_set() -> None:
         + len(VOCABULARY_AUTHORITIES)
         + len(TRANSITION_AUTHORITIES)
         + len(GUARD_AUTHORITIES)
-        == 89
+        == 101
     )
 
 
