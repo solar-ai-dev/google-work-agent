@@ -144,3 +144,14 @@ def test_read_execution_checkpoint_resumes_at_action_execution() -> None:
     )
 
     assert target == "action_execution"
+
+
+def test_not_sent_reauth_checkpoint_resumes_at_safe_action_reconciliation() -> None:
+    runtime = cast(ResumeCheckpointMixin, object.__new__(ResumeCheckpointMixin))
+    runtime._topology = ("request_understanding",)
+
+    target = runtime._reauth_continuation_target(
+        cast(GraphState, {"workflow_phase": WorkflowPhase.ACTION_EXECUTION.value})
+    )
+
+    assert target == "action_execution"

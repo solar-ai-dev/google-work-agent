@@ -186,7 +186,7 @@ class ResumeCheckpointMixin:
         if phase == WorkflowPhase.READ_EXECUTION.value:
             return "action_execution"
         if phase == WorkflowPhase.ACTION_EXECUTION.value:
-            return None
+            return "action_execution"
         target_by_phase = {
             WorkflowPhase.TOOL_ROUTING.value: SupervisorTarget.TOOL_ROUTE,
             WorkflowPhase.CONTEXT_RETRIEVAL.value: SupervisorTarget.CONTEXT_RETRIEVAL,
