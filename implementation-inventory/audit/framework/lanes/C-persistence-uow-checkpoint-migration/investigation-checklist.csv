@@ -1,0 +1,6 @@
+check_id,topic,planned_question,ownership,status
+C-PLAN-001,repository,각 durable fact의 repository와 writer authority는 무엇인가,PRIMARY,PLANNED
+C-PLAN-002,transaction,UoW와 commit order는 canonical invariant를 어떻게 보존하는가,PRIMARY,PLANNED
+C-PLAN-003,checkpoint,checkpoint와 Domain Store의 truth boundary는 무엇인가,PRIMARY,PLANNED
+C-PLAN-004,migration,current schema와 migration realization은 어떤 contract를 enforce하는가,PRIMARY,PLANNED
+C-PLAN-005,restart,restart backup restore 후 보존되어야 하는 fact는 무엇인가,PRIMARY,PLANNED

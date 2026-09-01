@@ -1,0 +1,18 @@
+wave,lane_id,directory,future_run_directory,namespace,purpose,starts_after
+1,A,framework/lanes/A-product-requirements-policy-ux,runs/<AUDIT_SHA>/lanes/A-product-requirements-policy-ux,A-FUNC,Product requirement policy and UX extraction,run baseline freeze
+1,B,framework/lanes/B-domain-lifecycle-invariants,runs/<AUDIT_SHA>/lanes/B-domain-lifecycle-invariants,B-DOM,Domain lifecycle and invariant audit,run baseline freeze
+1,C,framework/lanes/C-persistence-uow-checkpoint-migration,runs/<AUDIT_SHA>/lanes/C-persistence-uow-checkpoint-migration,C-PER,Persistence transaction checkpoint and migration audit,run baseline freeze
+1,D,framework/lanes/D-application-execution-verification-recovery,runs/<AUDIT_SHA>/lanes/D-application-execution-verification-recovery,D-APP,Application orchestration and execution lifecycle audit,run baseline freeze
+1,E,framework/lanes/E-agent-semantics-retrieval,runs/<AUDIT_SHA>/lanes/E-agent-semantics-retrieval,E-AGT,Agent semantic and retrieval audit,run baseline freeze
+1,F,framework/lanes/F-langgraph-runtime-state-node-edge,runs/<AUDIT_SHA>/lanes/F-langgraph-runtime-state-node-edge,F-LG,LangGraph mechanics and state ownership audit,run baseline freeze
+1,G,framework/lanes/G-ports-connectors-mcp-llm-system,runs/<AUDIT_SHA>/lanes/G-ports-connectors-mcp-llm-system,G-PORT,Port and external adapter boundary audit,run baseline freeze
+1,H,framework/lanes/H-api-composition-frontend,runs/<AUDIT_SHA>/lanes/H-api-composition-frontend,H-API,API composition and frontend projection audit,run baseline freeze
+1,I,framework/lanes/I-security-privacy-observability-operations,runs/<AUDIT_SHA>/lanes/I-security-privacy-observability-operations,I-SEC,Cross-layer security privacy and operations audit,run baseline freeze
+1,J,framework/lanes/J-evaluation-prompt-evidence,runs/<AUDIT_SHA>/lanes/J-evaluation-prompt-evidence,J-EVAL,Evaluation and prompt evidence audit,run baseline freeze
+1,K,framework/lanes/K-launcher-installer-release-packaging,runs/<AUDIT_SHA>/lanes/K-launcher-installer-release-packaging,K-REL,Launcher release and packaging audit,run baseline freeze
+1,L,framework/lanes/L-repository-architecture,runs/<AUDIT_SHA>/lanes/L-repository-architecture,L-ARCH,Repository architecture uniqueness and test grammar audit,run baseline freeze
+R,R,framework/lanes/R-historical-audit-methodology,runs/<AUDIT_SHA>/lanes/R-historical-audit-methodology,R-HIST,Historical methodology review only,run baseline freeze
+2,X1,framework/cross-layer/X1-producer-consumer-handoff,runs/<AUDIT_SHA>/cross-layer/X1-producer-consumer-handoff,X1-PC,Producer consumer and handoff closure,Wave 1 coordinator freeze
+2,X2,framework/cross-layer/X2-end-to-end-product-lineage,runs/<AUDIT_SHA>/cross-layer/X2-end-to-end-product-lineage,X2-E2E,End-to-end scenario lineage,Wave 1 coordinator freeze
+2,X3,framework/cross-layer/X3-test-evidence-non-vacuity,runs/<AUDIT_SHA>/cross-layer/X3-test-evidence-non-vacuity,X3-TEST,Test evidence and non-vacuity audit,Wave 1 coordinator freeze
+2,X4,framework/cross-layer/X4-global-semantic-uniqueness,runs/<AUDIT_SHA>/cross-layer/X4-global-semantic-uniqueness,X4-UNIQ,Global authority uniqueness and reachability,Wave 1 coordinator freeze

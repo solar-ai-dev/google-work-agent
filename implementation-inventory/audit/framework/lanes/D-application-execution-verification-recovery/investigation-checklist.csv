@@ -1,0 +1,6 @@
+check_id,topic,planned_question,ownership,status
+D-PLAN-001,use-case,각 command/query의 exact Application owner와 caller는 무엇인가,PRIMARY,PLANNED
+D-PLAN-002,write-order,approval claim attempt effect verification 순서는 닫혀 있는가,PRIMARY,PLANNED
+D-PLAN-003,failure,FAILED UNKNOWN_RESULT mismatch의 recovery orchestration은 무엇인가,PRIMARY,PLANNED
+D-PLAN-004,cancel,취소와 terminal completion의 boundary는 무엇인가,PRIMARY,PLANNED
+D-PLAN-005,dependency,Application이 Domain과 Port만 의존하는가,PRIMARY,PLANNED

@@ -1,0 +1,6 @@
+check_id,topic,planned_question,ownership,status
+R-PLAN-001,grammar,유효했던 row/evidence/matrix grammar는 무엇인가,METHODOLOGY,PLANNED
+R-PLAN-002,parallel,old work package와 shared output의 장단점은 무엇인가,METHODOLOGY,PLANNED
+R-PLAN-003,automation,generator/helper의 deterministic/non-vacuity 보장은 무엇인가,METHODOLOGY,PLANNED
+R-PLAN-004,blind-spot,false CLEAN stale caller source-text hard-code 원인은 무엇인가,METHODOLOGY,PLANNED
+R-PLAN-005,adoption,current framework에 채택할 규칙과 금지할 상속은 무엇인가,METHODOLOGY,PLANNED

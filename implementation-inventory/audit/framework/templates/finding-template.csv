@@ -1,0 +1,2 @@
+finding_id,requirement_id,primary_owner_lane,secondary_evidence_lanes,severity,verdict,canonical_locator,expected,observed,root_cause,path,symbol,evidence_ids,semantic_collision_key,status,is_example
+EXAMPLE-A-FIND-000,EXAMPLE-A-FUNC-000,A,H,EXAMPLE,UNCHECKED,Example section,Example only,Example only,Example only,path/to/example.py,example_symbol,EXAMPLE-A-EV-000,example-key,EXAMPLE,true

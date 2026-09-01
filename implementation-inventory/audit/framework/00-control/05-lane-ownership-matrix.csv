@@ -1,0 +1,20 @@
+atomic_requirement_family,primary_owner_lane,secondary_evidence_lanes,not_owned_by
+Product capability and user-visible behavior,A,H;E;X2,L
+Policy and approval requirement meaning,A,B;D;H;I,F
+Domain aggregate fact and lifecycle state,B,C;D;F;X2,H
+Legal transition guard currentness idempotency,B,C;D;X2,F
+Persistence repository UoW transaction and schema realization,C,B;D;F;X1,L
+Application command query execution verification recovery,D,B;C;G;X1,F
+Agent semantic contracts and retrieval behavior,E,A;F;G;J;X1,F
+LangGraph state node edge interrupt resume mechanics,F,B;D;E;X1,E
+Port connector MCP LLM and external side-effect boundary,G,D;I;J;X1,H
+API composition SSE and frontend projection,H,A;D;F;I;X1,B
+Security privacy observability and operations invariant,I,A;G;H;K;X2,D
+Evaluation dataset grader target and prompt evidence,J,E;G;I;X3,A
+Launcher installer release packaging and artifacts,K,G;H;I;X2,L
+Repository path naming imports uniqueness and test grammar,L,B;C;F;G;J;K;X4,A
+Historical audit methodology,R,,A;B;C;D;E;F;G;H;I;J;K;L
+Producer consumer handoff completeness,X1,A;B;C;D;E;F;G;H,,
+End-to-end product lineage,X2,A;B;C;D;E;F;G;H;I;K,,
+Test evidence non-vacuity,X3,B;C;D;E;F;G;H;I;J;K;L,,
+Global semantic uniqueness and reachability,X4,B;C;D;E;F;G;H;I;J;K;L,,

@@ -1,0 +1,6 @@
+check_id,topic,planned_question,ownership,status
+E-PLAN-001,roles,각 Agent atomic semantic responsibility와 contract는 무엇인가,PRIMARY,PLANNED
+E-PLAN-002,retrieval,검색 scope exclusion budget sufficiency는 무엇인가,PRIMARY,PLANNED
+E-PLAN-003,currentness,revision/currentness가 stage 사이에서 어떻게 소비되는가,PRIMARY,PLANNED
+E-PLAN-004,back-edge,review/context adjustment back-edge의 semantic trigger는 무엇인가,PRIMARY,PLANNED
+E-PLAN-005,prompt,Agent가 소비해야 하는 prompt responsibility는 무엇인가,PRIMARY,PLANNED

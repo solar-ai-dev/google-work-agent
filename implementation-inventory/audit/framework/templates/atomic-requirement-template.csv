@@ -1,0 +1,2 @@
+requirement_id,lane_id,namespace,primary_owner_lane,secondary_evidence_lanes,canonical_source,canonical_locator,requirement_kind,normative_statement,positive_obligation,negative_obligation,verification_intent,is_example
+EXAMPLE-A-FUNC-000,A,A-FUNC,A,H,docs/canonical/example.md,Example section,EXAMPLE,Example only,Example only,Example only,Example only,true

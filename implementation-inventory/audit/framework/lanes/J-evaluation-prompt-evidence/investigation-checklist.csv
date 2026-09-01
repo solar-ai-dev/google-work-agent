@@ -1,0 +1,6 @@
+check_id,topic,planned_question,ownership,status
+J-PLAN-001,authority,dataset fixture projection grader target writer의 단일 authority는 무엇인가,PRIMARY,PLANNED
+J-PLAN-002,isolation,DEV HOLDOUT Safety partition과 leakage 방지는 닫혀 있는가,PRIMARY,PLANNED
+J-PLAN-003,prompt,Registry source manifest input contract가 하나의 chain인가,PRIMARY,PLANNED
+J-PLAN-004,evidence,activation/release flag는 실제 evidence에 의해 뒷받침되는가,PRIMARY,PLANNED
+J-PLAN-005,reproducibility,hash config target result가 재현 가능한가,PRIMARY,PLANNED

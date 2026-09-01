@@ -1,0 +1,2 @@
+merge_item_id,wave,lane_id,input_path,input_hash,schema_valid,id_collision_count,owner_collision_count,semantic_duplicate_count,unchecked_count,disposition,output_row_ids,coordinator,is_example
+EXAMPLE-MERGE-000,EXAMPLE,A,example/path,EXAMPLE_HASH,false,0,0,0,0,EXAMPLE,,EXAMPLE,true
