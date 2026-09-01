@@ -16,7 +16,6 @@ from google_work_agent.application.prompt_runtime.contracts.failure_record impor
     build_failure_record_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
-    InactivePromptArtifactError,
     PromptRegistry,
 )
 
@@ -99,20 +98,20 @@ def test_assemble_prompt_adds_bounded_failure_instruction(tmp_path: Path) -> Non
     assert "experiment_disposition" not in assembled
 
 
-def test_evaluation_scope_can_assemble_draft_without_enabling_product_selection() -> None:
+def test_evaluation_scope_and_product_scope_use_the_same_active_base_source() -> None:
     registry = PromptRegistry()
     prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
 
-    assembled = assemble_prompt(
+    evaluation_assembled = assemble_prompt(
         prompt_ref,
         _projection(),
         registry=registry,
         activation_scope="EVALUATION",
     )
+    product_assembled = assemble_prompt(prompt_ref, _projection(), registry=registry)
 
-    assert assembled.startswith("You are the Planning answer-composition node.")
-    with pytest.raises(InactivePromptArtifactError):
-        assemble_prompt(prompt_ref, _projection(), registry=registry)
+    assert evaluation_assembled.startswith("You are the Planning answer-composition node.")
+    assert product_assembled == evaluation_assembled
 
 
 def test_unknown_activation_scope_fails_closed() -> None:

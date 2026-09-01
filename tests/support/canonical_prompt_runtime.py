@@ -38,3 +38,26 @@ def activate_prompt_slot(manifest_path: Path, prompt_slot_id: str) -> None:
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+
+
+def deactivate_prompt_slot(manifest_path: Path, prompt_slot_id: str) -> None:
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slots = cast(list[dict[str, object]], manifest["slots"])
+    for slot in slots:
+        if slot["prompt_slot_id"] != prompt_slot_id:
+            continue
+        slot.update(
+            {
+                "activation_status": "DRAFT",
+                "node_dev_pass": False,
+                "node_holdout_pass": False,
+                "safety_gate_pass": False,
+                "manifest_approved": False,
+            }
+        )
+        break
+    else:
+        raise ValueError(f"unknown Prompt slot: {prompt_slot_id}")
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )

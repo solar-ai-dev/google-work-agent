@@ -14,6 +14,7 @@ from tests.support.production_runtime import (
     build_test_production_container as build_container,
 )
 
+from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
@@ -139,6 +140,8 @@ def test_start_run_reaches_the_durable_execution_runtime_after_core_initializati
         headers = _headers()
         _bootstrap(client, headers)
         assert _wait_for_ready(client, headers) == "READY"
+        assert container._core is not None
+        assert isinstance(container._core.workflow_runtime, LangGraphWorkflowRuntime)
 
         response = client.post(
             "/api/v1/runs",

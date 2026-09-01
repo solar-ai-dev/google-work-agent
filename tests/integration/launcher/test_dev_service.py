@@ -16,6 +16,7 @@ from tests.support.production_runtime import (
 )
 from uvicorn import Config, Server
 
+from google_work_agent.adapters.langgraph.main.workflow import LangGraphWorkflowRuntime
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
@@ -42,6 +43,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     )
     container = replace(container, client_address_resolver=lambda _request: "127.0.0.1")
 
+    assert isinstance(container.workflow_runtime, LangGraphWorkflowRuntime)
     assert container.get_attachment_handler is not None
     assert isinstance(container.create_staged_attachment_handler, CreateStagedAttachmentHandler)
     descriptor = container.create_staged_attachment_handler(

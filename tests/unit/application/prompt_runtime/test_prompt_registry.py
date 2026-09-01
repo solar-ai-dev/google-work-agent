@@ -10,6 +10,7 @@ import pytest
 from tests.support.canonical_prompt_runtime import (
     activate_prompt_slot,
     copy_prompt_runtime_artifacts,
+    deactivate_prompt_slot,
 )
 
 from google_work_agent.application.prompt_runtime import prompt_registry as prompt_registry_module
@@ -34,38 +35,34 @@ def test_prompt_registry_loads_exact_canonical_slot_set() -> None:
 
     assert registry.slot_ids == REQUIRED_PROMPT_SLOT_IDS
     assert default_prompt_manifest_path().name == "prompt_manifest.json"
+    assert {
+        registry.lookup_by_id(prompt_slot_id).prompt_id
+        for prompt_slot_id in REQUIRED_PROMPT_SLOT_IDS
+    } == REQUIRED_PROMPT_SLOT_IDS
 
 
-def test_prompt_registry_rejects_draft_product_selection() -> None:
-    registry = PromptRegistry()
+def test_prompt_registry_rejects_draft_product_selection(tmp_path: Path) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    deactivate_prompt_slot(manifest_path, "planning.compose_answer")
+    registry = PromptRegistry(manifest_path, contract_path)
 
     with pytest.raises(InactivePromptArtifactError, match="DRAFT"):
         registry.lookup_by_id("planning.compose_answer")
 
 
-def test_request_understanding_prompts_remain_draft_without_release_evidence() -> None:
+def test_all_product_prompts_have_complete_release_evidence() -> None:
     registry = PromptRegistry()
-
-    for prompt_id in (
-        "request_understanding.identify_goal",
-        "request_understanding.detect_ambiguity",
-    ):
-        with pytest.raises(InactivePromptArtifactError, match="DRAFT"):
-            registry.lookup_by_id(prompt_id)
 
     manifest = cast(
         dict[str, object],
         json.loads(default_prompt_manifest_path().read_text(encoding="utf-8")),
     )
     slots = cast(list[dict[str, object]], manifest["slots"])
-    request_slots = [
-        slot for slot in slots if str(slot["prompt_slot_id"]).startswith("request_understanding.")
-    ]
-    assert len(request_slots) == 2
-    for slot in request_slots:
-        assert slot["activation_status"] == "DRAFT"
+    assert len(slots) == 21
+    for slot in slots:
+        assert slot["activation_status"] == "RUNTIME_ACTIVE"
         assert all(
-            slot[field] is False
+            slot[field] is True
             for field in (
                 "node_dev_pass",
                 "node_holdout_pass",
@@ -73,6 +70,9 @@ def test_request_understanding_prompts_remain_draft_without_release_evidence() -
                 "manifest_approved",
             )
         )
+        assert registry.lookup_by_id(cast(str, slot["prompt_slot_id"])).prompt_id == slot[
+            "prompt_id"
+        ]
 
 
 def test_prompt_registry_accepts_exact_canonical_activation_status_vocabulary() -> None:
@@ -119,6 +119,13 @@ def test_runtime_active_label_without_gate_evidence_fails_closed(tmp_path: Path)
         if slot["prompt_slot_id"] == "planning.compose_answer"
     )
     slot["activation_status"] = "RUNTIME_ACTIVE"
+    for field in (
+        "node_dev_pass",
+        "node_holdout_pass",
+        "safety_gate_pass",
+        "manifest_approved",
+    ):
+        slot[field] = False
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(PromptRegistryError, match="requires complete release evidence"):
         PromptRegistry(manifest_path, contract_path)

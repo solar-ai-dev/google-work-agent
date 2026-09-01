@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import pytest
+from tests.support.canonical_prompt_runtime import (
+    copy_prompt_runtime_artifacts,
+    deactivate_prompt_slot,
+)
 
 from google_work_agent.adapters.langgraph.subgraphs.review.graph import (
     ReviewRuntimeDependencies,
@@ -50,7 +55,7 @@ def test_goal_node_projection_and_answer_router_are_exact() -> None:
     )
 
 
-def test_non_active_goal_prompt_fails_before_structured_inference() -> None:
+def test_non_active_goal_prompt_fails_before_structured_inference(tmp_path: Path) -> None:
     class FailingRuntime:
         calls = 0
 
@@ -59,7 +64,12 @@ def test_non_active_goal_prompt_fails_before_structured_inference() -> None:
             raise AssertionError("inactive Prompt must not reach StructuredInferencePort")
 
     runtime = FailingRuntime()
-    graph = ReviewSubgraph(llm_runtime=runtime)  # type: ignore[arg-type]
+    manifest_path, _contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    deactivate_prompt_slot(manifest_path, "review.inspect_goal_and_evidence")
+    graph = ReviewSubgraph(  # type: ignore[arg-type]
+        llm_runtime=runtime,
+        prompt_manifest_path=manifest_path,
+    )
     invoke = graph.semantic_invoker({"run_id": "run-1"})
 
     with pytest.raises(InactivePromptArtifactError, match="not activation-gate complete"):

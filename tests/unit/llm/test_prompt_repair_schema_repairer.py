@@ -9,6 +9,7 @@ import pytest
 from tests.support.canonical_prompt_runtime import (
     activate_prompt_slot,
     copy_prompt_runtime_artifacts,
+    deactivate_prompt_slot,
 )
 from tests.support.fakes import FakeAPIProviderTransport
 
@@ -138,11 +139,15 @@ def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
     assert transport.invocations[0]["prompt_id"] == "planning.compose_answer"
 
 
-def test_repair_fails_closed_when_sibling_prompt_is_still_draft() -> None:
+def test_repair_fails_closed_when_sibling_prompt_is_still_draft(tmp_path: Path) -> None:
     """The DRAFT base source must remain unavailable to Product repair."""
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    deactivate_prompt_slot(manifest_path, "planning.compose_answer")
     transport = FakeAPIProviderTransport()
-    repairer = PromptRepairSchemaRepairer(manifest_path=default_prompt_manifest_path())
-    draft_prompt_ref = PromptRegistry().lookup_for_evaluation("planning.compose_answer")
+    repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
+    draft_prompt_ref = PromptRegistry(
+        manifest_path, contract_path
+    ).lookup_for_evaluation("planning.compose_answer")
 
     with pytest.raises(LLMInvocationError) as excinfo:
         repairer.repair(
