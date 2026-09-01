@@ -1,5 +1,7 @@
-from google_work_agent.adapters.langgraph.checkpoint_control import _command_writes
-from google_work_agent.adapters.langgraph.checkpoint_control import native_resume_command
+from google_work_agent.adapters.langgraph.checkpoint_control import (
+    _command_writes,
+    native_resume_command,
+)
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.graph import (
     _authorize_context_adjustment_budget,
 )

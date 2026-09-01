@@ -265,9 +265,10 @@ class PlanPersistenceMixin:
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
         evidence_ids = evidence_ids_from_plan(plan)
         evidence_id_map = {item: item for item in evidence_ids}
-        if replan_from_plan_id is not None:
-            if not any(plan.id == replan_from_plan_id for plan in plans):
-                raise LookupError(f"replan source not found: {replan_from_plan_id}")
+        if replan_from_plan_id is not None and not any(
+            plan.id == replan_from_plan_id for plan in plans
+        ):
+            raise LookupError(f"replan source not found: {replan_from_plan_id}")
         if plans:
             # A fresh Planning artifact after Context Adjustment or any other
             # published re-entry is a new durable revision even when the
