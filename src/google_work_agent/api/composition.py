@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
 import sqlite3
@@ -18,6 +19,7 @@ from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
     GoogleWorkspaceConnector,
     build_google_workspace_connector_descriptor,
+    google_workspace_internal_read_binding,
 )
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
     ConnectorRuntimeRegistry,
@@ -491,6 +493,8 @@ from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferP
 from google_work_agent.ports.system.uuid_port import UUIDPort
 from google_work_agent.ports.system.workflow_execution_port import WorkflowExecutionPort
 
+LOGGER = logging.getLogger(__name__)
+
 # 16/07's closed table has exactly one P0 concrete binding per outbound Port.
 # Constructors stay at the outer launcher because their environment-specific
 # arguments (paths, process handles, provider configuration) are not Core
@@ -757,6 +761,9 @@ def _build_workflow_application_services(
         lookup_unknown_result=LookupUnknownResultHandler(
             connector_read=connector_reader.connector_reader,
             tool_registry=tool_catalog,
+            recovery_search_binding=google_workspace_internal_read_binding(
+                "search_by_recovery_fingerprint"
+            ),
             unit_of_work_factory=unit_of_work_factory,
         ),
         recover_existing_result=RecoverExistingResultHandler(
@@ -2432,6 +2439,14 @@ def build_production_runtime(
                         )
                     )
         except Exception as error:
+            LOGGER.exception(
+                "workflow semantic owner invocation failed",
+                extra={
+                    "run_id": binding.run_id,
+                    "handoff_id": admission.handoff_id,
+                    "submission_kind": admission.submission_kind,
+                },
+            )
             current = get_execution_context(GetExecutionContextQuery(binding.run_id))
             outcome_handler.handle_result(
                 binding.run_id,
@@ -2459,6 +2474,9 @@ def build_production_runtime(
         lookup_unknown_result=LookupUnknownResultHandler(
             connector_read=connector_reader,
             tool_registry=connector_bundle.tool_registry,
+            recovery_search_binding=google_workspace_internal_read_binding(
+                "search_by_recovery_fingerprint"
+            ),
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
         ),

@@ -5,6 +5,9 @@ from typing import Any
 
 import pytest
 
+from google_work_agent.adapters.connectors.google.workspace.composition import (
+    google_workspace_internal_read_binding,
+)
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
     ConnectorRuntimeRegistry,
 )
@@ -93,6 +96,31 @@ def test_read_adapter_requires_signed_binding_and_projects_bounded_output() -> N
 
     assert result.request_id == "r1"
     assert client.calls[0][1] == "gmail_get_thread"
+
+
+def test_read_adapter_accepts_only_an_explicit_internal_capability_binding() -> None:
+    binding = google_workspace_internal_read_binding("search_by_recovery_fingerprint")
+    client = _Client(
+        MCPToolCallResultV1(
+            1,
+            binding.tool_id,
+            "OK",
+            {"request_id": "recovery-1", "items": []},
+            None,
+        )
+    )
+
+    result = McpConnectorReadAdapter(
+        runtime_registry=_registry(client),
+        mcp_client=client,
+        internal_bindings=(binding,),
+    ).execute_read(
+        binding,
+        {"resource_type": "task", "recovery_fingerprint": "f" * 64},
+    )
+
+    assert result.request_id == "recovery-1"
+    assert client.calls[0][1] == "search_by_recovery_fingerprint"
 
 
 def test_write_adapter_forwards_application_signed_claim_unchanged() -> None:

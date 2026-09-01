@@ -22,6 +22,9 @@ from google_work_agent.ports.connector.connector_failure import (
     ConnectorOperationFailure,
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort, JsonValue
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
@@ -71,12 +74,16 @@ class LookupUnknownResultHandler:
         *,
         connector_read: ConnectorReadPort,
         tool_registry: SignedToolRegistry,
+        recovery_search_binding: ValidatedConnectorToolBindingV1,
         connector_id: str = "google_workspace",
         unit_of_work_factory: Callable[[], UnitOfWork] | None = None,
         now_ms: Callable[[], int] = lambda: 0,
     ) -> None:
         self._connector_read = connector_read
         self._tool_registry = tool_registry
+        if recovery_search_binding.tool_id != "search_by_recovery_fingerprint":
+            raise ValueError("recovery search binding must own fingerprint lookup")
+        self._recovery_search_binding = recovery_search_binding
         self._connector_id = connector_id
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -154,10 +161,12 @@ class LookupUnknownResultHandler:
     def _lookup(self, query: LookupUnknownResultQueryV1) -> UnknownResultLookupResultV1:
         strategy, tool_id, arguments = self._request(query)
         try:
-            result = self._connector_read.execute_read(
-                self._tool_registry.bind_required(self._connector_id, tool_id, "READ"),
-                arguments,
+            binding = (
+                self._recovery_search_binding
+                if tool_id == "search_by_recovery_fingerprint"
+                else self._tool_registry.bind_required(self._connector_id, tool_id, "READ")
             )
+            result = self._connector_read.execute_read(binding, arguments)
         except ConnectorOperationFailure as error:
             if error.code is ConnectorFailureCode.NOT_FOUND and strategy == "GET_TARGET":
                 if query.effect == "DELETE" and query.target_resource_ref is not None:
@@ -324,6 +333,17 @@ class LookupUnknownResultHandler:
         if query.effect == "SEND":
             return "MESSAGE_SEARCH", "gmail_search_threads", {"query": query.recovery_fingerprint}
         target = query.target_resource_ref
+        if query.effect == "CREATE":
+            if target is None:
+                raise ValueError("create recovery requires a resource type")
+            return (
+                "RESOURCE_SEARCH",
+                "search_by_recovery_fingerprint",
+                {
+                    "resource_type": target.resource_type.lower(),
+                    "recovery_fingerprint": query.recovery_fingerprint,
+                },
+            )
         if query.effect in {"UPDATE", "DELETE"}:
             if target is None:
                 raise ValueError("targeted recovery requires a resource reference")
@@ -425,6 +445,9 @@ def _create_recovery_search_scope(
     elif tool_name == "calendar_create_event":
         parent_id = arguments.get("calendar_id")
         resource_type = "calendar_event"
+    elif tool_name == "gmail_create_draft":
+        parent_id = "gmail"
+        resource_type = "gmail_draft"
     else:
         return None
     if not isinstance(parent_id, str) or not parent_id:

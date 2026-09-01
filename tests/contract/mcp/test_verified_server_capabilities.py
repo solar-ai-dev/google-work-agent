@@ -7,6 +7,7 @@ import pytest
 
 from google_work_agent.adapters.connectors.google.workspace.composition import (
     build_google_workspace_connector_descriptor,
+    google_workspace_internal_read_binding,
 )
 from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
     credential_provider as workspace_tools,
@@ -83,6 +84,18 @@ def test_google_connector_preserves_explicit_test_module() -> None:
     )
 
     assert descriptor.artifact_config.module_name == "tests.fakes.mcp_server"
+
+
+def test_recovery_search_binding_uses_the_internal_capability_contract() -> None:
+    binding = google_workspace_internal_read_binding("search_by_recovery_fingerprint")
+    capability = next(
+        item
+        for item in build_google_workspace_internal_capabilities()
+        if item.tool_name == binding.tool_id
+    )
+
+    assert binding.effect == "READ"
+    assert binding.registry_entry_hash == capability.tool_schema_hash
 
 
 DEFAULT_MCP_MODULE = "google_work_agent.adapters.connectors.google.workspace.mcp_server.entrypoint"

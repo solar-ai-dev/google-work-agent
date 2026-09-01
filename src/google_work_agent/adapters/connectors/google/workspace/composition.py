@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from google_work_agent.adapters.connectors.google.workspace.mcp_server.project_registry import (
+    build_google_workspace_internal_capabilities,
+)
 from google_work_agent.adapters.connectors.runtime.connector_runtime_registry import (
     ConnectorRuntimeRegistry,
 )
@@ -19,12 +22,37 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     MCPConnectorDescriptor,
     StdioMCPClientAdapter,
 )
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
 from google_work_agent.ports.connector.mcp_client_port import MCPToolDescriptorV1
 from google_work_agent.ports.system.artifact_signature_verifier import (
     ArtifactSignatureVerifier,
 )
 
 GOOGLE_WORKSPACE_CONNECTOR_ID = "google_workspace"
+
+
+def google_workspace_internal_read_binding(
+    tool_name: str,
+) -> ValidatedConnectorToolBindingV1:
+    capabilities = {
+        capability.tool_name: capability
+        for capability in build_google_workspace_internal_capabilities()
+    }
+    capability = capabilities.get(tool_name)
+    if capability is None:
+        raise ValueError(f"unknown Google Workspace internal capability: {tool_name}")
+    return ValidatedConnectorToolBindingV1(
+        schema_version=1,
+        connector_id=GOOGLE_WORKSPACE_CONNECTOR_ID,
+        resource_type="internal_capability",
+        tool_id=capability.tool_name,
+        effect="READ",
+        input_schema_ref=capability.input_schema_version,
+        output_schema_ref=capability.output_schema_version,
+        registry_entry_hash=capability.tool_schema_hash,
+    )
 
 
 def build_google_workspace_connector_descriptor(
@@ -75,6 +103,10 @@ class GoogleWorkspaceConnector:
         return McpConnectorReadAdapter(
             runtime_registry=self._runtime_registry,
             mcp_client=self.client,
+            internal_bindings=tuple(
+                google_workspace_internal_read_binding(capability.tool_name)
+                for capability in build_google_workspace_internal_capabilities()
+            ),
         )
 
     @property
@@ -110,4 +142,5 @@ __all__ = [
     "GOOGLE_WORKSPACE_CONNECTOR_ID",
     "GoogleWorkspaceConnector",
     "build_google_workspace_connector_descriptor",
+    "google_workspace_internal_read_binding",
 ]

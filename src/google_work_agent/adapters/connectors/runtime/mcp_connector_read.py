@@ -25,10 +25,12 @@ class McpConnectorReadAdapter(ConnectorReadPort):
         runtime_registry: ConnectorRuntimeRegistry,
         mcp_client: MCPClientPort,
         timeout_ms: int = 30_000,
+        internal_bindings: tuple[ValidatedConnectorToolBindingV1, ...] = (),
     ) -> None:
         self._runtime_registry = runtime_registry
         self._mcp_client = mcp_client
         self._timeout_ms = timeout_ms
+        self._internal_bindings = {binding.tool_id: binding for binding in internal_bindings}
 
     def execute_read(
         self,
@@ -43,7 +45,10 @@ class McpConnectorReadAdapter(ConnectorReadPort):
             for descriptor in self._mcp_client.list_tools(binding.connector_id)
         }
         descriptor = descriptors.get(binding.tool_id)
-        if descriptor is None or (
+        internal = self._internal_bindings.get(binding.tool_id)
+        if descriptor is None and binding != internal:
+            raise ValueError("validated Connector Tool binding does not match MCP descriptor")
+        if descriptor is not None and (
             descriptor.connector_id,
             descriptor.input_schema_ref,
             descriptor.output_schema_ref,
