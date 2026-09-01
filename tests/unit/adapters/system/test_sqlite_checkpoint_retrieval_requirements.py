@@ -19,6 +19,7 @@ def test_retrieval_cache_requirements_project_only_bounded_bindings() -> None:
         }
     )
 
+    assert requirements is not None
     assert len(requirements) == 1
     assert requirements[0].read_result_handle == "read-1"
     assert requirements[0].route_id == "route-1"

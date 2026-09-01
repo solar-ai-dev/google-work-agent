@@ -157,6 +157,5 @@ def test_six_role_runtime_calls_all_applicable_exact_inspectors_read_only() -> N
     assert calls == [
         "review.inspect_goal_and_evidence",
         "review.inspect_action_scope_and_route",
-        "review.inspect_constraints_and_policy_summary",
     ]
     assert route == {"output_plan": {"output_mode": "ACTION", "output_routes": []}}

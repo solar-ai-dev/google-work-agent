@@ -705,8 +705,8 @@ def test_context_adjustment_reenters_retrieval_and_requires_revised_approval(
         assert response.status_code == 200, response.text
         revised = _wait_for_status(client, run_id, {"WAITING_APPROVAL"})
         revised_preview = cast(dict[str, object], revised["context_preview"])
-        assert int(revised_preview["retrieval_revision"]) > int(
-            preview["retrieval_revision"]
+        assert cast(int, revised_preview["retrieval_revision"]) > cast(
+            int, preview["retrieval_revision"]
         )
         _approve_action(
             client,

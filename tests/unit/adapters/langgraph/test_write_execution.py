@@ -210,7 +210,8 @@ def test_verified_and_rejected_write_actions_route_to_partial_terminal_synthesis
     result = node(cast(Any, {"run_id": "run-1", "approved_plan_id": "plan-1"}))
 
     assert result["__target__"] == "response_synthesis"
-    assert result["__workflow_control__"]["action_statuses"] == ["VERIFIED", "REJECTED"]
+    control = cast(dict[str, object], result["__workflow_control__"])
+    assert control["action_statuses"] == ["VERIFIED", "REJECTED"]
 
 
 def test_preflight_routes_closed_partial_plan_to_terminal_action_reconciliation() -> None:

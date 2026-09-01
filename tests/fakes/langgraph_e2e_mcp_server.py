@@ -238,22 +238,22 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
         "tasks_get_task",
         "calendar_get_event",
     }:
-        item = _get_fixture(tool_name, arguments, state)
-        if item is None:
+        read_item = _get_fixture(tool_name, arguments, state)
+        if read_item is None:
             raise _ExternalFailure("NOT_FOUND", "NOT_SENT")
         item_failure_mode = _failure_mode(
-            {"payload": cast(dict[str, object], item.get("payload") or {})}
+            {"payload": cast(dict[str, object], read_item.get("payload") or {})}
         )
         if item_failure_mode == "VERIFICATION_MISMATCH" or (
             item_failure_mode == "RECOVERY" and counts[tool_name] == 1
         ):
-            observed_payload = cast(dict[str, object], item["payload"])
-            item = {
-                **item,
+            observed_payload = cast(dict[str, object], read_item["payload"])
+            read_item = {
+                **read_item,
                 "payload": {**observed_payload, "title": "mismatch-observed"},
             }
         _save_state(state)
-        return {"item": item}
+        return {"item": read_item}
     _save_state(state)
     return {"item": _read_fixture(tool_name, arguments)}
 

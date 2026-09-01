@@ -147,7 +147,7 @@ def _respond(
     if prompt_id == "retrieval.select_evidence":
         base = _base_projection(prompt_input)
         ranked = cast(list[Mapping[str, object]], base.get("ranked_segments", []))
-        selected = [str(item["segment_id"]) for item in ranked]
+        selected_segment_ids = [str(item["segment_id"]) for item in ranked]
         return {
             "schema_version": 2,
             "evidence_drafts": [
@@ -156,9 +156,9 @@ def _respond(
                     "role": "SUPPORTS",
                     "relevance_reason": "E2E source evidence",
                 }
-                for segment_id in selected
+                for segment_id in selected_segment_ids
             ],
-            "selected_segment_ids": selected,
+            "selected_segment_ids": selected_segment_ids,
             "excluded_segment_ids": [],
         }
     if prompt_id == "retrieval.assess_sufficiency":
