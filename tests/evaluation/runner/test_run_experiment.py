@@ -319,13 +319,15 @@ def test_product_preflight_independently_verifies_git_tree_callable_and_prompt()
 
 
 def test_product_preflight_rejects_self_supplied_mismatched_identity() -> None:
-    previous_product_commit = subprocess.run(
-        ("git", "rev-parse", "HEAD^"),
+    product_commits = subprocess.run(
+        ("git", "rev-list", "HEAD", "--", "src"),
         check=True,
         capture_output=True,
         text=True,
         encoding="utf-8",
-    ).stdout.strip()
+    ).stdout.splitlines()
+    assert len(product_commits) >= 2
+    previous_product_commit = product_commits[1]
     config = _config().model_copy(
         update={
             "runtime_mode": "SYNTHETIC_FIXTURE",
