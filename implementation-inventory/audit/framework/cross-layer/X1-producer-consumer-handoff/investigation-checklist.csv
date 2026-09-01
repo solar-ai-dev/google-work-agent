@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-X1-PLAN-001,producer,각 handoff의 single producer와 output contract는 무엇인가,CROSS_LAYER,PLANNED
-X1-PLAN-002,identity,revision/hash/currentness가 handoff에서 보존되는가,CROSS_LAYER,PLANNED
-X1-PLAN-003,consumer,consumer input contract와 validation은 producer와 일치하는가,CROSS_LAYER,PLANNED
-X1-PLAN-004,persistence,중간 durable/checkpoint fact의 owner는 무엇인가,CROSS_LAYER,PLANNED
-X1-PLAN-005,negative,orphan producer consumer bypass stale handoff가 없는가,CROSS_LAYER,PLANNED

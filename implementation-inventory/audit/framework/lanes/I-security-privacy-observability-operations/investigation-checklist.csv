@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-I-PLAN-001,secret,credential/token/key가 허용 boundary 안에만 존재하는가,PRIMARY,PLANNED
-I-PLAN-002,trust,local bind와 session/bootstrap trust가 fail-closed인가,PRIMARY,PLANNED
-I-PLAN-003,privacy,provider/user data leakage와 retention 제한은 무엇인가,PRIMARY,PLANNED
-I-PLAN-004,observability,audit trace log가 truth와 secret 규칙을 보존하는가,PRIMARY,PLANNED
-I-PLAN-005,operations,diagnostics shutdown recovery status의 invariant는 무엇인가,PRIMARY,PLANNED

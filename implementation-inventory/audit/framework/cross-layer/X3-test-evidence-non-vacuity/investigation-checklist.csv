@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-X3-PLAN-001,mapping,각 required behavior/invariant에 검증 evidence가 있는가,CROSS_LAYER,PLANNED
-X3-PLAN-002,owner-call,test가 current canonical owner를 실제 호출하는가,CROSS_LAYER,PLANNED
-X3-PLAN-003,fake,fixture/fake가 current Port와 behavior를 왜곡하지 않는가,CROSS_LAYER,PLANNED
-X3-PLAN-004,negative,absence proof에 current positive anchor와 전체 search scope가 있는가,CROSS_LAYER,PLANNED
-X3-PLAN-005,architecture,assertion이 source text가 아닌 runtime/AST/import truth를 검증하는가,CROSS_LAYER,PLANNED

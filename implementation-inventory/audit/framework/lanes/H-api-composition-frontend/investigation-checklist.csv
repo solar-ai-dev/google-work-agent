@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-H-PLAN-001,api,route와 request/response contract는 exact handler에 연결되는가,PRIMARY,PLANNED
-H-PLAN-002,session,local session/bootstrap trust boundary는 닫혀 있는가,PRIMARY,PLANNED
-H-PLAN-003,stream,SSE snapshot reconnect projection은 Domain truth와 분리되는가,PRIMARY,PLANNED
-H-PLAN-004,composition,composition root가 wiring만 소유하는가,PRIMARY,PLANNED
-H-PLAN-005,frontend,request projection storage terminal rendering이 policy를 재정의하지 않는가,PRIMARY,PLANNED

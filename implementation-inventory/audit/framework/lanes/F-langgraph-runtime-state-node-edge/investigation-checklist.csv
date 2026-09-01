@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-F-PLAN-001,topology,canonical graph/subgraph/node/edge universe는 무엇인가,PRIMARY,PLANNED
-F-PLAN-002,state,각 State field reducer writer reader는 누구인가,PRIMARY,PLANNED
-F-PLAN-003,control,interrupt resume handoff checkpoint target은 어떻게 닫히는가,PRIMARY,PLANNED
-F-PLAN-004,registry,profile node resume registry와 compiled graph가 일치하는가,PRIMARY,PLANNED
-F-PLAN-005,reachability,owner가 runtime composition에서 실제 도달 가능한가,PRIMARY,PLANNED

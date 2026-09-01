@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-A-PLAN-001,capability,사용자에게 제공해야 하는 atomic capability는 무엇인가,PRIMARY,PLANNED
-A-PLAN-002,policy,허용 금지 승인 확인 요구는 무엇인가,PRIMARY,PLANNED
-A-PLAN-003,ux,사용자-visible state action feedback은 무엇인가,PRIMARY,PLANNED
-A-PLAN-004,negative,기능적으로 발생하면 안 되는 동작은 무엇인가,PRIMARY,PLANNED
-A-PLAN-005,journey,sequence별 사용자 기대와 terminal outcome은 무엇인가,PRIMARY,PLANNED

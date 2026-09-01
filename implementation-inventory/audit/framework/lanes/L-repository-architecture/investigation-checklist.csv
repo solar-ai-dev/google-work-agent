@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-L-PLAN-001,ownership,path file symbol import가 concern owner를 정확히 표현하는가,PRIMARY,PLANNED
-L-PLAN-002,uniqueness,동일 semantic capability의 production authority가 정확히 하나인가,PRIMARY,PLANNED
-L-PLAN-003,reachability,owner caller export composition registry runtime chain이 닫혀 있는가,PRIMARY,PLANNED
-L-PLAN-004,legacy,legacy compat versioned dead zero-caller path가 runtime에 남는가,PRIMARY,PLANNED
-L-PLAN-005,test-grammar,test fixture migration enforcement와 exception registry가 canonical한가,PRIMARY,PLANNED

@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-X4-PLAN-001,owner,각 semantic responsibility의 canonical production owner는 하나인가,CROSS_LAYER,PLANNED
-X4-PLAN-002,reachability,owner caller import export composition registry runtime chain이 완결되는가,CROSS_LAYER,PLANNED
-X4-PLAN-003,duplicate,legacy compat versioned competing implementation이 도달 가능한가,CROSS_LAYER,PLANNED
-X4-PLAN-004,writer,state persistence effect routing validator registry authority가 중복되는가,CROSS_LAYER,PLANNED
-X4-PLAN-005,orphan,dead zero-caller unregistered implementation이 있는가,CROSS_LAYER,PLANNED

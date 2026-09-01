@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-K-PLAN-001,launcher,process bootstrap service instance lifecycle은 닫혀 있는가,PRIMARY,PLANNED
-K-PLAN-002,package,profile별 package contents와 installed owner는 무엇인가,PRIMARY,PLANNED
-K-PLAN-003,trust,signed manifest와 artifact integrity chain은 무엇인가,PRIMARY,PLANNED
-K-PLAN-004,lifecycle,upgrade uninstall backup migration ordering은 무엇인가,PRIMARY,PLANNED
-K-PLAN-005,reproducibility,source에서 artifact까지 hash/manifest가 재현 가능한가,PRIMARY,PLANNED

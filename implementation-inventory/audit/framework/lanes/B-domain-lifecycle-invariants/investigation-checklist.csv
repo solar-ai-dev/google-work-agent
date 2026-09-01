@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-B-PLAN-001,aggregate,aggregate와 durable fact의 closed owner는 무엇인가,PRIMARY,PLANNED
-B-PLAN-002,state,허용 state와 terminal state universe는 무엇인가,PRIMARY,PLANNED
-B-PLAN-003,transition,legal source command guard target 조합은 무엇인가,PRIMARY,PLANNED
-B-PLAN-004,invariant,currentness idempotency concurrency invariant는 무엇인가,PRIMARY,PLANNED
-B-PLAN-005,negative,illegal transition과 forbidden fact mutation은 무엇인가,PRIMARY,PLANNED

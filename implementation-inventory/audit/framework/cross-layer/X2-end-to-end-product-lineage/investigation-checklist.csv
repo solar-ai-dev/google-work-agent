@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-X2-PLAN-001,scenario,각 scenario family의 canonical start trigger terminal outcome은 무엇인가,CROSS_LAYER,PLANNED
-X2-PLAN-002,lineage,UI/API부터 durable fact/effect/projection까지 lineage가 끊기지 않는가,CROSS_LAYER,PLANNED
-X2-PLAN-003,failure,각 failure/recovery/cancel/restart branch가 fail-closed인가,CROSS_LAYER,PLANNED
-X2-PLAN-004,parity,profile와 entrypoint 사이 behavior parity가 유지되는가,CROSS_LAYER,PLANNED
-X2-PLAN-005,installed,source behavior가 installed Product에서도 도달 가능한가,CROSS_LAYER,PLANNED

@@ -221,24 +221,48 @@ def exported_symbols(path: Path) -> set[str]:
     return result
 
 
-def application_ledger_contracts() -> dict[str, set[str]]:
+def application_canonical_contracts() -> dict[str, set[str]]:
     contracts: dict[str, set[str]] = {}
-    ledger = ROOT / "implementation-inventory" / "ledger.md"
-    for line in ledger.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("| CAP-APP-"):
+    mapping = (
+        ROOT
+        / "docs"
+        / "canonical"
+        / "16-repository-architecture"
+        / "01-spec-to-code-deterministic-mapping.md"
+    ).read_text(encoding="utf-8")
+    core = mapping.split("### Application capability mapping", 1)[1].split(
+        "### Agent capability mapping", 1
+    )[0]
+    for line in core.splitlines():
+        if not line.startswith("|"):
             continue
-        escaped = line.replace(r"\|", "<PIPE>")
-        fields = [field.strip().replace("<PIPE>", "|") for field in escaped.split("|")[1:-1]]
-        directory, filename, symbol_field = fields[8:11]
-        # Semicolon-delimited input/output descriptions name transport contracts,
-        # not symbols owned by this Application module.
-        owned_field = symbol_field.split(";", 1)[0]
-        symbols = {
-            symbol.strip()
-            for symbol in owned_field.split("/")
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", symbol.strip())
-        }
-        contracts[f"{directory}{filename}"] = symbols
+        spans = re.findall(r"`([^`]+)`", line)
+        if not spans or not re.fullmatch(r"[a-z][a-z0-9_]*", spans[0]):
+            continue
+        owner = spans[0]
+        for operation in spans[1:]:
+            if operation.startswith("application/use_cases/"):
+                break
+            if re.fullmatch(r"[a-z][a-z0-9_]*", operation):
+                path = f"application/use_cases/{owner}/{operation}.py"
+                handler = "".join(part.capitalize() for part in operation.split("_"))
+                contracts[path] = {f"{handler}Handler"}
+
+    boundary = mapping.split("### Local API boundary capability manifest", 1)[1].split(
+        "### Provider-neutral Application rule", 1
+    )[0]
+    for line in boundary.splitlines():
+        if not line.startswith("|") or "application/use_cases/" not in line:
+            continue
+        spans = re.findall(r"`([^`]+)`", line)
+        path_index = next(
+            index
+            for index, span in enumerate(spans)
+            if span.startswith("application/use_cases/") and span.endswith(".py")
+        )
+        symbols = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", spans[path_index + 1]))
+        contracts[spans[path_index]] = symbols
+    assert len(contracts) == 91
     return contracts
 
 
@@ -291,9 +315,9 @@ def test_immediate_domain_operation_per_file() -> None:
     clean(errors)
 
 
-def test_immediate_application_use_case_grammar() -> None:
+def test_immediate_application_use_case_grammar_from_current_canonical() -> None:
     errors: list[str] = []
-    for relative_path, expected_symbols in application_ledger_contracts().items():
+    for relative_path, expected_symbols in application_canonical_contracts().items():
         path = SRC / relative_path
         if not path.is_file():
             errors.append(f"missing Application capability module: {rel(path)}")

@@ -1,6 +1,0 @@
-check_id,topic,planned_question,ownership,status
-G-PLAN-001,port,각 external capability의 exact provider-neutral Port는 무엇인가,PRIMARY,PLANNED
-G-PLAN-002,binding,Port와 concrete Adapter/registry binding은 하나인가,PRIMARY,PLANNED
-G-PLAN-003,effect,READ WRITE dispatch와 result settlement boundary는 무엇인가,PRIMARY,PLANNED
-G-PLAN-004,dto,provider DTO가 Product semantic DTO로 누출되지 않는가,PRIMARY,PLANNED
-G-PLAN-005,secret,secret이 adapter edge 밖으로 누출되지 않는가,PRIMARY,PLANNED

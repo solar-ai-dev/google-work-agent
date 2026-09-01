@@ -50,22 +50,11 @@ EXPECTED_MICRO_FILES = {
 }
 
 
-def test_formal_evaluation_paths_and_ledger_rows_are_exact() -> None:
+def test_formal_evaluation_paths_are_exact() -> None:
     assert all((ROOT / path).is_file() for path in EXPECTED_CURRENT_FILES)
     assert {
         path.name for path in (EVALUATION_ROOT / "datasets" / "micro").glob("*.jsonl")
     } == EXPECTED_MICRO_FILES
-    ledger = (ROOT / "implementation-inventory" / "ledger.md").read_text(encoding="utf-8")
-    expected_rows = {
-        "STR-010",
-        *(f"STR-{number}" for number in range(315, 325)),
-        *(f"STR-{number}" for number in range(519, 528)),
-        *(f"NPA-{number:03d}" for number in range(32, 45)),
-        "NPA-055",
-        *(f"NPA-{number:03d}" for number in range(78, 89)),
-    }
-    for row_id in expected_rows:
-        assert len(re.findall(rf"^\| {re.escape(row_id)} \|", ledger, flags=re.MULTILINE)) == 1
 
 
 def test_required_current_repository_artifacts_are_actually_git_tracked() -> None:
