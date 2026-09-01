@@ -12,7 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     CurrentRunResourceIdentityV1,
 )
@@ -631,7 +631,7 @@ def assert_reserved_corrective_marker_survives_failed_compiled_checkpoint_and_is
 
     attempts = 0
 
-    def persist_node(state: ParentGraphState) -> dict[str, object]:
+    def persist_node(state: GraphState) -> dict[str, object]:
         nonlocal attempts
         attempts += 1
         assert state["__reserved_corrective_plan_id__"] == "reserved-plan-2"
@@ -639,7 +639,7 @@ def assert_reserved_corrective_marker_survives_failed_compiled_checkpoint_and_is
             raise RuntimeError("injected node failure")
         return {"__reserved_corrective_plan_id__": None}
 
-    builder = StateGraph(ParentGraphState)
+    builder = StateGraph(GraphState)
     builder.add_node("persist", persist_node)
     builder.add_edge(START, "persist")
     builder.add_edge("persist", END)
@@ -652,7 +652,7 @@ def assert_reserved_corrective_marker_survives_failed_compiled_checkpoint_and_is
         graph = builder.compile(checkpointer=SqliteSaver(connection))
         config: RunnableConfig = {"configurable": {"thread_id": "corrective-thread"}}
         initial_state = cast(
-            ParentGraphState,
+            GraphState,
             {
                 "run_id": "run-1",
                 "__reserved_corrective_plan_id__": "reserved-plan-2",

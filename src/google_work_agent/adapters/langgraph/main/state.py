@@ -74,31 +74,6 @@ _TYPE_HINT_NAMESPACE = (
 )
 
 
-class MultiAgentGraphState(TypedDict):
-    """Main graph state retained at its canonical state owner."""
-
-    schema_version: int
-    run_id: str
-    conversation_id: str
-    thread_id: str
-    workflow_phase: str
-    request_intent: RequestIntentV2 | None
-    tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
-    acquisition_result: AcquisitionResultV1 | None
-    retrieval_result: RetrievalResultV1 | None
-    work_analysis_result: WorkAnalysisResultV2 | None
-    planning_result: PlanningResultV2 | None
-    plan_review: PlanReviewResultV2 | None
-    approved_plan_id: str | None
-    finalize_intent: FinalizeIntentV1 | None
-    user_interrupt: UserInterruptV1 | None
-    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    retry_budget: RunBudgetV2
-    prompt_context: dict[str, object]
-    trace_context: dict[str, object]
-
-
 class GraphStateUpdateV1(TypedDict, total=False):
     """Typed partial update returned by workflow agents and the supervisor."""
 
@@ -150,30 +125,6 @@ class RequestUnderstandingResult(StrEnum):
     INVALID = "INVALID"
 
 
-MULTI_AGENT_GRAPH_STATE_FIELDS = frozenset(MultiAgentGraphState.__annotations__)
-
-type WorkflowPhaseV2 = Literal[
-    "INITIALIZE",
-    "REQUEST_UNDERSTANDING",
-    "TOOL_ROUTING",
-    "RETRIEVAL",
-    "WORK_ANALYSIS",
-    "PLANNING",
-    "REVIEW",
-    "DOMAIN_VALIDATION",
-    "WAITING_CONFIRMATION",
-    "WAITING_APPROVAL",
-    "PREFLIGHT",
-    "ACTION_EXECUTION",
-    "READ_EXECUTION",
-    "VERIFICATION",
-    "RECOVERY",
-    "RESPONSE_SYNTHESIS",
-    "TERMINAL_COMMIT",
-    "FINALIZE",
-]
-
-
 class RunInputV1(TypedDict):
     """Immutable user input projection for one Run."""
 
@@ -204,48 +155,39 @@ class VerificationSummaryV1(TypedDict):
     source_action_version: int
 
 
-class ParentGraphState(TypedDict):
-    """State projected from a native subgraph back to the parent graph."""
+class GraphState(TypedDict, total=False):
+    """The single canonical Main graph/checkpoint state schema."""
 
-    schema_version: Literal[2]
-    run_id: str
-    conversation_id: str
-    thread_id: str
-    workflow_phase: str
-    request_intent: RequestIntentV2 | None
-    tool_route_plan: ToolRoutePlanV2 | None
-    workflow_signal: WorkflowSignalV1 | ScopeExpansionRequiredV1 | None
-    acquisition_result: AcquisitionResultV1 | None
-    retrieval_result: RetrievalResultV1 | None
-    work_analysis_result: WorkAnalysisResultV2 | None
-    planning_result: PlanningResultV2 | None
-    plan_review: PlanReviewResultV2 | None
-    approved_plan_id: str | None
-    execution_summary: ExecutionSummaryV1 | None
-    verification_summary: VerificationSummaryV1 | None
-    finalize_intent: FinalizeIntentV1 | None
-    user_interrupt: UserInterruptV1 | None
-    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    retry_budget: RunBudgetV2
-    prompt_context: dict[str, object]
-    trace_context: dict[str, object]
-    __request__: WorkflowStartRequest
-    __target__: str
-    __logical_target__: str
-    __modify_review_plan_id__: NotRequired[str | None]
-    __modify_review_version__: NotRequired[int | None]
-    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
-    __replan_from_plan_id__: NotRequired[str]
-    __reserved_corrective_plan_id__: NotRequired[str | None]
-
-
-class GraphState(ParentGraphState, total=False):
-    """Canonical Main State plus bounded control projections."""
-
+    schema_version: Required[Literal[2]]
+    run_id: Required[str]
+    conversation_id: Required[str]
     langgraph_thread_id: Required[str]
+    workflow_phase: Required[str]
     graph_profile: Required[Literal["SINGLE_BASELINE", "THREE_STAGE", "SIX_ROLE_BASELINE"]]
     graph_version: Required[str]
     run_input: Required[RunInputV1]
+
+    request_intent: Required[RequestIntentV2 | None]
+    tool_route_plan: Required[ToolRoutePlanV2 | None]
+    workflow_signal: Required[WorkflowSignalV1 | ScopeExpansionRequiredV1 | None]
+    acquisition_result: Required[AcquisitionResultV1 | None]
+    retrieval_result: Required[RetrievalResultV1 | None]
+    work_analysis_result: Required[WorkAnalysisResultV2 | None]
+    planning_result: Required[PlanningResultV2 | None]
+    plan_review: Required[PlanReviewResultV2 | None]
+    approved_plan_id: Required[str | None]
+    execution_summary: Required[ExecutionSummaryV1 | None]
+    verification_summary: Required[VerificationSummaryV1 | None]
+    finalize_intent: Required[FinalizeIntentV1 | None]
+    terminal_commit_intent: Required[TerminalCommitIntentV1 | None]
+    user_interrupt: Required[UserInterruptV1 | None]
+    policy_confirmation_receipts: Required[list[PolicyConfirmationReceiptV1]]
+    retry_budget: Required[RunBudgetV2]
+    prompt_context: Required[dict[str, object]]
+    trace_context: Required[dict[str, object]]
+    __request__: Required[WorkflowStartRequest]
+    __target__: Required[str]
+    __logical_target__: Required[str]
 
     post_retrieval_return: NotRequired[SubgraphReturnV2[object] | None]
     __v2_revision_mode__: NotRequired[str | None]
@@ -253,7 +195,11 @@ class GraphState(ParentGraphState, total=False):
     __workflow_control__: NotRequired[dict[str, object] | None]
     exclusion_obligation_segment_ids: NotRequired[list[str]]
     pending_user_retrieval_need: NotRequired[dict[str, object] | None]
-    terminal_commit_intent: NotRequired[TerminalCommitIntentV1 | None]
+    __modify_review_plan_id__: NotRequired[str | None]
+    __modify_review_version__: NotRequired[int | None]
+    __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
+    __replan_from_plan_id__: NotRequired[str]
+    __reserved_corrective_plan_id__: NotRequired[str | None]
 
 
 CONTEXT_AGENT_LOCAL_KEY: Final = "__context_agent_local__"
@@ -288,7 +234,6 @@ def initial_graph_state(
         "schema_version": 2,
         "run_id": request.run_id,
         "conversation_id": request.conversation_id,
-        "thread_id": request.workflow_key,
         "langgraph_thread_id": request.workflow_key,
         "graph_profile": graph_profile.value,
         "graph_version": graph_version,

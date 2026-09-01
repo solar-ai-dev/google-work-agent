@@ -12,8 +12,8 @@ from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     validate_clarification_question_v1,
 )
 from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     RequestUnderstandingResult,
     WorkflowPhase,
 )
@@ -125,7 +125,7 @@ class RetrievalRouteResultV1(TypedDict):
 def route_supervisor(
     *,
     phase: WorkflowPhase | str,
-    state: MultiAgentGraphState,
+    state: GraphState,
     result: object | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
@@ -242,7 +242,7 @@ def _route_reconsideration(
 
 def _route_request_understanding(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     output: request_understanding_output.RequestUnderstandingOutputV1,
 ) -> SupervisorDecisionV1:
     result = RequestUnderstandingResult(output["result"])
@@ -278,7 +278,7 @@ def _route_request_understanding(
 
 def _route_tool_routing(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     result: ToolRouteResultV1,
 ) -> SupervisorDecisionV1:
     try:
@@ -347,13 +347,13 @@ def _route_tool_routing(
     )
 
 
-def _retrieval_route_budget(state: MultiAgentGraphState) -> RunBudgetV2:
+def _retrieval_route_budget(state: GraphState) -> RunBudgetV2:
     return promote_run_budget_profile(state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY)
 
 
 def _route_retrieval(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     retrieval_return: RetrievalRouteResultV1,
 ) -> SupervisorDecisionV1:
     """Route only the canonical Retrieval return artifact/disposition."""
@@ -385,7 +385,7 @@ def _route_retrieval(
 
 def _route_retrieval_required(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     reason_code: str,
     current_update: GraphStateUpdateV1,
     request: AdditionalAcquisitionRequestV1 | None,
@@ -505,7 +505,7 @@ def _route_retrieval_required(
 
 def _route_plan_review(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     result: PlanReviewResultV2,
 ) -> SupervisorDecisionV1:
     status = ReviewResult(str(result["status"]))
@@ -641,7 +641,7 @@ def _route_plan_review(
 
 def _route_domain_validation(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     result: DomainValidationOutputV1,
 ) -> SupervisorDecisionV1:
     validation_result = DomainValidationResult(str(result["result"]))
@@ -664,7 +664,7 @@ def _route_domain_validation(
 
 def _route_preflight(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     result: JsonObject,
 ) -> SupervisorDecisionV1:
     result_code = _preflight_result_code(result, default="PREFLIGHT_REJECTED")
@@ -692,7 +692,7 @@ def _route_preflight(
 
 def _route_additional_acquisition(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     reason_code: str,
     current_update: GraphStateUpdateV1,
     request: object,
@@ -747,7 +747,7 @@ def _route_additional_acquisition(
 
 def _route_review_recheck(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     current_update: GraphStateUpdateV1,
 ) -> SupervisorDecisionV1:
     budget = approve_review_recheck(state["retry_budget"])
@@ -842,7 +842,7 @@ def _boundary_state_update(**extra: object) -> JsonObject:
 
 def _finalize(
     *,
-    state: MultiAgentGraphState,
+    state: GraphState,
     intent: str,
     reason_code: str,
     result_kind: str | None = None,
@@ -876,7 +876,7 @@ def _finalize(
     )
 
 
-def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
+def _request_intent_from_state(state: GraphState) -> RequestIntentV2:
     # validate_request_intent_v2 is the LLM-input-only validator (meta is
     # intentionally absent from its schema -- see request_understanding.py).
     # Main State's request_intent is already a materialized RequestIntentV2
@@ -887,7 +887,7 @@ def _request_intent_from_state(state: MultiAgentGraphState) -> RequestIntentV2:
 
 
 def _review_target_from_state(
-    state: MultiAgentGraphState,
+    state: GraphState,
 ) -> str:
     planning_result = cast(Mapping[str, object], state).get("planning_result")
     if isinstance(planning_result, Mapping):
@@ -898,7 +898,7 @@ def _review_target_from_state(
     raise ValueError("Review requires a Planning artifact")
 
 
-def _is_revision_follow_up(state: MultiAgentGraphState) -> bool:
+def _is_revision_follow_up(state: GraphState) -> bool:
     review = state.get("plan_review")
     return review is not None and review.get("status") == ReviewResult.REVISE.value
 
@@ -960,7 +960,7 @@ def _preflight_safe_error_code(result: JsonObject) -> str | None:
     return None
 
 
-def _partial_result_kind(state: MultiAgentGraphState, extra: JsonObject) -> str | None:
+def _partial_result_kind(state: GraphState, extra: JsonObject) -> str | None:
     for candidate in (extra.get("acquisition_result"), extra.get("retrieval_result")):
         mapping = _mapping_or_none(candidate)
         if mapping is not None and (

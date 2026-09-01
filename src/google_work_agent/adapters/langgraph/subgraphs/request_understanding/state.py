@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired
+from typing import Literal
 
 from google_work_agent.adapters.langgraph.main.state import RunInputV1
 from google_work_agent.adapters.langgraph.subgraph_state import (
@@ -51,9 +51,6 @@ class RequestUnderstandingStateV2(RequestUnderstandingInputState, total=False):
     final_intent: RequestIntentV2 | None
 
     request_intent: RequestIntentV2 | None
-    user_interrupt: UserInterruptV1 | None
-    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    __workflow_control__: NotRequired[dict[str, object] | None]
 
 
 class RequestUnderstandingParentOutputState(AgentSubgraphInputEnvelope, total=False):
@@ -62,7 +59,6 @@ class RequestUnderstandingParentOutputState(AgentSubgraphInputEnvelope, total=Fa
     request_intent: RequestIntentV2 | None
     user_interrupt: UserInterruptV1 | None
     policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
-    __workflow_control__: NotRequired[dict[str, object] | None]
 
 
 __all__ = [

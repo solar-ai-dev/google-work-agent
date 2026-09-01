@@ -81,5 +81,6 @@ describe("frontend canonical authority", () => {
     expect(sources).not.toMatch(/fetch\(\s*["']https?:\/\//);
     expect(sources).not.toMatch(/(?:localStorage|sessionStorage)\.setItem\([^\n]*(?:token|secret|api[_-]?key)/i);
     expect(sources).not.toMatch(/(?:ResourceRef|selection_handle)[^\n]*(?:localStorage|indexedDB)/);
+    expect(sources).not.toMatch(/gwa\.(?:theme|shell-preferences)/);
   });
 });

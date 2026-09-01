@@ -13,8 +13,8 @@ from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     build_user_interrupt_v1,
 )
 from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     WorkflowPhase,
     _require_state_value,
     request_from_state,
@@ -402,7 +402,7 @@ class ToolRoutingSubgraph:
         }
         decision = route_supervisor(
             phase=WorkflowPhase.TOOL_ROUTING,
-            state=cast(MultiAgentGraphState, {**state, **patch}),
+            state=cast(GraphState, {**state, **patch}),
             result=result,
         )
         traced_state = {

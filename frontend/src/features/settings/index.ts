@@ -1,6 +1,7 @@
 export { SettingsDrawer } from "./settings_drawer";
 export { FirstRunOnboardingScreen } from "./first_run_onboarding";
 export { getSettings } from "./api/get_settings";
+export { updateSettings } from "./api/update_settings";
 export {
   getCurrentGoogleAccount,
   getGoogleConnection,

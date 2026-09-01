@@ -40,7 +40,7 @@ class AgentSubgraphInputEnvelope(TypedDict, total=False):
     schema_version: int
     run_id: str
     conversation_id: str
-    thread_id: str
+    langgraph_thread_id: str
     workflow_phase: str
     retry_budget: RunBudgetV2
     prompt_context: dict[str, object]

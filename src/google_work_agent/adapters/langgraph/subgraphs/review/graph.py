@@ -23,7 +23,6 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     WorkflowPhase,
     request_from_state,
 )
@@ -306,7 +305,7 @@ class ReviewSubgraph:
         assert self._merge_decision is not None
         decision = route_supervisor(
             phase=WorkflowPhase.PLAN_REVIEW,
-            state=cast(MultiAgentGraphState, {**state, "plan_review": result}),
+            state=cast(GraphState, {**state, "plan_review": result}),
             result=result,
         )
         decision_update = dict(decision["state_update"])

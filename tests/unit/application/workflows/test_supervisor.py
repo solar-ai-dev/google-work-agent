@@ -4,8 +4,8 @@ from typing import Literal, cast
 import pytest
 
 from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     WorkflowPhase,
 )
 from google_work_agent.adapters.langgraph.main.supervisor import (
@@ -607,7 +607,7 @@ def _state(
     plan_review: PlanReviewResultV2 | None = None,
     approved_plan_id: str | None = None,
     retry_budget: RunBudgetV2 | None = None,
-) -> MultiAgentGraphState:
+) -> GraphState:
     return {
         "schema_version": 1,
         "run_id": "run-1",
@@ -754,16 +754,16 @@ def _review_result(
 
 
 def _apply_state_update(
-    state: MultiAgentGraphState,
+    state: GraphState,
     state_update: GraphStateUpdateV1,
-) -> MultiAgentGraphState:
+) -> GraphState:
     updated = state.copy()
     updated.update(state_update)
     return updated
 
 
-def _checkpoint_roundtrip(state: MultiAgentGraphState) -> MultiAgentGraphState:
+def _checkpoint_roundtrip(state: GraphState) -> GraphState:
     decoded: object = json.loads(json.dumps(state))
     if decoded != state:
         raise AssertionError("checkpoint roundtrip changed graph state")
-    return cast(MultiAgentGraphState, decoded)
+    return cast(GraphState, decoded)

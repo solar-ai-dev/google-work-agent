@@ -21,6 +21,9 @@ def test_main_state_has_exact_v2_owner_and_no_retrieval_scratch_fields() -> None
     fields = set(get_type_hints(GraphState))
 
     assert not hasattr(state_module, "ProductionGraphStateV2")
+    assert not hasattr(state_module, "MultiAgentGraphState")
+    assert not hasattr(state_module, "ParentGraphState")
+    assert not hasattr(state_module, "WorkflowPhaseV2")
     assert {"graph_profile", "graph_version", "langgraph_thread_id", "run_input"} <= fields
     assert {
         "context_bundle",

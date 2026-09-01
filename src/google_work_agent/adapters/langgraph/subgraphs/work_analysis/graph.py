@@ -19,8 +19,8 @@ from google_work_agent.adapters.langgraph.main.confirmation_projection import (
 )
 from google_work_agent.adapters.langgraph.main.state import (
     ANALYSIS_AGENT_LOCAL_KEY,
+    GraphState,
     GraphStateUpdateV1,
-    ParentGraphState,
     WorkflowPhase,
     _require_state_value,
     request_from_state,
@@ -148,7 +148,7 @@ class WorkAnalysisSubgraph:
         graph = StateGraph(
             WorkAnalysisLocalState,
             input_schema=WorkAnalysisInputState,
-            output_schema=ParentGraphState,
+            output_schema=GraphState,
         )
         graph.add_node("extract_work_facts", self._extract_work_facts_node)
         graph.add_node("resolve_entity_relations", self._resolve_entity_relations_node)

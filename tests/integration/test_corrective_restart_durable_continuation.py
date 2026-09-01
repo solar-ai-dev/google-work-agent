@@ -13,7 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
     CorrectivePlanContinuationRequired,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState, ParentGraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
@@ -66,7 +66,7 @@ class _RestartRuntimeHarness(_CorrectivePersistenceHarness):
         return {"configurable": {"thread_id": workflow_key}}
 
     @staticmethod
-    def _is_profile_compatible(_: ParentGraphState) -> bool:
+    def _is_profile_compatible(_: GraphState) -> bool:
         return True
 
     def _resume_corrective_plan(

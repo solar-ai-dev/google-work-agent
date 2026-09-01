@@ -12,46 +12,47 @@ type Props = {
   onShowHelp: () => void;
   theme: string;
   onThemeChange: (theme: string) => void;
+  conversationPanelDefaultOpen: boolean;
+  onConversationPanelOpenChange: (isOpen: boolean) => void;
   settingsPanel: ReactNode;
   children: ReactNode;
 };
 
-const SHELL_PREFERENCES_KEY = "gwa.shell-preferences";
-
-export function MainShell({ settingsPanel, children, ...topBarProps }: Props): JSX.Element {
-  const [panels, setPanels] = useState(readPanelPreferences);
+export function MainShell({
+  settingsPanel,
+  children,
+  conversationPanelDefaultOpen,
+  onConversationPanelOpenChange,
+  ...topBarProps
+}: Props): JSX.Element {
+  const [resourcePanelOpen, setResourcePanelOpen] = useState(true);
+  const [conversationPanelOpen, setConversationPanelOpen] = useState(conversationPanelDefaultOpen);
 
   useEffect(() => {
-    localStorage.setItem(SHELL_PREFERENCES_KEY, JSON.stringify(panels));
-  }, [panels]);
+    setConversationPanelOpen(conversationPanelDefaultOpen);
+  }, [conversationPanelDefaultOpen]);
+
+  function toggleConversationPanel(): void {
+    const next = !conversationPanelOpen;
+    setConversationPanelOpen(next);
+    onConversationPanelOpenChange(next);
+  }
 
   return (
     <div className="app-shell">
       <TopBar
         {...topBarProps}
-        onToggleResourcePanel={() => setPanels((current) => ({ ...current, resourcePanelOpen: !current.resourcePanelOpen }))}
-        onToggleConversationPanel={() => setPanels((current) => ({ ...current, conversationPanelOpen: !current.conversationPanelOpen }))}
-        resourcePanelOpen={panels.resourcePanelOpen}
-        conversationPanelOpen={panels.conversationPanelOpen}
+        onToggleResourcePanel={() => setResourcePanelOpen((current) => !current)}
+        onToggleConversationPanel={toggleConversationPanel}
+        resourcePanelOpen={resourcePanelOpen}
+        conversationPanelOpen={conversationPanelOpen}
       />
       <div
-        className={`shell-grid ${panels.resourcePanelOpen ? "" : "resource-panel-closed"} ${panels.conversationPanelOpen ? "" : "conversation-panel-closed"}`}
+        className={`shell-grid ${resourcePanelOpen ? "" : "resource-panel-closed"} ${conversationPanelOpen ? "" : "conversation-panel-closed"}`}
       >
         {children}
       </div>
       {settingsPanel}
     </div>
   );
-}
-
-function readPanelPreferences(): { resourcePanelOpen: boolean; conversationPanelOpen: boolean } {
-  try {
-    const value = JSON.parse(localStorage.getItem(SHELL_PREFERENCES_KEY) ?? "null") as Record<string, unknown> | null;
-    return {
-      resourcePanelOpen: value?.resourcePanelOpen !== false,
-      conversationPanelOpen: value?.conversationPanelOpen !== false,
-    };
-  } catch {
-    return { resourcePanelOpen: true, conversationPanelOpen: true };
-  }
 }

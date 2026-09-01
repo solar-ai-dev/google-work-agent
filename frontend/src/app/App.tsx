@@ -8,21 +8,23 @@ import {
   SettingsDrawer,
   getCurrentGoogleAccount,
   getGoogleConnection,
+  getSettings,
   startGoogleConnection,
+  updateSettings,
   type CurrentGoogleAccount,
   type GoogleConnection,
+  type SettingsView,
 } from "../features/settings";
 import { CenterWorkspace } from "./center_workspace";
 import { MainShell } from "./main_shell";
 import { StartupFlow, type StartupFlowContext } from "./startup_flow";
 
-const THEME_KEY = "gwa.theme";
-
 export function App(): JSX.Element {
   return <StartupFlow>{(context) => <AuthenticatedWorkspace initial={context} />}</StartupFlow>;
 }
 function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): JSX.Element {
-  const [theme, setTheme] = useState(localStorage.getItem(THEME_KEY) ?? "light");
+  const [settings, setSettings] = useState<SettingsView>(initial.settings);
+  const [theme, setTheme] = useState(initial.settings.theme === "DARK" ? "dark" : "light");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeSummary>(initial.runtime);
   const [google, setGoogle] = useState<GoogleConnection>(initial.google);
@@ -134,10 +136,18 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     onOpenDiagnostics: () => setStatusLine("설정의 Runtime 상태에서 진단 정보를 확인하세요."),
   };
   const refreshRuntimeSummary = useCallback(async (): Promise<void> => {
-    const [runtimeResponse, googleResponse, accountResponse] = await Promise.all([getRuntime(), getGoogleConnection(), getCurrentGoogleAccount()]);
+    const [runtimeResponse, googleResponse, accountResponse, settingsResponse] = await Promise.all([
+      getRuntime(),
+      getGoogleConnection(),
+      getCurrentGoogleAccount(),
+      getSettings(),
+    ]);
     setRuntime(runtimeResponse);
     setGoogle(googleResponse);
     setCurrentAccount(accountResponse.account);
+    setSettings(settingsResponse);
+    setTheme(settingsResponse.theme === "DARK" ? "dark" : "light");
+    setCalendarTimezone(settingsResponse.timezone);
   }, []);
 
   useEffect(() => {
@@ -155,8 +165,49 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  async function handleThemeChange(nextTheme: string): Promise<void> {
+    const persistedTheme = nextTheme === "dark" ? "DARK" : "LIGHT";
+    setTheme(nextTheme === "dark" ? "dark" : "light");
+    try {
+      const updated = await updateSettings(
+        commandIdFor(`settings:theme:${persistedTheme}`),
+        { theme: persistedTheme },
+      );
+      operationalCommandIds.current.delete(`settings:theme:${persistedTheme}`);
+      setSettings(updated);
+      setTheme(updated.theme === "DARK" ? "dark" : "light");
+    } catch (error) {
+      setTheme(settings.theme === "DARK" ? "dark" : "light");
+      setStatusLine(error instanceof ApiClientError ? error.message : "테마 설정을 저장하지 못했습니다.");
+    }
+  }
+
+  async function handleConversationPanelOpenChange(isOpen: boolean): Promise<void> {
+    const operation = `settings:conversation-panel:${isOpen ? "open" : "closed"}`;
+    try {
+      const updated = await updateSettings(commandIdFor(operation), {
+        panel_preferences: {
+          ...settings.panel_preferences,
+          right_panel_default_open: isOpen,
+        },
+      });
+      operationalCommandIds.current.delete(operation);
+      setSettings(updated);
+    } catch (error) {
+      setStatusLine(error instanceof ApiClientError ? error.message : "패널 설정을 저장하지 못했습니다.");
+    }
+  }
+
+  function commandIdFor(operation: string): string {
+    let commandId = operationalCommandIds.current.get(operation);
+    if (!commandId) {
+      commandId = crypto.randomUUID();
+      operationalCommandIds.current.set(operation, commandId);
+    }
+    return commandId;
+  }
 
   async function handleGoogleConnect(): Promise<void> {
     if (google?.connection_status === "CONNECTED" || googleConnectPending) {
@@ -203,7 +254,9 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       statusLine={statusLine}
       googleConnectPending={googleConnectPending}
       theme={theme}
-      onThemeChange={setTheme}
+      onThemeChange={(nextTheme) => void handleThemeChange(nextTheme)}
+      conversationPanelDefaultOpen={settings.panel_preferences.right_panel_default_open}
+      onConversationPanelOpenChange={(isOpen) => void handleConversationPanelOpenChange(isOpen)}
       onShowHelp={() => setStatusLine("자료를 선택하거나 자연어 요청을 입력해 업무를 시작할 수 있습니다.")}
       onConnectGoogle={() => void handleGoogleConnect()}
       onOpenSettings={() => setSettingsOpen(true)}
@@ -211,7 +264,7 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
         <SettingsDrawer
           runtime={runtime}
           theme={theme}
-          onThemeChange={setTheme}
+          onThemeChange={(nextTheme) => void handleThemeChange(nextTheme)}
           onClose={() => setSettingsOpen(false)}
           onOperationalStateChanged={refreshRuntimeSummary}
         />

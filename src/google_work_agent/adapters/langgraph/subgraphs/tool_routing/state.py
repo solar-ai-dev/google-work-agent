@@ -49,7 +49,6 @@ class ToolRoutingInputState(AgentSubgraphInputEnvelope, total=False):
 class ToolRouteStateV1(ToolRoutingInputState, total=False):
     """The exact 06-owned local fields plus allowed parent control channels."""
 
-    request_intent: RequestIntentV2
     registry_snapshot_ref: str
     io_resource_candidate: SemanticRouteCandidate | None
     registry_candidates: list[BoundOutputRouteCandidateV1]
@@ -57,9 +56,6 @@ class ToolRouteStateV1(ToolRoutingInputState, total=False):
     bound_output_routes: list[OutputToolRouteV1]
     final_route: ToolRoutePlanV2 | None
 
-    tool_route_plan: ToolRoutePlanV2 | None
-    user_interrupt: UserInterruptV1 | None
-    policy_confirmation_receipts: list[PolicyConfirmationReceiptV1]
     finalize_intent: FinalizeIntentV1 | None
 
 

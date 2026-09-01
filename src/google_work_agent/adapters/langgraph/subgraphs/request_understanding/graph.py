@@ -13,8 +13,8 @@ from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     build_user_interrupt_v1,
 )
 from google_work_agent.adapters.langgraph.main.state import (
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     WorkflowPhase,
     request_from_run_input_state,
 )
@@ -277,7 +277,7 @@ class RequestUnderstandingSubgraph:
         }
         decision = route_supervisor(
             phase=WorkflowPhase.REQUEST_ANALYSIS,
-            state=cast(MultiAgentGraphState, state),
+            state=cast(GraphState, state),
             result=output,
         )
         request = request_from_run_input_state(cast(Any, state))

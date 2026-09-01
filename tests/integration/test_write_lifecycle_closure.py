@@ -6,7 +6,7 @@ import inspect
 
 import google_work_agent.adapters.langgraph.corrective_plan_persistence as corrective_persistence
 import google_work_agent.adapters.langgraph.main.plan_persistence as plan_persistence
-from google_work_agent.adapters.langgraph.main.state import ParentGraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.main.workflow import (
     LangGraphWorkflowRuntime,
 )
@@ -46,7 +46,7 @@ def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
     assert 'resume_payload.get("plan_id")' in source
     assert '"__reserved_corrective_plan_id__": plan.id' in source
     assert '"__replan_from_plan_id__": None' in source
-    assert "__reserved_corrective_plan_id__" in ParentGraphState.__annotations__
+    assert "__reserved_corrective_plan_id__" in GraphState.__annotations__
     assert 'resume_payload.get("target")' not in source
     assert "resume_target" not in source
 

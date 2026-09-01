@@ -77,7 +77,6 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
     WorkflowPhase,
     _acquired_resource_by_handle,
     _require_state_value,
@@ -1179,7 +1178,7 @@ class _WorkflowRuntimeComposition:
             )
         decision = route_supervisor(
             phase=WorkflowPhase.DOMAIN_VALIDATION,
-            state=cast(MultiAgentGraphState, typed_state),
+            state=cast(GraphState, typed_state),
             result=result,
         )
         is_modify_review = typed_state.get("__modify_review_plan_id__") is not None

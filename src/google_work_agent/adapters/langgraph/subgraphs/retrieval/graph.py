@@ -33,9 +33,8 @@ from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_SEGMENT_HANDLES_KEY,
     CONTEXT_SELECTION_OUTPUT_KEY,
     CONTEXT_SUFFICIENCY_OUTPUT_KEY,
+    GraphState,
     GraphStateUpdateV1,
-    MultiAgentGraphState,
-    ParentGraphState,
     WorkflowPhase,
     _require_state_value,
     request_from_state,
@@ -353,7 +352,7 @@ class RetrievalSubgraph:
         graph = StateGraph(
             ContextRetrievalLocalState,
             input_schema=ContextRetrievalInputState,
-            output_schema=ParentGraphState,
+            output_schema=GraphState,
         )
         graph.add_node("plan_query", self._plan_query_node)
         graph.add_node("build_query", self._build_query_node)
@@ -1416,7 +1415,7 @@ class RetrievalSubgraph:
         }
         decision = route_supervisor(
             phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-            state=cast(MultiAgentGraphState, state),
+            state=cast(GraphState, state),
             result=retrieval_return,
         )
         updated_local = dict(local_state)

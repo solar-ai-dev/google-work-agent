@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   getCurrentGoogleAccount,
   getGoogleConnection,
+  getSettings,
+  type CurrentGoogleAccount,
+  type GoogleConnection,
+  type SettingsView,
 } from "../features/settings";
 import { getRuntime, StartupCheckScreen, type RuntimeSummary, type StartupCheckState } from "../features/diagnostics";
-import { getSettings } from "../features/settings";
-import type { CurrentGoogleAccount, GoogleConnection } from "../features/settings";
 import { getLive, getReady } from "../api";
 import { ApiClientError } from "../api/client";
 import {
@@ -19,6 +21,7 @@ export type StartupFlowContext = {
   runtime: RuntimeSummary;
   google: GoogleConnection;
   currentAccount: CurrentGoogleAccount["account"];
+  settings: SettingsView;
   calendarTimezone: string;
   setupCompleted: boolean;
 };
@@ -142,6 +145,7 @@ export function StartupFlow({ children }: Props): JSX.Element {
         runtime,
         google,
         currentAccount: account,
+        settings,
         calendarTimezone: settings.timezone,
         setupCompleted,
       });
