@@ -82,6 +82,7 @@ class RedriveWorkflowHandoffsHandler:
         command = command or RedriveWorkflowHandoffsCommand()
         if command.limit < 1 or command.limit > 255:
             raise ValueError("redrive limit must be between 1 and 255")
+        progressed_count = self._reconcile_open_run_cache_prerequisites(command.limit)
         with self._unit_of_work_factory() as unit_of_work:
             bounded = unit_of_work.workflow_handoffs.list_redriveable(command.limit + 1)
         has_more = len(bounded) > command.limit
@@ -90,7 +91,6 @@ class RedriveWorkflowHandoffsHandler:
 
         accepted = 0
         blocked_binding = 0
-        progressed_count = 0
         for handoff in candidates:
             run_id = handoff.execution.run_id
             if self._is_run_execution_active(run_id):
@@ -152,6 +152,26 @@ class RedriveWorkflowHandoffsHandler:
             actionable_count=actionable_count,
             has_more=has_more,
         )
+
+    def _reconcile_open_run_cache_prerequisites(self, limit: int) -> int:
+        if self._reconcile_retrieval_cache_restart is None:
+            return 0
+        with self._unit_of_work_factory() as unit_of_work:
+            runs = unit_of_work.runs.list_open_bounded(limit + 1)[:limit]
+        progressed = 0
+        for run in runs:
+            if is_preempting_run_status(run.status) or self._is_run_execution_active(run.id):
+                continue
+            try:
+                result = self._reconcile_retrieval_cache_restart(
+                    ReconcileRetrievalCacheRestartCommandV1(1, run.id)
+                )
+            except LookupError:
+                # A newly-created Run may not own its first binding/checkpoint
+                # yet. Its normal admission remains the sole next authority.
+                continue
+            progressed += int(result.outcome == "RESTART_STAGED")
+        return progressed
 
     def _may_dispatch(self, head: WorkflowHandoffV1 | None) -> bool:
         """Domain-progress pre-admission fence: never submit a NORMAL handoff head

@@ -87,6 +87,35 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     assert execution.submitted == ["h-1"]
 
 
+def test_redrive_checks_open_run_cache_without_existing_handoff(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="WAITING_APPROVAL")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    calls: list[str] = []
+
+    def reconcile(command: object) -> ReconcileRetrievalCacheRestartResultV1:
+        calls.append(command.run_id)  # type: ignore[attr-defined]
+        return ReconcileRetrievalCacheRestartResultV1(1, "NO_RESTART_REQUIRED", 1, None)
+
+    handler = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory,
+        schedule_run_execution=ScheduleRunExecutionHandler(
+            unit_of_work_factory=factory,
+            workflow_execution=_ExecutionPort(),
+            id_factory=lambda: "admission-1",
+        ),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
+        reconcile_retrieval_cache_restart=reconcile,  # type: ignore[arg-type]
+    )
+
+    handler(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert calls == ["r-1"]
+
+
 # --- BLOCKED_BINDING reconciliation crash/idempotency scenarios (A-G) -------------
 
 

@@ -7,7 +7,6 @@ from typing import Any, cast
 
 from langgraph.types import Command
 
-from google_work_agent.adapters.langgraph.checkpoint_control import native_resume_command
 from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.use_cases.run.account_provider_dispatch import (
@@ -45,6 +44,7 @@ class WorkflowInvocationCoordinator:
         resume_reauth_execution: Callable[[GraphState], GraphState] | None = None,
         graph_version: str = "v1",
         now_ms: Callable[[], int] = lambda: 0,
+        retrieval_node: str = "context_retriever",
     ) -> None:
         self._graph = graph
         self._graph_profile = graph_profile
@@ -61,6 +61,7 @@ class WorkflowInvocationCoordinator:
         self._cancel_signal_lock = cancel_signal_lock
         self._cancel_signals = cancel_signals
         self._now_ms = now_ms
+        self._retrieval_node = retrieval_node
 
     def prepare_start(self, request: WorkflowStartRequest) -> None:
         """Durably materialize input state without invoking the first owner node."""
@@ -118,11 +119,55 @@ class WorkflowInvocationCoordinator:
                 target_node = request.normal_handoff_target_node
                 if not target_node:
                     raise ValueError("NORMAL_HANDOFF requires a materialized target node")
-                command = native_resume_command(
-                    request.normal_handoff_control,
-                    goto_node=target_node,
-                )
-                returned = self._graph.invoke(command, config=config)
+                if target_node == "cancel_resolution":
+                    # Cancellation preempts any user interrupt already pending
+                    # at this root checkpoint (most commonly approval). Fork
+                    # from the deterministic cancel owner so the abandoned
+                    # interrupt cannot keep the cancel loop's next superstep
+                    # as an uncommitted pending write.
+                    self._graph.update_state(
+                        config,
+                        {
+                            "workflow_phase": "CANCEL_RESOLUTION",
+                            "__logical_target__": "cancel_resolution",
+                            "__target__": "cancel_resolution",
+                            "user_interrupt": None,
+                        },
+                        as_node=target_node,
+                    )
+                    self._graph.invoke(None, config=config)
+                    return self.result_from_thread(
+                        workflow_key=request.workflow_key,
+                        run_id=request.run_id,
+                    )
+                if request.normal_handoff_control is not None and (
+                    request.normal_handoff_control.kind == "RETRIEVAL_CACHE_RESTART"
+                ):
+                    # A cache-loss checkpoint may still have a failed nested
+                    # Retrieval task scheduled. Fork the root checkpoint from
+                    # the deterministic RETRIEVAL_ENTRY result so that stale
+                    # task is replaced, not executed beside the fresh read.
+                    self._graph.update_state(
+                        config,
+                        {
+                            "workflow_phase": "CONTEXT_RETRIEVAL",
+                            "__logical_target__": "context_retriever",
+                            "__target__": self._retrieval_node,
+                            "__workflow_control__": None,
+                            "acquisition_result": None,
+                            "user_interrupt": None,
+                        },
+                        as_node=target_node,
+                    )
+                    self._graph.invoke(None, config=config)
+                    return self.result_from_thread(
+                        workflow_key=request.workflow_key,
+                        run_id=request.run_id,
+                    )
+                # The exact Command was already stored as checkpoint-level
+                # pending writes before the handoff was marked CONSUMED.
+                # Consume that durable command exactly once.
+                returned = self._graph.invoke(None, config=config)
                 if request.normal_handoff_control is None or (
                     request.normal_handoff_control.kind != "CONFIRMATION_RESPONSE"
                 ):

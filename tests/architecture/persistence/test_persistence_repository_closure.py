@@ -69,6 +69,7 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
         "get",
         "get_snapshot",
         "find_open_by_conversation",
+        "list_open_bounded",
         "update_if_version_and_status",
     }
     plan_methods = {

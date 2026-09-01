@@ -614,6 +614,7 @@ class _WorkflowRuntimeComposition:
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
             now_ms=now_ms,
+            retrieval_node=self._physical_agent_node("context_retriever"),
         )
 
     def start(self, request: WorkflowStartRequest) -> WorkflowInvocationResult:

@@ -307,23 +307,49 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             yield
         finally:
             _WRITE_CONTEXT.reset(token)
+            final_context = context
             with self._active_context_lock:
-                if self._active_contexts.get(key) == context:
+                active = self._active_contexts.get(key)
+                if (
+                    active is not None
+                    and active.admission.admission_id == context.admission.admission_id
+                ):
+                    final_context = active
                     self._active_contexts.pop(key, None)
             with self._projection_update_lock:
                 pending_update = self._projection_updates.get(key)
-            if pending_update is not None:
-                latest = self.load_same_run_checkpoint(*key)
-                if latest is not None:
-                    self.store_same_run_checkpoint(
-                        replace(
-                            latest,
-                            owner_scope=pending_update.owner_scope,
-                            registered_resume_target=pending_update.registered_resume_target,
-                            pre_reauth_status=pending_update.pre_reauth_status,
-                            created_at_ms=pending_update.created_at_ms,
-                        )
+            latest = self.load_same_run_checkpoint(*key)
+            if latest is not None and (
+                pending_update is not None
+                or latest.retrieval_cache_requirements
+                != final_context.retrieval_requirements
+            ):
+                self.store_same_run_checkpoint(
+                    replace(
+                        latest,
+                        owner_scope=(
+                            latest.owner_scope
+                            if pending_update is None
+                            else pending_update.owner_scope
+                        ),
+                        registered_resume_target=(
+                            latest.registered_resume_target
+                            if pending_update is None
+                            else pending_update.registered_resume_target
+                        ),
+                        retrieval_cache_requirements=final_context.retrieval_requirements,
+                        pre_reauth_status=(
+                            latest.pre_reauth_status
+                            if pending_update is None
+                            else pending_update.pre_reauth_status
+                        ),
+                        created_at_ms=(
+                            latest.created_at_ms
+                            if pending_update is None
+                            else pending_update.created_at_ms
+                        ),
                     )
+                )
 
     def get_tuple(self, config: Any) -> Any:
         return self._delegate.get_tuple(config)
@@ -348,16 +374,29 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
             get_checkpoint_metadata(config, metadata), ensure_ascii=False
         ).encode("utf-8", "ignore")
         context = _WRITE_CONTEXT.get()
-        if context is None:
+        with self._active_context_lock:
+            active_context = next(
+                (
+                    active
+                    for (_run_id, active_thread_id), active in self._active_contexts.items()
+                    if active_thread_id == thread_id
+                ),
+                None,
+            )
+        if context is None or (
+            active_context is not None
+            and active_context.admission.admission_id == context.admission.admission_id
+            and active_context.retrieval_requirements != context.retrieval_requirements
+        ):
+            context = active_context
+        observed_requirements = _retrieval_requirements_from_checkpoint(checkpoint)
+        if context is not None and observed_requirements is not None:
+            context = replace(context, retrieval_requirements=observed_requirements)
+            binding = context.admission.effective_binding
+            active_key = (binding.run_id, binding.langgraph_thread_id)
             with self._active_context_lock:
-                context = next(
-                    (
-                        active
-                        for (_run_id, active_thread_id), active in self._active_contexts.items()
-                        if active_thread_id == thread_id
-                    ),
-                    None,
-                )
+                self._active_contexts[active_key] = context
+            _WRITE_CONTEXT.set(context)
         pending_update = None
         pending_key = None
         if context is not None:
@@ -544,6 +583,7 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                  AND c.checkpoint_ns=e.checkpoint_ns
                  AND c.checkpoint_id=e.checkpoint_id
                 WHERE e.run_id=? AND e.langgraph_thread_id=?
+                  AND e.checkpoint_ns=''
                 ORDER BY e.checkpoint_generation DESC LIMIT 1;""",
                 (run_id, thread_id),
             ).fetchone()
@@ -899,6 +939,49 @@ def _retrieval_head_from_checkpoint(
         checkpoint_id=checkpoint_id,
         checkpoint_generation=checkpoint_generation,
     )
+
+
+def _retrieval_requirements_from_checkpoint(
+    checkpoint: Mapping[str, Any],
+) -> tuple[RetrievalCacheRequirementV1, ...] | None:
+    """Project bounded cache identities from Retrieval-local channels only."""
+
+    channels = checkpoint.get("channel_values")
+    if not isinstance(channels, Mapping):
+        return None
+    handles = channels.get("__context_read_result_handles__")
+    bindings = channels.get("__context_read_bindings__")
+    if not isinstance(handles, list) or not isinstance(bindings, Mapping):
+        # Once Retrieval has produced its durable parent result, memory-only
+        # local read handles are no longer a resume prerequisite.
+        return () if isinstance(channels.get("retrieval_result"), Mapping) else None
+    requirements: list[RetrievalCacheRequirementV1] = []
+    seen: set[str] = set()
+    for handle in handles:
+        if not isinstance(handle, str) or not handle or handle in seen:
+            continue
+        binding = bindings.get(handle)
+        if not isinstance(binding, Mapping):
+            raise CheckpointConflictError("Retrieval cache handle is missing its typed binding")
+        route_id = binding.get("route_id")
+        query_hash = binding.get("query_identity_hash")
+        if (
+            not isinstance(route_id, str)
+            or not route_id
+            or not isinstance(query_hash, str)
+            or not query_hash
+        ):
+            raise CheckpointConflictError("Retrieval cache binding is malformed")
+        seen.add(handle)
+        requirements.append(
+            RetrievalCacheRequirementV1(
+                schema_version=1,
+                read_result_handle=handle,
+                route_id=route_id,
+                query_identity_hash=query_hash,
+            )
+        )
+    return tuple(requirements)
 
 
 def _requirements_json(requirements: tuple[RetrievalCacheRequirementV1, ...]) -> str:

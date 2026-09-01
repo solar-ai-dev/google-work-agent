@@ -36,6 +36,7 @@ def test_run_repository_exact_query_create_and_cas_surface() -> None:
 
     assert repository.get_snapshot("run-1") == repository.get("run-1")
     assert repository.find_open_by_conversation("conversation-1") is not None
+    assert [run.id for run in repository.list_open_bounded(10)] == ["run-1"]
     assert repository.update_if_version_and_status(
         "run-1",
         0,
@@ -59,3 +60,4 @@ def test_run_repository_exact_query_create_and_cas_surface() -> None:
         },
     )
     assert repository.get("run-1").terminal_result_kind.value == "SUCCESS"  # type: ignore[union-attr]
+    assert repository.list_open_bounded(10) == ()

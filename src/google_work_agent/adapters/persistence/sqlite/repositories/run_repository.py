@@ -55,6 +55,18 @@ class SqliteRunRepository:
         ).fetchone()
         return None if row is None else self.get(str(row["id"]))
 
+    def list_open_bounded(self, limit: int) -> tuple[Run, ...]:
+        if limit < 1 or limit > 256:
+            raise ValueError("open Run query limit must be between 1 and 256")
+        rows = self._connection.execute(
+            "SELECT id FROM runs WHERE finished_at_ms IS NULL "
+            "AND status NOT IN ('COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED') "
+            "ORDER BY started_at_ms, id LIMIT ?;",
+            (limit,),
+        ).fetchall()
+        runs = tuple(self.get(str(row["id"])) for row in rows)
+        return tuple(run for run in runs if run is not None)
+
     def create(self, run: RunCreate) -> None:
         try:
             self._connection.execute(
