@@ -76,19 +76,21 @@ def test_answer_only_reaches_terminal_through_real_production_composition(
         ("CALENDAR_READ", "calendar_list_events"),
     ],
 )
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_google_reads_reach_terminal_through_actual_retrieval_and_mcp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     scenario: str,
     expected_tool: str,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / scenario.lower()
+    runtime_root = tmp_path / scenario.lower() / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container),
@@ -172,17 +174,19 @@ def test_approved_write_executes_claims_and_verifies_through_real_mcp(
     assert isinstance(write_arguments.get("claim_context"), dict)
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_partial_approval_executes_only_the_approved_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "partial-approval"
+    runtime_root = tmp_path / "partial-approval" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container),
@@ -209,17 +213,19 @@ def test_partial_approval_executes_only_the_approved_action(
     assert "calendar_create_event" not in names
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_rejection_finishes_without_external_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "rejection"
+    runtime_root = tmp_path / "rejection" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container),
@@ -238,17 +244,19 @@ def test_rejection_finishes_without_external_write(
     assert "tasks_create_task" not in [event["tool_name"] for event in _mcp_events(runtime_root)]
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_cancel_preempts_waiting_approval_without_external_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "cancel"
+    runtime_root = tmp_path / "cancel" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container),
@@ -274,17 +282,19 @@ def test_cancel_preempts_waiting_approval_without_external_write(
     assert "tasks_create_task" not in [event["tool_name"] for event in _mcp_events(runtime_root)]
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_failed_not_sent_write_can_be_retried_with_fresh_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "failed-retry"
+    runtime_root = tmp_path / "failed-retry" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -319,17 +329,19 @@ def test_failed_not_sent_write_can_be_retried_with_fresh_approval(
     assert names.count("tasks_create_task") == 2
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_unknown_result_recovers_without_blind_resend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "unknown-result"
+    runtime_root = tmp_path / "unknown-result" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -354,17 +366,19 @@ def test_unknown_result_recovers_without_blind_resend(
     assert "search_by_recovery_fingerprint" in names
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_verification_mismatch_requires_explicit_partial_resolution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "verification-mismatch"
+    runtime_root = tmp_path / "verification-mismatch" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -406,17 +420,19 @@ def test_verification_mismatch_requires_explicit_partial_resolution(
     assert names.count("calendar_create_event") == 1
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_reauth_restores_safe_retry_and_completes_after_fresh_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "reauth"
+    runtime_root = tmp_path / "reauth" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -464,17 +480,19 @@ def test_reauth_restores_safe_retry_and_completes_after_fresh_approval(
     assert names.count("tasks_create_task") == 2
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_recovery_recheck_resumes_verification_without_repeating_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "recovery"
+    runtime_root = tmp_path / "recovery" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -516,17 +534,19 @@ def test_recovery_recheck_resumes_verification_without_repeating_write(
     assert names.count("calendar_get_event") == 2
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_restart_recreates_production_composition_and_resumes_durable_interrupt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "restart-resume"
+    runtime_root = tmp_path / "restart-resume" / profile.value
     first_transport = LangGraphE2EGeminiTransport()
     first_container = _build_container(
         runtime_root,
         transport=first_transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(first_container),
@@ -547,7 +567,7 @@ def test_restart_recreates_production_composition_and_resumes_durable_interrupt(
         runtime_root,
         transport=second_transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     assert second_container is not first_container
     with TestClient(
@@ -586,11 +606,13 @@ def test_restart_recreates_production_composition_and_resumes_durable_interrupt(
 
 
 @pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "retrieval-cache-loss"
+    runtime_root = tmp_path / "retrieval-cache-loss" / profile.value
     first_transport = LangGraphE2EGeminiTransport(
         crash_prompt_id="retrieval.select_evidence"
     )
@@ -598,7 +620,7 @@ def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
         runtime_root,
         transport=first_transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(first_container),
@@ -620,7 +642,7 @@ def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
         runtime_root,
         transport=second_transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     assert second_container is not first_container
     with TestClient(
@@ -643,17 +665,19 @@ def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
     assert names.count("tasks_create_task") == 1
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_review_issue_uses_real_back_edge_before_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "review-back-edge"
+    runtime_root = tmp_path / "review-back-edge" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
@@ -684,17 +708,19 @@ def test_review_issue_uses_real_back_edge_before_approval(
     ) == 1
 
 
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
 def test_context_adjustment_reenters_retrieval_and_requires_revised_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
 ) -> None:
-    runtime_root = tmp_path / "context-adjustment"
+    runtime_root = tmp_path / "context-adjustment" / profile.value
     transport = LangGraphE2EGeminiTransport()
     container = _build_container(
         runtime_root,
         transport=transport,
         monkeypatch=monkeypatch,
-        profile=GraphProfile.SIX_ROLE_BASELINE,
+        profile=profile,
     )
     with TestClient(
         create_app(container), base_url="http://127.0.0.1:8000", headers=_API_HEADERS
