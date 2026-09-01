@@ -15,6 +15,7 @@ from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.ports.connector.connector_read_port import JsonValue
 from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.connector.mcp_client_port import (
     MCPClientPortError,
@@ -98,7 +99,7 @@ def test_write_adapter_forwards_application_signed_claim_unchanged() -> None:
     client = _Client(MCPToolCallResultV1(1, "gmail_send", "OK", {"request_id": "r1"}, None))
     binding = load_signed_tool_registry().bind_required("google_workspace", "gmail_send", "SEND")
 
-    claim = {
+    claim: dict[str, JsonValue] = {
         "claim_id": "claim-1",
         "mcp_process_instance_id": "process-1",
         "signature": "application-signature",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from tests.support.canonical_prompt_runtime import (
@@ -24,6 +26,13 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     InactivePromptArtifactError,
+)
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
+from google_work_agent.ports.llm.structured_inference_port import (
+    StructuredInferenceResultV1,
 )
 
 DIMENSION = "review.inspect_goal_and_evidence"
@@ -59,14 +68,20 @@ def test_non_active_goal_prompt_fails_before_structured_inference(tmp_path: Path
     class FailingRuntime:
         calls = 0
 
-        def invoke_structured(self, **_kwargs: object) -> object:
+        def infer(
+            self,
+            requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"],
+            prompt_ref: PromptReference,
+            input_projection: Mapping[str, object],
+            output_schema_ref: OutputSchemaDefinition,
+        ) -> StructuredInferenceResultV1:
             self.calls += 1
             raise AssertionError("inactive Prompt must not reach StructuredInferencePort")
 
     runtime = FailingRuntime()
     manifest_path, _contract_path = copy_prompt_runtime_artifacts(tmp_path)
     deactivate_prompt_slot(manifest_path, "review.inspect_goal_and_evidence")
-    graph = ReviewSubgraph(  # type: ignore[arg-type]
+    graph = ReviewSubgraph(
         llm_runtime=runtime,
         prompt_manifest_path=manifest_path,
     )

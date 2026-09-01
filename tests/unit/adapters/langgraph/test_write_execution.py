@@ -155,11 +155,12 @@ def test_read_plan_uses_legacy_read_authority_without_write_driver() -> None:
     )
 
     result = node(state)
+    result_payload = cast(dict[str, Any], result)
 
     calls.append(cast(str, result["__target__"]))
     assert calls == ["response_synthesis"]
-    assert result["plan_id"] == "plan-1"
-    assert result["action_ids"] == ["action-1"]
+    assert result_payload["plan_id"] == "plan-1"
+    assert result_payload["action_ids"] == ["action-1"]
 
 
 def test_cancelled_read_plan_stops_before_read_or_write_execution() -> None:

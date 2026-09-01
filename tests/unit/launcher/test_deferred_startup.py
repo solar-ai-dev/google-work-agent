@@ -266,10 +266,16 @@ def test_safe_mode_restore_migrates_then_rebinds_ready_core(tmp_path: Path) -> N
         if attempts == 1:
             raise CoreInitializationError("MIGRATION_FAILED")
         return build_container(
+            host=cast(str, kwargs["host"]),
+            port=cast(int, kwargs["port"]),
             runtime_root=runtime_root,
+            bootstrap_secret=cast(str | None, kwargs["bootstrap_secret"]),
+            service_instance_id=cast(str | None, kwargs["service_instance_id"]),
+            safe_mode_controller=cast(
+                SafeModeController | None, kwargs["safe_mode_controller"]
+            ),
             mcp_module_name="tests.fakes.google_workspace_mcp_server",
             keyring_store=SessionMemorySecretStore(),
-            **kwargs,
         )
 
     container = DeferredApiContainer(
