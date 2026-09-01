@@ -736,6 +736,7 @@ def _build_workflow_application_services(
             connector_read=connector_reader.connector_reader,
             tool_registry=tool_catalog,
             unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
             resolve_resource_ref=resolve_resource_ref,
         ),
         store_verification=StoreVerificationHandler(
@@ -2330,6 +2331,7 @@ def build_production_runtime(
             connector_read=connector_reader,
             tool_registry=connector_bundle.tool_registry,
             unit_of_work_factory=unit_of_work_factory,
+            now_ms=clock.now_ms,
         ),
         recover_existing_result=RecoverExistingResultHandler(
             unit_of_work_factory=unit_of_work_factory,

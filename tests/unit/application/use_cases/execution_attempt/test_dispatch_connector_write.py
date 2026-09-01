@@ -3,7 +3,7 @@ already-authorized in-flight dispatch as never started."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from json import dumps
 from types import SimpleNamespace
 from typing import Any, cast
@@ -213,5 +213,26 @@ def test_dispatch_still_rejected_for_run_status_outside_the_closed_set(
 
     with pytest.raises(PermissionError, match="no longer current"):
         handler(_command())
+
+    assert port.calls == 0
+
+
+def test_claim_attempt_mismatch_is_rejected_before_connector_io() -> None:
+    port = _ConnectorWritePort()
+    handler = DispatchConnectorWriteHandler(
+        unit_of_work_factory=cast(
+            Any, lambda: _UnitOfWork(run_status=RunStatusV1.WAITING_APPROVAL)
+        ),
+        tool_registry=cast(Any, _ToolRegistry()),
+        connector_write_port=cast(Any, port),
+    )
+    command = _command()
+    cross_wired = replace(
+        command,
+        claim_context=replace(command.claim_context, execution_attempt_id="attempt-other"),
+    )
+
+    with pytest.raises(PermissionError, match="identity binding mismatch"):
+        handler(cross_wired)
 
     assert port.calls == 0

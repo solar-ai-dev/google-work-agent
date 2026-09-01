@@ -258,12 +258,25 @@ class ReconcileInflightExecutionsHandler:
                 ResolveAsFailedCommand(
                     command_id=command_id,
                     request_hash=calculate_canonical_json_hash(
-                        {"command_id": command_id, "reason_codes": lookup.reason_codes}
+                        {
+                            "command_id": command_id,
+                            "reason_codes": lookup.reason_codes,
+                            "lookup_proof_command_id": lookup.proof_command_id,
+                            "lookup_proof_request_hash": lookup.proof_request_hash,
+                        }
                     ),
                     action_id=action.id,
                     attempt_id=attempt.id,
                     expected_action_version=action.version,
                     expected_attempt_version=attempt.version,
+                    lookup_proof_command_id=_require_lookup_proof(
+                        lookup.proof_command_id,
+                        "proof_command_id",
+                    ),
+                    lookup_proof_request_hash=_require_lookup_proof(
+                        lookup.proof_request_hash,
+                        "proof_request_hash",
+                    ),
                     error_code="RECOVERY_CONFIRMED_NOT_EXECUTED",
                     error_detail=",".join(lookup.reason_codes),
                 )
@@ -362,6 +375,12 @@ def drain_inflight_executions_to_quiescence(
         if not result.has_more or result.progressed_count == 0:
             return pass_index
     raise RuntimeError("inflight execution startup drain did not reach quiescence")
+
+
+def _require_lookup_proof(value: str | None, field_name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"durable unknown-result lookup {field_name} is required")
+    return value
 
 
 __all__ = [

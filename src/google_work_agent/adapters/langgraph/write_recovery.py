@@ -53,7 +53,7 @@ class WriteRecoveryCoordinator:
         write_run_completion_ready: Callable[[str, str], bool],
         plans_for_run: Callable[[str], tuple[PlanRecord, ...]],
         list_actions: Callable[[str], tuple[ActionRecord, ...]],
-        begin_verification: Callable[[str], BeginVerificationResult | None],
+        begin_verification: Callable[[str, str, str], BeginVerificationResult | None],
         latest_attempt_id: Callable[[str], str],
     ) -> None:
         self._latest_unknown_action = latest_unknown_action
@@ -169,7 +169,8 @@ class WriteRecoveryCoordinator:
                 continue
 
             if not verification_started:
-                begin = self._begin_verification(run_id)
+                attempt_id = self._latest_attempt_id(action.id)
+                begin = self._begin_verification(run_id, action.id, attempt_id)
                 if begin is not None and not begin.applied:
                     return self._reconcile_run_command_result(
                         state=state,
@@ -180,7 +181,6 @@ class WriteRecoveryCoordinator:
                 verification_started = True
 
             try:
-                attempt_id = self._latest_attempt_id(action.id)
                 verified = self._execution_phase.verify_executed(
                     action_id=action.id,
                     action_version=action.version,

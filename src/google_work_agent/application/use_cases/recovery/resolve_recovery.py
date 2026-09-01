@@ -13,6 +13,7 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 )
 from google_work_agent.application.use_cases.action.write_persistence import (
     cancel_pending_actions,
+    require_execution_binding,
     revoke_active_approvals,
 )
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
@@ -44,6 +45,7 @@ from google_work_agent.domain.recovery.transitions.resolve_recovery import (
 from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.trace_event.model import TraceEvent as TraceEventRecord
+from google_work_agent.domain.verification.model import VerificationStatus
 from google_work_agent.ports.persistence.recovery_repository import RecoveryContextV1
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
@@ -113,8 +115,40 @@ def derive_recovery_eligibility(
         cancel_intent_active=cancel_intent_active,
         unresolved_external_effect_count=unresolved_external_effect_count,
         irrecoverable_confirmed=(
-            context["reason"] != "UNKNOWN_RESULT" and unresolved_external_effect_count == 0
+            unresolved_external_effect_count == 0
+            and _has_durable_irrecoverable_child_proof(unit_of_work, context)
         ),
+    )
+
+
+def _has_durable_irrecoverable_child_proof(
+    unit_of_work: UnitOfWork,
+    context: RecoveryContextV1,
+) -> bool:
+    if context["reason"] != "VERIFICATION_MISMATCH":
+        return False
+    action_id = context.get("action_id")
+    attempt_id = context.get("execution_attempt_id")
+    verification_id = context.get("verification_id")
+    if not all(
+        isinstance(value, str) and value for value in (action_id, attempt_id, verification_id)
+    ):
+        return False
+    try:
+        binding = require_execution_binding(
+            unit_of_work,
+            action_id=cast(str, action_id),
+            attempt_id=cast(str, attempt_id),
+            run_id=context["run_id"],
+        )
+    except (LookupError, ValueError):
+        return False
+    verification = unit_of_work.verifications.get_latest_for_attempt(binding.attempt.id)
+    return bool(
+        ActionStatusV1(binding.action.status) is ActionStatusV1.MISMATCH
+        and verification is not None
+        and verification.id == verification_id
+        and verification.status is VerificationStatus.MISMATCH
     )
 
 
@@ -277,6 +311,12 @@ class ResolveRecoveryHandler:
                 unit_of_work, context, checkpoint_port=self._checkpoint_port
             )
             recheck_input_changed = recheck_input_hash != context.get("last_recheck_input_hash")
+            if (
+                context["reason"] in {"CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"}
+                and context.get("last_recheck_input_hash") == recheck_input_hash
+                and isinstance(context.get("contract_or_checkpoint_fingerprint"), str)
+            ):
+                eligibility = replace(eligibility, irrecoverable_confirmed=True)
             decision = transition_resolve_recovery(
                 run.status,
                 resolution=command.resolution,

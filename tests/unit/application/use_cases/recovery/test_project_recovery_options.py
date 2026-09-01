@@ -20,10 +20,10 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
         ("UNKNOWN_RESULT", ("RECHECK",)),
         (
             "VERIFICATION_MISMATCH",
-            ("RECHECK", "ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN", "FAIL"),
+            ("RECHECK", "ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN"),
         ),
-        ("CHECKPOINT_MISMATCH", ("RECHECK", "FAIL")),
-        ("CONTRACT_VIOLATION", ("RECHECK", "FAIL")),
+        ("CHECKPOINT_MISMATCH", ("RECHECK",)),
+        ("CONTRACT_VIOLATION", ("RECHECK",)),
     ],
 )
 def test_projection_matches_domain_matrix_without_cancel_intent(

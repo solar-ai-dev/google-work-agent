@@ -15,7 +15,10 @@ from google_work_agent.adapters.connectors.runtime.mcp_connector_write import (
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
+from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 from google_work_agent.ports.connector.mcp_client_port import (
+    MCPClientPortError,
+    MCPClientPortErrorCode,
     MCPRestartResultV1,
     MCPRuntimeMetadata,
     MCPToolCallResultV1,
@@ -28,6 +31,7 @@ class _Client:
     response: MCPToolCallResultV1
     process_instance_id: str = "process-1"
     calls: list[tuple[str, str, Any, int]] = field(default_factory=list)
+    sign_calls: int = 0
 
     def list_tools(self, connector_id: str) -> list[MCPToolDescriptorV1]:
         return load_signed_tool_registry().descriptor_expectations(connector_id)
@@ -42,6 +46,7 @@ class _Client:
         return MCPRestartResultV1(1, True, connector_id)
 
     def sign_claim_context(self, payload: dict[str, object]) -> str:
+        self.sign_calls += 1
         assert payload["mcp_process_instance_id"] == self.process_instance_id
         return "signature-1"
 
@@ -89,18 +94,56 @@ def test_read_adapter_requires_signed_binding_and_projects_bounded_output() -> N
     assert client.calls[0][1] == "gmail_get_thread"
 
 
-def test_write_adapter_injects_process_bound_signed_claim() -> None:
+def test_write_adapter_forwards_application_signed_claim_unchanged() -> None:
     client = _Client(MCPToolCallResultV1(1, "gmail_send", "OK", {"request_id": "r1"}, None))
+    binding = load_signed_tool_registry().bind_required("google_workspace", "gmail_send", "SEND")
+
+    claim = {
+        "claim_id": "claim-1",
+        "mcp_process_instance_id": "process-1",
+        "signature": "application-signature",
+    }
+    result = McpConnectorWriteAdapter(
+        runtime_registry=_registry(client), mcp_client=client
+    ).execute_write(binding, {"draft_id": "draft-1"}, claim)
+
+    sent = client.calls[0][2]
+    assert isinstance(sent, dict)
+    assert sent["claim_context"] == claim
+    assert result.success is True
+    assert client.sign_calls == 0
+
+
+def test_write_adapter_normalizes_raised_transport_certainty() -> None:
+    class _FailingClient(_Client):
+        def call_tool(
+            self, connector_id: str, tool_id: str, arguments: Any, timeout_ms: int
+        ) -> MCPToolCallResultV1:
+            self.calls.append((connector_id, tool_id, arguments, timeout_ms))
+            raise MCPClientPortError(
+                code=MCPClientPortErrorCode.TIMEOUT,
+                message="response lost",
+                delivery_certainty=DeliveryCertainty.SENT_RESPONSE_LOST,
+                request_id="request-1",
+            )
+
+    client = _FailingClient(MCPToolCallResultV1(1, "gmail_send", "OK", {}, None))
     binding = load_signed_tool_registry().bind_required("google_workspace", "gmail_send", "SEND")
 
     result = McpConnectorWriteAdapter(
         runtime_registry=_registry(client), mcp_client=client
-    ).execute_write(binding, {"draft_id": "draft-1"}, {"claim_id": "claim-1"})
+    ).execute_write(
+        binding,
+        {"draft_id": "draft-1"},
+        {
+            "mcp_process_instance_id": "process-1",
+            "signature": "application-signature",
+        },
+    )
 
-    sent = client.calls[0][2]
-    assert isinstance(sent, dict)
-    assert sent["claim_context"]["signature"] == "signature-1"
-    assert result.success is True
+    assert result.success is False
+    assert result.delivery_certainty == "SENT_RESPONSE_LOST"
+    assert result.provider_request_id == "request-1"
 
 
 def test_read_and_write_adapters_reject_cross_effect_binding() -> None:

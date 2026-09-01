@@ -202,7 +202,13 @@ def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_pat
 
 
 def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: Path) -> None:
-    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    database_path = _database(
+        tmp_path,
+        run_status="VERIFYING",
+        plan_status="WAITING_APPROVAL",
+        action_status="EXECUTING",
+    )
+    _add_irrecoverable_verification_proof(database_path)
     with connect_sqlite(database_path) as connection:
         connection.execute(
             """
@@ -247,6 +253,23 @@ def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: 
             == "ASSISTANT"
         )
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
+
+
+def test_fail_without_durable_irrecoverable_proof_is_rejected(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+
+    result = ResolveRecoveryHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
+        now_ms=lambda: 10,
+        checkpoint_port=sqlite_checkpoint(database_path),
+    )(_command("cmd-fail-without-proof", RecoveryResolution.FAIL))
+
+    assert not result.applied and result.result_code == "RESOLUTION_NOT_ALLOWED"
+    with connect_sqlite(database_path) as connection:
+        assert connection.execute("SELECT status FROM runs WHERE id='r-1';").fetchone()[0] == (
+            "RECOVERY_REQUIRED"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
 def test_fail_rejects_executed_action_awaiting_verification(tmp_path: Path) -> None:
@@ -319,7 +342,51 @@ def _audit_events(database_path: Path) -> list[str]:
     return [str(row["event_type"]) for row in rows]
 
 
-def _database(tmp_path: Path, *, run_status: str) -> Path:
+def _add_irrecoverable_verification_proof(database_path: Path) -> None:
+    with connect_sqlite(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO approvals (
+                id, action_id, approval_no, action_version, status,
+                approved_by_account_id, arguments_snapshot_json,
+                canonical_arguments_hash, source_snapshot_json, source_snapshot_hash,
+                policy_version, tool_schema_version, idempotency_key,
+                recovery_fingerprint, approved_at_ms, expires_at_ms, consumed_at_ms
+            ) VALUES ('approval-1', 'action-1', 1, 0, 'CONSUMED', 'a-1',
+                      '{}', ?, '{}', ?, 'policy-v1', 'schema-v1', ?, ?, 1, 100, 2);
+            """,
+            ("b" * 64, "c" * 64, "d" * 64, "e" * 64),
+        )
+        connection.execute(
+            """
+            INSERT INTO execution_attempts (
+                id, approval_id, attempt_no, status, version,
+                response_metadata_json, started_at_ms, finished_at_ms
+            ) VALUES ('attempt-1', 'approval-1', 1, 'SUCCEEDED', 1, '{}', 2, 3);
+            """
+        )
+        connection.execute("UPDATE actions SET status='EXECUTED' WHERE id='action-1';")
+        connection.execute(
+            """
+            INSERT INTO verifications (
+                id, execution_attempt_id, verification_no, status, normalizer_version,
+                expected_json, actual_json, diff_json, verified_at_ms
+            ) VALUES ('verification-1', 'attempt-1', 1, 'MISMATCH', 'v1',
+                      '{}', '{}', '{}', 4);
+            """
+        )
+        connection.execute("UPDATE actions SET status='MISMATCH' WHERE id='action-1';")
+        connection.execute("UPDATE runs SET status='RECOVERY_REQUIRED' WHERE id='r-1';")
+        connection.commit()
+
+
+def _database(
+    tmp_path: Path,
+    *,
+    run_status: str,
+    plan_status: str = "DRAFT",
+    action_status: str = "MISMATCH",
+) -> Path:
     path = tmp_path / "resolve-recovery.db"
     with connect_sqlite(path) as connection:
         apply_migrations(connection, now_ms=lambda: 1)
@@ -342,8 +409,9 @@ def _database(tmp_path: Path, *, run_status: str) -> Path:
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
                 review_status, review_disposition
-            ) VALUES ('plan-1', 'r-1', 1, 'DRAFT', 'test', 1, 'REQUIRED', NULL);
-            """
+            ) VALUES ('plan-1', 'r-1', 1, ?, 'test', 1, 'REQUIRED', NULL);
+            """,
+            (plan_status,),
         )
         connection.execute(
             """
@@ -353,11 +421,11 @@ def _database(tmp_path: Path, *, run_status: str) -> Path:
                 arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
             ) VALUES (
                 'action-1', 'plan-1', 1, 'tasks_create_task', 'CREATE', 'REQUIRED',
-                'GET_COMPARE', 'RESOURCE_SEARCH', 'MISMATCH', '{}',
+                'GET_COMPARE', 'RESOURCE_SEARCH', ?, '{}',
                 ?, '{}', '{}', 0, 1, 1
             );
             """,
-            ("a" * 64,),
+            (action_status, "a" * 64),
         )
         connection.execute(
             """

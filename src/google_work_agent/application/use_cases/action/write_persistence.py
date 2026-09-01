@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 from json import dumps, loads
 from typing import Any, Protocol, cast
@@ -75,6 +75,40 @@ class ReceiptResponse(Protocol):
 
     @property
     def result_code(self) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionBindingV1:
+    action: ActionRecord
+    approval: ApprovalRecord
+    attempt: ExecutionAttemptRecord
+    plan: PlanRecord
+    run: RunRecord
+
+
+def require_execution_binding(
+    unit_of_work: UnitOfWork,
+    *,
+    action_id: str,
+    attempt_id: str,
+    run_id: str | None = None,
+) -> ExecutionBindingV1:
+    """Resolve and validate one current Action/Approval/Attempt lineage."""
+
+    action = require_action(unit_of_work, action_id)
+    attempt = require_attempt(unit_of_work, attempt_id)
+    approval = require_approval(unit_of_work, attempt.approval_id)
+    plan = require_plan(unit_of_work, action.plan_id)
+    run = require_run(unit_of_work, plan.run_id)
+    current_plan_ids = {item.id for item in current_plan_tuple(unit_of_work.plans, run.id)}
+    if (
+        approval.action_id != action.id
+        or approval.status is not ApprovalStatusV1.CONSUMED
+        or plan.id not in current_plan_ids
+        or (run_id is not None and run.id != run_id)
+    ):
+        raise ValueError("ExecutionAttempt/Approval/Action binding mismatch")
+    return ExecutionBindingV1(action, approval, attempt, plan, run)
 
 
 def revoke_active_approvals(unit_of_work: UnitOfWork, action_id: str) -> tuple[str, ...]:

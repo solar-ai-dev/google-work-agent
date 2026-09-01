@@ -13,9 +13,7 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    require_action,
-    require_attempt,
-    require_plan,
+    require_execution_binding,
     resolve_existing_action_receipt,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
@@ -85,16 +83,25 @@ class MarkUnknownResultHandler:
 
     def recovery_projection(self, *, action_id: str, attempt_id: str) -> tuple[str, int]:
         with self._unit_of_work_factory() as unit_of_work:
-            action = unit_of_work.actions.get(action_id)
-            attempt = unit_of_work.execution_attempts.get(attempt_id)
-        if action is None or attempt is None:
-            raise LookupError("unknown-result Action/Attempt binding is missing")
-        return action.effect_type, attempt.version
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=action_id,
+                attempt_id=attempt_id,
+            )
+        return binding.action.effect_type, binding.attempt.version
 
     def __call__(self, command: MarkUnknownResultCommand) -> MarkUnknownResultResult:
         if command.delivery_certainty is DeliveryCertainty.NOT_SENT:
             raise ValueError("UNKNOWN_RESULT requires a possibly dispatched write")
         with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            plan = binding.plan
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
                 return _to_result(
@@ -115,9 +122,6 @@ class MarkUnknownResultHandler:
                 aggregate_id=command.action_id,
                 created_at_ms=now_ms,
             )
-            action = require_action(unit_of_work, command.action_id)
-            attempt = require_attempt(unit_of_work, command.attempt_id)
-            plan = require_plan(unit_of_work, action.plan_id)
             transition = transition_mark_unknown_result(
                 ActionStatusV1(action.status),
                 action_version=action.version,

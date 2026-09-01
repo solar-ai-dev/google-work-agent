@@ -6,6 +6,9 @@ from json import loads
 from typing import Literal, cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_execution_binding,
+)
 from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref import (
     ResolveResourceRefHandler,
     ResolveResourceRefQuery,
@@ -14,6 +17,8 @@ from google_work_agent.application.use_cases.verification.write_verification_pro
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
@@ -52,6 +57,17 @@ class VerificationResultV1:
     reason_codes: list[str]
 
 
+def _require_verification_source_state(
+    action_status: str,
+    attempt_status: ExecutionAttemptStatusV1,
+) -> None:
+    if (
+        ActionStatusV1(action_status) is not ActionStatusV1.EXECUTED
+        or attempt_status is not ExecutionAttemptStatusV1.SUCCEEDED
+    ):
+        raise ValueError("verification requires the current succeeded ExecutionAttempt")
+
+
 class VerifyEffectHandler:
     def __init__(
         self,
@@ -78,11 +94,16 @@ class VerifyEffectHandler:
         if self._unit_of_work_factory is None or self._resolve_resource_ref is None:
             raise RuntimeError("persisted verification projection is not configured")
         with self._unit_of_work_factory() as unit_of_work:
-            action = unit_of_work.actions.get(action_id)
-            attempt = unit_of_work.execution_attempts.get(execution_attempt_id)
-            if action is None or attempt is None:
-                raise LookupError("verification Action/Attempt binding is missing")
-            approval = unit_of_work.approvals.get(attempt.approval_id)
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=action_id,
+                attempt_id=execution_attempt_id,
+                run_id=run_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            approval = binding.approval
+            _require_verification_source_state(action.status, attempt.status)
             resource_ref_id = attempt.result_resource_ref_id or action.target_resource_ref_id
         resource_ref = (
             None
@@ -124,6 +145,7 @@ class VerifyEffectHandler:
         return bundle.plan.run_id
 
     def __call__(self, query: VerifyEffectQueryV1) -> VerificationResultV1:
+        self._validate_query_binding(query)
         strategy = self._strategy(query.effect)
         tool_id, arguments = self._read_request(query, strategy)
         try:
@@ -195,6 +217,38 @@ class VerifyEffectHandler:
             [result.request_id],
             [] if not diffs else ["EXPECTED_EFFECT_MISMATCH"],
         )
+
+    def _validate_query_binding(self, query: VerifyEffectQueryV1) -> None:
+        if self._unit_of_work_factory is None:
+            return
+        with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=query.action_id,
+                attempt_id=query.execution_attempt_id,
+                run_id=query.run_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            _require_verification_source_state(action.status, attempt.status)
+            expected = cast(dict[str, object], loads(action.expected_json))
+            if action.effect_type == "SEND":
+                expected = {
+                    **expected,
+                    "recovery_fingerprint": binding.approval.recovery_fingerprint,
+                }
+            expected_resource_ref_id = (
+                attempt.result_resource_ref_id or action.target_resource_ref_id
+            )
+        supplied_resource_ref_id = (
+            None if query.target_resource_ref is None else query.target_resource_ref.resource_ref_id
+        )
+        if (
+            query.effect != action.effect_type
+            or query.expected_effect != expected
+            or supplied_resource_ref_id != expected_resource_ref_id
+        ):
+            raise ValueError("verification query does not match persisted execution binding")
 
     @staticmethod
     def _strategy(

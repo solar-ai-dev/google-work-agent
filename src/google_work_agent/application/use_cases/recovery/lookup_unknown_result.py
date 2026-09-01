@@ -1,14 +1,22 @@
 """Look up an uncertain external result without issuing a Write."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from json import loads
+from dataclasses import asdict, dataclass, replace
+from json import dumps, loads
 from typing import Literal, cast
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_execution_binding,
+)
 from google_work_agent.application.use_cases.verification.verify_effect import (
     SelectedResourceRefV1,
 )
+from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.canonical import calculate_canonical_json_hash
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
+from google_work_agent.domain.results import ResultCode
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
@@ -34,6 +42,9 @@ class UnknownResultLookupResultV1:
     candidate_resource_refs: list[str]
     evidence_refs: list[str]
     reason_codes: list[str]
+    execution_attempt_id: str | None = None
+    proof_command_id: str | None = None
+    proof_request_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +52,17 @@ class PersistedUnknownLookupInput:
     query: LookupUnknownResultQueryV1
     tool_name: str
     arguments: dict[str, object]
+
+
+def _require_unknown_source_state(
+    action_status: str,
+    attempt_status: ExecutionAttemptStatusV1,
+) -> None:
+    if (
+        ActionStatusV1(action_status) is not ActionStatusV1.UNKNOWN_RESULT
+        or attempt_status is not ExecutionAttemptStatusV1.UNKNOWN_RESULT
+    ):
+        raise ValueError("lookup requires the current UNKNOWN_RESULT ExecutionAttempt")
 
 
 class LookupUnknownResultHandler:
@@ -51,11 +73,13 @@ class LookupUnknownResultHandler:
         tool_registry: SignedToolRegistry,
         connector_id: str = "google_workspace",
         unit_of_work_factory: Callable[[], UnitOfWork] | None = None,
+        now_ms: Callable[[], int] = lambda: 0,
     ) -> None:
         self._connector_read = connector_read
         self._tool_registry = tool_registry
         self._connector_id = connector_id
         self._unit_of_work_factory = unit_of_work_factory
+        self._now_ms = now_ms
 
     def project_persisted_query(
         self,
@@ -68,18 +92,21 @@ class LookupUnknownResultHandler:
         if self._unit_of_work_factory is None:
             raise RuntimeError("persisted unknown-result projection is not configured")
         with self._unit_of_work_factory() as unit_of_work:
-            action = unit_of_work.actions.get(action_id)
-            attempt = unit_of_work.execution_attempts.get(execution_attempt_id)
-            if action is None or attempt is None:
-                raise LookupError("unknown-result Action/Attempt binding is missing")
-            approval = unit_of_work.approvals.get(attempt.approval_id)
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=action_id,
+                attempt_id=execution_attempt_id,
+                run_id=run_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            approval = binding.approval
+            _require_unknown_source_state(action.status, attempt.status)
             resource_ref = (
                 None
                 if action.target_resource_ref_id is None
                 else unit_of_work.resource_refs.get(action.target_resource_ref_id)
             )
-        if approval is None:
-            raise LookupError("unknown-result Approval binding is missing")
         arguments = cast(dict[str, object], loads(action.arguments_json))
         target = (
             _create_recovery_search_scope(action.tool_name, arguments)
@@ -107,6 +134,24 @@ class LookupUnknownResultHandler:
         )
 
     def __call__(self, query: LookupUnknownResultQueryV1) -> UnknownResultLookupResultV1:
+        self._validate_query_binding(query)
+        proof_command_id, proof_request_hash = _proof_identity(query)
+        replay = self._load_proof(
+            query,
+            proof_command_id=proof_command_id,
+            proof_request_hash=proof_request_hash,
+        )
+        if replay is not None:
+            return replay
+        result = self._lookup(query)
+        return self._persist_proof(
+            query,
+            result,
+            proof_command_id=proof_command_id,
+            proof_request_hash=proof_request_hash,
+        )
+
+    def _lookup(self, query: LookupUnknownResultQueryV1) -> UnknownResultLookupResultV1:
         strategy, tool_id, arguments = self._request(query)
         try:
             result = self._connector_read.execute_read(
@@ -175,6 +220,96 @@ class LookupUnknownResultHandler:
             [result.request_id],
             reason_codes,
         )
+
+    def _load_proof(
+        self,
+        query: LookupUnknownResultQueryV1,
+        *,
+        proof_command_id: str,
+        proof_request_hash: str,
+    ) -> UnknownResultLookupResultV1 | None:
+        if self._unit_of_work_factory is None:
+            return None
+        with self._unit_of_work_factory() as unit_of_work:
+            receipt = unit_of_work.command_receipts.get_by_command_id(proof_command_id)
+        if receipt is None:
+            return None
+        if receipt.request_hash != proof_request_hash:
+            raise RuntimeError("unknown-result lookup proof identity collision")
+        if (
+            receipt.status is CommandReceiptStatus.RECEIVED
+            or receipt.response_json is None
+            or receipt.aggregate_id != query.execution_attempt_id
+        ):
+            raise RuntimeError("unknown-result lookup proof is incomplete")
+        return UnknownResultLookupResultV1(**loads(receipt.response_json))
+
+    def _persist_proof(
+        self,
+        query: LookupUnknownResultQueryV1,
+        result: UnknownResultLookupResultV1,
+        *,
+        proof_command_id: str,
+        proof_request_hash: str,
+    ) -> UnknownResultLookupResultV1:
+        if self._unit_of_work_factory is None:
+            return result
+        persisted = replace(
+            result,
+            execution_attempt_id=query.execution_attempt_id,
+            proof_command_id=proof_command_id,
+            proof_request_hash=proof_request_hash,
+        )
+        with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=query.action_id,
+                attempt_id=query.execution_attempt_id,
+                run_id=query.run_id,
+            )
+            now_ms = self._now_ms()
+            unit_of_work.command_receipts.reserve_or_replay(
+                command_id=proof_command_id,
+                command_type="LookupUnknownResult",
+                request_hash=proof_request_hash,
+                aggregate_type="ExecutionAttempt",
+                aggregate_id=query.execution_attempt_id,
+                created_at_ms=now_ms,
+            )
+            unit_of_work.command_receipts.store_result(
+                command_id=proof_command_id,
+                applied=True,
+                result_code=ResultCode.TRANSITION_APPLIED,
+                result_version=binding.attempt.version,
+                response_json=dumps(asdict(persisted), sort_keys=True),
+                completed_at_ms=now_ms,
+            )
+            unit_of_work.commit()
+        return persisted
+
+    def _validate_query_binding(self, query: LookupUnknownResultQueryV1) -> None:
+        if self._unit_of_work_factory is None:
+            return
+        with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=query.action_id,
+                attempt_id=query.execution_attempt_id,
+                run_id=query.run_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            _require_unknown_source_state(action.status, attempt.status)
+            expected_target_id = action.target_resource_ref_id
+        supplied_target_id = (
+            None if query.target_resource_ref is None else query.target_resource_ref.resource_ref_id
+        )
+        if (
+            query.effect != action.effect_type
+            or query.recovery_fingerprint != binding.approval.recovery_fingerprint
+            or (expected_target_id is not None and supplied_target_id != expected_target_id)
+        ):
+            raise ValueError("unknown-result query does not match persisted execution binding")
 
     @staticmethod
     def _request(
@@ -270,6 +405,15 @@ def _contains_fingerprint(value: object, fingerprint: str) -> bool:
     if isinstance(value, dict):
         return any(_contains_fingerprint(item, fingerprint) for item in value.values())
     return False
+
+
+def _proof_identity(query: LookupUnknownResultQueryV1) -> tuple[str, str]:
+    payload = asdict(query)
+    request_hash = calculate_canonical_json_hash(payload)
+    return (
+        f"system:lookup-unknown-result:{query.execution_attempt_id}:{request_hash}",
+        request_hash,
+    )
 
 
 def _create_recovery_search_scope(

@@ -1,12 +1,17 @@
 """Canonical persisted BeginVerification application boundary."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 
+from google_work_agent.application.use_cases.action.write_persistence import (
+    require_execution_binding,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
+from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
+from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import Run, RunCommand, RunStatusV1, RunTransitionRejected
 from google_work_agent.domain.run.transitions.begin_verification import (
@@ -21,6 +26,8 @@ class BeginVerificationCommand:
     command_id: str
     request_hash: str
     run_id: str
+    action_id: str
+    execution_attempt_id: str
     expected_version: int | None = None
 
 
@@ -68,6 +75,14 @@ class BeginVerificationHandler:
                     and receipt.status is not CommandReceiptStatus.RECEIVED
                 ):
                     payload = loads(receipt.response_json)
+                    if (
+                        not isinstance(payload, Mapping)
+                        or payload.get("action_id") != command.action_id
+                        or payload.get("execution_attempt_id") != command.execution_attempt_id
+                    ):
+                        raise RuntimeError(
+                            "BeginVerification receipt child identity does not match command"
+                        )
                     return BeginVerificationResult(
                         applied=bool(payload["applied"]),
                         result_code=ResultCode(payload["result_code"]),
@@ -76,6 +91,20 @@ class BeginVerificationHandler:
                         conflict_detail=payload.get("conflict_detail"),
                     )
                 raise RuntimeError("RECEIVED BeginVerification receipt requires reconciliation")
+
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=command.action_id,
+                attempt_id=command.execution_attempt_id,
+                run_id=command.run_id,
+            )
+            if (
+                ActionStatusV1(binding.action.status) is not ActionStatusV1.EXECUTED
+                or binding.attempt.status is not ExecutionAttemptStatusV1.SUCCEEDED
+            ):
+                raise ValueError(
+                    "BeginVerification requires a current executed Action/Attempt fact"
+                )
 
             unit_of_work.command_receipts.reserve_or_replay(
                 command_id=command.command_id,
@@ -113,22 +142,22 @@ class BeginVerificationHandler:
                         {"status": next_status.value, "version": run.version + 1},
                     ):
                         raise RuntimeError("validated BeginVerification CAS failed")
-                    binding = self._checkpoint_port.load_workflow_binding(run.id)
+                    workflow_binding = self._checkpoint_port.load_workflow_binding(run.id)
                     checkpoint = (
                         None
-                        if binding is None
+                        if workflow_binding is None
                         else self._checkpoint_port.load_same_run_checkpoint(
-                            run.id, binding.langgraph_thread_id
+                            run.id, workflow_binding.langgraph_thread_id
                         )
                     )
-                    if binding is None or checkpoint is None:
+                    if workflow_binding is None or checkpoint is None:
                         raise RuntimeError(
                             "BeginVerification requires a current workflow checkpoint"
                         )
                     verification_target = self._resume_target_registry.issue_main_stage(
-                        binding.graph_profile,
+                        workflow_binding.graph_profile,
                         "VERIFICATION",
-                        binding.graph_version,
+                        workflow_binding.graph_version,
                     )
                     checkpoint_update = replace(
                         checkpoint,
@@ -145,7 +174,14 @@ class BeginVerificationHandler:
                             actor_display="BeginVerification",
                             event_type="RUN_VERIFICATION_STARTED",
                             outcome=ResultCode.TRANSITION_APPLIED.value,
-                            metadata_json=dumps({"command_id": command.command_id}, sort_keys=True),
+                            metadata_json=dumps(
+                                {
+                                    "action_id": command.action_id,
+                                    "command_id": command.command_id,
+                                    "execution_attempt_id": command.execution_attempt_id,
+                                },
+                                sort_keys=True,
+                            ),
                             created_at_ms=now_ms,
                         )
                     )
@@ -158,6 +194,8 @@ class BeginVerificationHandler:
             payload = asdict(result)
             payload["result_code"] = result.result_code.value
             payload["current_status"] = result.current_status.value
+            payload["action_id"] = command.action_id
+            payload["execution_attempt_id"] = command.execution_attempt_id
             unit_of_work.command_receipts.store_result(
                 command_id=command.command_id,
                 applied=result.applied,

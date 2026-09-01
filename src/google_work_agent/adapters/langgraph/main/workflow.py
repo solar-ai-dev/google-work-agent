@@ -470,16 +470,23 @@ class _WorkflowRuntimeComposition:
             write_run_completion_ready=self._write_run_completion_ready,
             plans_for_run=self._plans_for_run,
             list_actions=self._list_actions,
-            begin_verification=lambda run_id: (
+            begin_verification=lambda run_id, action_id, attempt_id: (
                 None
                 if self._current_run_status(run_id) == RunStatusV1.VERIFYING.value
                 else self._begin_write_verification(
                     BeginVerificationCommand(
                         command_id=self._id_factory(),
                         request_hash=calculate_canonical_json_hash(
-                            {"kind": "begin_verification_recovery", "run_id": run_id}
+                            {
+                                "kind": "begin_verification_recovery",
+                                "run_id": run_id,
+                                "action_id": action_id,
+                                "execution_attempt_id": attempt_id,
+                            }
                         ),
                         run_id=run_id,
+                        action_id=action_id,
+                        execution_attempt_id=attempt_id,
                     )
                 )
             ),
@@ -2016,14 +2023,22 @@ class _WorkflowRuntimeComposition:
 
     def _verify_cancelling_action(self, action_id: str) -> bool:
         action, run_id = self._action_and_run_id(action_id)
+        attempt_id = self._latest_attempt_id(action.id)
         if self._current_run_status(run_id) == RunStatusV1.CANCEL_REQUESTED.value:
             begun = self._begin_write_verification(
                 BeginVerificationCommand(
                     command_id=f"system:cancel-resolution:begin-verification:{run_id}",
                     request_hash=calculate_canonical_json_hash(
-                        {"kind": "cancel_begin_verification", "run_id": run_id}
+                        {
+                            "kind": "cancel_begin_verification",
+                            "run_id": run_id,
+                            "action_id": action.id,
+                            "execution_attempt_id": attempt_id,
+                        }
                     ),
                     run_id=run_id,
+                    action_id=action.id,
+                    execution_attempt_id=attempt_id,
                 )
             )
             if not begun.applied:
@@ -2032,7 +2047,7 @@ class _WorkflowRuntimeComposition:
             verified = self._write_execution_phase.verify_executed(
                 action_id=action.id,
                 action_version=action.version,
-                attempt_id=self._latest_attempt_id(action.id),
+                attempt_id=attempt_id,
                 request_kind="cancel_verification",
             )
         except GoogleWorkspaceGatewayError:

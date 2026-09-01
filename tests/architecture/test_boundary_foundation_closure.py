@@ -13,7 +13,13 @@ SRC = Path(__file__).parents[2] / "src" / "google_work_agent"
 PORT_METHODS = {
     "ports/connector/connector_read_port.py": {"execute_read"},
     "ports/connector/connector_write_port.py": {"execute_write"},
-    "ports/connector/mcp_client_port.py": {"list_tools", "call_tool", "restart_once"},
+    "ports/connector/mcp_client_port.py": {
+        "process_instance_id",
+        "sign_claim_context",
+        "list_tools",
+        "call_tool",
+        "restart_once",
+    },
     "ports/connector/oauth_credential_port.py": {
         "start_authorization",
         "reconcile_authorization_start",

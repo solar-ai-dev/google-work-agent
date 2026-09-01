@@ -112,7 +112,7 @@ def _coordinator(
     *,
     phase: _Phase,
     action: ActionRecord,
-    begin_verification: Callable[[str], BeginVerificationResult | None],
+    begin_verification: Callable[[str, str, str], BeginVerificationResult | None],
     completion: Callable[[str, str], bool],
 ) -> WriteRecoveryCoordinator:
     return WriteRecoveryCoordinator(
@@ -145,7 +145,7 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
     coordinator = _coordinator(
         phase=phase,
         action=action,
-        begin_verification=lambda _run_id: None,
+        begin_verification=lambda _run_id, _action_id, _attempt_id: None,
         completion=completion,
     )
 
@@ -178,7 +178,7 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
     coordinator = _coordinator(
         phase=phase,
         action=action,
-        begin_verification=lambda _run_id: begin_conflict,
+        begin_verification=lambda _run_id, _action_id, _attempt_id: begin_conflict,
         completion=completion,
     )
 
@@ -202,7 +202,7 @@ def test_verification_applied_false_stops_completion_and_additional_verification
     coordinator = _coordinator(
         phase=phase,
         action=action,
-        begin_verification=lambda _run_id: None,
+        begin_verification=lambda _run_id, _action_id, _attempt_id: None,
         completion=completion,
     )
 
@@ -226,7 +226,7 @@ def test_completion_not_ready_is_not_reported_restart_reconciled() -> None:
     coordinator = _coordinator(
         phase=phase,
         action=action,
-        begin_verification=lambda _run_id: None,
+        begin_verification=lambda _run_id, _action_id, _attempt_id: None,
         completion=completion,
     )
 

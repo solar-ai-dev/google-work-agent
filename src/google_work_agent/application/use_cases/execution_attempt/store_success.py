@@ -13,9 +13,7 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    require_action,
-    require_attempt,
-    require_plan,
+    require_execution_binding,
     resolve_existing_action_receipt,
     upsert_resource_ref,
 )
@@ -84,6 +82,14 @@ class StoreSuccessHandler:
 
     def __call__(self, command: StoreSuccessCommand) -> StoreSuccessResult:
         with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            plan = binding.plan
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
                 return _to_result(
@@ -104,9 +110,6 @@ class StoreSuccessHandler:
                 aggregate_id=command.action_id,
                 created_at_ms=now_ms,
             )
-            action = require_action(unit_of_work, command.action_id)
-            attempt = require_attempt(unit_of_work, command.attempt_id)
-            plan = require_plan(unit_of_work, action.plan_id)
             transition = transition_store_success(
                 ActionStatusV1(action.status),
                 action_version=action.version,

@@ -226,9 +226,16 @@ class WriteExecutionStructuralDriver:
             BeginVerificationCommand(
                 command_id=self._id_factory(),
                 request_hash=self._request_hash(
-                    {"kind": "begin_verification", "run_id": request.run_id}
+                    {
+                        "kind": "begin_verification",
+                        "run_id": request.run_id,
+                        "action_id": request.action_id,
+                        "execution_attempt_id": executed.attempt_id,
+                    }
                 ),
                 run_id=request.run_id,
+                action_id=request.action_id,
+                execution_attempt_id=executed.attempt_id,
             )
         )
         if begin is not None and not begin.applied:
@@ -655,12 +662,22 @@ class WriteExecutionStructuralDriver:
                             "action_id": request.action_id,
                             "attempt_id": request.attempt_id,
                             "reason_codes": lookup.reason_codes,
+                            "lookup_proof_command_id": lookup.proof_command_id,
+                            "lookup_proof_request_hash": lookup.proof_request_hash,
                         }
                     ),
                     action_id=request.action_id,
                     attempt_id=request.attempt_id,
                     expected_action_version=request.action_version,
                     expected_attempt_version=request.attempt_version,
+                    lookup_proof_command_id=self._required_lookup_proof(
+                        lookup.proof_command_id,
+                        "proof_command_id",
+                    ),
+                    lookup_proof_request_hash=self._required_lookup_proof(
+                        lookup.proof_request_hash,
+                        "proof_request_hash",
+                    ),
                     error_code="RECOVERY_CONFIRMED_NOT_EXECUTED",
                     error_detail=",".join(lookup.reason_codes),
                 )
@@ -695,6 +712,12 @@ class WriteExecutionStructuralDriver:
             conflict_detail=",".join(lookup.reason_codes),
         )
 
+    @staticmethod
+    def _required_lookup_proof(value: str | None, field_name: str) -> str:
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"durable unknown-result lookup {field_name} is required")
+        return value
+
     def _resolve_unknown_recovery(
         self,
         *,
@@ -711,9 +734,16 @@ class WriteExecutionStructuralDriver:
                 BeginVerificationCommand(
                     command_id=self._id_factory(),
                     request_hash=self._request_hash(
-                        {"kind": "begin_recovered_verification", "run_id": request.run_id}
+                        {
+                            "kind": "begin_recovered_verification",
+                            "run_id": request.run_id,
+                            "action_id": request.action_id,
+                            "execution_attempt_id": request.attempt_id,
+                        }
                     ),
                     run_id=request.run_id,
+                    action_id=request.action_id,
+                    execution_attempt_id=request.attempt_id,
                 )
             )
             return begin is None or bool(begin.applied), False

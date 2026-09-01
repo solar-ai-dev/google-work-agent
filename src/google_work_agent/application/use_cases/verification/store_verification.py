@@ -8,9 +8,7 @@ from google_work_agent.application.use_cases.action.persistence_cas import updat
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    require_action,
-    require_attempt,
-    require_plan,
+    require_execution_binding,
 )
 from google_work_agent.application.use_cases.verification.verify_effect import VerificationResultV1
 from google_work_agent.domain.action.model import ActionStatusV1
@@ -66,6 +64,14 @@ class StoreVerificationHandler:
 
     def __call__(self, command: StoreVerificationCommand) -> StoreVerificationResult:
         with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=command.action_id,
+                attempt_id=command.execution_attempt_id,
+                run_id=command.run_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
                 return self._replay(command, existing)
@@ -78,13 +84,6 @@ class StoreVerificationHandler:
                 aggregate_id=command.action_id,
                 created_at_ms=now_ms,
             )
-            action = require_action(unit_of_work, command.action_id)
-            attempt = require_attempt(unit_of_work, command.execution_attempt_id)
-            plan = require_plan(unit_of_work, action.plan_id)
-            if plan.run_id != command.run_id:
-                raise ValueError("verification Run/Action binding mismatch")
-            if attempt.id != command.execution_attempt_id:
-                raise ValueError("verification Attempt binding mismatch")
             status = VerificationStatus(command.verification.status)
             transition = transition_store_verification(
                 ActionStatusV1(action.status),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from json import dumps
+from json import dumps, loads
 
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
@@ -13,9 +13,7 @@ from google_work_agent.application.use_cases.action.persistence_cas import (
 from google_work_agent.application.use_cases.action.write_persistence import (
     audit_event,
     finish_json_receipt,
-    require_action,
-    require_attempt,
-    require_plan,
+    require_execution_binding,
     resolve_existing_action_receipt,
     write_action_version_conflict_response,
 )
@@ -24,6 +22,7 @@ from google_work_agent.application.use_cases.execution_attempt.write_execution_c
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import ActionStatusV1
+from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.execution_attempt.model import ExecutionAttemptStatusV1
 from google_work_agent.domain.execution_attempt.transitions.resolve_as_failed import (
     transition_resolve_as_failed,
@@ -41,6 +40,8 @@ class ResolveAsFailedCommand:
     attempt_id: str
     expected_action_version: int
     expected_attempt_version: int
+    lookup_proof_command_id: str
+    lookup_proof_request_hash: str
     error_code: str
     error_detail: str
 
@@ -84,6 +85,18 @@ class ResolveAsFailedHandler:
 
     def __call__(self, command: ResolveAsFailedCommand) -> ResolveAsFailedResult:
         with self._unit_of_work_factory() as unit_of_work:
+            binding = require_execution_binding(
+                unit_of_work,
+                action_id=command.action_id,
+                attempt_id=command.attempt_id,
+            )
+            action = binding.action
+            attempt = binding.attempt
+            plan = binding.plan
+            result_not_executed_confirmed = _require_not_executed_proof(
+                unit_of_work,
+                command,
+            )
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
                 return _to_result(
@@ -104,9 +117,6 @@ class ResolveAsFailedHandler:
                 aggregate_id=command.action_id,
                 created_at_ms=now_ms,
             )
-            action = require_action(unit_of_work, command.action_id)
-            attempt = require_attempt(unit_of_work, command.attempt_id)
-            plan = require_plan(unit_of_work, action.plan_id)
             if action.version != command.expected_action_version:
                 return self._finish_conflict(
                     unit_of_work,
@@ -144,7 +154,7 @@ class ResolveAsFailedHandler:
                 attempt_status=attempt.status,
                 attempt_version=attempt.version,
                 expected_attempt_version=command.expected_attempt_version,
-                result_not_executed_confirmed=True,
+                result_not_executed_confirmed=result_not_executed_confirmed,
             )
             if not transition.applied:
                 raise RuntimeError(transition.conflict_detail or "ResolveAsFailed rejected")
@@ -223,3 +233,30 @@ class ResolveAsFailedHandler:
         finish_json_receipt(unit_of_work, command.command_id, response, action.version, now_ms)
         unit_of_work.commit()
         return _to_result(response)
+
+
+def _require_not_executed_proof(
+    unit_of_work: UnitOfWork,
+    command: ResolveAsFailedCommand,
+) -> bool:
+    receipt = unit_of_work.command_receipts.get_by_command_id(command.lookup_proof_command_id)
+    if (
+        receipt is None
+        or receipt.command_type != "LookupUnknownResult"
+        or receipt.aggregate_type != "ExecutionAttempt"
+        or receipt.aggregate_id != command.attempt_id
+        or receipt.request_hash != command.lookup_proof_request_hash
+        or receipt.status is not CommandReceiptStatus.APPLIED
+        or receipt.response_json is None
+    ):
+        raise ValueError("ResolveAsFailed requires durable same-Attempt lookup proof")
+    payload = loads(receipt.response_json)
+    if (
+        not isinstance(payload, dict)
+        or payload.get("disposition") != "MUTATION_NOT_FOUND"
+        or payload.get("execution_attempt_id") != command.attempt_id
+        or payload.get("proof_command_id") != command.lookup_proof_command_id
+        or payload.get("proof_request_hash") != command.lookup_proof_request_hash
+    ):
+        raise ValueError("ResolveAsFailed lookup proof does not confirm NOT_EXECUTED")
+    return True

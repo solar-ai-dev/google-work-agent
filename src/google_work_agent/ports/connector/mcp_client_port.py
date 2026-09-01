@@ -102,6 +102,11 @@ class MCPClientPortError(RuntimeError):
 class MCPClientPort(Protocol):
     """Connector-id-aware MCP runtime client boundary."""
 
+    @property
+    def process_instance_id(self) -> str | None: ...
+
+    def sign_claim_context(self, payload: dict[str, object]) -> str: ...
+
     def list_tools(self, connector_id: str) -> list[MCPToolDescriptorV1]: ...
 
     def call_tool(
