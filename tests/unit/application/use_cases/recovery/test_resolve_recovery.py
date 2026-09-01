@@ -16,7 +16,13 @@ from google_work_agent.domain.recovery.model import RecoveryResolution
 
 
 def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path) -> None:
-    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    database_path = _database(
+        tmp_path,
+        run_status="VERIFYING",
+        plan_status="WAITING_APPROVAL",
+        action_status="EXECUTING",
+    )
+    _add_irrecoverable_verification_proof(database_path)
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,
@@ -30,10 +36,20 @@ def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path)
     assert _count(database_path, "command_receipts") == 1
     assert _count(database_path, "recovery_contexts") == 0
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
+    with connect_sqlite(database_path) as connection:
+        assert connection.execute(
+            "SELECT status FROM actions WHERE id='action-1';"
+        ).fetchone()[0] == "EXECUTED"
 
 
 def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> None:
-    database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
+    database_path = _database(
+        tmp_path,
+        run_status="VERIFYING",
+        plan_status="WAITING_APPROVAL",
+        action_status="EXECUTING",
+    )
+    _add_irrecoverable_verification_proof(database_path)
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
         now_ms=lambda: 10,

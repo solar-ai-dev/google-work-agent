@@ -37,6 +37,21 @@ def test_recheck_unknown_result_to_failed_restores_pre_recovery_status() -> None
     assert decision.current_status is RunStatusV1.CANCEL_REQUESTED
 
 
+def test_verification_mismatch_recheck_reopens_the_bound_action_for_verification() -> None:
+    decision = transition_resolve_recovery(
+        RunStatusV1.RECOVERY_REQUIRED,
+        resolution=RecoveryResolution.RECHECK,
+        reason="VERIFICATION_MISMATCH",
+        pre_recovery_status=RunStatusV1.VERIFYING,
+        recheck_input_changed=True,
+        recovered_action_status=ActionStatusV1.MISMATCH,
+    )
+
+    assert decision.applied is True
+    assert decision.current_status is RunStatusV1.VERIFYING
+    assert decision.reopen_verification_action is True
+
+
 @pytest.mark.parametrize(
     "reason",
     ("UNKNOWN_RESULT", "VERIFICATION_MISMATCH", "CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"),

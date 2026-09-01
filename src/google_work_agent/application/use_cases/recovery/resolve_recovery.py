@@ -359,6 +359,7 @@ class ResolveRecoveryHandler:
                 command=command,
                 context=context,
                 now_ms=now_ms,
+                reopen_verification_action=decision.reopen_verification_action,
             )
             values: dict[str, object] = {"status": target.value, "version": run.version + 1}
             if target in {RunStatusV1.COMPLETED, RunStatusV1.CANCELLED, RunStatusV1.FAILED}:
@@ -516,10 +517,49 @@ class ResolveRecoveryHandler:
         command: ResolveRecoveryCommandV1,
         context: RecoveryContextV1,
         now_ms: int,
+        reopen_verification_action: bool,
     ) -> tuple[PlanRecord | None, str | None]:
         """Preserve mismatch recovery effects at the canonical writer boundary."""
         plans = current_plan_tuple(unit_of_work.plans, command.run_id)
         plan = max(plans, key=lambda item: (item.revision_no, item.created_at_ms), default=None)
+        if reopen_verification_action:
+            action_id = context.get("action_id")
+            attempt_id = context.get("execution_attempt_id")
+            verification_id = context.get("verification_id")
+            if not all(
+                isinstance(value, str) and value
+                for value in (action_id, attempt_id, verification_id)
+            ):
+                raise RuntimeError("verification recheck requires exact child identity")
+            action = unit_of_work.actions.get(cast(str, action_id))
+            attempt = unit_of_work.execution_attempts.get(cast(str, attempt_id))
+            latest_verification = unit_of_work.verifications.get_latest_for_attempt(
+                cast(str, attempt_id)
+            )
+            if (
+                plan is None
+                or action is None
+                or action.plan_id != plan.id
+                or action.status != ActionStatusV1.MISMATCH.value
+                or attempt is None
+                or latest_verification is None
+                or latest_verification.id != verification_id
+                or latest_verification.status is not VerificationStatus.MISMATCH
+            ):
+                raise RuntimeError(
+                    "verification recheck requires the current durable mismatch binding"
+                )
+            reopened = update_action_record(
+                unit_of_work,
+                action.id,
+                expected_version=action.version,
+                expected_status=ActionStatusV1.MISMATCH,
+                next_status=ActionStatusV1.EXECUTED,
+                updated_at_ms=now_ms,
+            )
+            if reopened is None:
+                raise RuntimeError("verification recheck Action CAS failed")
+            return plan, None
         if command.resolution is RecoveryResolution.CANCEL:
             actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
             external_mutation_observed = any(

@@ -21,6 +21,7 @@ class RecoveryResolutionDecision:
     result_code: ResultCode
     current_status: RunStatusV1
     conflict_detail: str | None = None
+    reopen_verification_action: bool = False
 
 
 def allowed_recovery_resolutions(
@@ -153,7 +154,10 @@ def _resolve_recheck(
             "UNKNOWN_RESULT remains unresolved after recheck",
         )
     if reason == "VERIFICATION_MISMATCH":
-        return _applied(RunStatusV1.VERIFYING)
+        return _applied(
+            RunStatusV1.VERIFYING,
+            reopen_verification_action=True,
+        )
     if reason in {"CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"}:
         if (
             validated_resume_status is None
@@ -169,8 +173,17 @@ def _resolve_recheck(
     return _reject(ResultCode.NO_PROGRESS, RunStatusV1.RECOVERY_REQUIRED, "unknown recovery reason")
 
 
-def _applied(next_status: RunStatusV1) -> RecoveryResolutionDecision:
-    return RecoveryResolutionDecision(True, ResultCode.TRANSITION_APPLIED, next_status)
+def _applied(
+    next_status: RunStatusV1,
+    *,
+    reopen_verification_action: bool = False,
+) -> RecoveryResolutionDecision:
+    return RecoveryResolutionDecision(
+        True,
+        ResultCode.TRANSITION_APPLIED,
+        next_status,
+        reopen_verification_action=reopen_verification_action,
+    )
 
 
 def _reject(
