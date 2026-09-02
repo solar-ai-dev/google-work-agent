@@ -1,21 +1,21 @@
-# Remaining Runtime Authority and Duplication Closure Report
+# Final Registry Authority, Prompt Governance, and Development Launch Closure Report
 
 ## Current truth anchors
 
 ```text
-SOURCE_BRANCH = remediation/final-runtime-authority-closure
-EXPECTED_SOURCE_HEAD = 706433421bf6c063d2729d738f140457e34205d9
-ACTUAL_SOURCE_HEAD = 706433421bf6c063d2729d738f140457e34205d9
-WORK_BRANCH = remediation/final-release-cli-three-artifact-fix
-RUNTIME_COMMIT_SHA = 18a5b247692cc79697864562607c9358d57c3222
-RELEASE_CLI_COMMIT_SHA = 91a3c3e5de6fae3c758c5a5a50c190324323cc84
-PRODUCT_SOURCE_SHA = 91a3c3e5de6fae3c758c5a5a50c190324323cc84
-ARCHITECTURE_COMMIT_SHA = efb10b374425c4ff1d0af3b7826dad5800e9192c
-PREVIOUS_ARTIFACT_COMMIT_SHA = 706433421bf6c063d2729d738f140457e34205d9
-INTERNAL_REVIEW_SOURCE_SHA = 91a3c3e5de6fae3c758c5a5a50c190324323cc84
+SOURCE_BRANCH = remediation/final-release-cli-three-artifact-fix
+EXPECTED_SOURCE_HEAD = 85ee890983b69bf7bd60df4d95ec7c5458ad2923
+ACTUAL_SOURCE_HEAD = 85ee890983b69bf7bd60df4d95ec7c5458ad2923
+WORK_BRANCH = remediation/final-registry-prompt-dev-launch-closure
+REGISTRY_COMMIT_SHA = dd2d01f5252487e2ed663a1b01d1c7e015c466aa
+PROMPT_GOVERNANCE_COMMIT_SHA = 6b4708c744fc2d473b9c14450a5ce960e3aeb111
+DEVELOPMENT_LAUNCH_COMMIT_SHA = 21e8e8cc26a5c5fe985f05525ee04bef50d0af9e
+PRODUCT_SOURCE_SHA = 21e8e8cc26a5c5fe985f05525ee04bef50d0af9e
+PREVIOUS_ARTIFACT_COMMIT_SHA = 85ee890983b69bf7bd60df4d95ec7c5458ad2923
+INTERNAL_REVIEW_SOURCE_SHA = 21e8e8cc26a5c5fe985f05525ee04bef50d0af9e
 CURRENT_SHA_CI_EVIDENCE = NOT_AVAILABLE
-ARTIFACT_1_SHA256 = 90d4a7e09ae3e683f99add04ced67d207d92e0a347d97c9757e9e72cb2bbc1f3
-ARTIFACT_2_SHA256 = 0fb2193f5d62c5647ae1f05c47fccc6aebcf3343867813c7f273625101e5ab89
+ARTIFACT_1_SHA256 = da0c66fa65d2f977cb94373c42b6cbf5b89399412172900626d1902687e869d2
+ARTIFACT_2_SHA256 = e359925e037419cd6b28506a2178e8f68c726cc1e8eb5d42b9c6c6243b6b3e2f
 ```
 
 The artifact-only commit is intentionally not self-referenced. All recorded execution evidence is LOCAL. The final artifact commit and the matching remote head are reported after push.
@@ -27,21 +27,20 @@ The artifact-only commit is intentionally not self-referenced. All recorded exec
 {
   "schema_version": 1,
   "internal_reviewed_by": "Codex",
-  "internal_review_source_sha": "91a3c3e5de6fae3c758c5a5a50c190324323cc84",
-  "internal_review_reason": "Machine checks resolve every row path, symbol, exact test target, and asserting body. The current worker separately reviewed cross-language semantic relevance, intentionally reused cross-cutting invariant proofs, and the targeted Release CLI correction at the last Product-source commit.",
-  "reviewed_requirement_rows": 1010,
-  "reviewed_lineage_rows": 85,
+  "internal_review_source_sha": "21e8e8cc26a5c5fe985f05525ee04bef50d0af9e",
+  "internal_review_reason": "Machine checks resolve every row path, symbol, exact test target, and asserting body. The current worker re-resolved the single Signed Tool Registry chain, separated development and signed Prompt scope lineages, and process-proved the real development Product launch without representing local evidence as CI or experiments.",
+  "reviewed_requirement_rows": 1011,
+  "reviewed_lineage_rows": 88,
   "maximum_proof_reuse_without_manual_review": 12,
   "manually_reviewed_reused_proofs": {
     "frontend/tests/app/session_bootstrap.test.ts::test_title:\"reads the one-time secret only from the URL fragment\"": 15,
     "tests/unit/application/agents/retrieval/test_plan_query.py::test_plan_query_is__the_only_product_prompt__owner_in_retrieval_core": 34,
     "tests/architecture/test_planning_review_owner_local_structure.py::test_nodes_import__canonical_application__operations_directly": 25,
-    "tests/unit/application/use_cases/execution_attempt/test_dispatch_connector_write.py::test_already_authorized_dispatch__is_not_blocked__by_concurrent_run_status": 51,
+    "tests/unit/application/use_cases/execution_attempt/test_dispatch_connector_write.py::test_already_authorized_dispatch__is_not_blocked__by_concurrent_run_status": 50,
     "tests/unit/application/use_cases/execution_attempt/test_execution_identity_safety.py::test_stale_attempt__verification_is_rejected__before_connector_io": 13,
     "tests/unit/application/use_cases/recovery/test_resolve_recovery.py::test_recheck_from__recovery_required__transitions_to_verifying": 18,
     "tests/architecture/test_planning_review_owner_local_structure.py::test_production_has__no_second__planning_answer_authority": 19,
     "tests/architecture/test_run_conversation_event_api_authority.py::test_route_endpoints__invoke_their__exact_canonical_handlers": 15,
-    "frontend/tests/features/approval/action_plan_card.test.tsx::test_title:\"ActionPlanCard sends only explicit server-projected acknowledgement\"": 13,
     "tests/unit/api/test_resource_google_connector_boundary.py::test_canonical_handlers_do__not_call_broad__legacy_semantic_surfaces": 19,
     "tests/unit/launcher/test_entrypoint_flow.py::test_main_executes__canonical_new__instance_order": 13,
     "tests/architecture/test_api_runtime_control_boundary.py::test_session_bootstrap__stays_transport__security_owned": 18,
@@ -108,15 +107,10 @@ The artifact-only commit is intentionally not self-referenced. All recorded exec
     "test_path": "frontend/tests/app/app_integration.test.tsx"
   },
   "defect_proof_map": {
-    "B-001": "tests/integration/llm/test_production_local_runtime_composition.py::test_signed_local_decision__production_composition__invokes_only_local_provider",
-    "B-002": "tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities",
-    "B-003": "tests/architecture/test_repository_architecture.py::test_local_runtime_authorities__have_exactly_one__semantic_owner",
-    "B-004": "tests/architecture/test_product_closure_traceability.py::test_embedded_closure_review_metadata__binds_actual_callers__effects_and_asserting_tests",
-    "H-001": "tests/architecture/langgraph/test_main_stage_routing.py::test_every_main_stage__accepts_only__current_profile_successors",
-    "DUP-001": "tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities",
-    "DUP-002": "tests/architecture/test_repository_architecture.py::test_production_packages__contain_runtime_artifacts__beyond_package_markers",
-    "DUP-003": "tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities",
-    "DUP-004": "SAFE_LOCAL_REPETITION: two owner-local consumers do not meet the three-consumer extraction threshold"
+    "REG-AUTH-001": "tests/architecture/test_tool_registry_single_authority.py::test_signed_connector_composition_uses__verified_installed_registry_when__embedded_drifts",
+    "PROMPT-ACT-001": "tests/architecture/test_prompt_activation_boundary.py::test_pre_experiment_manifest__has_zero_unsupported__activation_claims",
+    "DEV-START-001": "tests/integration/launcher/test_development_entrypoint.py::test_development_process__serves_authenticated_product__and_cleans_descriptor",
+    "TRACE-EVID-001": "tests/architecture/test_product_closure_traceability.py::test_cross_layer_traceability__against_current_tree__has_closed_taxonomy_contracts_and_proofs"
   },
   "independent_external_semantic_review_status": "PENDING",
   "review_scope": "INTERNAL_WORKER_REVIEW_PLUS_MACHINE_CHECKS"
@@ -159,32 +153,27 @@ INDEPENDENT_EXTERNAL_SEMANTIC_REVIEW = PENDING
 REVIEW_SCOPE = INTERNAL_WORKER_REVIEW_PLUS_MACHINE_CHECKS
 ```
 
-The 1,010 requirement rows and 85 lineage rows received current-worker internal review plus machine consistency checks. This is not represented as independent certification; independent Web GPT semantic review remains pending.
+The 1,011 requirement rows and 88 lineage rows received current-worker internal review plus machine consistency checks. This is not represented as independent certification; independent Web GPT semantic review remains pending.
 
 ## Targeted traceability refresh
 
 ```text
-ARTIFACT_1_AFFECTED_ROWS = 1
-ARTIFACT_1_UPDATED_ROWS = 1
-ARTIFACT_2_AFFECTED_ROWS = 0
-ARTIFACT_2_UPDATED_ROWS = 0
+ARTIFACT_1_AFFECTED_ROWS = 8
+ARTIFACT_1_UPDATED_ROWS = 8
+ARTIFACT_2_AFFECTED_ROWS = 3
+ARTIFACT_2_UPDATED_ROWS = 3
 ```
 
-Artifact 1 row `K-REL-020` now binds the Release operator entrypoint to `scripts/build_release.py::main`, both exact local artifact inputs, the canonical assembler effect, and the real CLI-level test. Artifact 2 contains no Release materialization handoff row; installed Product lifecycle rows are unaffected and were not rewritten.
+Artifact 1 re-resolves the Signed Tool Registry authority plus Approval/Modify/Claim consumers, Prompt lifecycle, signed Release Prompt gate, development launch, and readiness. The new Canonical development entrypoint adds only `K-REL-066`. Artifact 2 adds exactly three authority rows: one Registry instance chain and separate `DEVELOPMENT_SMOKE`/`PRODUCT_RELEASE` Prompt lineages.
 
 ## Defect closure
 
 | ID | Before | Root cause | Remediation | Exact proof | Status |
 |---|---|---|---|---|---|
-| B-001 | A LOCAL_CAPABLE install could not supply an approved selected model, immutable loopback endpoint policy, or final eligibility to production composition. | Release facts were projected through broad settings and the production hardware gate remained disconnected. | Added signed `LocalModelProductDecisionV1`, immutable `LlmRuntimeSelectionV1`, installed artifact validation, one eligibility evaluator, and production injection into both status and structured-inference routers. | `tests/integration/llm/test_production_local_runtime_composition.py::test_signed_local_decision__production_composition__invokes_only_local_provider` | PASS |
-| B-002 | `AppSettings` re-owned user preferences, release profile, model identity, runtime mode, endpoint, and policy defaults. | An old compatibility aggregate survived after exact ports existed. | Deleted the aggregate; user persistence is `SettingsViewV1`, release choice is `LocalModelProductDecisionV1`, immutable runtime projection is `LlmRuntimeSelectionV1`, and approval timing is `ApprovalPolicyConfigV1`. | `tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities` | PASS |
-| B-003 | Release generation and Product startup independently defined manifest fields and validation. | No packageable Product contract owned canonical parsing and serialization. | `approved_model_manifest.py` now owns the only schema/parser/hash/placeholder/order authority; generator and consumer import it. | `tests/release/test_generate_model_manifest.py::test_model_manifest_is__deterministic_and_uses__only_current_closed_schema`; `tests/architecture/test_repository_architecture.py::test_local_runtime_authorities__have_exactly_one__semantic_owner` | PASS |
-| B-004 | Closure rows were accepted when paths and symbols merely existed. | The gate did not bind current caller, composition, effect, asserting test, frontend chain, or excessive proof reuse. | Embedded closed review metadata in Artifact 3 and added AST/source gates for assertion behavior, owner/caller/composition/effect locators, frontend chain, deleted symbols, and manually adjudicated proof reuse. | `tests/architecture/test_product_closure_traceability.py::test_embedded_closure_review_metadata__binds_actual_callers__effects_and_asserting_tests` | PASS |
-| H-001 | Some stage routers accepted globally known but profile-absent successors and failed later in edge-map lookup. | Routers validated the global target vocabulary instead of the compiled profile-local successor set. | All conditional stage routers now receive the immutable profile-local target set and reject unavailable targets before edge selection. | `tests/architecture/langgraph/test_main_stage_routing.py::test_every_main_stage__accepts_only__current_profile_successors`; `test_globally_known_but_profile_unavailable_target__fails_in_router__before_edge_map` | PASS |
-| DUP-001 | Four app/composition tests lived under `frontend/src` while the canonical test root also existed. | Historical colocation survived after test-root ownership was standardized. | Moved all four tests to `frontend/tests/app`; assertions and the 107-case integration episode were preserved. | `npm exec -- vitest run`: 34 files / 156 tests; `test_removed_structure_residue__has_zero__production_authorities` | PASS |
-| DUP-002 | Empty Google MCP and Main projection package markers remained in production source. | Old package locations survived after their authorities moved. | Deleted empty production packages and added a repository-wide empty-package gate. | `tests/architecture/test_repository_architecture.py::test_production_packages__contain_runtime_artifacts__beyond_package_markers` | PASS |
-| DUP-003 | Static readiness test doubles were shipped in production source. | Test fixtures had become convenient imports for tests without a production caller. | Moved both static doubles to `tests/support/readiness.py`; production has zero references. | `tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities` | PASS |
-| DUP-004 | Task and Calendar detail adapters repeat three small response checks. | The two consumers have owner-local provider response contracts, below the three-consumer extraction threshold. | Classified as `SAFE_LOCAL_REPETITION`; no generic helper or second authority was introduced. | Embedded review metadata `defect_proof_map.DUP-004` and two-consumer census | PASS |
+| REG-AUTH-001 | Approval, Modify, and Claim loaded an embedded default Registry while installed runtime consumers used a verified Registry. | Inner Application handlers owned hidden loader defaults and could diverge from the installed authority. | Removed every inner default load and constructor-injected the one composition-owned `SignedToolRegistry` instance through routing, validation, approval, modify, claim, dispatch, verification, and recovery. | `tests/architecture/test_tool_registry_single_authority.py::test_development_composition_loads__one_registry_instance__for_all_consumers`; installed A/B drift proof in the same module | PASS |
+| PROMPT-ACT-001 | Twenty-one pre-experiment Prompt slots claimed `RUNTIME_ACTIVE` and complete evidence without actual artifacts. | Development smoke and signed Product activation shared one lifecycle meaning. | Restored 21 honest `DRAFT` slots, added explicit `DEVELOPMENT_SMOKE`/`PRODUCT_RELEASE`/`EVALUATION` scopes, verified actual activation evidence, and made signed bundle assembly reject non-active Prompt manifests. | `tests/architecture/test_prompt_activation_boundary.py`; `tests/release/test_assemble_application_bundle.py::test_signed_bundle__rejects_draft__prompt_baseline` | PASS |
+| DEV-START-001 | README and `.claude/launch.json` invoked deleted `google_work_agent.launcher.dev`. | The non-installed developer orchestration owner had been removed without a replacement. | Added `launcher.development_entrypoint` over the real Product composition with loopback dynamic port, readiness, owner-only descriptor, one-time bootstrap/session, built frontend, and graceful shutdown. | `tests/integration/launcher/test_development_entrypoint.py::test_development_process__serves_authenticated_product__and_cleans_descriptor` | PASS |
+| TRACE-EVID-001 | Closure artifacts claimed zero competing authority while Registry, Prompt, and launch defects remained. | Traceability rows and verdicts had not been re-resolved against the current source. | Updated the exact affected rows, added the missing development requirement, and added three explicit Registry/Prompt authority lineages without creating a fourth artifact. | `tests/architecture/test_product_closure_traceability.py` | PASS |
 
 ## Runtime matrix
 
@@ -206,6 +195,10 @@ COMPETING_LIVE_AUTHORITIES = 0
 DUPLICATE_EXTERNAL_WRITE_CALLERS = 0
 DUPLICATE_WORKFLOW_EXECUTORS = 0
 DUPLICATE_PERSISTENCE_MUTATION_OWNERS = 0
+PRODUCTION_INNER_DEFAULT_TOOL_REGISTRY_LOADS = 0
+SIGNED_RUNTIME_TOOL_REGISTRY_LOADS = 1
+SIGNED_RUNTIME_TOOL_REGISTRY_INSTANCES = 1
+TOOL_REGISTRY_CONSUMER_HASH_VARIANTS = 1
 MODEL_MANIFEST_PARSER_IMPLEMENTATIONS = 1
 MODEL_MANIFEST_FIELD_SET_AUTHORITIES = 1
 MODEL_MANIFEST_HASH_VALIDATORS = 1
@@ -222,6 +215,36 @@ DEAD_APPLICATION_SETTINGS_FIELDS = 0
 ```
 
 The four settings-related authorities own non-overlapping facts: persisted user preferences (`SettingsViewV1`/`JsonSettingsAdapter`), signed release choice (`LocalModelProductDecisionV1`), immutable runtime projection (`LlmRuntimeSelectionV1`), and approval timing policy (`ApprovalPolicyConfigV1`).
+
+## Prompt accounting
+
+```text
+PROMPT_SLOTS = 21
+PROMPT_SOURCE_CONTENT_CHANGES = 0
+DRAFT_SLOTS = 21
+DEV_VALIDATED_SLOTS = 0
+HOLDOUT_VALIDATED_SLOTS = 0
+RUNTIME_ACTIVE_SLOTS = 0
+UNSUPPORTED_PROMPT_EVIDENCE_CLAIMS = 0
+DRAFT_PROMPT_DEVELOPMENT_SMOKE_EXECUTIONS = 1
+DRAFT_PROMPT_SIGNED_RELEASE_EXECUTIONS = 0
+SIGNED_PROMPT_SCOPE_ENV_OVERRIDES = 0
+DEVELOPMENT_SMOKE_EXECUTION = PASS
+SIGNED_RELEASE_DRAFT_REJECTION = PASS
+```
+
+## Launcher accounting
+
+```text
+DEVELOPMENT_ENTRYPOINT = launcher/development_entrypoint.py
+README_COMMAND = VALID
+CLAUDE_LAUNCH_COMMAND = VALID
+READINESS_RESULT = PASS
+BOOTSTRAP_SESSION_RESULT = PASS
+STALE_DEVELOPMENT_ENTRYPOINT_REFERENCES = 0
+DEVELOPMENT_COMPOSITION_ROOTS = 1
+SECOND_COMPOSITION_ROOTS = 0
+```
 
 ## Duplication accounting
 
@@ -242,32 +265,32 @@ Port/Adapter, scheduler/executor/reconciler/timer, semantic/runtime registries, 
 ## Test inventory
 
 ```text
-PYTHON_TESTS_BEFORE = 2041
-PYTHON_TESTS_AFTER = 2075
+PYTHON_TESTS_BEFORE = 2075
+PYTHON_TESTS_AFTER = 2094
 FRONTEND_TESTS_BEFORE = 156
 FRONTEND_TESTS_AFTER = 156
 REMOVED_TESTS = 0
 REMOVED_ASSERTIONS = 0
-ADDED_TESTS = 34
-MOVED_TESTS = 4
+ADDED_TESTS = 19
+MOVED_TESTS = 0
 DUPLICATE_ASSERTION_EPISODES = 0
 ```
 
 ## Canonical and lineage accounting
 
 ```text
-CANONICAL_REQUIREMENTS_TOTAL = 1010
-UNIQUE_REQUIREMENT_IDS = 1010
+CANONICAL_REQUIREMENTS_TOTAL = 1011
+UNIQUE_REQUIREMENT_IDS = 1011
 DUPLICATE_REQUIREMENT_IDS = 0
-PASS_REQUIREMENTS = 1010
+PASS_REQUIREMENTS = 1011
 OPEN_REQUIREMENTS = 0
 NON_BLOCKING_DEBT_REQUIREMENTS = 0
-TOTAL_LINEAGE_ROWS = 85
+TOTAL_LINEAGE_ROWS = 88
 HANDOFF_ROWS = 53
 HANDOFFS_CLOSED = 53
 BROKEN_HANDOFFS = 0
-AUTHORITY_ROWS = 13
-AUTHORITY_ROWS_CLOSED = 13
+AUTHORITY_ROWS = 16
+AUTHORITY_ROWS_CLOSED = 16
 SCENARIO_ROWS = 19
 SCENARIOS_CLOSED = 19
 OPEN_SCENARIOS = 0
@@ -281,24 +304,25 @@ UNACCOUNTED_OLD_FINDINGS = 0
 
 | Command | SHA | Collected | Passed | Failed | Skipped | Duration | Evidence |
 |---|---|---:|---:|---:|---:|---:|---|
-| `.venv\\Scripts\\python.exe -m pytest -q tests/release/test_build_release.py` | `91a3c3e5` | 7 | 7 | 0 | 0 | 0.47s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q tests/release/test_assemble_application_bundle.py` | `91a3c3e5` | 4 | 4 | 0 | 0 | 1.75s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q tests/release` | `91a3c3e5` | 23 | 23 | 0 | 0 | 1.61s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q tests/integration/llm/test_production_local_runtime_composition.py` | `91a3c3e5` | 14 | 14 | 0 | 0 | 3.13s | LOCAL |
-| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .venv\\Scripts\\python.exe -m pytest -q tests/architecture/test_product_closure_traceability.py` | `91a3c3e5` + artifact worktree | 15 | 15 | 0 | 0 | 11.09s | LOCAL |
-| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .venv\\Scripts\\python.exe -m pytest -q tests/architecture` | `91a3c3e5` + artifact worktree | 355 | 355 | 0 | 0 | 49.32s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q tests/architecture/langgraph` | `91a3c3e5` | 105 | 105 | 0 | 0 | 1.61s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q tests/e2e` | `91a3c3e5` | 51 | 51 | 0 | 0 | 412.32s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest --collect-only -q` | `91a3c3e5` + artifact worktree | 2,075 | N/A | 0 | N/A | 15.02s | LOCAL |
-| `.venv\\Scripts\\python.exe -m pytest -q` | `91a3c3e5` + artifact worktree | 2,075 | 2,070 | 0 | 5 | 418.36s | LOCAL |
-| `.venv\\Scripts\\python.exe -m ruff check .` | `91a3c3e5` + artifact worktree | N/A | PASS | 0 | N/A | 0.43s | LOCAL |
-| `.venv\\Scripts\\python.exe -m mypy .` | `91a3c3e5` + artifact worktree | 1,405 files | PASS | 0 | N/A | 1.52s | LOCAL |
-| `.venv\\Scripts\\python.exe -m compileall -q src launcher release evaluation tests scripts` | `91a3c3e5` + artifact worktree | N/A | PASS | 0 | N/A | 1.33s | LOCAL |
-| `npm exec -- vitest run` | `91a3c3e5` | 34 files / 156 | 156 | 0 | 0 | 37.31s | LOCAL |
-| `npm run typecheck` | `91a3c3e5` | N/A | PASS | 0 | N/A | 4.70s | LOCAL |
-| `npm run lint` | `91a3c3e5` | N/A | PASS | 0 | N/A | 4.44s | LOCAL |
-| `npm run build` | `91a3c3e5` | 103 modules | PASS | 0 | N/A | 10.49s wall / 1.29s Vite | LOCAL |
-| `git diff --check` | `91a3c3e5` + final artifact | N/A | PASS | 0 | N/A | 0.21s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest --collect-only -q` | `21e8e8cc` + artifact worktree | 2,094 | N/A | 0 | N/A | 2.30s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q` | `21e8e8cc` + artifact worktree | 2,094 | 2,089 | 0 | 5 | 421.43s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/unit -q` | `21e8e8cc` | 1,467 | 1,467 | 0 | 0 | 36.54s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/integration -q` | `21e8e8cc` | 150 | 150 | 0 | 0 | 26.90s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/component -q` | `21e8e8cc` | 3 | 3 | 0 | 0 | 3.21s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/contract -q` | `21e8e8cc` | 17 | 17 | 0 | 0 | 1.51s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/e2e -q` | `21e8e8cc` | 51 | 51 | 0 | 0 | 322.79s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/release -q` | `21e8e8cc` | 24 | 24 | 0 | 0 | 7.80s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/evaluation -q` | `21e8e8cc` | 11 | 11 | 0 | 0 | 5.76s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest tests/installer -q` | `21e8e8cc` | 4 | 4 | 0 | 0 | 0.37s | LOCAL |
+| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .venv\\Scripts\\python.exe -m pytest tests/architecture -q` | `21e8e8cc` + artifact worktree | 363 | 363 | 0 | 0 | 35.26s | LOCAL |
+| `.\\node_modules\\.bin\\vitest.cmd run` (frontend) | `21e8e8cc` | 34 files / 156 | 156 | 0 | 0 | 16.25s | LOCAL |
+| `npm run typecheck` (frontend) | `21e8e8cc` | N/A | PASS | 0 | N/A | 5.56s | LOCAL |
+| `npm run lint` (frontend) | `21e8e8cc` | N/A | PASS | 0 | N/A | 18.92s | LOCAL |
+| `npm run build` (frontend) | `21e8e8cc` | 103 modules | PASS | 0 | N/A | 3.33s wall / 0.79s Vite | LOCAL |
+| `.venv\\Scripts\\python.exe -m ruff check .` | `21e8e8cc` + artifact worktree | N/A | PASS | 0 | N/A | 0.34s | LOCAL |
+| `.venv\\Scripts\\python.exe -m mypy .` | `21e8e8cc` + artifact worktree | 1,409 files | PASS | 0 | N/A | 1.28s | LOCAL |
+| `.venv\\Scripts\\python.exe -m compileall -q launcher src tests` | `21e8e8cc` + artifact worktree | N/A | PASS | 0 | N/A | 0.71s | LOCAL |
+| `git diff --check` | `21e8e8cc` + final artifact | N/A | PASS | 0 | N/A | 0.20s | LOCAL |
 
 CI evidence for the current source SHA is `NOT_AVAILABLE`; no LOCAL result is represented as CI.
 
@@ -324,6 +348,16 @@ MODEL_MANIFEST_PARSER_IMPLEMENTATIONS = 1
 MODEL_MANIFEST_SCHEMA_AUTHORITIES = 1
 HARDWARE_ELIGIBILITY_AUTHORITIES = 1
 PROFILE_UNAVAILABLE_TARGETS_ACCEPTED = 0
+PRODUCTION_INNER_DEFAULT_TOOL_REGISTRY_LOADS = 0
+SIGNED_RUNTIME_TOOL_REGISTRY_LOADS = 1
+SIGNED_RUNTIME_TOOL_REGISTRY_INSTANCES = 1
+TOOL_REGISTRY_CONSUMER_HASH_VARIANTS = 1
+UNSUPPORTED_PROMPT_EVIDENCE_CLAIMS = 0
+DRAFT_PROMPT_SIGNED_RELEASE_EXECUTIONS = 0
+DRAFT_PROMPT_DEVELOPMENT_SMOKE_EXECUTIONS = 1
+SIGNED_PROMPT_SCOPE_ENV_OVERRIDES = 0
+STALE_DEVELOPMENT_ENTRYPOINT_REFERENCES = 0
+DEVELOPMENT_COMPOSITION_ROOTS = 1
 DUPLICATE_EXTERNAL_WRITE_CALLERS = 0
 DUPLICATE_WORKFLOW_EXECUTORS = 0
 DUPLICATE_PERSISTENCE_MUTATION_OWNERS = 0
@@ -338,12 +372,19 @@ WEAK_TRACEABILITY_PROOFS = 0
 STALE_CURRENT_TRUTH_REFERENCES = 0
 FULL_REGRESSION = PASS
 
-FINAL_PRODUCT_CLOSURE = DEFERRED_UNTIL_PRODUCT_DECISION
+MODEL_INDEPENDENT_PRODUCT_IMPLEMENTATION_CLOSURE = PASS
+SIGNED_TOOL_REGISTRY_AUTHORITY_CLOSURE = PASS
+PROMPT_ACTIVATION_GOVERNANCE_CLOSURE = PASS
+REAL_PRODUCT_E2E_READY = YES
+REAL_PRODUCT_E2E = NOT_YET_EXECUTED
+PROMPT_MODEL_QUALITY_CLOSURE = DEFERRED_UNTIL_EXPERIMENT
+FINAL_MODEL_SELECTION = DEFERRED_UNTIL_EXPERIMENT
+ACTUAL_RELEASE_PROMPT_ACTIVATION = DEFERRED_UNTIL_EXPERIMENT
+REMAINING_IMPLEMENTATION_BLOCKERS = 0
+REMAINING_ARCHITECTURE_BLOCKERS = 0
+INDEPENDENT_EXTERNAL_SEMANTIC_REVIEW = PENDING
 LOCAL_RUNTIME_IMPLEMENTATION_CLOSURE = PASS
 LOCAL_CAPABLE_RELEASE_ORCHESTRATION = PASS
-ACTUAL_LOCAL_MODEL_ACTIVATION = DEFERRED_UNTIL_PRODUCT_DECISION
-REMAINING_FUNCTIONAL_BLOCKERS = 1 — final experiment-owned signed Product Decision
-REMAINING_ARCHITECTURE_BLOCKERS = 0
 REMAINING_COMPETING_AUTHORITIES = 0
 REMAINING_REMOVABLE_DUPLICATION = 0
 EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED — final model decision and external signing/distribution gates are not fabricated by this remediation
@@ -353,4 +394,4 @@ INTERNAL_CLOSURE_INTEGRITY = PASS
 INDEPENDENT_EXTERNAL_REVIEW_READINESS = READY
 ```
 
-The implementation can activate LOCAL_GPU through the real production composition when supplied a valid signed decision and manifest. This repository does not contain an experiment-approved concrete final model decision, so actual activation and final Product closure remain explicitly deferred rather than being reported as PASS.
+The model-independent Product implementation is closed and the real development Product is ready for browser/real-LLM E2E. That E2E and experiment-owned Prompt/model activation were not executed or fabricated here, so they remain explicitly deferred.
