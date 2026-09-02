@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "candidate_id": "mcp-tool-use-research-2026-v1",
+  "status": "DRAFT",
+  "base_prompt_manifest": "src/google_work_agent/application/prompt_runtime/prompt_manifest.json",
+  "base_input_contract": "src/google_work_agent/application/prompt_runtime/prompt_runtime_input_contract_v1.json",
+  "candidate_prompt_version": "1.1.0-draft.1",
+  "activation_evidence": {
+    "node_dev_pass": false,
+    "node_holdout_pass": false,
+    "safety_gate_pass": false,
+    "manifest_approved": false
+  },
+  "sources": {
+    "request_understanding.identify_goal": {
+      "source": "sources/request_understanding.identify_goal.md",
+      "content_hash": "03a96e0d8e1ab153377707088e55ee3d3871206db254b756483b61ff3877926e"
+    },
+    "request_understanding.detect_ambiguity": {
+      "source": "sources/request_understanding.detect_ambiguity.md",
+      "content_hash": "defa7b03d79917cce3a7f861d1093fbb38141c98a53d4e79103e7ffba21acde1"
+    },
+    "tool_routing.determine_io_resources": {
+      "source": "sources/tool_routing.determine_io_resources.md",
+      "content_hash": "fa346c5459891c19300023348334113df8f11aa7a53dba747f507ee5f6f442af"
+    },
+    "tool_routing.select_tool_if_needed": {
+      "source": "sources/tool_routing.select_tool_if_needed.md",
+      "content_hash": "1cb7f6f0f1ed67cffa7b04e8e09f7bf379c616da51630b53cc04617014c89a5c"
+    },
+    "retrieval.plan_query": {
+      "source": "sources/retrieval.plan_query.md",
+      "content_hash": "9f929812f990804d9ad30039c60e32306c855ce3d765d5e64e974cf5843aa5c0"
+    },
+    "retrieval.select_evidence": {
+      "source": "sources/retrieval.select_evidence.md",
+      "content_hash": "88c7242770879347df7b4362dc60224a6579f82b671ef8f45027075ce7baa9da"
+    },
+    "retrieval.assess_sufficiency": {
+      "source": "sources/retrieval.assess_sufficiency.md",
+      "content_hash": "6701d5c2d26642ba67bac8034e336dcb456bd3d8e55ac4cae1a09da99b734b33"
+    },
+    "work_analysis.extract_work_facts": {
+      "source": "sources/work_analysis.extract_work_facts.md",
+      "content_hash": "d5c5b79a12604297ae90096a59029009dbda523a62854cc3cdff94ff0dac7c2d"
+    },
+    "work_analysis.resolve_entity_relations": {
+      "source": "sources/work_analysis.resolve_entity_relations.md",
+      "content_hash": "c8b2ec24fdda78486d23190319a876ffb2fd8fcb71924e518df1431f86d8d012"
+    },
+    "work_analysis.resolve_temporal_dependencies": {
+      "source": "sources/work_analysis.resolve_temporal_dependencies.md",
+      "content_hash": "17ceea9f2109d55e501ec554dedbf550e8d24a4c37176013a29b066f2042623a"
+    },
+    "work_analysis.detect_duplicate_conflict_candidates": {
+      "source": "sources/work_analysis.detect_duplicate_conflict_candidates.md",
+      "content_hash": "21ff714de38301e0c52b7965aa4dbd76e3be1df53d83da7eb89b0c340604de3d"
+    },
+    "work_analysis.assess_information_gaps": {
+      "source": "sources/work_analysis.assess_information_gaps.md",
+      "content_hash": "544cbb6b6a35b8aede0494e132f3e42fc0ece2121dad50162d3030461dce7647"
+    },
+    "work_analysis.assess_operational_risks": {
+      "source": "sources/work_analysis.assess_operational_risks.md",
+      "content_hash": "cb17b763215ef218ada95b2e2ca209b43c1bf18273c13c4ddbd838fb8794ac6e"
+    },
+    "planning.outline_answer": {
+      "source": "sources/planning.outline_answer.md",
+      "content_hash": "f0159e1221aa92419c31e52e0d6be4c3fa3fc1d77e5047e3f82c03f2523d4870"
+    },
+    "planning.compose_answer": {
+      "source": "sources/planning.compose_answer.md",
+      "content_hash": "a0b6420834caf8c865effb9e64b14bc2a83ada63f394a7380442df28c7a13d13"
+    },
+    "planning.draft_action_objective_per_output_route": {
+      "source": "sources/planning.draft_action_objective_per_output_route.md",
+      "content_hash": "fa41954ea2cff7c619a613c8f4a089d0ea9ca25b319c0bbe9f365c63dfacfb17"
+    },
+    "planning.compose_arguments_per_output_route": {
+      "source": "sources/planning.compose_arguments_per_output_route.md",
+      "content_hash": "16bd8038404beb789c4165efad3d585f9247c123b6ec319a923f72e86c4cf418"
+    },
+    "review.inspect_goal_and_evidence": {
+      "source": "sources/review.inspect_goal_and_evidence.md",
+      "content_hash": "3730e42090124f63080a1e34016b8c8bb1b130112933475c7489e2e4925cfeec"
+    },
+    "review.inspect_action_scope_and_route": {
+      "source": "sources/review.inspect_action_scope_and_route.md",
+      "content_hash": "f92927d048290f509dc518c731f93c40cd3d1d6b4bde74c0079bbcd25365a2ae"
+    },
+    "review.inspect_constraints_and_policy_summary": {
+      "source": "sources/review.inspect_constraints_and_policy_summary.md",
+      "content_hash": "6e89bb13f499d3d8e7b3aa07941760160604f3e7fb8ef4877604e6148c827fe1"
+    },
+    "review.recheck_affected_dimensions": {
+      "source": "sources/review.recheck_affected_dimensions.md",
+      "content_hash": "3a8661a6fd844225a293f57d4c90325c0519ce2f5a3ca226e9ade5e6c83cfbf9"
+    }
+  },
+  "research_basis": "research-basis.md"
+}
