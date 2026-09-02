@@ -6,6 +6,7 @@ from collections.abc import Callable
 from json import dumps
 from typing import overload
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.persistence_cas import update_plan_record
 from google_work_agent.application.use_cases.action.read_contracts import (
     PublishReadOnlyPlanCommand,
@@ -38,13 +39,18 @@ class PublishReadOnlyPlanHandler:
     """Publish one saved read-only plan."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._draft_persistence = _ReadOnlyPlanPersistence(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=now_ms,
+            tool_registry=tool_registry,
         )
 
     def save(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse:

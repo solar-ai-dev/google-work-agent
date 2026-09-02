@@ -10,6 +10,9 @@ import pytest
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import SqliteUnitOfWork
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
     ApproveActionHandler,
@@ -175,6 +178,7 @@ def _handler(
             )
         ),
         schedule_run_execution=schedule,
+        tool_registry=load_signed_tool_registry(),
     )
 
 

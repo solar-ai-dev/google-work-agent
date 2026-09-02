@@ -7,6 +7,9 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.modify_action import (
     ModifyActionCommand,
@@ -119,6 +122,7 @@ def test_modify_persists__revocation_review__receipt_and_audit() -> None:
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1000,
         gateway=MagicMock(),
+        tool_registry=load_signed_tool_registry(),
         **_handoff_dependencies(unit_of_work),
     )
     handler._registry = cast(
@@ -181,6 +185,7 @@ def _assert_terminal_modify_regression(
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1500,
         gateway=MagicMock(),
+        tool_registry=load_signed_tool_registry(),
         **_handoff_dependencies(unit_of_work),
     )
     handler._registry = cast(
@@ -265,6 +270,7 @@ def test_modify_superseded_plan__child_has_zero_effect__and_zero_owner_io() -> N
         unit_of_work_factory=MagicMock(return_value=unit_of_work),
         now_ms=lambda: 1750,
         gateway=gateway,
+        tool_registry=load_signed_tool_registry(),
         **_handoff_dependencies(unit_of_work),
     )(
         ModifyActionCommand(

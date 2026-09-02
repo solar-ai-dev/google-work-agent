@@ -4,9 +4,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from json import dumps, loads
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_approval_status,
@@ -51,10 +49,15 @@ class ExpireApprovalResult:
 
 class ExpireApprovalHandler:
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._registry = tool_registry
 
     def __call__(self, command: ExpireApprovalCommand) -> ExpireApprovalResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -83,7 +86,7 @@ class ExpireApprovalHandler:
             action = unit_of_work.actions.get(approval.action_id)
             if action is None:
                 raise LookupError(f"action not found: {approval.action_id}")
-            entry = load_signed_tool_registry().get_required(action.connector_id, action.tool_name)
+            entry = self._registry.get_required(action.connector_id, action.tool_name)
             current_source_snapshot_hash = calculate_canonical_json_hash(
                 command.current_source_snapshot
             )

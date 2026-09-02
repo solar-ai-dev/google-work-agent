@@ -3,6 +3,9 @@ from pathlib import Path
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
     PersistResourceRefCommand,
     PersistResourceRefHandler,
@@ -42,7 +45,10 @@ def test_persists_connector__bound_resource__ref(tmp_path: Path) -> None:
         captured_at_ms=1,
     )
 
-    result = PersistResourceRefHandler(unit_of_work_factory=sqlite_unit_of_work_factory(path))(
+    result = PersistResourceRefHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(path),
+        tool_registry=load_signed_tool_registry(),
+    )(
         PersistResourceRefCommand(record)
     )
 

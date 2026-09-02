@@ -9,6 +9,9 @@ from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_unit_of_work_factory,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.claim_read_action import (
     ClaimReadActionHandler,
 )
@@ -79,9 +82,11 @@ def test_fresh_legacy_read__reaches_connector_and__closes_without_write_facts(
         connection.close()
 
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
+    tool_registry = load_signed_tool_registry()
     plan_service = PublishReadOnlyPlanHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=lambda: 1000,
+        tool_registry=tool_registry,
     )
     claim_service = ClaimReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -94,10 +99,12 @@ def test_fresh_legacy_read__reaches_connector_and__closes_without_write_facts(
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,
         gateway=cast(ConnectorReadProjection, gateway),
+        tool_registry=tool_registry,
     )
     complete_service = CompleteReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=lambda: 1030,
+        tool_registry=tool_registry,
     )
     finalize_service = FinalizeReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,

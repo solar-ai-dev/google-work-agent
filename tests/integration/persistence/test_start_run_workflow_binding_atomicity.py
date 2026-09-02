@@ -15,8 +15,13 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_unit_of_work_factory,
 )
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.start_run import StartRunCommand, StartRunHandler
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
+
+_TOOL_REGISTRY = load_signed_tool_registry()
 
 
 def test_start_run_commits__one_binding_with__all_atomic_participants(tmp_path: Path) -> None:
@@ -75,6 +80,7 @@ def test_commit_failure__leaves_no_partial__start_run_participant(tmp_path: Path
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        tool_registry=_TOOL_REGISTRY,
     )
 
     with pytest.raises(sqlite3.OperationalError, match="simulated commit failure"):
@@ -115,6 +121,7 @@ def _handler(database_path: Path) -> StartRunHandler:
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        tool_registry=_TOOL_REGISTRY,
     )
 
 

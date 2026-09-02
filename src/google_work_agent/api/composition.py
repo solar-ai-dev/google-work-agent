@@ -151,6 +151,7 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
 )
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_development_tool_registry,
     load_signed_tool_registry,
 )
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
@@ -632,6 +633,7 @@ def _build_workflow_application_services(
     publish_read_plan = PublishReadOnlyPlanHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
+        tool_registry=tool_catalog,
     )
     claim_read = ClaimReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -641,6 +643,7 @@ def _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
         gateway=connector_reader,
+        tool_registry=tool_catalog,
     )
     finalize_read = FinalizeReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -653,6 +656,7 @@ def _build_workflow_application_services(
     publish_write_plan = PublishPlanHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
+        tool_registry=tool_catalog,
     )
     build_claim_context = BuildClaimContextHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -671,6 +675,7 @@ def _build_workflow_application_services(
     expire_approval = ExpireApprovalHandler(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
+        tool_registry=tool_catalog,
     )
     refresh_expired_action = RefreshExpiredActionHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -688,6 +693,7 @@ def _build_workflow_application_services(
         expire_approval=expire_approval,
         refresh_expired_action=refresh_expired_action,
         block_run=block_run,
+        tool_registry=tool_catalog,
     )
     require_recovery = RequireRecoveryHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -1349,6 +1355,7 @@ def _build_connectors(
     working_directory: Path,
     environment: str,
     oauth_client_id: str,
+    development_tool_registry: SignedToolRegistry | None,
     mcp_module_name: str = GOOGLE_WORKSPACE_MCP_MODULE,
     configuration_source: Literal[
         "SIGNED_RELEASE_MANIFEST", "EXPLICIT_DEVELOPMENT"
@@ -1358,6 +1365,8 @@ def _build_connectors(
 ) -> DevelopmentConnectorBundle:
     signature_verifier = None
     if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        if development_tool_registry is not None:
+            raise ValueError("signed runtime cannot receive a development Tool Registry")
         release_files = {entry.file_path: entry for entry in verified_release_files}
         installed_binding = _required_release_file(
             release_files, "manifests/installed-connectors-v1.json"
@@ -1381,8 +1390,10 @@ def _build_connectors(
             verified_paths=code_signature_verified_paths,
         )
     else:
+        if development_tool_registry is None:
+            raise ValueError("development runtime requires an explicit Tool Registry")
         release_files = {}
-        tool_registry = load_signed_tool_registry()
+        tool_registry = development_tool_registry
         installed_manifest = load_installed_connector_manifest()
     installed_connector = installed_manifest.get_required(GOOGLE_WORKSPACE_CONNECTOR_ID)
     if (
@@ -1943,10 +1954,15 @@ def build_production_runtime(
     release_files = {entry.file_path: entry for entry in verified_release_files}
     database_path = root / "data" / "google_work_agent.db"
     database_path.parent.mkdir(parents=True, exist_ok=True)
+    development_tool_registry = (
+        None
+        if configuration_source == "SIGNED_RELEASE_MANIFEST"
+        else load_development_tool_registry()
+    )
     mcp_manifest_path = (
         root / "mcp-manifest.json"
-        if configuration_source == "SIGNED_RELEASE_MANIFEST"
-        else _write_mcp_manifest(root)
+        if development_tool_registry is None
+        else _write_mcp_manifest(root, development_tool_registry)
     )
     prompt_manifest_path = default_prompt_manifest_path()
     frontend_site = None
@@ -2044,6 +2060,7 @@ def build_production_runtime(
             working_directory=working_directory.resolve(),
             environment=oauth_environment.value,
             oauth_client_id=oauth_client_id,
+            development_tool_registry=development_tool_registry,
             configuration_source=configuration_source,
             verified_release_files=verified_release_files,
             code_signature_verified_paths=code_signature_verified_paths,
@@ -2621,6 +2638,7 @@ def build_production_runtime(
         graph_profile=graph_profile.value,
         graph_version=RESUME_CONTRACT_VERSION,
         settings_provider=settings_service.get_settings,
+        tool_registry=connector_bundle.tool_registry,
     )
     get_execution_context = get_run_snapshot_handler.execution_context
 
@@ -2833,6 +2851,7 @@ def build_production_runtime(
             id_generator=id_generator,
             resume_target_registry=resume_target_registry,
             schedule_run_execution=production_runtime.schedule_run_execution,
+            tool_registry=connector_bundle.tool_registry,
         ),
         modify_action_handler=ModifyActionHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -2852,6 +2871,7 @@ def build_production_runtime(
                 start=settings_service.get_settings().working_day_start_local,
                 end=settings_service.get_settings().working_day_end_local,
             ),
+            tool_registry=connector_bundle.tool_registry,
         ),
         reject_action_handler=RejectActionHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -3032,9 +3052,8 @@ def _build_llm_runtime(
     return structured_inference, settings_service, credential_service, status_service
 
 
-def _write_mcp_manifest(runtime_root: Path) -> Path:
+def _write_mcp_manifest(runtime_root: Path, registry: SignedToolRegistry) -> Path:
     manifest_path = runtime_root / "mcp-manifest.json"
-    registry = load_signed_tool_registry()
     manifest_path.write_text(
         json.dumps(
             build_manifest_payload_for_descriptors(

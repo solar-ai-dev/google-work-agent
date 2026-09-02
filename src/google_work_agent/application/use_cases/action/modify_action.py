@@ -7,9 +7,7 @@ from dataclasses import asdict, dataclass, replace
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarWorkHours,
 )
@@ -128,6 +126,7 @@ class ModifyActionHandler:
         resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._checkpoint_port = checkpoint_port
@@ -135,7 +134,7 @@ class ModifyActionHandler:
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
-        self._registry = load_signed_tool_registry()
+        self._registry = tool_registry
         self._task_duplicates = TaskDuplicateValidator(
             gateway=cast(TaskListGateway, gateway), now_ms=now_ms
         )

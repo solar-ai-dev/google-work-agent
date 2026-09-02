@@ -7,11 +7,16 @@ from pathlib import Path
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
     StartRunHandler,
 )
 from tests.support.checkpoint import sqlite_checkpoint
+
+_TOOL_REGISTRY = load_signed_tool_registry()
 
 
 def _seeded_database(tmp_path: Path, *, conversation_updated_at_ms: int) -> Path:
@@ -48,6 +53,7 @@ def test_start_run__advances_the_conversations__last_activity_timestamp(tmp_path
         id_factory=lambda: f"id-{next(id_counter)}",
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        tool_registry=_TOOL_REGISTRY,
     )
     response = handler(
         StartRunCommand(

@@ -74,6 +74,12 @@ def load_signed_tool_registry(
     return registry
 
 
+def load_development_tool_registry() -> SignedToolRegistry:
+    """Load the package source artifact only for explicit development composition."""
+
+    return load_signed_tool_registry(_IMPLEMENTATION_MANIFEST)
+
+
 def _entry_from_payload(payload: dict[str, object]) -> SignedToolRegistryEntryV1:
     _require_exact_fields(payload, _ENTRY_FIELDS, "SignedToolRegistryEntryV1")
     if payload.get("schema_version") != 1 or any(
@@ -151,4 +157,4 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-__all__ = ["load_signed_tool_registry"]
+__all__ = ["load_development_tool_registry", "load_signed_tool_registry"]

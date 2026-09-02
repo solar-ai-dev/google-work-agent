@@ -6,6 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action import approve_action
 from google_work_agent.application.use_cases.action.approve_action import (
     ApproveActionCommand,
@@ -47,6 +50,7 @@ def _handler(unit_of_work: MagicMock, id_generator: MagicMock) -> ApproveActionH
             )
         ),
         schedule_run_execution=lambda command: RunExecutionAcceptedV1(1, True, "ACCEPTED"),
+        tool_registry=load_signed_tool_registry(),
     )
 
 

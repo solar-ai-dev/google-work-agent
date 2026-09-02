@@ -7,9 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarWorkHours,
 )
@@ -132,10 +130,11 @@ class ClaimExecutionHandler:
         expire_approval: ExpireApprovalHandler | None = None,
         refresh_expired_action: RefreshExpiredActionHandler | None = None,
         block_run: BlockRunHandler | None = None,
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._registry = load_signed_tool_registry()
+        self._registry = tool_registry
         self._expire_approval = expire_approval
         self._refresh_expired_action = refresh_expired_action
         self._preflight = (
@@ -149,6 +148,7 @@ class ClaimExecutionHandler:
                 expire_approval=expire_approval,
                 refresh_expired_action=refresh_expired_action,
                 block_run=block_run,
+                tool_registry=tool_registry,
             )
         )
 

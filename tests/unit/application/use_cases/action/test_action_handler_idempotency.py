@@ -4,6 +4,9 @@ from json import dumps
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.modify_action import (
     ModifyActionCommand,
     ModifyActionHandler,
@@ -65,6 +68,7 @@ def test_modify_same__hash_receipt_replays__without_second_mutation() -> None:
         id_generator=MagicMock(),
         resume_target_registry=MagicMock(),
         schedule_run_execution=MagicMock(),
+        tool_registry=load_signed_tool_registry(),
     )(
         ModifyActionCommand(
             command_id="cmd-1",

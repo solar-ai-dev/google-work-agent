@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from json import dumps, loads
 from typing import cast
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.write_persistence import (
     emit_command_rejected_hash_mismatch,
 )
@@ -121,6 +122,7 @@ class StartRunHandler:
         graph_version: str,
         checkpoint_port: CheckpointPort,
         settings_provider: Callable[[], SettingsViewV1] | None = None,
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
@@ -129,6 +131,7 @@ class StartRunHandler:
         self._graph_version = graph_version
         self._checkpoint_port = checkpoint_port
         self._settings_provider = settings_provider
+        self._tool_registry = tool_registry
 
     def __call__(self, command: StartRunCommand) -> StartRunResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -380,6 +383,7 @@ class StartRunHandler:
                     metadata_json="{}",
                     captured_at_ms=now_ms,
                 ),
+                catalog=self._tool_registry,
             )
             selected.append(
                 SelectedResourceRef(

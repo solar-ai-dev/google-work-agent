@@ -6,9 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.approval_source_snapshot import (
     build_approval_source_snapshot,
 )
@@ -117,6 +115,7 @@ class ApproveActionHandler:
         id_generator: UUIDPort,
         resume_target_registry: ResumeTargetIssuer,
         schedule_run_execution: Callable[[ScheduleRunExecutionCommand], RunExecutionAcceptedV1],
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._get_approval_ttl_minutes = get_approval_ttl_minutes
         self._unit_of_work_factory = unit_of_work_factory
@@ -125,7 +124,7 @@ class ApproveActionHandler:
         self._id_generator = id_generator
         self._resume_target_registry = resume_target_registry
         self._schedule_run_execution = schedule_run_execution
-        self._registry = load_signed_tool_registry()
+        self._registry = tool_registry
 
     def __call__(self, command: ApproveActionCommand) -> ApproveActionResult:
         ttl_ms = self._get_approval_ttl_minutes() * 60_000

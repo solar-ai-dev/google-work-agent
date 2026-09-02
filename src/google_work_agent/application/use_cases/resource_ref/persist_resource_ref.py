@@ -3,9 +3,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
@@ -22,8 +19,14 @@ class PersistResourceRefResult:
 
 
 class PersistResourceRefHandler:
-    def __init__(self, *, unit_of_work_factory: Callable[[], UnitOfWork]) -> None:
+    def __init__(
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        tool_registry: SignedToolRegistry,
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._tool_registry = tool_registry
 
     def __call__(self, command: PersistResourceRefCommand) -> PersistResourceRefResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -31,13 +34,17 @@ class PersistResourceRefHandler:
             unit_of_work.commit()
         return result
 
-    @staticmethod
     def apply_in_unit_of_work(
+        self,
         unit_of_work: UnitOfWork,
         command: PersistResourceRefCommand,
     ) -> PersistResourceRefResult:
         return PersistResourceRefResult(
-            persist_registered_resource_ref(unit_of_work, command.resource_ref)
+            persist_registered_resource_ref(
+                unit_of_work,
+                command.resource_ref,
+                catalog=self._tool_registry,
+            )
         )
 
 
@@ -45,14 +52,13 @@ def persist_registered_resource_ref(
     unit_of_work: UnitOfWork,
     resource_ref: ResourceRefRecord,
     *,
-    catalog: SignedToolRegistry | None = None,
+    catalog: SignedToolRegistry,
 ) -> ResourceRefRecord:
     """Shared same-UoW primitive owned by the exact persistence capability."""
-    authority = catalog or load_signed_tool_registry()
     if not any(
         entry.connector_id == resource_ref.connector_id
         and entry.resource_type == resource_ref.resource_type
-        for entry in authority.entries
+        for entry in catalog.entries
     ):
         raise LookupError(
             "connector/resource type is not registered: "

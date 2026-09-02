@@ -27,9 +27,7 @@ from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionPlanDraftV2,
 )
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
 )
@@ -510,6 +508,7 @@ def _build_durable_materialization_proof(
         # Then validate that every persisted child row/link still matches it.
         _validate_persisted_materialization(
             unit_of_work=unit_of_work,
+            tool_registry=runtime._tool_catalog,
             run_id=run_id,
             plan=current_plan,
             summary_text=summary_text,
@@ -767,6 +766,7 @@ def _require_applied_publish_receipt(
 def _validate_persisted_materialization(
     *,
     unit_of_work: Any,
+    tool_registry: SignedToolRegistry,
     run_id: str,
     plan: PlanRecord,
     summary_text: str,
@@ -795,11 +795,10 @@ def _validate_persisted_materialization(
     if {action.id for action in persisted_actions} != set(expected_actions):
         raise ValueError("persisted corrective Action identity set drifted")
 
-    registry = load_signed_tool_registry()
     seen_evidence: dict[str, Any] = {}
     for persisted_action in persisted_actions:
         candidate = expected_actions[persisted_action.id]
-        entry = registry.get_required(
+        entry = tool_registry.get_required(
             persisted_connector_ids[persisted_action.id], candidate["tool_id"]
         )
         expected_dependencies = tuple(

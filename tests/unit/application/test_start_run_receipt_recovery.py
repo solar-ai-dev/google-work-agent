@@ -8,6 +8,9 @@ from typing import cast
 
 import pytest
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.action.write_action_arguments import coerce_int
 from google_work_agent.application.use_cases.run.start_run import (
     StartRunCommand,
@@ -41,6 +44,8 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
     WorkflowHandoffStageV1,
     WorkflowHandoffV1,
 )
+
+_TOOL_REGISTRY = load_signed_tool_registry()
 
 
 class _AuditCollector:
@@ -548,6 +553,7 @@ def _handler(uow: _UnitOfWork) -> StartRunHandler:
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
         checkpoint_port=cast(CheckpointPort, uow.workflow_bindings),
+        tool_registry=_TOOL_REGISTRY,
     )
 
 
@@ -776,6 +782,7 @@ def test_received_receipt_age__never_turns_absence__into_unapplied_proof() -> No
         id_factory=_id_factory(),
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="resume-contract-v1",
+        tool_registry=_TOOL_REGISTRY,
     )
 
     with pytest.raises(RuntimeError, match="no canonical proof of non-application"):
@@ -994,6 +1001,7 @@ def test_completed_receipt_without__response_and_without__aggregate_is_not_reapp
             id_factory=lambda: "unused",
             graph_profile="SIX_ROLE_BASELINE",
             graph_version="resume-contract-v1",
+            tool_registry=_TOOL_REGISTRY,
         )(command)
 
     assert uow.runs.add_count == 0

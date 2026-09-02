@@ -7,9 +7,7 @@ from collections.abc import Callable
 from json import loads
 from typing import Literal, Protocol, cast
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarWorkHours,
 )
@@ -136,11 +134,12 @@ class _WritePreflight:
         expire_approval: ExpireApprovalHandler | None = None,
         refresh_expired_action: RefreshExpiredActionHandler | None = None,
         block_run: BlockRunHandler | None = None,
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._gateway = gateway
         self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
-        self._registry = load_signed_tool_registry()
+        self._registry = tool_registry
         self._evaluate_action_policy = EvaluateActionPolicyHandler()
         self._expire_approval = expire_approval
         self._refresh_expired_action = refresh_expired_action

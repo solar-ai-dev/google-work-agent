@@ -28,6 +28,7 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
     EvidenceDraftV1,
     RetrievalResultV1,
 )
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflicts import (
     CALENDAR_CONFLICT_TOOLS,
 )
@@ -209,6 +210,7 @@ class PlanPersistenceMixin:
         _save_write_plan: Callable[[SaveWritePlanCommand], Any]
         _publish_write_plan: Callable[[PublishWritePlanCommand], Any]
         _record_review_result: Callable[[RecordReviewResultCommandV1], Any]
+        _tool_catalog: SignedToolRegistry
 
         def _current_run_version(self, run_id: str) -> int: ...
 
@@ -491,7 +493,11 @@ class PlanPersistenceMixin:
                 snapshot=snapshot,
                 captured_at_ms=self._now_ms(),
             )
-            persisted = persist_registered_resource_ref(unit_of_work, resource_ref)
+            persisted = persist_registered_resource_ref(
+                unit_of_work,
+                resource_ref,
+                catalog=self._tool_catalog,
+            )
             unit_of_work.commit()
             return persisted.id
 

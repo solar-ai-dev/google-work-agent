@@ -28,6 +28,9 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
 from google_work_agent.application.use_cases.plan.publish_plan import PublishPlanHandler
 from google_work_agent.application.use_cases.plan.record_review_result import (
@@ -44,6 +47,8 @@ from tests.support.resolve_recovery_adapter import (
     ResolveMismatchRecoveryCommand,
     ResolveMismatchRecoveryService,
 )
+
+_TOOL_REGISTRY = load_signed_tool_registry()
 
 
 def _seed_recovery_aggregate(database_path: Path) -> None:
@@ -167,10 +172,12 @@ class _CorrectivePersistenceHarness:
         self._save_delegate = PublishPlanHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
+            tool_registry=_TOOL_REGISTRY,
         )
         self._publish_delegate = PublishPlanHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,
+            tool_registry=_TOOL_REGISTRY,
         )
         self._record_review_result = RecordReviewResultHandler(
             unit_of_work_factory=self._unit_of_work_factory,

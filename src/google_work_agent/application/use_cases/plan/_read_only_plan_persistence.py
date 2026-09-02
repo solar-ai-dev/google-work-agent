@@ -5,9 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
-from google_work_agent.application.tool_registry.load_signed_tool_registry import (
-    load_signed_tool_registry,
-)
 from google_work_agent.application.tool_registry.signed_tool_registry import (
     SignedToolRegistry,
 )
@@ -45,11 +42,15 @@ class _ReadOnlyPlanPersistence:
     """Save one explicit read-only plan draft."""
 
     def __init__(
-        self, *, unit_of_work_factory: Callable[[], UnitOfWork], now_ms: Callable[[], int]
+        self,
+        *,
+        unit_of_work_factory: Callable[[], UnitOfWork],
+        now_ms: Callable[[], int],
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
-        self._catalog = load_signed_tool_registry()
+        self._catalog = tool_registry
 
     def __call__(self, command: SaveReadOnlyPlanCommand) -> SaveReadOnlyPlanResponse:
         with self._unit_of_work_factory() as unit_of_work:

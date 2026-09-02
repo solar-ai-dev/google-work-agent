@@ -10,6 +10,9 @@ from tests.support.checkpoint import sqlite_checkpoint
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.start_run import StartRunCommand, StartRunHandler
 from google_work_agent.ports.system.settings_port import PanelPreferencesV1, SettingsViewV1
 
@@ -61,6 +64,7 @@ def test_start_run_rejects__noncanonical_input_before__any_durable_write(
         id_factory=lambda: "must-not-be-used",
         graph_profile="SIX_ROLE_BASELINE",
         graph_version="graph-v1",
+        tool_registry=load_signed_tool_registry(),
     )
 
     with pytest.raises(ValueError):
@@ -103,6 +107,7 @@ def test_start_run_freezes__current_settings_into__durable_run_budget(tmp_path: 
             circuit_failure_threshold=3,
             circuit_open_duration_ms=30_000,
         ),
+        tool_registry=load_signed_tool_registry(),
     )
 
     result = handler(_command())

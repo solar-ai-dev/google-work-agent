@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from json import dumps
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action._read_execution import _ReadExecution
 from google_work_agent.application.use_cases.action.persistence_cas import update_action_record
 from google_work_agent.application.use_cases.action.read_contracts import (
@@ -47,9 +48,11 @@ class CompleteReadActionHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int] = lambda: 0,
         gateway: ConnectorReadProjection | None = None,
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._tool_registry = tool_registry
         self._execution = (
             None
             if gateway is None
@@ -140,6 +143,7 @@ class CompleteReadActionHandler:
                         metadata_json=resource_ref.metadata_json,
                         captured_at_ms=now_ms,
                     ),
+                    catalog=self._tool_registry,
                 )
 
             for evidence in command.evidence:
