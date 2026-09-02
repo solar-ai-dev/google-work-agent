@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from release.generate_release_manifest import (
     generate_release_manifest,
 )
 
+from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
 from release.profiles import DeploymentProfile
 from tests.support.bundle_fixture import create_bundle_inputs
 
@@ -61,6 +63,58 @@ def test_release_manifest__is_closed__sorted_and_deterministic(tmp_path: Path) -
     assert "release-manifest.json" not in paths
     assert "release-manifest.sig" not in paths
     assert all("\\" not in path and not Path(path).is_absolute() for path in paths)
+    rows = {entry["file_path"]: entry for entry in payload["files"]}
+    prompt_root = bundle / "manifests/prompt"
+    registry = PromptRegistry(
+        prompt_root / "prompt_manifest.json",
+        prompt_root / "prompt_runtime_input_contract_v1.json",
+    )
+    expected_prompt_paths = {
+        path.relative_to(bundle).as_posix() for path in registry.product_release_bundle_files()
+    }
+    assert expected_prompt_paths <= rows.keys()
+    for relative in expected_prompt_paths:
+        content = (bundle / relative).read_bytes()
+        assert rows[relative]["sha256"] == hashlib.sha256(content).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("relative", "replacement", "message"),
+    [
+        ("prompt_manifest.json", b"{}", "prompt manifest fields mismatch"),
+        (
+            "prompt_runtime_input_contract_v1.json",
+            b"{}",
+            "fields mismatch",
+        ),
+        (
+            "sources/planning.compose_answer.md",
+            b"tampered source",
+            "Prompt source hash mismatch",
+        ),
+        (
+            "activation-evidence/planning.compose_answer/dataset.json",
+            b"tampered evidence",
+            "artifact hash mismatch",
+        ),
+    ],
+)
+def test_release_manifest__rejects_materialized_prompt__artifact_tamper(
+    tmp_path: Path,
+    relative: str,
+    replacement: bytes,
+    message: str,
+) -> None:
+    bundle = tmp_path / "bundle"
+    assemble_application_bundle(
+        profile=DeploymentProfile.API_ONLY,
+        inputs=create_bundle_inputs(tmp_path / "inputs"),
+        output_root=bundle,
+    )
+    (bundle / "manifests/prompt" / relative).write_bytes(replacement)
+
+    with pytest.raises((ValueError, RuntimeError), match=message):
+        generate_release_manifest(bundle_root=bundle, parameters=_parameters())
 
 
 def test_release_manifest_rejects__mcp_schema_different__from_installed_projection(

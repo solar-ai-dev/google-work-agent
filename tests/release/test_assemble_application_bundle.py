@@ -124,6 +124,30 @@ def test_signed_bundle__rejects_draft__prompt_baseline(tmp_path: Path) -> None:
         )
 
 
+def test_signed_bundle__materializes_exact_validated__prompt_file_closure(
+    tmp_path: Path,
+) -> None:
+    inputs = create_bundle_inputs(tmp_path / "inputs")
+    unreferenced = inputs.prompt_manifest.parent / "unreferenced.txt"
+    unreferenced.write_text("not part of the Prompt bundle closure", encoding="utf-8")
+    output = tmp_path / "bundle"
+
+    paths = assemble_application_bundle(
+        profile=DeploymentProfile.API_ONLY,
+        inputs=inputs,
+        output_root=output,
+    )
+
+    prompt_root = output / "manifests/prompt"
+    assert (prompt_root / "prompt_manifest.json").read_bytes() == (
+        inputs.prompt_manifest.read_bytes()
+    )
+    assert (prompt_root / "prompt_runtime_input_contract_v1.json").is_file()
+    assert len(tuple((prompt_root / "sources").glob("*.md"))) == 21
+    assert len(tuple((prompt_root / "activation-evidence").rglob("*.json"))) == 126
+    assert "manifests/prompt/unreferenced.txt" not in paths
+
+
 def test_local_capable__rejects_noncanonical__model_manifest(tmp_path: Path) -> None:
     model_manifest = tmp_path / "model-manifest-v1.json"
     model_manifest.write_text(

@@ -47,9 +47,9 @@ def test_pre_experiment_manifest__has_zero_unsupported__activation_claims() -> N
 
 def test_signed_prompt_scope__has_zero_ambient__environment_override() -> None:
     composition = (SOURCE_ROOT / "api/composition.py").read_text(encoding="utf-8")
-    registry = (
-        SOURCE_ROOT / "application/prompt_runtime/prompt_registry.py"
-    ).read_text(encoding="utf-8")
+    registry = (SOURCE_ROOT / "application/prompt_runtime/prompt_registry.py").read_text(
+        encoding="utf-8"
+    )
     trees = (ast.parse(composition), ast.parse(registry))
 
     assert "PRODUCT_RELEASE" in composition
@@ -92,4 +92,6 @@ def test_explicit_development_composition__reports_unvalidated_baseline__as_read
 def test_release_assembler__requires_product_release__prompt_gate() -> None:
     source = (ROOT / "release/assemble_application_bundle.py").read_text(encoding="utf-8")
 
-    assert "PromptRegistry(inputs.prompt_manifest).require_product_release_ready()" in source
+    assert "_validated_product_release_prompt_registry(inputs.prompt_manifest)" in source
+    assert "registry.require_product_release_ready()" in source
+    assert "_materialize_prompt_bundle(" in source

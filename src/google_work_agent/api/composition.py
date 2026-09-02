@@ -148,9 +148,12 @@ from google_work_agent.application.prompt_runtime.assemble_prompt import assembl
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     DEVELOPMENT_SMOKE,
     PRODUCT_RELEASE,
+    SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH,
+    SIGNED_PROMPT_MANIFEST_RELATIVE_PATH,
     InactivePromptArtifactError,
     PromptExecutionScope,
     PromptRegistry,
+    PromptRegistryError,
     default_prompt_manifest_path,
 )
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
@@ -1288,17 +1291,31 @@ def _required_release_file(
         raise CoreInitializationError("RELEASE_ARTIFACT_MISSING") from error
 
 
-def _verify_installed_runtime_path(
-    path: Path,
+def _load_verified_product_release_prompt_bundle(
     *,
     install_root: Path,
     release_files: Mapping[str, _VerifiedReleaseFile],
-) -> None:
+) -> Path:
+    manifest_path = _required_release_file(
+        release_files, SIGNED_PROMPT_MANIFEST_RELATIVE_PATH
+    ).resolve_verified(install_root)
+    input_contract_path = _required_release_file(
+        release_files, SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH
+    ).resolve_verified(install_root)
     try:
-        relative = path.resolve().relative_to(install_root).as_posix()
-    except ValueError as error:
-        raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID") from error
-    _required_release_file(release_files, relative).resolve_verified(install_root)
+        registry = PromptRegistry(manifest_path, input_contract_path)
+        bundle_files = registry.product_release_bundle_files()
+    except (InactivePromptArtifactError, PromptRegistryError) as error:
+        raise CoreInitializationError("PROMPT_BUNDLE_INVALID") from error
+    for artifact in bundle_files:
+        try:
+            relative = artifact.relative_to(install_root).as_posix()
+        except ValueError as error:
+            raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID") from error
+        verified = _required_release_file(release_files, relative).resolve_verified(install_root)
+        if verified != artifact:
+            raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID")
+    return manifest_path
 
 
 def _load_installed_llm_runtime_selection(
@@ -2042,9 +2059,7 @@ def build_production_runtime(
     )
     prompt_manifest_path = default_prompt_manifest_path()
     prompt_execution_scope: PromptExecutionScope = (
-        PRODUCT_RELEASE
-        if configuration_source == "SIGNED_RELEASE_MANIFEST"
-        else DEVELOPMENT_SMOKE
+        PRODUCT_RELEASE if configuration_source == "SIGNED_RELEASE_MANIFEST" else DEVELOPMENT_SMOKE
     )
     frontend_site: _VerifiedFrontendSite | _DevelopmentFrontendSite | None = (
         _build_development_frontend_site(working_directory.resolve())
@@ -2065,8 +2080,7 @@ def build_production_runtime(
         release_version=release_version,
     )
     if configuration_source == "SIGNED_RELEASE_MANIFEST":
-        _verify_installed_runtime_path(
-            prompt_manifest_path,
+        prompt_manifest_path = _load_verified_product_release_prompt_bundle(
             install_root=install_root,
             release_files=release_files,
         )
@@ -3079,7 +3093,10 @@ def _build_llm_runtime(
     settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
     )
-    prompt_registry = PromptRegistry(prompt_manifest_path)
+    prompt_registry = PromptRegistry(
+        prompt_manifest_path,
+        prompt_manifest_path.parent / "prompt_runtime_input_contract_v1.json",
+    )
 
     credential_service = LlmCredentialRouter(
         provider_name="gemini",

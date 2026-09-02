@@ -12,6 +12,8 @@ _COMMON_REQUIRED_FILES = (
     "manifests/installed-connectors-v1.json",
     "manifests/signed-tool-registry-v1.json",
     "manifests/connectors/google_workspace/tool-descriptor-projection-v1.json",
+    "manifests/prompt/prompt_manifest.json",
+    "manifests/prompt/prompt_runtime_input_contract_v1.json",
     "uninstaller/GoogleWorkAgentCredentialCleanup.exe",
     "uninstaller/installer-definition-v1.json",
     "uninstaller/uninstall-policy-v1.json",

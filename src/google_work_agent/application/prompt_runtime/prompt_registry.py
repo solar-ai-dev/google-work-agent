@@ -29,9 +29,14 @@ _ACTIVATION_STATUSES: Final = frozenset(
 PRODUCT_RELEASE: Final = "PRODUCT_RELEASE"
 DEVELOPMENT_SMOKE: Final = "DEVELOPMENT_SMOKE"
 EVALUATION: Final = "EVALUATION"
-PromptExecutionScope = Literal[
-    "PRODUCT_RELEASE", "DEVELOPMENT_SMOKE", "EVALUATION"
-]
+SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT: Final = "manifests/prompt"
+SIGNED_PROMPT_MANIFEST_RELATIVE_PATH: Final = (
+    f"{SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT}/prompt_manifest.json"
+)
+SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH: Final = (
+    f"{SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT}/prompt_runtime_input_contract_v1.json"
+)
+PromptExecutionScope = Literal["PRODUCT_RELEASE", "DEVELOPMENT_SMOKE", "EVALUATION"]
 _MANIFEST_ROOT_FIELDS: Final = {
     "schema_version",
     "prompt_bundle_version",
@@ -235,14 +240,43 @@ class PromptRegistry:
     @property
     def product_release_ready(self) -> bool:
         return all(
-            entry.activation_status == "RUNTIME_ACTIVE"
-            and entry.activation_evidence_complete
+            entry.activation_status == "RUNTIME_ACTIVE" and entry.activation_evidence_complete
             for entry in self._by_id.values()
         )
 
     def require_product_release_ready(self) -> None:
         for prompt_slot_id in sorted(self._by_id):
             self.lookup_for_product_release(prompt_slot_id)
+
+    def product_release_bundle_files(self) -> tuple[Path, ...]:
+        """Return the exact validated file closure for signed Release materialization."""
+
+        self.require_product_release_ready()
+        bundle_root = self._manifest_path.parent
+        files = {self._manifest_path, self._input_contract_path}
+        for entry in self._by_id.values():
+            files.add(entry.source_path)
+            evidence = entry.activation_evidence
+            if evidence is None:  # guarded by require_product_release_ready()
+                raise PromptRegistryError(
+                    f"{entry.prompt_slot_id} product release evidence is unavailable"
+                )
+            files.update(
+                {
+                    evidence.dataset_path,
+                    evidence.grader_path,
+                    evidence.node_dev_result_path,
+                    evidence.node_holdout_result_path,
+                    evidence.safety_gate_result_path,
+                    evidence.manifest_approval_path,
+                }
+            )
+        try:
+            return tuple(sorted(files, key=lambda path: path.relative_to(bundle_root).as_posix()))
+        except ValueError as error:
+            raise PromptRegistryError(
+                "product release Prompt artifact must stay inside the Prompt bundle"
+            ) from error
 
     def _entry(self, prompt_slot_id: str) -> _PromptManifestEntry:
         try:
@@ -467,9 +501,7 @@ def _parse_activation_evidence(
     if value is None:
         return None
     payload = _require_object(value, f"{prefix}.activation_evidence")
-    _require_exact_fields(
-        payload, _ACTIVATION_EVIDENCE_FIELDS, f"{prefix}.activation_evidence"
-    )
+    _require_exact_fields(payload, _ACTIVATION_EVIDENCE_FIELDS, f"{prefix}.activation_evidence")
     evidence_schema_version = _require_int(
         payload.get("schema_version"), f"{prefix}.activation_evidence.schema_version"
     )
@@ -629,6 +661,9 @@ __all__ = [
     "EVALUATION",
     "InactivePromptArtifactError",
     "PRODUCT_RELEASE",
+    "SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT",
+    "SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH",
+    "SIGNED_PROMPT_MANIFEST_RELATIVE_PATH",
     "PromptExecutionScope",
     "PromptRegistry",
     "PromptRegistryError",

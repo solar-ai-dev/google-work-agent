@@ -1,16 +1,24 @@
 import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
 
 import pytest
+from release.assemble_application_bundle import assemble_application_bundle
+from tests.support.bundle_fixture import create_bundle_inputs
 
 from google_work_agent.api.app import _run_installed_service, create_app
 from google_work_agent.api.composition import (
     CoreInitializationError,
     ProductionRuntimeConfig,
     _load_installed_llm_runtime_selection,
+    _load_verified_product_release_prompt_bundle,
     _VerifiedReleaseFile,
+)
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    SIGNED_PROMPT_MANIFEST_RELATIVE_PATH,
+    default_prompt_manifest_path,
 )
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.llm.approved_model_manifest import (
@@ -20,6 +28,7 @@ from google_work_agent.ports.llm.approved_model_manifest import (
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
+from release.profiles import DeploymentProfile
 
 
 def _signed_payload() -> dict[str, object]:
@@ -139,6 +148,53 @@ def test_api_only__rejects_accidental__local_model_manifest(tmp_path: Path) -> N
             release_version="1.2.3",
             install_root=tmp_path,
             release_files={relative: release_file},
+        )
+
+
+def test_signed_runtime__selects_verified_release_prompt__without_package_fallback(
+    tmp_path: Path,
+) -> None:
+    inputs = create_bundle_inputs(tmp_path / "inputs")
+    package_default_root = (
+        inputs.service_distribution / "google_work_agent/application/prompt_runtime"
+    )
+    package_default_root.mkdir(parents=True)
+    default_root = default_prompt_manifest_path().parent
+    shutil.copy2(default_root / "prompt_manifest.json", package_default_root)
+    shutil.copy2(default_root / "prompt_runtime_input_contract_v1.json", package_default_root)
+    shutil.copytree(default_root / "sources", package_default_root / "sources")
+    install_root = (tmp_path / "install").resolve()
+    assemble_application_bundle(
+        profile=DeploymentProfile.API_ONLY,
+        inputs=inputs,
+        output_root=install_root,
+    )
+    release_files = {
+        path.relative_to(install_root).as_posix(): _VerifiedReleaseFile.from_payload(
+            _release_row(install_root, path.relative_to(install_root).as_posix())
+        )
+        for path in install_root.rglob("*")
+        if path.is_file()
+    }
+
+    selected = _load_verified_product_release_prompt_bundle(
+        install_root=install_root,
+        release_files=release_files,
+    )
+
+    assert selected == install_root / SIGNED_PROMPT_MANIFEST_RELATIVE_PATH
+    assert selected.read_bytes() == inputs.prompt_manifest.read_bytes()
+    package_default = (
+        install_root / "service/google_work_agent/application/prompt_runtime/prompt_manifest.json"
+    )
+    assert selected.read_bytes() != package_default.read_bytes()
+
+    without_selected = dict(release_files)
+    without_selected.pop(SIGNED_PROMPT_MANIFEST_RELATIVE_PATH)
+    with pytest.raises(CoreInitializationError, match="RELEASE_ARTIFACT_MISSING"):
+        _load_verified_product_release_prompt_bundle(
+            install_root=install_root,
+            release_files=without_selected,
         )
 
 

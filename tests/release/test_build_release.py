@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +14,9 @@ from release.generate_local_model_product_decision import (
 from release.generate_model_manifest import ApprovedModelEntryV1, generate_model_manifest
 from scripts import build_release
 
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    default_prompt_manifest_path,
+)
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
@@ -219,6 +224,37 @@ def test_local_capable_cli__valid_artifacts__complete_release_pipeline(
     assert calls.installer == 1
 
 
+def test_prompt_cli__with_different_service_default__packages_selected_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    arguments = _arguments(tmp_path, profile=DeploymentProfile.API_ONLY)
+    service_distribution = Path(arguments[arguments.index("--service-dist") + 1])
+    selected_manifest = Path(arguments[arguments.index("--prompt-manifest") + 1])
+    package_default_root = service_distribution / "google_work_agent/application/prompt_runtime"
+    package_default_root.mkdir(parents=True)
+    default_root = default_prompt_manifest_path().parent
+    shutil.copy2(default_root / "prompt_manifest.json", package_default_root)
+    shutil.copy2(default_root / "prompt_runtime_input_contract_v1.json", package_default_root)
+    shutil.copytree(default_root / "sources", package_default_root / "sources")
+    calls = _install_external_leaf_fakes(monkeypatch)
+
+    assert build_release.main(arguments) == 0
+
+    packaged_manifest = tmp_path / "bundle/manifests/prompt/prompt_manifest.json"
+    selected = json.loads(selected_manifest.read_text(encoding="utf-8"))
+    packaged = json.loads(packaged_manifest.read_text(encoding="utf-8"))
+    package_default = json.loads(
+        (package_default_root / "prompt_manifest.json").read_text(encoding="utf-8")
+    )
+    assert packaged == selected
+    assert packaged != package_default
+    assert {slot["activation_status"] for slot in packaged["slots"]} == {"RUNTIME_ACTIVE"}
+    assert {slot["activation_status"] for slot in package_default["slots"]} == {"DRAFT"}
+    assert calls.signing == 2
+    assert calls.installer == 1
+
+
 @pytest.mark.parametrize("missing", ["model_manifest", "product_decision"])
 def test_local_capable_cli__missing_local_artifact__fails_before_external_leaves(
     monkeypatch: pytest.MonkeyPatch,
@@ -256,9 +292,7 @@ def test_api_only_cli__with_local_artifact__fails_before_external_leaves(
                 tmp_path,
                 profile=DeploymentProfile.API_ONLY,
                 model_manifest=model_manifest if artifact == "model_manifest" else None,
-                product_decision=(
-                    product_decision if artifact == "product_decision" else None
-                ),
+                product_decision=(product_decision if artifact == "product_decision" else None),
             )
         )
     assert calls.signing == 0

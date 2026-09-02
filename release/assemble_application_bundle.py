@@ -19,7 +19,10 @@ from google_work_agent.adapters.connectors.runtime.load_installed_connector_mani
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     build_manifest_payload_for_descriptors,
 )
-from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT,
+    PromptRegistry,
+)
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
@@ -68,7 +71,7 @@ def assemble_application_bundle(
     """Copy verified build inputs, materialize projections, and reject unsafe payloads."""
 
     destination = output_root.resolve()
-    PromptRegistry(inputs.prompt_manifest).require_product_release_ready()
+    prompt_registry = _validated_product_release_prompt_registry(inputs.prompt_manifest)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("output_root must be absent or empty")
     destination.mkdir(parents=True, exist_ok=True)
@@ -90,6 +93,11 @@ def assemble_application_bundle(
         destination=destination,
         installed_connector_manifest=inputs.installed_connector_manifest,
         signed_tool_registry=inputs.signed_tool_registry,
+    )
+    _materialize_prompt_bundle(
+        registry=prompt_registry,
+        source_root=inputs.prompt_manifest.resolve().parent,
+        destination=destination,
     )
     if profile is DeploymentProfile.LOCAL_CAPABLE:
         if inputs.model_manifest is None or not inputs.model_manifest.is_file():
@@ -169,6 +177,34 @@ def _materialize_connector_artifacts(
             raise ValueError("installed connector MCP schema version mismatch")
         projection_path = _safe_child(destination, connector.tool_projection_path)
         _write_canonical_json(projection_path, projection)
+
+
+def _validated_product_release_prompt_registry(manifest_path: Path) -> PromptRegistry:
+    manifest = manifest_path.resolve()
+    if manifest.name != "prompt_manifest.json":
+        raise ValueError("release Prompt manifest must use the canonical filename")
+    input_contract = manifest.parent / "prompt_runtime_input_contract_v1.json"
+    registry = PromptRegistry(manifest, input_contract)
+    registry.require_product_release_ready()
+    return registry
+
+
+def _materialize_prompt_bundle(
+    *,
+    registry: PromptRegistry,
+    source_root: Path,
+    destination: Path,
+) -> None:
+    prompt_root = destination / Path(*PurePosixPath(SIGNED_PROMPT_BUNDLE_RELATIVE_ROOT).parts)
+    for source in registry.product_release_bundle_files():
+        relative = source.relative_to(source_root)
+        target = prompt_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    PromptRegistry(
+        prompt_root / "prompt_manifest.json",
+        prompt_root / "prompt_runtime_input_contract_v1.json",
+    ).require_product_release_ready()
 
 
 def _copy_distribution(source: Path, destination: Path) -> None:

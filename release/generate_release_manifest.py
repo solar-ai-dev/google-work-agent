@@ -16,6 +16,11 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     PROTOCOL_VERSION,
     MCPServerManifest,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH,
+    SIGNED_PROMPT_MANIFEST_RELATIVE_PATH,
+    PromptRegistry,
+)
 from release.profiles import DeploymentProfile
 from release.profiles.api_only import build_api_only_profile
 from release.profiles.local_capable import build_local_capable_profile
@@ -121,6 +126,7 @@ def generate_release_manifest(
     root = bundle_root.resolve()
     if not root.is_dir():
         raise ValueError("bundle_root must be an existing directory")
+    _validate_prompt_bundle(root)
     files = tuple(_manifest_entry(root, path) for path in _iter_release_files(root))
     relative_paths = tuple(entry.file_path for entry in files)
     profile = (
@@ -166,6 +172,12 @@ def _validate_connector_contract(root: Path, mcp_schema_version: str) -> None:
             or projection.protocol_version != PROTOCOL_VERSION
         ):
             raise ValueError("installed connector MCP projection contract mismatch")
+
+
+def _validate_prompt_bundle(root: Path) -> None:
+    manifest = root / Path(*PurePosixPath(SIGNED_PROMPT_MANIFEST_RELATIVE_PATH).parts)
+    input_contract = root / Path(*PurePosixPath(SIGNED_PROMPT_INPUT_CONTRACT_RELATIVE_PATH).parts)
+    PromptRegistry(manifest, input_contract).require_product_release_ready()
 
 
 def _iter_release_files(root: Path) -> tuple[Path, ...]:

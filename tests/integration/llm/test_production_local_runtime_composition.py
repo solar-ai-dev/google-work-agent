@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -91,7 +92,7 @@ def _write_local_release_artifacts(install_root: Path) -> tuple[Path, Path]:
         approved_models=(ApprovedModelEntryV1(MODEL_ID, MODEL_HASH),),
     )
     manifests = install_root / "manifests"
-    manifests.mkdir(parents=True)
+    manifests.mkdir(parents=True, exist_ok=True)
     manifest_path = manifests / "model-manifest-v1.json"
     manifest_path.write_bytes(manifest.to_canonical_bytes() + b"\n")
     decision = LocalModelProductDecisionV1(
@@ -120,6 +121,23 @@ def _release_file(install_root: Path, path: Path) -> _VerifiedReleaseFile:
         file_size=len(content),
         sha256=hashlib.sha256(content).hexdigest(),
     )
+
+
+def _write_signed_prompt_bundle(install_root: Path) -> tuple[Path, tuple[Path, ...]]:
+    source_manifest, source_contract = copy_prompt_runtime_artifacts(
+        install_root.parent / "prompt-source"
+    )
+    activate_all_prompt_slots(source_manifest)
+    source_root = source_manifest.parent
+    source_files = PromptRegistry(source_manifest, source_contract).product_release_bundle_files()
+    target_root = install_root / "manifests/prompt"
+    target_files: list[Path] = []
+    for source in source_files:
+        target = target_root / source.relative_to(source_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        target_files.append(target)
+    return target_root / "prompt_manifest.json", tuple(target_files)
 
 
 def _build_signed_container(
@@ -168,17 +186,15 @@ def test_signed_local_decision__production_composition__invokes_only_local_provi
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     install_root = tmp_path / "install"
-    prompt_manifest, _ = copy_prompt_runtime_artifacts(install_root)
-    activate_all_prompt_slots(prompt_manifest)
+    prompt_manifest, prompt_files = _write_signed_prompt_bundle(install_root)
     frontend = install_root / "frontend" / "index.html"
     frontend.parent.mkdir(parents=True)
     frontend.write_text("<!doctype html>", encoding="utf-8")
     manifest_path, decision_path = _write_local_release_artifacts(install_root)
     release_files = tuple(
         _release_file(install_root, path)
-        for path in (prompt_manifest, frontend, manifest_path, decision_path)
+        for path in (*prompt_files, frontend, manifest_path, decision_path)
     )
-    monkeypatch.setattr(composition, "default_prompt_manifest_path", lambda: prompt_manifest)
     monkeypatch.setattr(composition, "WindowsHardwareProbeAdapter", _EligibleHardwareProbe)
     local_transport = FakeOllamaTransport()
     local_transport.queued_payloads.append(
@@ -203,7 +219,10 @@ def test_signed_local_decision__production_composition__invokes_only_local_provi
     try:
         assert container.structured_inference_port is not None
         assert container.llm_runtime_selection is not None
-        prompt_ref = PromptRegistry(prompt_manifest).lookup_by_id("planning.compose_answer")
+        prompt_ref = PromptRegistry(
+            prompt_manifest,
+            prompt_manifest.parent / "prompt_runtime_input_contract_v1.json",
+        ).lookup_by_id("planning.compose_answer")
         result = container.structured_inference_port.infer(
             "LOCAL_GPU",
             prompt_ref,
@@ -315,7 +334,7 @@ def test_signed_local_release_artifact_failures__stop_before_composition__with_e
     expected_code: str,
 ) -> None:
     install_root = tmp_path / "install"
-    prompt_manifest, _ = copy_prompt_runtime_artifacts(install_root)
+    _, prompt_files = _write_signed_prompt_bundle(install_root)
     frontend = install_root / "frontend" / "index.html"
     frontend.parent.mkdir(parents=True)
     frontend.write_text("<!doctype html>", encoding="utf-8")
@@ -332,12 +351,11 @@ def test_signed_local_release_artifact_failures__stop_before_composition__with_e
         decision_path.write_bytes(
             LocalModelProductDecisionV1(**payload).to_canonical_bytes() + b"\n"
         )
-    paths = [prompt_manifest, frontend, manifest_path, decision_path]
+    paths = [*prompt_files, frontend, manifest_path, decision_path]
     if mutation == "missing_manifest":
         paths.remove(manifest_path)
     if mutation == "missing_decision":
         paths.remove(decision_path)
-    monkeypatch.setattr(composition, "default_prompt_manifest_path", lambda: prompt_manifest)
     with pytest.raises(CoreInitializationError) as raised:
         _build_signed_container(
             monkeypatch=monkeypatch,

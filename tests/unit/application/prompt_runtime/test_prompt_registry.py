@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 from tests.support.canonical_prompt_runtime import (
+    activate_all_prompt_slots,
     activate_prompt_slot,
     copy_prompt_runtime_artifacts,
     deactivate_prompt_slot,
@@ -80,6 +81,24 @@ def test_all_baseline__prompts_are_honest__pre_experiment_drafts() -> None:
 
 def test_prompt_registry__accepts_exact_canonical__activation_status_vocabulary() -> None:
     assert prompt_registry_module._ACTIVATION_STATUSES == CANONICAL_ACTIVATION_STATUSES
+
+
+def test_product_release_bundle__returns_exact_referenced__artifact_closure(
+    tmp_path: Path,
+) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    activate_all_prompt_slots(manifest_path)
+    unreferenced = manifest_path.parent / "activation-evidence/unreferenced.json"
+    unreferenced.write_text("{}", encoding="utf-8")
+
+    files = PromptRegistry(manifest_path, contract_path).product_release_bundle_files()
+    relative = {path.relative_to(manifest_path.parent).as_posix() for path in files}
+
+    assert "prompt_manifest.json" in relative
+    assert "prompt_runtime_input_contract_v1.json" in relative
+    assert len({path for path in relative if path.startswith("sources/")}) == 21
+    assert len({path for path in relative if path.startswith("activation-evidence/")}) == 126
+    assert "activation-evidence/unreferenced.json" not in relative
 
 
 def test_prompt_registry__rejects_safety_gate__as_activation_status(tmp_path: Path) -> None:
