@@ -170,6 +170,7 @@ Frontend naming is deterministic: feature component filename is snake_case and e
 | Responsibility | Exact production file | Primary symbol | Canonical test owner |
 | --- | --- | --- | --- |
 | launcher executable orchestration | `launcher/entrypoint.py` | `main()` | `tests/unit/launcher/test_entrypoint.py` |
+| explicit non-installed development Product orchestration | `launcher/development_entrypoint.py` | `main()` | `tests/integration/launcher/test_development_entrypoint.py` |
 | single-instance lock / existing-instance detection | `launcher/acquire_single_instance.py` | `acquire_single_instance()` | `tests/unit/launcher/test_acquire_single_instance.py` |
 | installed Release Manifest/signature/hash verification | `launcher/verify_installation.py` | `verify_installation()` | `tests/unit/launcher/test_verify_installation.py` |
 | verified Signed Build Config projection from the already-verified Release Manifest | `launcher/release_build_config.py` | `SignedBuildConfigV1`, `load_signed_build_config()` | `tests/unit/launcher/test_release_build_config.py` |
@@ -184,7 +185,7 @@ Frontend naming is deterministic: feature component filename is snake_case and e
 | browser open through the existing `BrowserLauncherPort` boundary | `launcher/open_product_ui.py` | `open_product_ui()` | `tests/unit/launcher/test_open_product_ui.py` |
 | coordinated service shutdown | `launcher/shutdown_service.py` | `shutdown_service()` | `tests/unit/launcher/test_shutdown_service.py` |
 
-Launcher operation files may contain OS-specific private helpers, but another public `manager/service/runtime/common` owner or second launcher composition root is prohibited. `launcher/entrypoint.py` is thin orchestration over the exact operation set above and must not import Domain/Application business owners.
+Launcher operation files may contain OS-specific private helpers, but another public `manager/service/runtime/common` owner or second launcher composition root is prohibited. `launcher/entrypoint.py` is thin installed orchestration over the exact operation set above and must not import Domain/Application business owners. `launcher/development_entrypoint.py`는 `ProductionRuntimeConfig.development → api.app.create_app`만 호출하는 non-installed orchestration이며 business Handler/Registry를 직접 구성할 수 없다. Browser/secret-storage 같은 launcher-owned system boundary 입력만 허용한다.
 
 #### Windows installer / package / signing source
 

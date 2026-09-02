@@ -2,16 +2,19 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "backend",
-      "runtimeExecutable": ".venv-gpu/Scripts/python.exe",
-      "runtimeArgs": ["-m", "google_work_agent.launcher.dev"],
-      "port": 8000
-    },
-    {
-      "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
-      "port": 5173
+      "name": "Google Work Agent Product",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "launcher.development_entrypoint",
+        "--runtime-root",
+        "runtime/development",
+        "--port",
+        "0",
+        "--launch-descriptor",
+        ".claude/runtime/development-launch.json"
+      ],
+      "port": 0
     }
   ]
 }

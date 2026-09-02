@@ -1119,14 +1119,16 @@ Graceful Shutdown Timeout 30초를 초과하면 다음을 수행한다.
 ### 18.1 개발
 
 ```
-Vite Dev Server
-↕ 명시된 Development Origin
-FastAPI Reload Process
-MCP Development Process
-Mock Google·LLM Adapter
+launcher/development_entrypoint.py
+→ ProductionRuntimeConfig.development(EXPLICIT_DEVELOPMENT)
+→ create_app / DeferredApiContainer / build_production_runtime
+→ loopback dynamic-port FastAPI + built React same-origin
+→ MCP Development Process
 ```
 
-개발 CORS는 등록된 Vite Origin 하나만 허용한다.
+Development entrypoint는 설치 Launcher와 별도 executable orchestration이지만 두 번째 Service composition root가 아니다. `api/composition.py::build_production_runtime()`을 그대로 사용하며 loopback bind, Host/Origin validation, one-time Bootstrap grant, Service Instance-bound Local Session, dependency readiness, shutdown callback 순서를 우회하지 않는다.
+
+지원 option은 `--runtime-root`, `--host 127.0.0.1`, `--port`(0이면 OS-assigned dynamic port), `--no-browser`, `--launch-descriptor`다. Development launch descriptor는 `schema_version/base_url/bootstrap_url/service_instance_id/process_id/readiness_state`만 포함하고 current-user + SYSTEM 외 ACL 상속을 제거하며, bootstrap URL을 일반 로그에 출력하지 않고 shutdown 시 삭제한다. `DEVELOPMENT_SMOKE` Prompt baseline은 readiness check를 `READY / UNVALIDATED_BASELINE`으로 노출하며 signed Release activation을 뜻하지 않는다.
 
 ### 18.2 스테이징
 

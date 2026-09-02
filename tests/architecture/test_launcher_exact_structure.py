@@ -9,6 +9,7 @@ LEGACY_LAUNCHER_PREFIX = "google_work_agent." + "launcher"
 
 EXPECTED_OPERATIONS = {
     "entrypoint.py": {"main"},
+    "development_entrypoint.py": {"main"},
     "acquire_single_instance.py": {"acquire_single_instance"},
     "verify_installation.py": {"verify_installation"},
     "release_build_config.py": {"SignedBuildConfigV1", "load_signed_build_config"},
@@ -63,6 +64,11 @@ def test_launcher_has_no__core_business_or__second_composition_authority() -> No
         "google_work_agent.api",
     )
     violations: list[str] = []
+    development_boundary_imports = {
+        "google_work_agent.adapters.llm.runtime.llm_credential_router",
+        "google_work_agent.api.app",
+        "google_work_agent.api.composition",
+    }
     for path in LAUNCHER_ROOT.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -71,9 +77,21 @@ def test_launcher_has_no__core_business_or__second_composition_authority() -> No
                 module = node.module or ""
             elif isinstance(node, ast.Import):
                 module = node.names[0].name
-            if module.startswith(forbidden_imports):
+            if module.startswith(forbidden_imports) and not (
+                path.name == "development_entrypoint.py"
+                and module in development_boundary_imports
+            ):
                 violations.append(f"{path}:{module}")
     assert violations == []
+
+    development_source = (LAUNCHER_ROOT / "development_entrypoint.py").read_text(
+        encoding="utf-8"
+    )
+    assert "ProductionRuntimeConfig.development(" in development_source
+    assert development_source.count("create_app(") == 1
+    assert "build_production_runtime(" not in development_source
+    assert "DeferredApiContainer(" not in development_source
+    assert "ApiContainer(" not in development_source
 
 
 def test_runtime_artifact_writers__do_not_contain__bootstrap_or_provider_secrets() -> None:

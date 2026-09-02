@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from json import dumps
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.persistence_cas import (
     update_action_record,
     update_execution_attempt_record,
@@ -76,9 +77,11 @@ class StoreSuccessHandler:
         *,
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
+        tool_registry: SignedToolRegistry,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
+        self._tool_registry = tool_registry
 
     def __call__(self, command: StoreSuccessCommand) -> StoreSuccessResult:
         with self._unit_of_work_factory() as unit_of_work:
@@ -129,6 +132,7 @@ class StoreSuccessHandler:
             persisted_resource_ref = upsert_resource_ref(
                 unit_of_work=unit_of_work,
                 resource_ref=resource_ref,
+                catalog=self._tool_registry,
             )
             update_execution_attempt_record(
                 unit_of_work,

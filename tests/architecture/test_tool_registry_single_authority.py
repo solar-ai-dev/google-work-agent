@@ -4,10 +4,14 @@ import ast
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.support.production_runtime import build_test_production_container
 
+from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
+    MCPConnectorDescriptor,
+)
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
@@ -15,6 +19,9 @@ from google_work_agent.api import composition
 from google_work_agent.api.composition import _VerifiedReleaseFile
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import (
+    SignedToolRegistry,
 )
 
 ROOT = Path("src/google_work_agent")
@@ -75,9 +82,9 @@ def test_development_composition_loads__one_registry_instance__for_all_consumers
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     actual_loader = composition.load_development_tool_registry
-    loaded: list[object] = []
+    loaded: list[SignedToolRegistry] = []
 
-    def load_once() -> object:
+    def load_once() -> SignedToolRegistry:
         registry = actual_loader()
         loaded.append(registry)
         return registry
@@ -91,15 +98,21 @@ def test_development_composition_loads__one_registry_instance__for_all_consumers
     try:
         assert len(loaded) == 1
         registry = loaded[0]
-        workflow = container.workflow_runtime
+        workflow: Any = container.workflow_runtime
+        approve_action = container.approve_action_handler
+        modify_action = container.modify_action_handler
+        assert approve_action is not None
+        assert modify_action is not None
         consumers = (
-            container.approve_action_handler._registry,
-            container.modify_action_handler._registry,
+            approve_action._registry,
+            modify_action._registry,
             workflow._claim_execution._registry,
             workflow._canonical_domain_validation._tool_registry,
             workflow._write_execution_phase._connector_execution._dispatch_connector_write._tool_registry,
+            workflow._store_write_success._tool_registry,
             workflow._verify_effect._tool_registry,
             workflow._lookup_unknown_result._tool_registry,
+            workflow._recover_existing_result._tool_registry,
         )
 
         assert all(consumer is registry for consumer in consumers)
@@ -154,10 +167,12 @@ def test_signed_connector_composition_uses__verified_installed_registry_when__em
     executable_path.write_bytes(b"signed executable")
     projection_path.write_text("{}", encoding="utf-8")
 
-    captured_descriptors: list[object] = []
+    captured_descriptors: list[MCPConnectorDescriptor] = []
 
     class _ConnectorWithoutProcess:
-        def __init__(self, *, descriptor: object, **_kwargs: object) -> None:
+        def __init__(
+            self, *, descriptor: MCPConnectorDescriptor, **_kwargs: object
+        ) -> None:
             captured_descriptors.append(descriptor)
 
         def start(self) -> None:

@@ -16,6 +16,23 @@ def open_product_ui(
 ) -> str:
     """Open either the one-time bootstrap fragment or the existing-session URL."""
 
+    url = build_product_ui_url(
+        port=port,
+        bootstrap_secret=bootstrap_secret,
+        service_instance_id=service_instance_id,
+    )
+    browser.open_url(url)
+    return url
+
+
+def build_product_ui_url(
+    *,
+    port: int,
+    bootstrap_secret: str | None = None,
+    service_instance_id: str | None = None,
+) -> str:
+    """Build the loopback URL without logging or opening its secret fragment."""
+
     if not 1 <= port <= 65535:
         raise ValueError("port must be valid")
     url = f"http://127.0.0.1:{port}/"
@@ -29,5 +46,7 @@ def open_product_ui(
             }
         )
         url = f"{url}#{fragment}"
-    browser.open_url(url)
     return url
+
+
+__all__ = ["build_product_ui_url", "open_product_ui"]

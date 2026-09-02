@@ -746,7 +746,9 @@ def _build_workflow_application_services(
         refresh_expired_action=refresh_expired_action,
         claim_execution=claim_execution,
         store_write_success=StoreSuccessHandler(
-            unit_of_work_factory=unit_of_work_factory, now_ms=now_ms
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            tool_registry=tool_catalog,
         ),
         mark_write_failed=MarkFailedHandler(
             unit_of_work_factory=unit_of_work_factory, now_ms=now_ms
@@ -785,7 +787,9 @@ def _build_workflow_application_services(
             unit_of_work_factory=unit_of_work_factory,
         ),
         recover_existing_result=RecoverExistingResultHandler(
-            unit_of_work_factory=unit_of_work_factory, now_ms=now_ms
+            unit_of_work_factory=unit_of_work_factory,
+            now_ms=now_ms,
+            tool_registry=tool_catalog,
         ),
         resolve_as_failed=ResolveAsFailedHandler(
             unit_of_work_factory=unit_of_work_factory, now_ms=now_ms
@@ -1027,6 +1031,11 @@ class ProductionRuntimeConfig:
             release_files={entry.file_path: entry for entry in self.verified_release_files},
         )
 
+    def frontend_site(self) -> _VerifiedFrontendSite | _DevelopmentFrontendSite | None:
+        if self.configuration_source == "SIGNED_RELEASE_MANIFEST":
+            return self.verified_frontend_site()
+        return _build_development_frontend_site(self.working_directory)
+
     @classmethod
     def development(
         cls,
@@ -1217,6 +1226,46 @@ class _VerifiedFrontendSite:
         except CoreInitializationError:
             return None
 
+    def readiness_check(self) -> ReadinessCheckResult:
+        ready = self.resolve_asset("") is not None
+        return ReadinessCheckResult(
+            name="frontend_assets",
+            state=ReadinessState.READY if ready else ReadinessState.NOT_READY,
+            detail=None if ready else "FRONTEND_ARTIFACT_UNAVAILABLE",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _DevelopmentFrontendSite:
+    root: Path
+
+    @property
+    def index_path(self) -> Path:
+        index = self.resolve_asset("")
+        if index is None:
+            raise CoreInitializationError("FRONTEND_ARTIFACT_UNAVAILABLE")
+        return index
+
+    def resolve_asset(self, path: str) -> Path | None:
+        requested = path if path else "index.html"
+        relative = PurePosixPath(requested)
+        if relative.is_absolute() or relative.as_posix() != requested or ".." in relative.parts:
+            return None
+        candidate = (self.root / Path(*relative.parts)).resolve()
+        try:
+            candidate.relative_to(self.root.resolve())
+        except ValueError:
+            return None
+        return candidate if candidate.is_file() else None
+
+    def readiness_check(self) -> ReadinessCheckResult:
+        ready = self.resolve_asset("") is not None
+        return ReadinessCheckResult(
+            name="frontend_assets",
+            state=ReadinessState.READY if ready else ReadinessState.NOT_READY,
+            detail=None if ready else "FRONTEND_ARTIFACT_UNAVAILABLE",
+        )
+
 
 def _google_oauth_scopes(registry: SignedToolRegistry) -> tuple[str, ...]:
     scopes = {
@@ -1346,6 +1395,11 @@ def _build_verified_frontend_site(
         root=install_root / "frontend",
         allowed_files=dict(release_files),
     )
+
+
+def _build_development_frontend_site(project_root: Path) -> _DevelopmentFrontendSite | None:
+    site = _DevelopmentFrontendSite((project_root / "frontend/dist").resolve())
+    return site if site.resolve_asset("") is not None else None
 
 
 def _build_connectors(
@@ -1697,9 +1751,28 @@ class DeferredApiContainer:
             return
         self._core = core
         self.readiness_aggregator.bind(core.readiness_aggregator)
-        self.current_account_id_provider = core.current_account_id_provider
+        self._bind_core_dependencies(core)
         self.core_initialization_in_progress = False
         self.safe_mode_controller.disable()
+
+    def _bind_core_dependencies(self, core: ApiContainer) -> None:
+        for name in (
+            "current_account_id_provider",
+            "create_conversation_handler",
+            "list_conversations_handler",
+            "get_conversation_history_handler",
+            "get_runtime_status_handler",
+            "update_runtime_mode_handler",
+            "get_settings_handler",
+            "update_settings_handler",
+            "list_backups_handler",
+            "create_backup_handler",
+            "restore_backup_handler",
+            "request_shutdown_handler",
+            "operational_log_sink",
+        ):
+            if hasattr(core, name):
+                setattr(self, name, getattr(core, name))
 
     def _bind_safe_mode_recovery(self) -> None:
         if self._recovery_builder is None:
@@ -1751,7 +1824,7 @@ class DeferredApiContainer:
         assert core is not None
         self._core = core
         self.readiness_aggregator.bind(core.readiness_aggregator)
-        self.current_account_id_provider = core.current_account_id_provider
+        self._bind_core_dependencies(core)
         self.core_initialization_in_progress = False
         self.safe_mode_controller.disable()
         return True
@@ -1973,7 +2046,9 @@ def build_production_runtime(
         if configuration_source == "SIGNED_RELEASE_MANIFEST"
         else DEVELOPMENT_SMOKE
     )
-    frontend_site = None
+    frontend_site: _VerifiedFrontendSite | _DevelopmentFrontendSite | None = (
+        _build_development_frontend_site(working_directory.resolve())
+    )
     runtime_selection = LlmRuntimeSelectionV1(
         schema_version=1,
         deployment_profile=deployment_profile,
@@ -2539,6 +2614,7 @@ def build_production_runtime(
         recover_existing_result=RecoverExistingResultHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
+            tool_registry=connector_bundle.tool_registry,
         ),
         resolve_as_failed=ResolveAsFailedHandler(
             unit_of_work_factory=unit_of_work_factory,

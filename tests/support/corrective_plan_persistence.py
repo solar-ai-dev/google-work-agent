@@ -169,6 +169,7 @@ class _CorrectivePersistenceHarness:
     def __init__(self, database_path: Path, *, fail_publish_once: bool = False) -> None:
         self._unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
         self._now_ms = lambda: 10
+        self._tool_catalog = _TOOL_REGISTRY
         self._save_delegate = PublishPlanHandler(
             unit_of_work_factory=self._unit_of_work_factory,
             now_ms=self._now_ms,

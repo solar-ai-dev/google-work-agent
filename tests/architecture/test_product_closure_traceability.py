@@ -168,8 +168,8 @@ def test_canonical_traceability_rows__against_current_tree__have_exact_unique_id
 ):
     rows = _rows(ARTIFACT_1)
     ids = [row["requirement_id"] for row in rows]
-    assert len(rows) == 1_010
-    assert len(set(ids)) == 1_010
+    assert len(rows) == 1_011
+    assert len(set(ids)) == 1_011
     for row in rows:
         source = ROOT / row["canonical_source"]
         assert source.is_file(), f"{row['requirement_id']}: stale canonical source"
@@ -271,11 +271,11 @@ def test_cross_layer_traceability__against_current_tree__has_closed_taxonomy_con
     None
 ):
     rows = _rows(ARTIFACT_2)
-    assert len(rows) == 85
-    assert len({row["lineage_id"] for row in rows}) == 85
+    assert len(rows) == 88
+    assert len({row["lineage_id"] for row in rows}) == 88
     assert Counter(row["lineage_kind"] for row in rows) == {
         "HANDOFF": 53,
-        "AUTHORITY": 13,
+        "AUTHORITY": 16,
         "SCENARIO": 19,
     }
     for row in rows:
@@ -310,7 +310,13 @@ def test_embedded_closure_review_metadata__binds_actual_callers__effects_and_ass
 ):
     review = _closure_review_metadata()
     assert review["internal_reviewed_by"] == "Codex"
-    assert review["internal_review_source_sha"] == "91a3c3e5de6fae3c758c5a5a50c190324323cc84"
+    product_source = re.search(
+        r"^PRODUCT_SOURCE_SHA = ([0-9a-f]{40})$",
+        REPORT.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert product_source is not None
+    assert review["internal_review_source_sha"] == product_source.group(1)
     assert review["reviewed_requirement_rows"] == len(_rows(ARTIFACT_1))
     assert review["reviewed_lineage_rows"] == len(_rows(ARTIFACT_2))
     assert isinstance(review["internal_review_reason"], str)

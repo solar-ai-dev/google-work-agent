@@ -1,81 +1,86 @@
 # Google Work Agent
 
-Google Work Agent는 사용자 로컬 PC에서 실행하는 단일 사용자용 Google 업무 Agent입니다.
+Google Work Agent는 로컬 PC에서 실행되는 단일 사용자 Google Workspace 업무 Agent입니다. FastAPI API, React UI, LangGraph workflow, SQLite Domain Store, 로컬 MCP Connector, API/Local LLM runtime을 하나의 제품 composition으로 연결합니다. 승인·Claim·Write·검증·복구는 결정적 Application/Domain 경계가 소유하며 Agent/LLM이 최종 판정하지 않습니다.
 
-## 개발 환경
+## 요구 환경
 
-- 공식 Python 버전: Python 3.12.x
-- 기본 검증 환경: `.venv-cpu`
-- GPU 관련 검증은 이후 단계에서 `.venv-gpu`를 사용합니다.
-
-PowerShell에서 CPU 환경을 활성화합니다.
+- Windows 11 x64
+- CPython 3.12
+- Node.js 20 이상과 npm
 
 ```powershell
-.\.venv-cpu\Scripts\Activate.ps1
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r config\requirements-cpu.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+npm --prefix frontend ci
+npm --prefix frontend run build
 ```
 
-PowerShell에서 GPU 환경을 활성화합니다.
+GPU/Local Model 검증이 필요한 경우 `config\requirements-gpu.txt` 환경을 별도로 사용할 수 있습니다. Product Decision artifact가 없는 개발 baseline에서는 API LLM을 연결해 smoke할 수 있습니다.
+
+## 개발 Product 실행
+
+개발 launcher도 설치 제품과 같은 `create_app → DeferredApiContainer → build_production_runtime` composition과 loopback·Host/Origin·one-time bootstrap·Local Session·readiness·shutdown 경계를 사용합니다.
 
 ```powershell
-.\.venv-gpu\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m launcher.development_entrypoint `
+  --runtime-root .\runtime\development `
+  --host 127.0.0.1 `
+  --port 0
 ```
 
-의존성 설치 기준은 `pyproject.toml`이 아니라 기존 requirements 파일입니다.
+`--port 0`은 안전한 loopback dynamic port를 사용합니다. 준비가 끝나면 브라우저가 one-time bootstrap fragment로 열리고, UI는 같은 FastAPI origin의 `/`에서 제공됩니다. bootstrap secret은 일반 로그에 출력되지 않습니다.
+
+브라우저 자동화나 Codex에서 URL을 받아야 하면 descriptor를 사용합니다.
 
 ```powershell
-.\.venv-cpu\Scripts\python.exe -m pip install -r config\requirements-cpu.txt
-.\.venv-gpu\Scripts\python.exe -m pip install -r config\requirements-gpu.txt
+.\.venv\Scripts\python.exe -m launcher.development_entrypoint `
+  --runtime-root .\runtime\development `
+  --port 0 `
+  --no-browser `
+  --launch-descriptor .\.runtime\development-launch.json
 ```
 
-Colab 실험 환경은 `config/requirements-colab.txt`를 기준으로 합니다.
+Descriptor에는 `base_url`, one-time `bootstrap_url`, `service_instance_id`, `process_id`, `readiness_state`만 기록되며 현재 사용자 전용 권한을 적용합니다. 정상 종료 시 자동 삭제됩니다. `bootstrap_url`은 secret이므로 공유하거나 로그에 복사하지 마세요.
 
-## 개발용 Local Service 실행
-
-Terminal 1에서 FastAPI Local Service를 loopback으로 실행합니다.
+Readiness는 descriptor의 `base_url`로 확인합니다.
 
 ```powershell
-.\.venv-gpu\Scripts\python.exe -m google_work_agent.launcher.dev --host 127.0.0.1 --port 8000
+$launch = Get-Content .\.runtime\development-launch.json | ConvertFrom-Json
+Invoke-RestMethod "$($launch.base_url)/health/ready"
 ```
 
-실행 직후 출력되는 one-time bootstrap URL을 복사합니다. Terminal 2에서 Vite를 실행한 뒤,
-출력된 fragment를 붙인 `http://127.0.0.1:5173/` URL을 브라우저로 엽니다.
+개발 baseline Prompt는 아직 실험 승격 전이므로 readiness의 `prompt_activation` check가 `READY / UNVALIDATED_BASELINE`으로 표시됩니다. 이는 제품 wiring smoke 가능 상태이지 Prompt 품질 또는 Release 승인 상태가 아닙니다.
+
+## LLM과 Google 연결
+
+첫 UI 진입 후 설정에서 Gemini API Key를 연결하고 API LLM 사용 및 외부 전송 동의를 설정합니다. Development launcher의 LLM credential은 process memory에만 보관되며 종료 후 사라집니다. Local Model은 signed Model Manifest와 Product Decision을 갖춘 `LOCAL_CAPABLE` release에서만 활성화됩니다.
+
+- 현재 요청만으로 답할 수 있는 answer-only 흐름은 Google OAuth 없이 실행할 수 있습니다.
+- Gmail·Calendar·Tasks 조회 또는 변경은 UI에서 Google OAuth 연결이 필요합니다.
+- 모든 Write는 Canonical Approval 이후 Claim/Execution Attempt/Connector Write/Verification 순서를 거칩니다.
+
+## 검증
 
 ```powershell
-Set-Location frontend
-npm run dev
+.\.venv\Scripts\python.exe -m pytest --collect-only -q
+.\.venv\Scripts\python.exe -m pytest -q
+$env:GWA_ARCHITECTURE_FINAL_CUTOVER = "1"
+.\.venv\Scripts\python.exe -m pytest tests\architecture -q
+.\.venv\Scripts\ruff.exe check src tests launcher release scripts
+.\.venv\Scripts\mypy.exe src tests launcher release scripts
+.\.venv\Scripts\python.exe -m compileall -q src launcher release scripts tests
+
+npm --prefix frontend test -- --run
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run build
 ```
 
-Vite는 `/api`와 `/health`를 기본 `http://127.0.0.1:8000`으로 proxy합니다. Service port를
-변경했다면 Terminal 2에서 `VITE_API_PROXY_TARGET`에 같은 loopback 주소를 설정합니다.
+`tests/e2e`와 `tests/evaluation`의 deterministic fake Provider/MCP 실행은 workflow·계약·external-effect 회귀를 검증하지만 실제 LLM 품질 증거가 아닙니다. 실제 Product E2E는 development launcher로 UI에 접속해 실제 LLM credential과 필요한 Google OAuth를 연결한 뒤 별도로 수행합니다.
 
-## 검증 명령
+## Prompt/Model 현재 상태
 
-```powershell
-.\.venv-cpu\Scripts\python.exe -m pip check
-.\.venv-cpu\Scripts\python.exe -m pytest tests\unit -q
-.\.venv-cpu\Scripts\python.exe -m pytest tests\integration -q
-.\.venv-cpu\Scripts\python.exe -m pytest -q
-.\.venv-cpu\Scripts\python.exe -m ruff check src tests scripts
-.\.venv-cpu\Scripts\python.exe -m ruff format --check src tests scripts
-.\.venv-cpu\Scripts\python.exe -m mypy src tests
-```
+Canonical Prompt source 21개는 실험 전 baseline이며 manifest 상태는 모두 `DRAFT`입니다. `EXPLICIT_DEVELOPMENT`의 `DEVELOPMENT_SMOKE`에서만 실행할 수 있고, signed Release는 실제 DEV/HOLDOUT/Safety/승인 evidence artifact가 완전한 `RUNTIME_ACTIVE` Prompt만 패키징·실행합니다. 최종 Provider/Model/Prompt bundle 선택은 실험 완료 전까지 유보됩니다.
 
-패키지 import 확인이 필요하면 editable install 후 실행합니다.
-
-```powershell
-.\.venv-cpu\Scripts\python.exe -m pip install -e .
-.\.venv-cpu\Scripts\python.exe -c "import google_work_agent; print(google_work_agent.__version__)"
-```
-
-## 현재 구현 단계
-
-현재 단계는 M1-01 Python Project Skeleton입니다. 패키지 구조, 테스트 진입점,
-Ruff, mypy, pytest 설정만 준비되어 있습니다.
-
-아직 Domain 상태 전이, SQLite, Repository, FastAPI, LangGraph, LLM, MCP, Google API,
-Fixture는 제품 코드에 연결되어 있지 않습니다.
-
-## 설계 문서
-
-설계 기준은 `docs/` 아래 문서를 따릅니다. 시작 문서는
-`docs/00-CODE-AGENT-START-HERE.md`입니다.
+설계 Authority와 읽기 순서는 `docs/canonical/00-project-source-guide.md`에서 시작합니다.

@@ -107,7 +107,7 @@ def create_app(
                 environment=production_config.oauth_environment.value,
                 api_contract_version=production_config.api_contract_version,
                 deployment_profile=production_config.deployment_profile,
-                frontend_site=production_config.verified_frontend_site(),
+                frontend_site=production_config.frontend_site(),
                 core_builder=build_core,
                 recovery_builder=lambda retry: build_safe_mode_recovery_bindings(
                     runtime_root=production_config.runtime_root,

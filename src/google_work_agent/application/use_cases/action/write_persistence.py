@@ -7,6 +7,7 @@ from enum import StrEnum
 from json import dumps, loads
 from typing import Any, Protocol, cast
 
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.cancel_pending_action import (
     CancelPendingActionCommand,
     CancelPendingActionHandler,
@@ -27,8 +28,7 @@ from google_work_agent.application.use_cases.plan.write_plan_contracts import (
     SaveWritePlanResponse,
 )
 from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
-    PersistResourceRefCommand,
-    PersistResourceRefHandler,
+    persist_registered_resource_ref,
 )
 from google_work_agent.domain.action.model import Action as ActionRecord
 from google_work_agent.domain.action.model import (
@@ -477,15 +477,19 @@ def resolve_existing_run_receipt(
 
 
 def upsert_resource_ref(
-    *, unit_of_work: UnitOfWork, resource_ref: ResourceRefRecord
+    *,
+    unit_of_work: UnitOfWork,
+    resource_ref: ResourceRefRecord,
+    catalog: SignedToolRegistry,
 ) -> ResourceRefRecord:
     """Persist by the single connector-aware ResourceRef identity."""
     if not resource_ref.connector_id:
         raise ValueError("resource reference connector_id is required")
-    return PersistResourceRefHandler.apply_in_unit_of_work(
+    return persist_registered_resource_ref(
         unit_of_work,
-        PersistResourceRefCommand(resource_ref),
-    ).resource_ref
+        resource_ref,
+        catalog=catalog,
+    )
 
 
 def action_response_from_result[CommandType: StrEnum](

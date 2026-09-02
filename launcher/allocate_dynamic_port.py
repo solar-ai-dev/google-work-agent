@@ -17,6 +17,15 @@ class DynamicPortReservation:
         if reserved is not None:
             reserved.close()
 
+    def take_socket(self) -> socket.socket:
+        """Transfer the held listener to an in-process loopback server."""
+
+        reserved = self._socket
+        if reserved is None:
+            raise RuntimeError("dynamic port reservation is already released")
+        self._socket = None
+        return reserved
+
     def __enter__(self) -> DynamicPortReservation:
         return self
 
