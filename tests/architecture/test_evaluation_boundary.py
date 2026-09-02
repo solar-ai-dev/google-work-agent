@@ -15,6 +15,11 @@ EXPECTED_EVALUATION_CODE = {
     "evaluation/dataset.py",
     "evaluation/grader.py",
     "evaluation/runner.py",
+    "evaluation/prompt_candidate.py",
+    "evaluation/experiment_plan.py",
+    "evaluation/run_experiment.py",
+    "evaluation/compare_experiment_results.py",
+    "evaluation/prompt_candidates/mcp-tool-use-2026-v1/materialize_prompt_candidate.py",
 }
 
 
@@ -74,6 +79,9 @@ def test_evaluation_assets_are__repository_only_and_results__are_local_by_defaul
         "evaluation/datasets/e2e/product_episodes_v1.jsonl",
         "evaluation/datasets/agent/node_evaluation_items_v1.jsonl",
         "evaluation/scoring-contract-v1.1.json",
+        "evaluation/prompt_candidates/mcp-tool-use-2026-v1/candidate.json",
+        "evaluation/configs/experiments/prompt-baseline-smoke.template.json",
+        "evaluation/configs/experiments/prompt-mcp-research-smoke.template.json",
     }
     assert required <= tracked
 
