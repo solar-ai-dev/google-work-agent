@@ -1122,6 +1122,8 @@ DRAFT
 
 실패별 Prompt를 작성했다는 이유만으로 제품 Runtime에 활성화하지 않는다.
 
+Activation evidence는 Prompt Slot별 immutable artifact chain이다. Node DEV, Node HOLDOUT, Safety Gate, Manifest Approval 각각의 실제 결과 artifact path/hash와 공통 target model identity/hash, Prompt source hash, input/output schema version, Dataset hash, Grader hash/version, 실행 UTC timestamp를 기록한다. 누락 단계 이후 flag를 true로 만들 수 없고 status/commit message/runtime smoke/결정적 fake E2E는 실험 evidence가 아니다. `15`의 `DEVELOPMENT_SMOKE`는 이 evidence가 아직 없는 baseline에서 Product wiring을 검증하는 경계일 뿐, B Prompt·Node Quality나 E Final Product Validation의 결과로 집계하지 않는다. Signed Release 승격은 `15`의 `PRODUCT_RELEASE` gate가 이 immutable evidence를 소비할 때만 가능하다.
+
 ### 21.6 Budget 비교
 
 정상 Route, Retrieval-heavy Route, Revision-heavy Route를 별도 집계한다. 평균 품질뿐 아니라 First-pass Success, After-repair Success, After-revision Success, Retry Precision, Stop Accuracy와 LLM Call 수를 함께 비교한다.

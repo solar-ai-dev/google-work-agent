@@ -132,6 +132,8 @@ def _arguments(
         str(inputs.installed_connector_manifest),
         "--signed-tool-registry",
         str(inputs.signed_tool_registry),
+        "--prompt-manifest",
+        str(inputs.prompt_manifest),
         "--app-version",
         "test-release",
         "--build-channel",

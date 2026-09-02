@@ -52,6 +52,8 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     WorkAnalysisResultV2,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -108,6 +110,7 @@ class WorkAnalysisSubgraph:
         *,
         llm_runtime: StructuredInferencePort,
         prompt_manifest_path: Path | None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
         transition_run: TransitionRun,
@@ -119,22 +122,34 @@ class WorkAnalysisSubgraph:
         manifest = prompt_manifest_path or default_prompt_manifest_path()
         self._prompt_refs = {
             "extract_work_facts": load_prompt_reference(
-                "work_analysis.extract_work_facts", manifest
+                "work_analysis.extract_work_facts",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
             "resolve_entity_relations": load_prompt_reference(
-                "work_analysis.resolve_entity_relations", manifest
+                "work_analysis.resolve_entity_relations",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
             "resolve_temporal_dependencies": load_prompt_reference(
-                "work_analysis.resolve_temporal_dependencies", manifest
+                "work_analysis.resolve_temporal_dependencies",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
             "detect_duplicate_conflict_candidates": load_prompt_reference(
-                "work_analysis.detect_duplicate_conflict_candidates", manifest
+                "work_analysis.detect_duplicate_conflict_candidates",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
             "assess_information_gaps": load_prompt_reference(
-                "work_analysis.assess_information_gaps", manifest
+                "work_analysis.assess_information_gaps",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
             "assess_operational_risks": load_prompt_reference(
-                "work_analysis.assess_operational_risks", manifest
+                "work_analysis.assess_operational_risks",
+                manifest,
+                execution_scope=prompt_execution_scope,
             ),
         }
         self._id_factory = id_factory

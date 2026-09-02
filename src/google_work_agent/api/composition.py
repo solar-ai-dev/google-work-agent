@@ -146,7 +146,10 @@ from google_work_agent.api.security.bootstrap import InMemoryBootstrapGrantStore
 from google_work_agent.api.security.sessions import InMemoryLocalSessionManager
 from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    DEVELOPMENT_SMOKE,
+    PRODUCT_RELEASE,
     InactivePromptArtifactError,
+    PromptExecutionScope,
     PromptRegistry,
     default_prompt_manifest_path,
 )
@@ -1965,6 +1968,11 @@ def build_production_runtime(
         else _write_mcp_manifest(root, development_tool_registry)
     )
     prompt_manifest_path = default_prompt_manifest_path()
+    prompt_execution_scope: PromptExecutionScope = (
+        PRODUCT_RELEASE
+        if configuration_source == "SIGNED_RELEASE_MANIFEST"
+        else DEVELOPMENT_SMOKE
+    )
     frontend_site = None
     runtime_selection = LlmRuntimeSelectionV1(
         schema_version=1,
@@ -2099,7 +2107,13 @@ def build_production_runtime(
         ).connection.account_id
 
     try:
-        llm_runtime, settings_service, credential_service, llm_status_service = _build_llm_runtime(
+        (
+            llm_runtime,
+            settings_service,
+            credential_service,
+            llm_status_service,
+            prompt_registry,
+        ) = _build_llm_runtime(
             settings_path=root / "settings" / "app-settings.json",
             prompt_manifest_path=prompt_manifest_path,
             unit_of_work_factory=unit_of_work_factory,
@@ -2108,6 +2122,7 @@ def build_production_runtime(
             environment=oauth_environment.value,
             release_version=release_version,
             runtime_selection=runtime_selection,
+            prompt_execution_scope=prompt_execution_scope,
         )
     except RuntimeError as error:
         connector_registry.close_all()
@@ -2133,7 +2148,7 @@ def build_production_runtime(
         now_ms=clock.now_ms,
         max_bundle_bytes=256 * 1024,
     )
-    prompt_active = True
+    prompt_active = prompt_registry.product_release_ready
     workflow_runtime: Any
     connector_reader = CircuitProtectedConnectorReadPort(
         delegate=google_connector.read_port,
@@ -2271,6 +2286,7 @@ def build_production_runtime(
             checkpoint_port=checkpoint,
             retrieval_cache=retrieval_cache,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             timezone_provider=lambda: settings_service.get_settings().timezone,
             work_hours_provider=work_hours_provider,
             default_tasklist_id_provider=lambda: (
@@ -2711,6 +2727,7 @@ def build_production_runtime(
             mcp_manifest_path=mcp_manifest_path,
             mcp_executable_path=mcp_executable_path,
             prompt_active=prompt_active,
+            allow_unvalidated_prompt=(prompt_execution_scope == DEVELOPMENT_SMOKE),
             keyring_store=active_keyring_store,
         ),
         api_access_guard=LocalApiAccessGuard(
@@ -2974,12 +2991,14 @@ def _build_llm_runtime(
     environment: str,
     release_version: str,
     runtime_selection: LlmRuntimeSelectionV1,
+    prompt_execution_scope: PromptExecutionScope,
     keyring_store: SecretStorePort | None = None,
 ) -> tuple[
     StructuredInferenceRuntimeRouter,
     JsonSettingsAdapter,
     LlmCredentialRouter,
     LlmRuntimeStatusRouter,
+    PromptRegistry,
 ]:
     settings_service = JsonSettingsAdapter(
         store=FileSettingsStore(settings_path),
@@ -3027,7 +3046,10 @@ def _build_llm_runtime(
             transport=gemini_transport,
             model=DEFAULT_GEMINI_MODEL_ID,
             assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
-                prompt_ref, prompt_input, registry=prompt_registry
+                prompt_ref,
+                prompt_input,
+                registry=prompt_registry,
+                execution_scope=prompt_execution_scope,
             ),
         ),
         ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
@@ -3036,11 +3058,17 @@ def _build_llm_runtime(
             endpoint=runtime_selection.ollama_endpoint,
             model_id=model.model_id,
             assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
-                prompt_ref, prompt_input, registry=prompt_registry
+                prompt_ref,
+                prompt_input,
+                registry=prompt_registry,
+                execution_scope=prompt_execution_scope,
             ),
         ),
         runtime_policy=RuntimePolicy(),
-        schema_repairer=PromptRepairSchemaRepairer(manifest_path=prompt_manifest_path),
+        schema_repairer=PromptRepairSchemaRepairer(
+            manifest_path=prompt_manifest_path,
+            execution_scope=prompt_execution_scope,
+        ),
         prompt_manifest_path=prompt_manifest_path,
         event_recorder=EmitTraceEventHandler(
             unit_of_work_factory=unit_of_work_factory,
@@ -3049,7 +3077,13 @@ def _build_llm_runtime(
             now_ms=now_ms,
         ),
     )
-    return structured_inference, settings_service, credential_service, status_service
+    return (
+        structured_inference,
+        settings_service,
+        credential_service,
+        status_service,
+        prompt_registry,
+    )
 
 
 def _write_mcp_manifest(runtime_root: Path, registry: SignedToolRegistry) -> Path:

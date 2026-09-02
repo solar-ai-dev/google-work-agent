@@ -142,6 +142,10 @@ from google_work_agent.application.agents.planning.contracts.domain_validation i
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
+)
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.action.calendar_conflict_policy import (
     CalendarWorkHours,
@@ -350,6 +354,7 @@ class _WorkflowRuntimeComposition:
         mcp_process_instance_id: Callable[[], str] | None = None,
         graph_profile: GraphProfile = GraphProfile.SIX_ROLE_BASELINE,
         prompt_manifest_path: Path | None = None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         timezone_provider: Callable[[], str] | None = None,
         work_hours_provider: Callable[[], CalendarWorkHours] | None = None,
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
@@ -500,6 +505,7 @@ class _WorkflowRuntimeComposition:
         entry_subgraphs = build_pre_analysis_subgraphs(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             connector_reader=connector_reader.connector_reader,
             tool_catalog=tool_catalog,
             id_factory=id_factory,
@@ -520,6 +526,7 @@ class _WorkflowRuntimeComposition:
         self._analysis_subgraph = WorkAnalysisSubgraph(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             transition_run=self._transition_run,
@@ -530,6 +537,7 @@ class _WorkflowRuntimeComposition:
         self._planning_subgraph = PlanningSubgraph(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=cast(Any, self._merge_decision),
@@ -541,6 +549,7 @@ class _WorkflowRuntimeComposition:
         self._review_subgraph = ReviewSubgraph(
             llm_runtime=self._llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             graph_profile=self._graph_profile,
             merge_decision=self._merge_decision,

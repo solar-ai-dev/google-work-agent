@@ -126,12 +126,7 @@ def test_production_provider__dispatch_uses_the__canonical_prompt_assembler() ->
     ollama = (SOURCE_ROOT / "adapters/llm/ollama/transport.py").read_text(encoding="utf-8")
 
     assert composition.count("assemble_instruction_text=lambda prompt_ref, prompt_input") == 2
-    assert (
-        composition.count(
-            "assemble_prompt(\n                prompt_ref, prompt_input, registry=prompt_registry"
-        )
-        == 2
-    )
+    assert composition.count("execution_scope=prompt_execution_scope") >= 4
     assert "resolve_instruction_text" not in composition
     for provider_source in (gemini, ollama):
         assert "self.assemble_instruction_text(prompt_ref, prompt_input)" in provider_source

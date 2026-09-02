@@ -807,6 +807,16 @@ DRAFT
 
 검증되지 않은 Prompt는 Artifact로 존재할 수 있으나 Runtime에서 선택할 수 없다.
 
+### 9.5 Prompt execution scope와 release evidence
+
+Prompt 실행 Scope는 다음 closed vocabulary만 사용한다.
+
+- `PRODUCT_RELEASE`: `SIGNED_RELEASE_MANIFEST` composition만 선택한다. 모든 current Slot이 `RUNTIME_ACTIVE`이고 DEV·HOLDOUT·Safety·Manifest Approval flag와 immutable evidence metadata가 완전해야 한다. `DRAFT`, `DEV_VALIDATED`, `HOLDOUT_VALIDATED`, `RETIRED`는 신규 실행을 fail closed한다. 환경 변수로 이 Scope를 변경할 수 없다.
+- `DEVELOPMENT_SMOKE`: `EXPLICIT_DEVELOPMENT` composition만 선택한다. 실험 전 `DRAFT` baseline의 실제 Product workflow smoke를 허용하지만 release activation이나 Prompt 품질 통과를 뜻하지 않는다. Readiness는 `UNVALIDATED_BASELINE`을 명시한다. `RETIRED`는 신규 실행할 수 없다.
+- `EVALUATION`: offline candidate evaluation 전용이다. Product user runtime과 분리하고 Gold·Grader·expected output·evaluation identity를 Product Prompt input에 넣지 않는다.
+
+`RUNTIME_ACTIVE`/`RETIRED` entry의 activation evidence metadata는 target model identity와 artifact hash, Prompt source hash, input/output schema version, Dataset artifact path/hash, Grader artifact path/hash/version, 실행 UTC timestamp, Node DEV/HOLDOUT/Safety 결과 artifact path/hash, Manifest Approval artifact path/hash를 포함한다. 모든 path는 Prompt bundle 내부 상대 경로이며 manifest가 고정한 SHA-256과 실제 bytes가 일치해야 한다. Flag나 status 문자열만으로 release evidence를 주장할 수 없다. Signed Release bundle은 21개 exact Slot의 source hash와 이 evidence chain을 packaging 전에 검증한다.
+
 Node DEV·Node HOLDOUT·Safety Gate는 고정 Sampling 조건에서 Item당 1회 평가한다(`12` 18.2). Temperature는 Gate Configuration에서 명시적으로 고정하고, Seed는 Provider가 지원함이 확인된 경우에만 고정한다 — 완전한 bit-identical Determinism을 보장하는 것은 아니며 best-effort 재현성이다. 반복 Trial Consistency·평균·분산·Bootstrap Confidence Interval 평가는 `13` Evaluation 소관이며 Gate로 옮기지 않는다.
 
 ---
@@ -1033,5 +1043,4 @@ Holdout Gold 원문
 - Agent는 필요 시 파일명·MIME Type·크기·Attachment Descriptor만 사용한다.
 - Download/Stage/Hash Verification/MIME 조립/Claim V2 검증 실패는 `DETERMINISTIC` 또는 `TERMINAL` Runtime 처리이며 LLM Repair·Semantic Revision 대상으로 바꾸지 않는다.
 - Claim V2와 Attachment integrity는 제품 Runtime 안전 계약이므로 Agent Profile 실험의 독립변수로 변경하지 않는다.
-
 

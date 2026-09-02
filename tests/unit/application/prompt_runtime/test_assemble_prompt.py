@@ -16,6 +16,8 @@ from google_work_agent.application.prompt_runtime.contracts.failure_record impor
     build_failure_record_v1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    DEVELOPMENT_SMOKE,
+    EVALUATION,
     PromptRegistry,
 )
 
@@ -98,7 +100,7 @@ def test_assemble_prompt__adds_bounded__failure_instruction(tmp_path: Path) -> N
     assert "experiment_disposition" not in assembled
 
 
-def test_evaluation_scope_and__product_scope_use_the__same_active_base_source() -> None:
+def test_evaluation_and_development_scope__use_same__draft_base_source() -> None:
     registry = PromptRegistry()
     prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
 
@@ -106,25 +108,44 @@ def test_evaluation_scope_and__product_scope_use_the__same_active_base_source() 
         prompt_ref,
         _projection(),
         registry=registry,
-        activation_scope="EVALUATION",
+        execution_scope=EVALUATION,
     )
-    product_assembled = assemble_prompt(prompt_ref, _projection(), registry=registry)
+    development_assembled = assemble_prompt(
+        prompt_ref,
+        _projection(),
+        registry=registry,
+        execution_scope=DEVELOPMENT_SMOKE,
+    )
 
     assert evaluation_assembled.startswith("You are the Planning answer-composition node.")
-    assert product_assembled == evaluation_assembled
+    assert development_assembled == evaluation_assembled
 
 
 def test_unknown_activation__scope_fails__closed() -> None:
     registry = PromptRegistry()
     prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
 
-    with pytest.raises(PromptAssemblyError, match="unknown Prompt activation scope"):
+    with pytest.raises(PromptAssemblyError, match="unknown Prompt execution scope"):
         assemble_prompt(
             prompt_ref,
             _projection(),
             registry=registry,
-            activation_scope="OTHER",  # type: ignore[arg-type]
+            execution_scope="OTHER",  # type: ignore[arg-type]
         )
+
+
+def test_development_smoke__does_not_admit__evaluation_only_fields() -> None:
+    registry = PromptRegistry()
+    prompt_ref = registry.lookup_for_development_smoke("planning.compose_answer")
+
+    for field in ("gold", "grader", "expected_output", "evaluation_id"):
+        with pytest.raises(PromptAssemblyError):
+            assemble_prompt(
+                prompt_ref,
+                {**_projection(), field: "forbidden"},
+                registry=registry,
+                execution_scope=DEVELOPMENT_SMOKE,
+            )
 
 
 def test_repair_envelope__reuses_base_source__and_binds_candidate(tmp_path: Path) -> None:

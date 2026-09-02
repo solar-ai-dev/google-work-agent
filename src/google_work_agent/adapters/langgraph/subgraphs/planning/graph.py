@@ -110,6 +110,8 @@ from google_work_agent.application.agents.state_artifact import (
     StateArtifactRefV1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -160,6 +162,7 @@ class PlanningSubgraph:
         dependencies: PlanningRuntimeDependencies | None = None,
         llm_runtime: StructuredInferencePort | None = None,
         prompt_manifest_path: Path | None = None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         id_factory: Callable[[], str] | None = None,
         graph_profile: GraphProfile | None = None,
         merge_decision: MergeDecision | None = None,
@@ -182,13 +185,18 @@ class PlanningSubgraph:
         self._default_calendar_id_provider = default_calendar_id_provider
         self._prompt_refs: dict[str, PromptReference] = {}
         self._prompt_manifest_path = prompt_manifest_path or default_prompt_manifest_path()
+        self._prompt_execution_scope = prompt_execution_scope
         if llm_runtime is not None:
             self._prompt_refs = {
                 "planning.outline_answer": load_prompt_reference(
-                    "planning.outline_answer", self._prompt_manifest_path
+                    "planning.outline_answer",
+                    self._prompt_manifest_path,
+                    execution_scope=prompt_execution_scope,
                 ),
                 "planning.compose_answer": load_prompt_reference(
-                    "planning.compose_answer", self._prompt_manifest_path
+                    "planning.compose_answer",
+                    self._prompt_manifest_path,
+                    execution_scope=prompt_execution_scope,
                 ),
             }
 
@@ -655,7 +663,11 @@ class PlanningSubgraph:
                 "planning.draft_action_objective_per_output_route",
                 "planning.compose_arguments_per_output_route",
             }:
-                prompt_ref = load_prompt_reference(prompt_id, self._prompt_manifest_path)
+                prompt_ref = load_prompt_reference(
+                    prompt_id,
+                    self._prompt_manifest_path,
+                    execution_scope=self._prompt_execution_scope,
+                )
                 self._prompt_refs[prompt_id] = prompt_ref
             output_schema = schemas.get(prompt_id)
             if prompt_ref is None or output_schema is None:

@@ -43,6 +43,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRouteResultV1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -104,6 +106,7 @@ class ToolRoutingSubgraph:
         llm_runtime: StructuredInferencePort,
         tool_catalog: SignedToolRegistry,
         prompt_manifest_path: Path | None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         graph_profile: GraphProfile,
         merge_decision: MergeDecision,
         confirm_inline: ConfirmInline,
@@ -113,10 +116,14 @@ class ToolRoutingSubgraph:
         self._tool_catalog = tool_catalog
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
         self._determine_prompt_ref = load_prompt_reference(
-            "tool_routing.determine_io_resources", manifest_path
+            "tool_routing.determine_io_resources",
+            manifest_path,
+            execution_scope=prompt_execution_scope,
         )
         self._select_prompt_ref = load_prompt_reference(
-            "tool_routing.select_tool_if_needed", manifest_path
+            "tool_routing.select_tool_if_needed",
+            manifest_path,
+            execution_scope=prompt_execution_scope,
         )
         self._graph_profile = graph_profile
         self._merge_decision = merge_decision
@@ -474,6 +481,7 @@ def build_tool_routing_subgraph(
     tool_catalog: SignedToolRegistry,
     llm_runtime: StructuredInferencePort,
     prompt_manifest_path: Path | None,
+    prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
     id_factory: Callable[[], str],
     merge_decision: MergeDecision,
     graph_profile: GraphProfile,
@@ -483,6 +491,7 @@ def build_tool_routing_subgraph(
         llm_runtime=llm_runtime,
         tool_catalog=tool_catalog,
         prompt_manifest_path=prompt_manifest_path,
+        prompt_execution_scope=prompt_execution_scope,
         graph_profile=graph_profile,
         merge_decision=merge_decision,
         confirm_inline=confirm_inline,

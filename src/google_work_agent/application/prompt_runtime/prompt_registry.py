@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, Literal, cast
 
 from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input_contract import (
     REQUIRED_PROMPT_RUNTIME_NODE_BY_SLOT,
@@ -25,6 +26,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _ACTIVATION_STATUSES: Final = frozenset(
     {"DRAFT", "DEV_VALIDATED", "HOLDOUT_VALIDATED", "RUNTIME_ACTIVE", "RETIRED"}
 )
+PRODUCT_RELEASE: Final = "PRODUCT_RELEASE"
+DEVELOPMENT_SMOKE: Final = "DEVELOPMENT_SMOKE"
+EVALUATION: Final = "EVALUATION"
+PromptExecutionScope = Literal[
+    "PRODUCT_RELEASE", "DEVELOPMENT_SMOKE", "EVALUATION"
+]
 _MANIFEST_ROOT_FIELDS: Final = {
     "schema_version",
     "prompt_bundle_version",
@@ -42,6 +49,7 @@ _MANIFEST_SLOT_FIELDS: Final = {
     "node_holdout_pass",
     "safety_gate_pass",
     "manifest_approved",
+    "activation_evidence",
     "agent_role",
     "subgraph_name",
     "node_name",
@@ -51,6 +59,24 @@ _MANIFEST_SLOT_FIELDS: Final = {
     "output_schema_version",
     "source",
 }
+_ACTIVATION_EVIDENCE_FIELDS: Final = {
+    "schema_version",
+    "target_model_id",
+    "target_model_artifact_sha256",
+    "prompt_source_sha256",
+    "input_schema_version",
+    "output_schema_version",
+    "dataset",
+    "grader",
+    "grader_version",
+    "node_dev_result",
+    "node_holdout_result",
+    "safety_gate_result",
+    "manifest_approval",
+    "executed_at_utc",
+}
+_EVIDENCE_ARTIFACT_FIELDS: Final = {"path", "sha256", "result"}
+_RFC3339_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 
 
 class PromptRegistryError(ValueError):
@@ -73,6 +99,23 @@ class PromptSelectionKey:
 
 
 @dataclass(frozen=True, slots=True)
+class _ActivationEvidence:
+    target_model_id: str
+    target_model_artifact_sha256: str
+    prompt_source_sha256: str
+    input_schema_version: int
+    output_schema_version: int
+    dataset_path: Path
+    grader_path: Path
+    grader_version: str
+    node_dev_result_path: Path
+    node_holdout_result_path: Path
+    safety_gate_result_path: Path
+    manifest_approval_path: Path
+    executed_at_utc: str
+
+
+@dataclass(frozen=True, slots=True)
 class _PromptManifestEntry:
     prompt_slot_id: str
     prompt_id: str
@@ -84,6 +127,7 @@ class _PromptManifestEntry:
     node_holdout_pass: bool
     safety_gate_pass: bool
     manifest_approved: bool
+    activation_evidence: _ActivationEvidence | None
     selection_key: PromptSelectionKey
     source_path: Path
 
@@ -161,10 +205,23 @@ class PromptRegistry:
             entry = self._by_key[selection_key]
         except KeyError as error:
             raise LookupError(f"Prompt selection key is not registered: {selection_key}") from error
-        return self._to_runtime_reference(entry)
+        return self._to_product_release_reference(entry)
 
     def lookup_by_id(self, prompt_slot_id: str) -> PromptReference:
-        return self._to_runtime_reference(self._entry(prompt_slot_id))
+        """Keep the historical lookup name fail-closed for signed Product use."""
+
+        return self.lookup_for_product_release(prompt_slot_id)
+
+    def lookup_for_product_release(self, prompt_slot_id: str) -> PromptReference:
+        return self._to_product_release_reference(self._entry(prompt_slot_id))
+
+    def lookup_for_development_smoke(self, prompt_slot_id: str) -> PromptReference:
+        entry = self._entry(prompt_slot_id)
+        if entry.activation_status == "RETIRED":
+            raise InactivePromptArtifactError(
+                f"{entry.prompt_slot_id} is retired and cannot start a development execution"
+            )
+        return self._to_reference(entry)
 
     def lookup_for_evaluation(self, prompt_slot_id: str) -> PromptReference:
         """Expose a DRAFT reference only to offline activation-gate evaluation."""
@@ -175,13 +232,25 @@ class PromptRegistry:
         entry = self._entry(prompt_slot_id)
         return _read_verified_source(entry)
 
+    @property
+    def product_release_ready(self) -> bool:
+        return all(
+            entry.activation_status == "RUNTIME_ACTIVE"
+            and entry.activation_evidence_complete
+            for entry in self._by_id.values()
+        )
+
+    def require_product_release_ready(self) -> None:
+        for prompt_slot_id in sorted(self._by_id):
+            self.lookup_for_product_release(prompt_slot_id)
+
     def _entry(self, prompt_slot_id: str) -> _PromptManifestEntry:
         try:
             return self._by_id[prompt_slot_id]
         except KeyError as error:
             raise LookupError(f"Prompt slot is not registered: {prompt_slot_id}") from error
 
-    def _to_runtime_reference(self, entry: _PromptManifestEntry) -> PromptReference:
+    def _to_product_release_reference(self, entry: _PromptManifestEntry) -> PromptReference:
         if entry.activation_status != "RUNTIME_ACTIVE" or not entry.activation_evidence_complete:
             raise InactivePromptArtifactError(
                 f"{entry.prompt_slot_id} exists but is not activation-gate complete: "
@@ -247,6 +316,21 @@ class PromptRegistry:
             manifest_approved=_require_bool(
                 item.get("manifest_approved"), f"{prefix}.manifest_approved"
             ),
+            activation_evidence=_parse_activation_evidence(
+                item.get("activation_evidence"),
+                prefix=prefix,
+                manifest_dir=self._manifest_path.parent,
+                prompt_slot_id=prompt_slot_id,
+                prompt_source_sha256=_require_sha256(
+                    item.get("content_hash"), f"{prefix}.content_hash"
+                ),
+                input_schema_version=_require_int(
+                    item.get("input_schema_version"), f"{prefix}.input_schema_version"
+                ),
+                output_schema_version=_require_int(
+                    item.get("output_schema_version"), f"{prefix}.output_schema_version"
+                ),
+            ),
             selection_key=PromptSelectionKey(
                 agent_role=_require_string(item.get("agent_role"), f"{prefix}.agent_role"),
                 subgraph_name=_require_string(item.get("subgraph_name"), f"{prefix}.subgraph_name"),
@@ -284,14 +368,26 @@ def default_prompt_manifest_path() -> Path:
     return _DEFAULT_MANIFEST_PATH
 
 
-def load_prompt_reference(prompt_id: str, manifest_path: Path | None = None) -> PromptReference:
+def load_prompt_reference(
+    prompt_id: str,
+    manifest_path: Path | None = None,
+    *,
+    execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
+) -> PromptReference:
     path = (manifest_path or _DEFAULT_MANIFEST_PATH).resolve()
     contract_path = (
         path.parent / "prompt_runtime_input_contract_v1.json"
         if path.parent != _PACKAGE_DIR
         else default_prompt_input_contract_path()
     )
-    return PromptRegistry(path, contract_path.resolve()).lookup_by_id(prompt_id)
+    registry = PromptRegistry(path, contract_path.resolve())
+    if execution_scope == PRODUCT_RELEASE:
+        return registry.lookup_for_product_release(prompt_id)
+    if execution_scope == DEVELOPMENT_SMOKE:
+        return registry.lookup_for_development_smoke(prompt_id)
+    if execution_scope == EVALUATION:
+        return registry.lookup_for_evaluation(prompt_id)
+    raise PromptRegistryError(f"unknown Prompt execution scope: {execution_scope}")
 
 
 def _read_verified_source(entry: _PromptManifestEntry) -> str:
@@ -336,6 +432,10 @@ def _validate_activation_lifecycle(entry: _PromptManifestEntry) -> None:
     status = entry.activation_status
     if status == "DRAFT" and any(evidence):
         raise PromptRegistryError(f"{entry.prompt_slot_id} DRAFT cannot claim release evidence")
+    if status not in {"RUNTIME_ACTIVE", "RETIRED"} and entry.activation_evidence is not None:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} cannot attach release evidence before activation"
+        )
     if status == "DEV_VALIDATED" and evidence != (True, False, False, False):
         raise PromptRegistryError(f"{entry.prompt_slot_id} DEV_VALIDATED evidence is inconsistent")
     if status == "HOLDOUT_VALIDATED" and (
@@ -348,6 +448,112 @@ def _validate_activation_lifecycle(entry: _PromptManifestEntry) -> None:
         raise PromptRegistryError(
             f"{entry.prompt_slot_id} {status} requires complete release evidence"
         )
+    if status in {"RUNTIME_ACTIVE", "RETIRED"} and entry.activation_evidence is None:
+        raise PromptRegistryError(
+            f"{entry.prompt_slot_id} {status} requires immutable activation evidence"
+        )
+
+
+def _parse_activation_evidence(
+    value: object,
+    *,
+    prefix: str,
+    manifest_dir: Path,
+    prompt_slot_id: str,
+    prompt_source_sha256: str,
+    input_schema_version: int,
+    output_schema_version: int,
+) -> _ActivationEvidence | None:
+    if value is None:
+        return None
+    payload = _require_object(value, f"{prefix}.activation_evidence")
+    _require_exact_fields(
+        payload, _ACTIVATION_EVIDENCE_FIELDS, f"{prefix}.activation_evidence"
+    )
+    evidence_schema_version = _require_int(
+        payload.get("schema_version"), f"{prefix}.activation_evidence.schema_version"
+    )
+    if evidence_schema_version != 1:
+        raise PromptRegistryError(f"{prefix}.activation_evidence schema_version must be 1")
+    if payload.get("prompt_source_sha256") != prompt_source_sha256:
+        raise PromptRegistryError(f"{prefix}.activation_evidence Prompt source hash mismatch")
+    if payload.get("input_schema_version") != input_schema_version:
+        raise PromptRegistryError(f"{prefix}.activation_evidence input schema mismatch")
+    if payload.get("output_schema_version") != output_schema_version:
+        raise PromptRegistryError(f"{prefix}.activation_evidence output schema mismatch")
+    executed_at_utc = _require_string(
+        payload.get("executed_at_utc"), f"{prefix}.activation_evidence.executed_at_utc"
+    )
+    if _RFC3339_UTC.fullmatch(executed_at_utc) is None:
+        raise PromptRegistryError(f"{prefix}.activation_evidence timestamp must be UTC RFC3339")
+
+    artifacts = {
+        name: _validate_evidence_artifact(
+            payload.get(name),
+            path=f"{prefix}.activation_evidence.{name}",
+            manifest_dir=manifest_dir,
+            prompt_slot_id=prompt_slot_id,
+        )
+        for name in (
+            "dataset",
+            "grader",
+            "node_dev_result",
+            "node_holdout_result",
+            "safety_gate_result",
+            "manifest_approval",
+        )
+    }
+    return _ActivationEvidence(
+        target_model_id=_require_string(
+            payload.get("target_model_id"), f"{prefix}.activation_evidence.target_model_id"
+        ),
+        target_model_artifact_sha256=_require_sha256(
+            payload.get("target_model_artifact_sha256"),
+            f"{prefix}.activation_evidence.target_model_artifact_sha256",
+        ),
+        prompt_source_sha256=prompt_source_sha256,
+        input_schema_version=input_schema_version,
+        output_schema_version=output_schema_version,
+        dataset_path=artifacts["dataset"],
+        grader_path=artifacts["grader"],
+        grader_version=_require_string(
+            payload.get("grader_version"), f"{prefix}.activation_evidence.grader_version"
+        ),
+        node_dev_result_path=artifacts["node_dev_result"],
+        node_holdout_result_path=artifacts["node_holdout_result"],
+        safety_gate_result_path=artifacts["safety_gate_result"],
+        manifest_approval_path=artifacts["manifest_approval"],
+        executed_at_utc=executed_at_utc,
+    )
+
+
+def _validate_evidence_artifact(
+    value: object,
+    *,
+    path: str,
+    manifest_dir: Path,
+    prompt_slot_id: str,
+) -> Path:
+    payload = _require_object(value, path)
+    _require_exact_fields(payload, _EVIDENCE_ARTIFACT_FIELDS, path)
+    if payload.get("result") != "PASS":
+        raise PromptRegistryError(f"{path}.result must be PASS")
+    relative_text = _require_string(payload.get("path"), f"{path}.path")
+    relative_path = Path(relative_text)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise PromptRegistryError(f"{path}.path must stay inside the Prompt bundle")
+    artifact_path = (manifest_dir / relative_path).resolve()
+    try:
+        artifact_path.relative_to(manifest_dir.resolve())
+        content = artifact_path.read_bytes()
+    except (OSError, ValueError) as error:
+        raise PromptRegistryError(f"{path} artifact is unavailable") from error
+    expected_sha256 = _require_sha256(payload.get("sha256"), f"{path}.sha256")
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
+        raise PromptRegistryError(f"{path} artifact hash mismatch")
+    if prompt_slot_id.encode() not in content:
+        raise PromptRegistryError(f"{path} artifact is not bound to {prompt_slot_id}")
+    return artifact_path
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, object]:
@@ -419,7 +625,11 @@ def _raise_set_mismatch(label: str, expected: frozenset[str], actual: frozenset[
 
 
 __all__ = [
+    "DEVELOPMENT_SMOKE",
+    "EVALUATION",
     "InactivePromptArtifactError",
+    "PRODUCT_RELEASE",
+    "PromptExecutionScope",
     "PromptRegistry",
     "PromptRegistryError",
     "PromptSelectionKey",

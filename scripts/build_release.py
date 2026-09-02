@@ -70,6 +70,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             / "src/google_work_agent/application/tool_registry/tool_registry_manifest.json"
         ),
     )
+    parser.add_argument(
+        "--prompt-manifest",
+        type=Path,
+        default=(
+            REPO_ROOT
+            / "src/google_work_agent/application/prompt_runtime/prompt_manifest.json"
+        ),
+    )
     parser.add_argument("--model-manifest", type=Path)
     parser.add_argument("--local-model-product-decision", type=Path)
     parser.add_argument("--app-version", required=True)
@@ -122,6 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             uninstaller_distribution=arguments.uninstaller_dist.resolve(),
             installed_connector_manifest=arguments.installed_connector_manifest.resolve(),
             signed_tool_registry=arguments.signed_tool_registry.resolve(),
+            prompt_manifest=arguments.prompt_manifest.resolve(),
             model_manifest=(
                 arguments.model_manifest.resolve() if arguments.model_manifest is not None else None
             ),

@@ -35,6 +35,7 @@ class LocalServiceReadinessAggregator(ReadinessAggregator):
     mcp_manifest_path: Path | None = None
     mcp_executable_path: Path | None = None
     prompt_active: bool = True
+    allow_unvalidated_prompt: bool = False
     keyring_store: SecretStorePort | None = None
 
     @property
@@ -53,6 +54,7 @@ class LocalServiceReadinessAggregator(ReadinessAggregator):
             self._mcp_executable_check(),
             self._mcp_check(),
             self._tool_schema_check(),
+            self._prompt_activation_check(),
         )
         state = (
             ReadinessState.READY
@@ -177,4 +179,23 @@ class LocalServiceReadinessAggregator(ReadinessAggregator):
             name="tool_schema",
             state=ReadinessState.NOT_READY,
             detail="TOOL_SCHEMA_UNAVAILABLE",
+        )
+
+    def _prompt_activation_check(self) -> ReadinessCheckResult:
+        if self.prompt_active:
+            return ReadinessCheckResult(
+                name="prompt_activation",
+                state=ReadinessState.READY,
+                detail="RUNTIME_ACTIVE",
+            )
+        if self.allow_unvalidated_prompt:
+            return ReadinessCheckResult(
+                name="prompt_activation",
+                state=ReadinessState.READY,
+                detail="UNVALIDATED_BASELINE",
+            )
+        return ReadinessCheckResult(
+            name="prompt_activation",
+            state=ReadinessState.NOT_READY,
+            detail="PROMPT_RUNTIME_INACTIVE",
         )

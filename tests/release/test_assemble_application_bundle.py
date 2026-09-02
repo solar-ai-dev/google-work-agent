@@ -16,6 +16,7 @@ from google_work_agent.ports.llm.local_model_product_decision import (
 )
 from release.profiles import DeploymentProfile
 from tests.support.bundle_fixture import create_bundle_inputs
+from tests.support.canonical_prompt_runtime import deactivate_prompt_slot
 
 
 def test_api_only__bundle_materializes_exact__connector_tool_artifacts(tmp_path: Path) -> None:
@@ -104,6 +105,18 @@ def test_bundle_rejects__sensitive_or__source_artifacts(tmp_path: Path) -> None:
     (inputs.frontend_distribution / ".env").write_text("SECRET=value", encoding="utf-8")
 
     with pytest.raises(ValueError, match="forbidden release artifact"):
+        assemble_application_bundle(
+            profile=DeploymentProfile.API_ONLY,
+            inputs=inputs,
+            output_root=tmp_path / "bundle",
+        )
+
+
+def test_signed_bundle__rejects_draft__prompt_baseline(tmp_path: Path) -> None:
+    inputs = create_bundle_inputs(tmp_path / "inputs")
+    deactivate_prompt_slot(inputs.prompt_manifest, "planning.compose_answer")
+
+    with pytest.raises(RuntimeError, match="DRAFT"):
         assemble_application_bundle(
             profile=DeploymentProfile.API_ONLY,
             inputs=inputs,

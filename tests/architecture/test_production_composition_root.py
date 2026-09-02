@@ -126,7 +126,7 @@ def test_installed_core_dependencies__initialize_before_ready__in_canonical_orde
     checkpoint = runtime.index("checkpoint = SqliteCheckpointAdapter(")
     keyring = runtime.index("active_keyring_store =")
     connector = runtime.index("connector_bundle = _build_connectors(")
-    llm = runtime.index("llm_runtime, settings_service")
+    llm = runtime.index(") = _build_llm_runtime(")
 
     assert migration < checkpoint < keyring < connector < llm
 

@@ -11,6 +11,10 @@ from pathlib import Path
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     build_failure_record_v1,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
@@ -28,7 +32,8 @@ class PromptRepairSchemaRepairer:
     """Re-invoke the same provider with the exact active base PromptRef."""
 
     manifest_path: Path | None = None
-    prompt_loader: Callable[[str, Path], PromptReference] | None = None
+    execution_scope: PromptExecutionScope = PRODUCT_RELEASE
+    prompt_loader: Callable[..., PromptReference] | None = None
 
     def repair(
         self,
@@ -54,7 +59,11 @@ class PromptRepairSchemaRepairer:
         manifest_path = self.manifest_path or default_prompt_manifest_path()
         loader = self.prompt_loader or load_prompt_reference
         try:
-            repair_prompt_ref = loader(prompt_ref.prompt_id, manifest_path)
+            repair_prompt_ref = loader(
+                prompt_ref.prompt_id,
+                manifest_path,
+                execution_scope=self.execution_scope,
+            )
         except (LookupError, InactivePromptArtifactError) as error:
             raise LLMInvocationError(
                 LLMErrorCode.OUTPUT_SCHEMA_INVALID,

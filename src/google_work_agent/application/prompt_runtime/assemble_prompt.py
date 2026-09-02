@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Literal
 
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     FailureRecordValidationError,
@@ -13,7 +12,13 @@ from google_work_agent.application.prompt_runtime.contracts.failure_record impor
 from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input_contract import (
     PromptRuntimeInputContractError,
 )
-from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
+from google_work_agent.application.prompt_runtime.prompt_registry import (
+    DEVELOPMENT_SMOKE,
+    EVALUATION,
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
+    PromptRegistry,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 
 
@@ -27,24 +32,27 @@ def assemble_prompt(
     failure_record: Mapping[str, object] | None = None,
     *,
     registry: PromptRegistry | None = None,
-    activation_scope: Literal["PRODUCT", "EVALUATION"] = "PRODUCT",
+    execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
 ) -> str:
     """Assemble one registered base source with a bounded current-Run projection.
 
-    Product dispatch remains active-only.  The explicit Evaluation scope is the
-    sole path that may assemble a DRAFT candidate for offline activation gates.
+    Product Release dispatch remains active-only. Explicit Development Smoke
+    may use a non-retired baseline without claiming release activation, while
+    Evaluation remains isolated from Product execution.
     Schema repair reuses the same base source through the exact three-field
     repair envelope instead of selecting a synthetic ``<prompt_id>.repair``
     source.
     """
 
     prompt_registry = registry or PromptRegistry()
-    if activation_scope == "PRODUCT":
-        selected = prompt_registry.lookup_by_id(prompt_ref.prompt_id)
-    elif activation_scope == "EVALUATION":
+    if execution_scope == PRODUCT_RELEASE:
+        selected = prompt_registry.lookup_for_product_release(prompt_ref.prompt_id)
+    elif execution_scope == DEVELOPMENT_SMOKE:
+        selected = prompt_registry.lookup_for_development_smoke(prompt_ref.prompt_id)
+    elif execution_scope == EVALUATION:
         selected = prompt_registry.lookup_for_evaluation(prompt_ref.prompt_id)
     else:
-        raise PromptAssemblyError(f"unknown Prompt activation scope: {activation_scope}")
+        raise PromptAssemblyError(f"unknown Prompt execution scope: {execution_scope}")
     if selected != prompt_ref:
         raise PromptAssemblyError("PromptRef does not match the registered artifact")
     base_projection, candidate_output, bounded_failure = _resolve_assembly_input(

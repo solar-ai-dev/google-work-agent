@@ -19,6 +19,7 @@ from google_work_agent.adapters.connectors.runtime.load_installed_connector_mani
 from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
     build_manifest_payload_for_descriptors,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
@@ -50,6 +51,7 @@ class ApplicationBundleInputs:
     uninstaller_distribution: Path
     installed_connector_manifest: Path
     signed_tool_registry: Path
+    prompt_manifest: Path
     model_manifest: Path | None = None
     local_model_product_decision: Path | None = None
 
@@ -66,6 +68,7 @@ def assemble_application_bundle(
     """Copy verified build inputs, materialize projections, and reject unsafe payloads."""
 
     destination = output_root.resolve()
+    PromptRegistry(inputs.prompt_manifest).require_product_release_ready()
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("output_root must be absent or empty")
     destination.mkdir(parents=True, exist_ok=True)

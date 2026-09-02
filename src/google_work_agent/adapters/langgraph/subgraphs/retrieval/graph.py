@@ -126,6 +126,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     InputToolRouteV1,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -331,6 +333,7 @@ class RetrievalSubgraph:
         *,
         llm_runtime: StructuredInferencePort,
         prompt_manifest_path: Path | None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
         transition_run: Callable[[str, str], None],
@@ -345,10 +348,16 @@ class RetrievalSubgraph:
     ) -> None:
         self._llm_runtime = llm_runtime
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
-        self._plan_query_prompt_ref = load_prompt_reference("retrieval.plan_query", manifest_path)
-        self._select_prompt_ref = load_prompt_reference("retrieval.select_evidence", manifest_path)
+        self._plan_query_prompt_ref = load_prompt_reference(
+            "retrieval.plan_query", manifest_path, execution_scope=prompt_execution_scope
+        )
+        self._select_prompt_ref = load_prompt_reference(
+            "retrieval.select_evidence", manifest_path, execution_scope=prompt_execution_scope
+        )
         self._sufficiency_prompt_ref = load_prompt_reference(
-            "retrieval.assess_sufficiency", manifest_path
+            "retrieval.assess_sufficiency",
+            manifest_path,
+            execution_scope=prompt_execution_scope,
         )
         self._id_factory = id_factory
         self._graph_profile = graph_profile

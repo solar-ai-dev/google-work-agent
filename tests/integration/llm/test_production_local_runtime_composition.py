@@ -5,7 +5,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from tests.support.canonical_prompt_runtime import copy_prompt_runtime_artifacts
+from tests.support.canonical_prompt_runtime import (
+    activate_all_prompt_slots,
+    copy_prompt_runtime_artifacts,
+)
 from tests.support.fakes import FakeAPIProviderTransport, FakeOllamaTransport
 
 from google_work_agent.adapters.llm.runtime.evaluate_local_runtime_eligibility import (
@@ -129,11 +132,13 @@ def _build_signed_container(
     original_build_connectors = composition._build_connectors
 
     def build_external_connector_leaf(**kwargs: object) -> DevelopmentConnectorBundle:
+        registry = composition.load_development_tool_registry()
         kwargs.update(
             configuration_source="EXPLICIT_DEVELOPMENT",
             verified_release_files=(),
             code_signature_verified_paths=frozenset(),
-            mcp_manifest_path=composition._write_mcp_manifest(runtime_root),
+            development_tool_registry=registry,
+            mcp_manifest_path=composition._write_mcp_manifest(runtime_root, registry),
             working_directory=Path(__file__).resolve().parents[3],
         )
         return original_build_connectors(**kwargs)  # type: ignore[arg-type]
@@ -164,6 +169,7 @@ def test_signed_local_decision__production_composition__invokes_only_local_provi
 ) -> None:
     install_root = tmp_path / "install"
     prompt_manifest, _ = copy_prompt_runtime_artifacts(install_root)
+    activate_all_prompt_slots(prompt_manifest)
     frontend = install_root / "frontend" / "index.html"
     frontend.parent.mkdir(parents=True)
     frontend.write_text("<!doctype html>", encoding="utf-8")

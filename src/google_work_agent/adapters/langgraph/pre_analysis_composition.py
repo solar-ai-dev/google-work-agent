@@ -20,6 +20,7 @@ from google_work_agent.adapters.langgraph.subgraphs.tool_routing.graph import (
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
 )
+from google_work_agent.application.prompt_runtime.prompt_registry import PromptExecutionScope
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
@@ -40,6 +41,7 @@ def build_pre_analysis_subgraphs(
     *,
     llm_runtime: StructuredInferencePort,
     prompt_manifest_path: Path | None,
+    prompt_execution_scope: PromptExecutionScope,
     connector_reader: ConnectorReadPort,
     tool_catalog: SignedToolRegistry,
     id_factory: Callable[[], str],
@@ -66,6 +68,7 @@ def build_pre_analysis_subgraphs(
         request_understanding=RequestUnderstandingSubgraph(
             llm_runtime=llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             graph_profile=graph_profile,
             transition_run=transition_run,
@@ -76,6 +79,7 @@ def build_pre_analysis_subgraphs(
             tool_catalog=tool_catalog,
             llm_runtime=llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             merge_decision=merge_decision,
             graph_profile=graph_profile,
@@ -84,6 +88,7 @@ def build_pre_analysis_subgraphs(
         context_retrieval=RetrievalSubgraph(
             llm_runtime=llm_runtime,
             prompt_manifest_path=prompt_manifest_path,
+            prompt_execution_scope=prompt_execution_scope,
             id_factory=id_factory,
             graph_profile=graph_profile,
             transition_run=transition_run,

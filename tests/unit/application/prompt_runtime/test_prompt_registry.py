@@ -18,6 +18,8 @@ from google_work_agent.application.prompt_runtime.contracts.prompt_runtime_input
     REQUIRED_PROMPT_SLOT_IDS,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    DEVELOPMENT_SMOKE,
+    PRODUCT_RELEASE,
     InactivePromptArtifactError,
     PromptRegistry,
     PromptRegistryError,
@@ -36,9 +38,10 @@ def test_prompt_registry__loads_exact__canonical_slot_set() -> None:
     assert registry.slot_ids == REQUIRED_PROMPT_SLOT_IDS
     assert default_prompt_manifest_path().name == "prompt_manifest.json"
     assert {
-        registry.lookup_by_id(prompt_slot_id).prompt_id
+        registry.lookup_for_development_smoke(prompt_slot_id).prompt_id
         for prompt_slot_id in REQUIRED_PROMPT_SLOT_IDS
     } == REQUIRED_PROMPT_SLOT_IDS
+    assert registry.product_release_ready is False
 
 
 def test_prompt_registry__rejects_draft__product_selection(tmp_path: Path) -> None:
@@ -50,7 +53,7 @@ def test_prompt_registry__rejects_draft__product_selection(tmp_path: Path) -> No
         registry.lookup_by_id("planning.compose_answer")
 
 
-def test_all_product__prompts_have__complete_release_evidence() -> None:
+def test_all_baseline__prompts_are_honest__pre_experiment_drafts() -> None:
     registry = PromptRegistry()
 
     manifest = cast(
@@ -60,9 +63,9 @@ def test_all_product__prompts_have__complete_release_evidence() -> None:
     slots = cast(list[dict[str, object]], manifest["slots"])
     assert len(slots) == 21
     for slot in slots:
-        assert slot["activation_status"] == "RUNTIME_ACTIVE"
+        assert slot["activation_status"] == "DRAFT"
         assert all(
-            slot[field] is True
+            slot[field] is False
             for field in (
                 "node_dev_pass",
                 "node_holdout_pass",
@@ -70,9 +73,9 @@ def test_all_product__prompts_have__complete_release_evidence() -> None:
                 "manifest_approved",
             )
         )
-        assert registry.lookup_by_id(cast(str, slot["prompt_slot_id"])).prompt_id == slot[
-            "prompt_id"
-        ]
+        assert slot["activation_evidence"] is None
+        with pytest.raises(InactivePromptArtifactError):
+            registry.lookup_for_product_release(cast(str, slot["prompt_slot_id"]))
 
 
 def test_prompt_registry__accepts_exact_canonical__activation_status_vocabulary() -> None:
@@ -129,6 +132,72 @@ def test_runtime_active__label_without_gate__evidence_fails_closed(tmp_path: Pat
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(PromptRegistryError, match="requires complete release evidence"):
         PromptRegistry(manifest_path, contract_path)
+
+
+def test_runtime_active__flags_without_actual_artifacts__fails_closed(tmp_path: Path) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    activate_prompt_slot(manifest_path, "planning.compose_answer")
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slot = next(
+        slot
+        for slot in cast(list[dict[str, object]], manifest["slots"])
+        if slot["prompt_slot_id"] == "planning.compose_answer"
+    )
+    slot["activation_evidence"] = None
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(PromptRegistryError, match="immutable activation evidence"):
+        PromptRegistry(manifest_path, contract_path)
+
+
+@pytest.mark.parametrize("activation_status", ["DEV_VALIDATED", "HOLDOUT_VALIDATED"])
+def test_non_active_validated_prompt__is_rejected__by_product_release(
+    tmp_path: Path, activation_status: str
+) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slot = cast(list[dict[str, object]], manifest["slots"])[0]
+    slot["activation_status"] = activation_status
+    slot["node_dev_pass"] = True
+    if activation_status == "HOLDOUT_VALIDATED":
+        slot["node_holdout_pass"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    registry = PromptRegistry(manifest_path, contract_path)
+
+    with pytest.raises(InactivePromptArtifactError, match=activation_status):
+        registry.lookup_for_product_release(cast(str, slot["prompt_slot_id"]))
+
+
+def test_retired_prompt__rejects_new__product_and_development_execution(
+    tmp_path: Path,
+) -> None:
+    manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
+    activate_prompt_slot(manifest_path, "planning.compose_answer")
+    manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    slot = next(
+        slot
+        for slot in cast(list[dict[str, object]], manifest["slots"])
+        if slot["prompt_slot_id"] == "planning.compose_answer"
+    )
+    slot["activation_status"] = "RETIRED"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    registry = PromptRegistry(manifest_path, contract_path)
+
+    with pytest.raises(InactivePromptArtifactError):
+        registry.lookup_for_product_release("planning.compose_answer")
+    with pytest.raises(InactivePromptArtifactError):
+        registry.lookup_for_development_smoke("planning.compose_answer")
+
+
+def test_execution_scope__is_explicit__without_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GWA_PROMPT_EXECUTION_SCOPE", DEVELOPMENT_SMOKE)
+    registry = PromptRegistry()
+
+    with pytest.raises(InactivePromptArtifactError):
+        registry.lookup_for_product_release("planning.compose_answer")
+    assert PRODUCT_RELEASE == "PRODUCT_RELEASE"
 
 
 @pytest.mark.parametrize(

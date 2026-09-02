@@ -32,6 +32,8 @@ from google_work_agent.application.agents.request_understanding.contracts import
     request_understanding_output,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -76,6 +78,7 @@ class RequestUnderstandingSubgraph:
         *,
         llm_runtime: StructuredInferencePort,
         prompt_manifest_path: Path | None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         id_factory: Callable[[], str],
         graph_profile: GraphProfile,
         transition_run: TransitionRun,
@@ -85,10 +88,14 @@ class RequestUnderstandingSubgraph:
         self._llm_runtime = llm_runtime
         manifest_path = prompt_manifest_path or default_prompt_manifest_path()
         self._identify_goal_prompt_ref = load_prompt_reference(
-            "request_understanding.identify_goal", manifest_path
+            "request_understanding.identify_goal",
+            manifest_path,
+            execution_scope=prompt_execution_scope,
         )
         self._detect_ambiguity_prompt_ref = load_prompt_reference(
-            "request_understanding.detect_ambiguity", manifest_path
+            "request_understanding.detect_ambiguity",
+            manifest_path,
+            execution_scope=prompt_execution_scope,
         )
         self._id_factory = id_factory
         self._graph_profile = graph_profile

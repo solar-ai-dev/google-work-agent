@@ -68,6 +68,8 @@ from google_work_agent.application.agents.review.inspect_goal_and_evidence impor
     REVIEW_INSPECT_GOAL_AND_EVIDENCE_OUTPUT_SCHEMA,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
+    PRODUCT_RELEASE,
+    PromptExecutionScope,
     default_prompt_manifest_path,
     load_prompt_reference,
 )
@@ -148,6 +150,7 @@ class ReviewSubgraph:
         dependencies: ReviewRuntimeDependencies | None = None,
         llm_runtime: StructuredInferencePort | None = None,
         prompt_manifest_path: Path | None = None,
+        prompt_execution_scope: PromptExecutionScope = PRODUCT_RELEASE,
         id_factory: Callable[[], str] | None = None,
         graph_profile: GraphProfile | None = None,
         merge_decision: MergeDecision | None = None,
@@ -166,6 +169,7 @@ class ReviewSubgraph:
         self._confirm_inline = confirm_inline
         self._resume_target_registry = resume_target_registry
         self._prompt_manifest_path = prompt_manifest_path or default_prompt_manifest_path()
+        self._prompt_execution_scope = prompt_execution_scope
         self._prompt_refs: dict[str, PromptReference] = {}
 
     @property
@@ -605,7 +609,11 @@ class ReviewSubgraph:
                 raise ValueError(f"unsupported Review Prompt slot: {prompt_id}")
             prompt_ref = self._prompt_refs.get(prompt_id)
             if prompt_ref is None:
-                prompt_ref = load_prompt_reference(prompt_id, self._prompt_manifest_path)
+                prompt_ref = load_prompt_reference(
+                    prompt_id,
+                    self._prompt_manifest_path,
+                    execution_scope=self._prompt_execution_scope,
+                )
                 self._prompt_refs[prompt_id] = prompt_ref
             llm_runtime = self._llm_runtime
             if llm_runtime is None:
