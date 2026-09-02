@@ -6,6 +6,7 @@ from typing import cast
 
 from evaluation.client import ProductApiClient
 
+# isort: split
 from evaluation.runner import run_case, write_result
 
 

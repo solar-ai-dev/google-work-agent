@@ -13,7 +13,10 @@ from tests.support.fakes.langgraph_e2e import LangGraphE2EGeminiTransport
 from tests.support.production_runtime import build_test_production_container
 from uvicorn import Config, Server
 
+# isort: split
 from evaluation.runner import run_case, write_result
+
+# isort: split
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
