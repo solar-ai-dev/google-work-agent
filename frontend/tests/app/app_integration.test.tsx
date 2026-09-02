@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { App } from "./App";
+import { App } from "../../src/app/App";
 
 type MockResponse = {
   status?: number;

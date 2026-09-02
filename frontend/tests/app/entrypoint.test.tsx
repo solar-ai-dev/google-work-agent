@@ -9,7 +9,7 @@ vi.mock("react-dom/client", () => ({
   },
 }));
 
-vi.mock("./app/App", () => ({
+vi.mock("../../src/app/App", () => ({
   App: () => <div>Mock App</div>,
 }));
 
@@ -22,7 +22,7 @@ describe("main entrypoint", () => {
   });
 
   test("mounts the app into the root element", async () => {
-    await import("./main");
+    await import("../../src/main");
 
     expect(createRootMock).toHaveBeenCalledWith(document.getElementById("root"));
     expect(renderMock).toHaveBeenCalledTimes(1);

@@ -901,7 +901,7 @@ Right:  Conversation (새 대화·검색·목록) → Recent Execution
 - 기본 미완료 Browse는 Provider 반환 순을 유지한다. 별도 정렬 row를 두지 않고 `⋮` 메뉴의 `기본 순서 | 날짜순`만 제공하며 날짜순은 전체 materialization 후 `scheduled_date` 오름차순·날짜 없는 Task 후순위로 정렬한다.
 - 목록은 `tasks.list` metadata를 사용하고 `tasks.get`은 focus/선택 상세 조회에만 사용한다. Provider metadata batch를 Session Cache에 받고 UI는 configured `SIDEBAR_PAGE_SIZE`로 표시한다.
 - 미완료 목록 하단의 `완료됨(N)` section은 기본 접힘이다. completed scope를 background terminal materialization해 실제 `task_status=completed`만 `resource_id`로 dedupe하고 exact `N`과 row cache를 함께 만든다. section 펼침과 `더 보기`는 cache를 configured `SIDEBAR_PAGE_SIZE` 단위로 보여주는 presentation이며 Provider 추가 호출을 만들지 않는다.
-- Provider raw `completed` RFC3339은 `completed_at`으로 보존한 경우에만 configured AppSettings timezone 기준 `완료일: M월 D일 (요일)` 보조 텍스트로 표시한다. 값이 없거나 유효하지 않으면 완료일 줄을 생략하고 `scheduled_date`·`due`·`updated`·현재 시각을 fallback으로 사용하지 않는다.
+- Provider raw `completed` RFC3339은 `completed_at`으로 보존한 경우에만 configured `SettingsViewV1.timezone` 기준 `완료일: M월 D일 (요일)` 보조 텍스트로 표시한다. 값이 없거나 유효하지 않으면 완료일 줄을 생략하고 `scheduled_date`·`due`·`updated`·현재 시각을 fallback으로 사용하지 않는다.
 - Refresh는 incomplete와 completed cache를 모두 fresh generation으로 갱신하며 completed 결과는 terminal 성공 시 atomic replace한다.
 - Local API Projection은 Provider `needsAction`을 `미완료`, `completed`를 `완료`로 정규화한다. Google `due`는 UI에서 `예정일`로만 표시하고 예정일 경과는 상태 전이가 아니라 `예정일 지남` 보조 문구만 허용한다.
 - Task List는 실제 반환 값일 때만 보조 표시하고 priority, 가짜 category·Task List 이름·색상 dot·raw Provider enum/token은 표시하지 않는다.

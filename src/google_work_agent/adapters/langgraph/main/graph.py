@@ -328,7 +328,11 @@ class WorkflowGraphComposition:
         routers.update(
             {
                 name: (
-                    partial(router, should_stop_for_cancel=self._should_stop_for_cancel),
+                    partial(
+                        router,
+                        available_targets=available_targets,
+                        should_stop_for_cancel=self._should_stop_for_cancel,
+                    ),
                     successors,
                 )
                 for name, (router, successors) in control_routers.items()

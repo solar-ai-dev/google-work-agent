@@ -85,7 +85,7 @@ class LocalModelProductDecisionV1:
         ):
             if not isinstance(decoded[field], int) or isinstance(decoded[field], bool):
                 raise ValueError("LocalModelProductDecisionV1 field type mismatch")
-        return cls(**decoded)  # type: ignore[arg-type]
+        return cls(**decoded)
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

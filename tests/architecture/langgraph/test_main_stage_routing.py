@@ -102,6 +102,67 @@ def test_main_stage_router__for_unknown_successor__fails_closed() -> None:
             router(cast(Any, {"run_id": "run-1", "__target__": "unknown_target"}))
 
 
+@pytest.mark.parametrize(
+    ("profile", "topology"),
+    [
+        (GraphProfile.SINGLE_BASELINE, ("single_workflow",)),
+        (GraphProfile.THREE_STAGE, ("stage_one", "stage_two", "stage_three")),
+        (
+            GraphProfile.SIX_ROLE_BASELINE,
+            (
+                "request_understanding",
+                "tool_route",
+                "context_retriever",
+                "work_analysis",
+                "planning",
+                "review",
+            ),
+        ),
+    ],
+)
+def test_every_main_stage__accepts_only__current_profile_successors(
+    profile: GraphProfile, topology: tuple[str, ...]
+) -> None:
+    composition = _composition(profile, topology)
+    available_targets = frozenset(composition.edge_map())
+    for router, successors in composition._stage_routers().values():
+        for target in successors & available_targets:
+            assert router(cast(Any, {"__target__": target})) == target
+        for target in successors - available_targets:
+            with pytest.raises(ValueError, match="unregistered successor"):
+                router(cast(Any, {"__target__": target}))
+
+
+def test_globally_known_but_profile_unavailable_target__fails_in_router__before_edge_map() -> None:
+    cases = (
+        (GraphProfile.SINGLE_BASELINE, ("single_workflow",), "initialize", "stage_one"),
+        (
+            GraphProfile.THREE_STAGE,
+            ("stage_one", "stage_two", "stage_three"),
+            "initialize",
+            "request_understanding",
+        ),
+        (
+            GraphProfile.SIX_ROLE_BASELINE,
+            (
+                "request_understanding",
+                "tool_route",
+                "context_retriever",
+                "work_analysis",
+                "planning",
+                "review",
+            ),
+            "initialize",
+            "single_workflow",
+        ),
+    )
+    for profile, topology, stage, target in cases:
+        router, successors = _composition(profile, topology)._stage_routers()[stage]
+        assert target in successors
+        with pytest.raises(ValueError, match="unregistered successor"):
+            router(cast(Any, {"__target__": target}))
+
+
 def test_main_router_modules__for_each_conditional_stage__define_exact_symbol() -> None:
     for stage in CONDITIONAL_STAGES:
         path = MAIN / "routing" / f"route_after_{stage}.py"

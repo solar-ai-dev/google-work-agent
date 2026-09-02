@@ -21,9 +21,14 @@ RELEASE_FILES = {
         "generate_release_manifest",
     },
     "release/generate_model_manifest.py": {
+        "generate_model_manifest",
+    },
+    "release/generate_local_model_product_decision.py": {
+        "generate_local_model_product_decision",
+    },
+    "src/google_work_agent/ports/llm/approved_model_manifest.py": {
         "ApprovedModelEntryV1",
         "ModelManifestV1",
-        "generate_model_manifest",
     },
     "release/sign_release_artifacts.py": {"sign_release_artifacts"},
 }

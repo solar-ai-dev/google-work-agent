@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { requestJson } from "./client";
+import { requestJson } from "../../../src/api/client";
 
 describe("requestJson", () => {
   test("parses a same-origin JSON response", async () => {

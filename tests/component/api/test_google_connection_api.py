@@ -10,6 +10,10 @@ from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
 from tests.support.fakes.llm import DisabledLlmRuntimeStatusPort
 from tests.support.mcp_manifest import build_manifest_payload
+from tests.support.readiness import (
+    StaticLauncherProbeVerifier,
+    StaticReadinessAggregator,
+)
 
 from google_work_agent.adapters.connectors.google.workspace.composition import (
     GOOGLE_WORKSPACE_CONNECTOR_ID,
@@ -33,10 +37,6 @@ from google_work_agent.adapters.persistence.sqlite.connected_account_store impor
 )
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
     sqlite_unit_of_work_factory,
-)
-from google_work_agent.adapters.readiness.composite import (
-    StaticLauncherProbeVerifier,
-    StaticReadinessAggregator,
 )
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,

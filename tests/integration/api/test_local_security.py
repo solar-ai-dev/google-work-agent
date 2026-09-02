@@ -1,11 +1,11 @@
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
 from tests.support.fakes.llm import DisabledLlmRuntimeStatusPort
-
-from google_work_agent.adapters.readiness.composite import (
+from tests.support.readiness import (
     StaticLauncherProbeVerifier,
     StaticReadinessAggregator,
 )
+
 from google_work_agent.adapters.system.process_component_circuit_state import (
     ProcessComponentCircuitStateAdapter,
 )

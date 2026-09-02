@@ -3,14 +3,14 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from tests.support.fakes import DeterministicUUID, FakeClockPort
+from tests.support.readiness import (
+    StaticLauncherProbeVerifier,
+    StaticReadinessAggregator,
+)
 
 from google_work_agent.adapters.langgraph.registry.node_registry import NodeRegistry
 from google_work_agent.adapters.langgraph.registry.resume_target_registry import (
     ResumeTargetRegistry,
-)
-from google_work_agent.adapters.readiness.composite import (
-    StaticLauncherProbeVerifier,
-    StaticReadinessAggregator,
 )
 from google_work_agent.api.app import create_app
 from google_work_agent.api.container import ApiContainer

@@ -1,15 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
-import * as rootApi from "./index";
-import { approveAction, modifyAction, prepareRetry, rejectAction } from "../features/approval/api/action_commands";
-import { resolveRecovery } from "../features/recovery/api/resolve_recovery";
-import { getRunContext, getRunSnapshot } from "../features/run/api/get_run_snapshot";
-import { cancelRun, confirmRun, resumeRun } from "../features/run/api/run_commands";
-import { getRuntime } from "../features/diagnostics/api/get_runtime";
-import { getSettings } from "../features/settings/api/get_settings";
-import { updateSettings } from "../features/settings/api/update_settings";
-import { deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential } from "../features/settings/api/llm_credential_operations";
-import { disconnectGoogle, getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection } from "../features/settings/api/google_connection_operations";
-import { stageAttachment } from "../features/attachment/api/stage_attachment";
+import * as rootApi from "../../../src/api/index";
+import { approveAction, modifyAction, prepareRetry, rejectAction } from "../../../src/features/approval/api/action_commands";
+import { resolveRecovery } from "../../../src/features/recovery/api/resolve_recovery";
+import { getRunContext, getRunSnapshot } from "../../../src/features/run/api/get_run_snapshot";
+import { cancelRun, confirmRun, resumeRun } from "../../../src/features/run/api/run_commands";
+import { getRuntime } from "../../../src/features/diagnostics/api/get_runtime";
+import { getSettings } from "../../../src/features/settings/api/get_settings";
+import { updateSettings } from "../../../src/features/settings/api/update_settings";
+import { deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential } from "../../../src/features/settings/api/llm_credential_operations";
+import { disconnectGoogle, getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection } from "../../../src/features/settings/api/google_connection_operations";
+import { stageAttachment } from "../../../src/features/attachment/api/stage_attachment";
 
 const api = { ...rootApi, approveAction, modifyAction, prepareRetry, rejectAction, resolveRecovery, getRunContext, getRunSnapshot, cancelRun, confirmRun, resumeRun, getRuntime, getSettings, updateSettings, deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential, disconnectGoogle, getCurrentGoogleAccount, getGoogleConnection, startGoogleConnection, stageAttachment };
 

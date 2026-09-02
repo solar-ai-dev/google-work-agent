@@ -946,7 +946,7 @@ Python Runtime은 앱 전용으로 Bundle에 포함하며 System Python과 분�
 - 임의 Model 검색·설치
 - Release Config에 포함되지 않은 candidate Model 노출
 
-지원 Local runtime/model allowlist의 단일 authority는 `%INSTALL_ROOT%/manifests/model-manifest-v1.json`이다. 이 file은 별도 독립 signature authority를 만들지 않고 verified `release-manifest.json`의 `files[].file_path + sha256` entry로 인증된다. Canonical schema는 `release/generate_model_manifest.py`가 소유한다.
+지원 Local runtime/model allowlist의 단일 artifact authority는 `%INSTALL_ROOT%/manifests/model-manifest-v1.json`이다. 이 file은 별도 독립 signature authority를 만들지 않고 verified `release-manifest.json`의 `files[].file_path + sha256` entry로 인증된다. Packageable Canonical schema/parser authority는 `src/google_work_agent/ports/llm/approved_model_manifest.py`가 소유하고, `release/generate_model_manifest.py`와 Product runtime consumer가 이 동일 owner를 사용한다. 이전 `release/generate_model_manifest.py` 내부 schema owner는 installed Product가 top-level release package를 import하지 않으면서 generator/consumer parser를 하나로 만들기 위해 이 exact path로 이동했다. Field와 validation behavior는 변경하지 않는다.
 
 ```python
 class ApprovedModelEntryV1:
@@ -959,7 +959,7 @@ class ModelManifestV1:
     approved_models: list[ApprovedModelEntryV1]
 ```
 
-`release/generate_model_manifest.py → generate_model_manifest()`가 13의 Release-selected model decision을 `ModelManifestV1`로 materialize한다. `LOCAL_CAPABLE` profile은 이 Model Manifest를 필수 포함하고 `API_ONLY`는 포함하지 않아도 된다. `SignedBuildConfigV1`은 `deployment_profile`과 build/runtime identity만 소유하며 Ollama version/Model ID/Model Hash allowlist를 중복 소유하지 않는다.
+`release/generate_model_manifest.py → generate_model_manifest()`가 13의 Release-selected model allowlist를 `ModelManifestV1`로 materialize한다. `APPROVED_FOR_LOCAL_PROFILE`인 정확히 하나의 model 선택과 CPU/RAM/VRAM/OS/architecture release gate는 `%INSTALL_ROOT%/manifests/local-model-product-decision-v1.json`에 materialize하며, 그 `model_manifest_hash`는 canonical Model Manifest bytes와 일치해야 한다. 두 file 모두 동일 verified Release Manifest hash chain으로 인증한다. `LOCAL_CAPABLE` profile은 두 artifact를 필수 포함하고 `API_ONLY`는 둘 모두 금지한다. 실제 current Product Decision이 없으면 runtime selection은 `DEFERRED_UNTIL_PRODUCT_DECISION`으로 fail closed한다. `SignedBuildConfigV1`과 User Settings는 Ollama version/Model ID/Model Hash/threshold를 중복 소유하지 않는다.
 
 ## 13. Upgrade·Migration·Rollback
 

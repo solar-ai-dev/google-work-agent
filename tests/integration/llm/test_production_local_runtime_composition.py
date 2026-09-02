@@ -12,7 +12,12 @@ from google_work_agent.adapters.llm.runtime.evaluate_local_runtime_eligibility i
     evaluate_local_runtime_eligibility,
 )
 from google_work_agent.api import composition
-from google_work_agent.api.composition import CoreInitializationError, _VerifiedReleaseFile
+from google_work_agent.api.composition import (
+    CoreInitializationError,
+    DevelopmentConnectorBundle,
+    _VerifiedReleaseFile,
+)
+from google_work_agent.api.container import ApiContainer
 from google_work_agent.application.prompt_runtime.prompt_registry import PromptRegistry
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
@@ -23,7 +28,10 @@ from google_work_agent.ports.llm.approved_model_manifest import (
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
-from google_work_agent.ports.llm.runtime_selection import LocalRuntimeRequirementsV1
+from google_work_agent.ports.llm.runtime_selection import (
+    LlmRuntimeSelectionV1,
+    LocalRuntimeRequirementsV1,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
     AvailabilityState,
@@ -116,11 +124,11 @@ def _build_signed_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     release_files: tuple[_VerifiedReleaseFile, ...],
-):
+) -> ApiContainer:
     runtime_root = (tmp_path / "runtime").resolve()
     original_build_connectors = composition._build_connectors
 
-    def build_external_connector_leaf(**kwargs: object):
+    def build_external_connector_leaf(**kwargs: object) -> DevelopmentConnectorBundle:
         kwargs.update(
             configuration_source="EXPLICIT_DEVELOPMENT",
             verified_release_files=(),
@@ -187,6 +195,8 @@ def test_signed_local_decision__production_composition__invokes_only_local_provi
         release_files=release_files,
     )
     try:
+        assert container.structured_inference_port is not None
+        assert container.llm_runtime_selection is not None
         prompt_ref = PromptRegistry(prompt_manifest).lookup_by_id("planning.compose_answer")
         result = container.structured_inference_port.infer(
             "LOCAL_GPU",
@@ -267,7 +277,7 @@ def test_local_eligibility__fails_closed__for_each_signed_requirement(
     assert expected_reason in decision.safe_reason_codes
 
 
-def _active_selection(model: ApprovedModelInfo):
+def _active_selection(model: ApprovedModelInfo) -> LlmRuntimeSelectionV1:
     from tests.support.llm_runtime import runtime_selection
 
     return replace(
@@ -314,7 +324,7 @@ def test_signed_local_release_artifact_failures__stop_before_composition__with_e
         else:
             payload["selected_model_id"] = "not-approved:1b"
         decision_path.write_bytes(
-            LocalModelProductDecisionV1(**payload).to_canonical_bytes() + b"\n"  # type: ignore[arg-type]
+            LocalModelProductDecisionV1(**payload).to_canonical_bytes() + b"\n"
         )
     paths = [prompt_manifest, frontend, manifest_path, decision_path]
     if mutation == "missing_manifest":

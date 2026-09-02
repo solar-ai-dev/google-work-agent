@@ -9,6 +9,10 @@ from tests.support.fakes import (
     DeterministicUUID,
     FakeClockPort,
 )
+from tests.support.readiness import (
+    StaticLauncherProbeVerifier,
+    StaticReadinessAggregator,
+)
 
 from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     LlmCredentialRouter,
@@ -16,10 +20,6 @@ from google_work_agent.adapters.llm.runtime.llm_credential_router import (
 )
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter as CanonicalStructuredInferenceRuntimeRouter,
-)
-from google_work_agent.adapters.readiness.composite import (
-    StaticLauncherProbeVerifier,
-    StaticReadinessAggregator,
 )
 from google_work_agent.adapters.system.filesystem_operational_command_replay import (
     FilesystemOperationalCommandReplayAdapter,

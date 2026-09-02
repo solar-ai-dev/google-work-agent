@@ -32,6 +32,7 @@ def test_cancel_signal_routes__the_next_graph__edge_to_end() -> None:
     assert (
         route_after_action_execution(
             state,
+            available_targets={"action_execution", "end"},
             should_stop_for_cancel=runtime._should_stop_for_cancel,
         )
         == "end"

@@ -512,6 +512,59 @@ def test_test_modules__import_only_support__not_peer_tests() -> None:
     clean(errors)
 
 
+def test_production_packages__contain_runtime_artifacts__beyond_package_markers() -> None:
+    empty_packages: list[str] = []
+    for marker in SRC.rglob("__init__.py"):
+        package = marker.parent
+        files = [path for path in package.iterdir() if path.is_file() and path != marker]
+        directories = [
+            path for path in package.iterdir() if path.is_dir() and path.name != "__pycache__"
+        ]
+        if not files and not directories:
+            empty_packages.append(rel(package))
+    clean([f"empty production package: {path}" for path in empty_packages])
+
+
+def test_removed_structure_residue__has_zero__production_authorities() -> None:
+    errors: list[str] = []
+    forbidden_path = SRC / "ports" / "system" / "contracts" / "application_settings.py"
+    if forbidden_path.exists():
+        errors.append(f"broad AppSettings authority remains: {rel(forbidden_path)}")
+    for path in pyfiles():
+        source = path.read_text(encoding="utf-8")
+        if "AppSettings" in source:
+            errors.append(f"broad AppSettings reference remains: {rel(path)}")
+        if "StaticReadinessAggregator" in source or "StaticLauncherProbeVerifier" in source:
+            errors.append(f"production test double remains: {rel(path)}")
+    frontend_src = ROOT / "frontend" / "src"
+    for pattern in ("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"):
+        for path in frontend_src.rglob(pattern):
+            errors.append(f"frontend test under production source root: {rel(path)}")
+    clean(errors)
+
+
+def test_local_runtime_authorities__have_exactly_one__semantic_owner() -> None:
+    manifest_classes: list[str] = []
+    eligibility_functions: list[str] = []
+    for path in pyfiles():
+        for node in ast.walk(tree(path)):
+            if isinstance(node, ast.ClassDef) and node.name == "ModelManifestV1":
+                manifest_classes.append(rel(path))
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "evaluate_local_runtime_eligibility"
+            ):
+                eligibility_functions.append(rel(path))
+    clean(
+        [
+            f"ModelManifestV1 authorities: {manifest_classes}",
+            f"local runtime eligibility authorities: {eligibility_functions}",
+        ]
+        if len(manifest_classes) != 1 or len(eligibility_functions) != 1
+        else []
+    )
+
+
 def test_python_test_functions__across_repository__match_canonical_naming_grammar() -> None:
     pattern = re.compile(r"^test_[a-z][a-z0-9_]*__[a-z][a-z0-9_]*__[a-z][a-z0-9_]*$")
     errors: list[str] = []
