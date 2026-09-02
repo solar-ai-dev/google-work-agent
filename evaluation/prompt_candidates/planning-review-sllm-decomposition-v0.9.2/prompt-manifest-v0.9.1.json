@@ -27,7 +27,7 @@
     "projection-v1.1-r8.6-phase7.5",
     "PrePolicyToolRouteGoldV1"
   ],
-  "runtime_input_contract": "prompts/agent/contracts/prompt-runtime-input-contract-v1.json",
+  "runtime_input_contract": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/contracts/prompt-runtime-input-contract-v1.json",
   "slots": [
     {
       "slot_id": "request_understanding.classify",
@@ -41,9 +41,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/request_understanding/base.md", "prompts/agent/r8.6/six/request_understanding/classify.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/request_understanding/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/request_understanding/classify.md"],
       "content_hash": "204b16cc1b019e3e70ffc337abe257488a2a2b22e2645f7f00557af5c8a853e4",
-      "assembled_path": "prompts/agent/assembled-r8.6/request_understanding.classify.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/request_understanding.classify.md",
       "assembled_hash": "204b16cc1b019e3e70ffc337abe257488a2a2b22e2645f7f00557af5c8a853e4"
     },
     {
@@ -58,9 +58,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/request_understanding/base.md", "prompts/agent/r8.6/six/request_understanding/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/request_understanding/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/request_understanding/repair.md"],
       "content_hash": "1d84cc1993c75e2ef15a0c8889893169ebcc695f6c0dff7c2368c720a30e389b",
-      "assembled_path": "prompts/agent/assembled-r8.6/request_understanding.classify.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/request_understanding.classify.repair.md",
       "assembled_hash": "1d84cc1993c75e2ef15a0c8889893169ebcc695f6c0dff7c2368c720a30e389b"
     },
     {
@@ -75,9 +75,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/determine_io_resources.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/determine_io_resources.md"],
       "content_hash": "1fffc0130b346e1b2713ff2374943158da15db1c7aa07f4deb7e93210c8aee05",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.determine_io_resources.md",
       "assembled_hash": "1fffc0130b346e1b2713ff2374943158da15db1c7aa07f4deb7e93210c8aee05"
     },
     {
@@ -92,9 +92,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/select_tool_if_needed.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/select_tool_if_needed.md"],
       "content_hash": "5bdaea89528e5768b29a2368b65abb8e50ca9376c1a2e07f36ed53293469f133",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.select_tool_if_needed.md",
       "assembled_hash": "5bdaea89528e5768b29a2368b65abb8e50ca9376c1a2e07f36ed53293469f133"
     },
     {
@@ -109,9 +109,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/repair.md"],
       "content_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.determine_io_resources.repair.md",
       "assembled_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d"
     },
     {
@@ -126,9 +126,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/revise.md"],
       "content_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.determine_io_resources.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.determine_io_resources.revise.md",
       "assembled_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd"
     },
     {
@@ -143,9 +143,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/repair.md"],
       "content_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.select_tool_if_needed.repair.md",
       "assembled_hash": "ffcef857248e8bf951277d6ab1d32728a5c3338e5d18652e1ccbdbc39a7a874d"
     },
     {
@@ -160,9 +160,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/tool_route/base.md", "prompts/agent/r8.6/six/tool_route/revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/tool_route/revise.md"],
       "content_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd",
-      "assembled_path": "prompts/agent/assembled-r8.6/tool_route.select_tool_if_needed.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/tool_route.select_tool_if_needed.revise.md",
       "assembled_hash": "752663b5025e43be5662323ac19ef2c30a8ceabb70ce6c5fbbea8d0eb3cc45dd"
     },
     {
@@ -177,9 +177,9 @@
       "output_schema_version": "retrieval-query-plan-v2",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/plan_query.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/plan_query.md"],
       "content_hash": "2daa76c01a7a22381648dac1ce446bdcf1280ef6d86c49f47ba9b7b084335d96",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.plan_query.md",
       "assembled_hash": "2daa76c01a7a22381648dac1ce446bdcf1280ef6d86c49f47ba9b7b084335d96"
     },
     {
@@ -194,9 +194,9 @@
       "output_schema_version": "retrieval-query-plan-v2",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/repair.md"],
       "content_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.plan_query.repair.md",
       "assembled_hash": "f59b59116b67e872c4296b9f2c699369827f69dec3df0c54798190c6f391f0db"
     },
     {
@@ -211,9 +211,9 @@
       "output_schema_version": "retrieval-query-plan-v2",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/revise.md"],
       "content_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.plan_query.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.plan_query.revise.md",
       "assembled_hash": "80b006dd261881d1acdd86d2547afe3ba9468105f517bdfec2a2627e4e7a6e4c"
     },
     {
@@ -228,9 +228,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/select_evidence.md"],
       "content_hash": "4333f4b17a005072742f8cb8217785b7b87bb6c91f15acebeed2cccfb96a3565",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.select_evidence.md",
       "assembled_hash": "4333f4b17a005072742f8cb8217785b7b87bb6c91f15acebeed2cccfb96a3565"
     },
     {
@@ -245,9 +245,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence_repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/select_evidence_repair.md"],
       "content_hash": "064014b33d51d26170541a27d1a05cfbf02361b7fd62a1f44ec70b402e15e4ac",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.select_evidence.repair.md",
       "assembled_hash": "064014b33d51d26170541a27d1a05cfbf02361b7fd62a1f44ec70b402e15e4ac"
     },
     {
@@ -262,9 +262,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/select_evidence_revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/select_evidence_revise.md"],
       "content_hash": "49965239aa8ee71aafbcbb504aa8420823266ca20d3531f73842f43b65345179",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.select_evidence.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.select_evidence.revise.md",
       "assembled_hash": "49965239aa8ee71aafbcbb504aa8420823266ca20d3531f73842f43b65345179"
     },
     {
@@ -279,9 +279,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/assess_sufficiency.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/assess_sufficiency.md"],
       "content_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.assess_sufficiency.md",
       "assembled_hash": "543c4b7f7ffc1bfee610d41cb6238bc81d76e85cfeaf8cd4c5de7ba7a8793902"
     },
     {
@@ -296,9 +296,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/retrieval/base.md", "prompts/agent/r8.6/six/retrieval/assess_sufficiency_repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/retrieval/assess_sufficiency_repair.md"],
       "content_hash": "610947ec106e40dfa358d0e85a8c7b8be6e8c384e3c1243425dbc85060986701",
-      "assembled_path": "prompts/agent/assembled-r8.6/retrieval.assess_sufficiency.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/retrieval.assess_sufficiency.repair.md",
       "assembled_hash": "610947ec106e40dfa358d0e85a8c7b8be6e8c384e3c1243425dbc85060986701"
     },
     {
@@ -313,9 +313,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/work_analysis/base.md", "prompts/agent/r8.6/six/work_analysis/analyze.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/work_analysis/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/work_analysis/analyze.md"],
       "content_hash": "665a4fd5b87626badec01bd35471f697164debfeba4f57fa8c49d72417dd815e",
-      "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/work_analysis.analyze.md",
       "assembled_hash": "665a4fd5b87626badec01bd35471f697164debfeba4f57fa8c49d72417dd815e"
     },
     {
@@ -330,9 +330,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/work_analysis/base.md", "prompts/agent/r8.6/six/work_analysis/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/work_analysis/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/work_analysis/repair.md"],
       "content_hash": "d39c468f4d468e75b64153345cf798e08e5f2bb580584acdc9074acdaa2bb5be",
-      "assembled_path": "prompts/agent/assembled-r8.6/work_analysis.analyze.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/work_analysis.analyze.repair.md",
       "assembled_hash": "d39c468f4d468e75b64153345cf798e08e5f2bb580584acdc9074acdaa2bb5be"
     },
     {
@@ -347,9 +347,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/compose_answer.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/compose_answer.md"],
       "content_hash": "5d76bdf73fecc6a0ddaa7ffe4151a93f889a5a2bd7a3da91dd2fc9a1be0c9969",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_answer.md",
       "assembled_hash": "5d76bdf73fecc6a0ddaa7ffe4151a93f889a5a2bd7a3da91dd2fc9a1be0c9969"
     },
     {
@@ -364,9 +364,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/repair.md"],
       "content_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_answer.repair.md",
       "assembled_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617"
     },
     {
@@ -381,9 +381,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/revise.md"],
       "content_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_answer.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_answer.revise.md",
       "assembled_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea"
     },
     {
@@ -398,9 +398,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/compose_arguments.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/compose_arguments.md"],
       "content_hash": "5d272bd5737cde884623325b99e647ab3af2cf842d5d737d1dfe018e39c9be9e",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_arguments.md",
       "assembled_hash": "5d272bd5737cde884623325b99e647ab3af2cf842d5d737d1dfe018e39c9be9e"
     },
     {
@@ -415,9 +415,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/repair.md"],
       "content_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_arguments.repair.md",
       "assembled_hash": "22c2aaa97529e827b99f72dfaa235eed707bbd2ceeb91bf2e58a1f6464b7a617"
     },
     {
@@ -432,9 +432,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/planning/base.md", "prompts/agent/r8.6/six/planning/revise.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/planning/revise.md"],
       "content_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea",
-      "assembled_path": "prompts/agent/assembled-r8.6/planning.compose_arguments.revise.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/planning.compose_arguments.revise.md",
       "assembled_hash": "7b11e2fad5a115f88b1bc2df9e4459b6c3ff0d2a5dac14106b2f2f665a8195ea"
     },
     {
@@ -449,9 +449,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/inspect.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/inspect.md"],
       "content_hash": "6281ce9365c7cf685d201c70045a16ec4cf33eb7c2731c8b540551ae7e5508f9",
-      "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/review.inspect.md",
       "assembled_hash": "6281ce9365c7cf685d201c70045a16ec4cf33eb7c2731c8b540551ae7e5508f9"
     },
     {
@@ -466,9 +466,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/repair.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/repair.md"],
       "content_hash": "c867d7113b0cb95e954cb2cc2682ac48f95fb2d988890032895e51b20aed083f",
-      "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.repair.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/review.inspect.repair.md",
       "assembled_hash": "c867d7113b0cb95e954cb2cc2682ac48f95fb2d988890032895e51b20aed083f"
     },
     {
@@ -483,9 +483,9 @@
       "output_schema_version": "r8.6-output-contract-snapshot-v1",
       "prompt_version": "0.9.0",
       "activation_status": "DRAFT",
-      "files": ["prompts/agent/r8.6/six/review/base.md", "prompts/agent/r8.6/six/review/recheck.md"],
+      "files": ["evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/base.md", "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/r8.6/six/review/recheck.md"],
       "content_hash": "6afafedd2386bd8eec3e1d3774b68c8a7b032f86176a75720b4a4193f7c1f61b",
-      "assembled_path": "prompts/agent/assembled-r8.6/review.inspect.recheck.md",
+      "assembled_path": "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2/assembled-r8.6/review.inspect.recheck.md",
       "assembled_hash": "6afafedd2386bd8eec3e1d3774b68c8a7b032f86176a75720b4a4193f7c1f61b"
     }
   ]

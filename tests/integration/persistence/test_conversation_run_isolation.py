@@ -1,5 +1,5 @@
 """Integration tests for Conversation/Run Context Isolation (2026-08-19 Canonical,
-docs/design/00-PROJECT-SOURCE-GUIDE.md "Conversation - Run 의미 경계").
+docs/canonical/00-project-source-guide.md "Conversation - Run 의미 경계").
 
 A Conversation is a UI/persisted Timeline, not Agent semantic memory. After a
 Run reaches a terminal status, a new USER request in the same conversation

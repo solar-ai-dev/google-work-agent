@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-MANIFEST = ROOT / "prompts/agent/prompt-manifest-v0.9.2-candidate.json"
-CONTRACT = ROOT / "prompts/agent/contracts/prompt-runtime-input-contract-v3.json"
+ROOT = Path(__file__).resolve().parents[2]
+CANDIDATE_ROOT = ROOT / "evaluation/prompt_candidates/planning-review-sllm-decomposition-v0.9.2"
+MANIFEST = CANDIDATE_ROOT / "prompt-manifest-v0.9.2-candidate.json"
+CONTRACT = CANDIDATE_ROOT / "contracts/prompt-runtime-input-contract-v3.json"
 
 
 def test_planning_review__prompt_candidate__is_fail_closed() -> None:
@@ -38,3 +39,22 @@ def test_planning_has__no_dependency__prompt_slot() -> None:
     assert "planning.compose_dependencies" not in slot_ids
     assert "planning.generate_dependencies" not in slot_ids
     assert "planning.build_dependencies" not in slot_ids
+
+
+def test_migrated_candidate__repository_paths_resolve_under__evaluation_owner() -> None:
+    manifests = [
+        json.loads((CANDIDATE_ROOT / name).read_text(encoding="utf-8"))
+        for name in ("prompt-manifest-v0.9.1.json", "prompt-manifest-v0.9.2-candidate.json")
+    ]
+    referenced = {
+        manifests[0]["runtime_input_contract"],
+        manifests[1]["base_runtime_manifest"],
+        manifests[1]["runtime_input_contract"],
+    }
+    for manifest in manifests:
+        for slot in manifest["slots"]:
+            referenced.update(slot["files"])
+            referenced.add(slot["assembled_path"])
+
+    assert all(path.startswith("evaluation/prompt_candidates/") for path in referenced)
+    assert all((ROOT / path).is_file() for path in referenced)
