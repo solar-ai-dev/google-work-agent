@@ -13,7 +13,7 @@ Required enforcement families:
 - `_compat` zero on `main`
 - production→evaluation import ban
 - Evaluation repository root exact: current code/data/result/scoring artifacts live under top-level `evaluation/`; top-level `experiments/` and live `evaluation/compat/` trees zero
-- Evaluation artifact closure: `datasets/{retrieval,agent,e2e}/**`, `configs/**`, root scoring contract, tiny public client/dataset/grader/runner code, and local-by-default result policy match the current 13/16 manifest
+- Evaluation artifact closure: `datasets/{retrieval,agent,e2e}/**`, `configs/**`, `prompt_candidates/**`, root scoring contract, public client/dataset/grader/one-case runner, Prompt candidate/Experiment Plan/batch/comparison operations, and local-by-default result policy match the current 13/16 manifest
 - Evaluation execution closure: Evaluation→Product internal Python import zero, dynamic file:symbol target registry zero, direct Node/Subgraph/Main Profile invocation zero, fake Product adapter zero; Product invocation uses only supported public API/CLI/subprocess
 - Evaluation fixture boundary closure: synthetic fixture assets remain dataset input under `evaluation/datasets/e2e/fixtures/**`; fixture-backed Product processes are provisioned outside Evaluation and Gold/evaluator fields never enter Product requests
 - static fixture grammar closure: checked-in provider/resource fixtures use `tests/fixtures/data/<provider>/<resource>/<scenario>.json` UTF-8 JSON; architecture validators do not require an enumerated concrete `<scenario>` closed set unless an owner source explicitly names one

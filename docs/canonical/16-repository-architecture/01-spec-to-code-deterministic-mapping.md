@@ -870,6 +870,10 @@ Test: `tests/architecture/test_production_composition_root.py`.
 | strict dataset load/hash | `evaluation/dataset.py` | `load_jsonl`, `load_case`, `file_sha256` | `tests/evaluation/test_dataset.py` |
 | deterministic semantic grading | `evaluation/grader.py` | `grade_case` | `tests/evaluation/test_grader.py` |
 | one-case execution/result | `evaluation/runner.py` | `run_case`, `write_result` | `tests/evaluation/test_runner.py` |
+| offline Prompt candidate validation/materialization | `evaluation/prompt_candidate.py` | `load_prompt_candidate`, `materialize_prompt_candidate` | `tests/evaluation/test_prompt_candidate.py` |
+| versioned experiment plan validation | `evaluation/experiment_plan.py` | `load_experiment_plan` | `tests/evaluation/test_experiment_plan.py` |
+| batch public-boundary experiment execution | `evaluation/run_experiment.py` | `run_experiment` | `tests/evaluation/test_run_experiment.py` |
+| experiment result comparison | `evaluation/compare_experiment_results.py` | `compare_experiment_results` | `tests/evaluation/test_compare_experiment_results.py` |
 
 Current non-Python evaluation artifact mapping is exact:
 
@@ -879,6 +883,8 @@ Current non-Python evaluation artifact mapping is exact:
 | Retrieval dataset and Gold | `evaluation/datasets/retrieval/**` | retrieval experiment input only | `tests/evaluation/test_dataset.py` |
 | Agent dataset and Gold | `evaluation/datasets/agent/**` | agent experiment input only; direct Node target 아님 | `tests/evaluation/test_dataset.py` |
 | Candidate/config provenance | `evaluation/configs/**` | candidate metadata only | architecture/data validation |
+| Prompt candidate source | `evaluation/prompt_candidates/<candidate-id>/**` | offline DRAFT source/materialization input only | `tests/evaluation/test_prompt_candidate.py` |
+| Experiment plan template | `evaluation/configs/experiments/**` | validate-only reproducible plan input | `tests/evaluation/test_experiment_plan.py` |
 | Scoring contract | `evaluation/scoring-contract-v1.1.json` | grader policy metadata | `tests/evaluation/test_grader.py` |
 | Local result | `evaluation/results/<experiment_id>/<case_or_run>.json` | `write_result()`; gitignored by default | `tests/evaluation/test_runner.py` |
 

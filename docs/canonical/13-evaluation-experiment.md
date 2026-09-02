@@ -1128,6 +1128,16 @@ Activation evidence는 Prompt Slot별 immutable artifact chain이다. Node DEV, 
 
 정상 Route, Retrieval-heavy Route, Revision-heavy Route를 별도 집계한다. 평균 품질뿐 아니라 First-pass Success, After-repair Success, After-revision Success, Retry Precision, Stop Accuracy와 LLM Call 수를 함께 비교한다.
 
+### 21.7 Prompt candidate experiment artifact
+
+Prompt candidate는 `evaluation/prompt_candidates/<candidate-id>/` 아래의 versioned offline `DRAFT` artifact다. Candidate source와 current Product Prompt manifest/input contract를 합성하는 materialization은 Evaluation 소유의 artifact generation이며 Product Prompt Registry나 Runtime authority가 아니다. Product source를 덮어쓰지 않고 exact Slot set, runtime Node mapping, input/output schema version, source hash, DRAFT lifecycle을 검증한다.
+
+실험 실행 단위는 versioned `ExperimentPlanV1`이다. Plan은 Product SHA, Dataset path/hash/case IDs, existing Candidate Config path/hash, Prompt candidate identity/bundle hash, repetition/randomization/failure policy, Grader path/hash, comparison group을 잠근다. Model·Graph·Runtime parameter는 기존 `evaluation/configs/candidates/**`가 소유하고 Plan은 해당 config를 참조한다. Prompt-only comparison은 Product, Dataset/Gold, Grader, Tool Registry, Graph Profile, Model/parameter, Runtime mode, Fixture와 repetition을 고정하고 Prompt bundle만 변경한다.
+
+`evaluation/runner.py`는 one-case public HTTP execution authority로 유지한다. Batch operation은 validated Plan의 Case × repetition을 순회해 같은 `run_case()`를 호출하고 raw trial, normalized observation, Product/Candidate/Dataset/Grader provenance와 summary를 원자적으로 기록한다. `pass@k`와 `pass^k`를 모두 기록하되 한 번의 성공이나 평균 점수만으로 승격을 선언하지 않는다. Comparison은 fixed-dimension mismatch를 거부하고 case delta, hard-gate regression, pass/consistency delta만 산출한다. 새 hard-gate failure가 하나라도 생기면 `NOT_PROMOTABLE`이며 Product activation은 별도 immutable Product Decision이다.
+
+`--validate-only`는 Product/LLM을 호출하지 않고 Plan, candidate/config, source/bundle hash, Dataset/Grader identity, Case ID, repetition과 unresolved binding을 검증한다. External development Product가 materialized Prompt manifest를 선택하는 supported launch contract가 없으면 `PENDING_DEV_LAUNCH_INTEGRATION`으로 기록하고 후보가 실제 적용됐다고 주장하지 않는다. DEV/HOLDOUT split identity가 owner Dataset에 확정되지 않았으면 임의 분할하지 않고 `NEEDS_DATASET_DECISION`으로 남긴다.
+
 ## 22. Safety · Ambiguity · Implementation Alignment
 
 Dataset Layer를 다음처럼 분리한다.

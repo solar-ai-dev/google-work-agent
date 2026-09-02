@@ -639,6 +639,10 @@ Main Graph control stages are deterministic LangGraph adapters, not a seventh se
 | strict dataset loading | `evaluation/dataset.py` | JSONL load, duplicate rejection, case selection, artifact hash only |
 | deterministic grader | `evaluation/grader.py` | public observation을 Dataset Gold와 비교 only; Product rule 재구현 0 |
 | one-case runner | `evaluation/runner.py` | load → public API → normalize → grade → one JSON result only |
+| offline Prompt candidate | `evaluation/prompt_candidate.py` | DRAFT candidate/hash/current-contract materialization only; Product Runtime authority 0 |
+| experiment plan | `evaluation/experiment_plan.py` | fixed-variable/provenance/binding validation only |
+| batch runner | `evaluation/run_experiment.py` | validated Case × repetition → existing `runner.run_case()` → raw trial/summary only |
+| result comparison | `evaluation/compare_experiment_results.py` | fixed-dimension validation, case/aggregate delta, hard-gate regression only; promotion decision 0 |
 
 Current repository artifact placement is closed under the same single `evaluation/` root:
 
@@ -648,15 +652,20 @@ evaluation/datasets/retrieval/**
 evaluation/datasets/agent/**
 evaluation/datasets/e2e/**
 evaluation/configs/**
+evaluation/prompt_candidates/**
 evaluation/scoring-contract-v1.1.json
 evaluation/client/**
 evaluation/dataset.py
 evaluation/grader.py
 evaluation/runner.py
+evaluation/prompt_candidate.py
+evaluation/experiment_plan.py
+evaluation/run_experiment.py
+evaluation/compare_experiment_results.py
 evaluation/results/**                    # local/gitignored unless deliberately curated
 ```
 
-No current `evaluation/contracts|targets|fixtures|projections|reporting|compat` framework exists. Dataset fixtures belong beneath their dataset category, not in a second executable fixture authority. A top-level `experiments/` directory, Product file:symbol target registry, direct Node/Subgraph invocation, fake Product adapter, and Evaluation→Product Python import are prohibited. Historical artifacts remain in Git history rather than a live compatibility tree.
+No `evaluation/contracts|targets|fixtures|projections|reporting|compat` framework exists beyond the exact operations and artifacts listed above. Dataset fixtures belong beneath their dataset category, not in a second executable fixture authority. A top-level `experiments/` directory, Product file:symbol target registry, direct Node/Subgraph invocation, fake Product adapter, and Evaluation→Product Python import are prohibited. Historical artifacts remain in Git history rather than a live compatibility tree.
 
 ### Production composition / registry / execution structural authorities
 

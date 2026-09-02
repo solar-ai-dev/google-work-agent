@@ -1,13 +1,14 @@
 # MCP tool-use research prompt candidate v1
 
 This directory is an **offline DRAFT candidate bundle** for the Google Work Agent's existing
-21-slot Prompt Runtime contract. It does not replace the active Product prompt bundle and must
+21-slot Prompt Runtime contract. It does not replace the current Product prompt bundle and must
 not be loaded by installed or production runtime before the normal activation gates pass.
 
 ## Why this is a candidate, not an active bundle
 
-The Product is still before Prompt/Model experimentation. The current production baseline remains
-the stable runtime-compatible control. This candidate incorporates research-informed hypotheses
+The Product is still before Prompt/Model experimentation. The current Product baseline remains
+the runtime-compatible control; it is not described here as release-activated evidence. This
+candidate incorporates research-informed hypotheses
 about MCP tool discovery, state threading, long-horizon reliability, grounding, and adversarial
 tool metadata/output. Those hypotheses must be measured against the existing baseline; they are
 not evidence of improvement by themselves.
@@ -23,9 +24,14 @@ manifest_approved = false
 ```
 
 The committed source of this candidate is `candidate.json` plus `sources/`. The materializer
-derives a normal `PromptRegistry` directory by overlaying the candidate onto the current active
+derives a normal `PromptRegistry` directory by overlaying the candidate onto the current Product
 21-slot manifest and copying the current input contract. This avoids duplicating Product-owned
 slot metadata or turning Evaluation into a second Prompt Runtime authority.
+
+Multiple DRAFT candidates may coexist beside this directory on the same branch. An
+`ExperimentPlanV1` selects exactly one bundle for a run; unused candidates remain available for
+later controlled experiments. Candidate branches are not required, and candidate cleanup happens
+only after a separately approved final winner exists.
 
 ## Materialize for an experiment
 
@@ -44,8 +50,9 @@ prompt_runtime_input_contract_v1.json
 sources/<21 exact prompt-slot files>.md
 ```
 
-`PromptRegistry.lookup_for_evaluation()` may load the resulting manifest. `PromptRegistry.lookup()`
-must reject it because every generated slot remains `DRAFT`.
+`PromptRegistry.lookup_for_evaluation()` may load the resulting manifest.
+`PromptRegistry.lookup_for_product_release()` must reject it because every generated slot remains
+`DRAFT`.
 
 Do not materialize over:
 
@@ -84,7 +91,7 @@ The candidate tests whether explicit instructions improve:
 
 ## Required evaluation before activation
 
-Compare this bundle with the current active baseline using the same Product SHA, model candidate,
+Compare this bundle with the current Product baseline using the same Product SHA, model candidate,
 graph profile, dataset bytes, tool registry, fixtures, and graders.
 
 Required gates:
